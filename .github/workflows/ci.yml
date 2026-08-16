@@ -1,0 +1,87 @@
+# CI —— 測試矩陣與環境探測
+#
+# 這份 CI 守得住什麼、守不住什麼，寫在下面。綠勾勾不該製造假安全感。
+#
+# 守得住：
+#   - 三個 Python 版本的相容性。3.13 拿掉了 EntryPoint 的 tuple 介面，
+#     而外掛註冊表（見 TODOS 的 E1）正要用 entry point，這個矩陣是它的安全網。
+#   - Linux 上的 tshark 定位。telcolens/tshark.py 的後備路徑清單至今
+#     只在 macOS 驗過，`telcolens check` 這一步是它在 Linux 的第一次真實測試。
+#   - 邏輯層：cause 查表、Mermaid 渲染、關聯、跳脫。
+#
+# 守不住：
+#   - **抽取正確性。** 需要真實擷取檔的 18 條測試（含 tshark 交叉驗證）
+#     在這裡一律 skip，因為 fixture 授權未明不進版控（見 tests/conftest.py）。
+#     CI 上會跑 44/62。要補上這個缺口，只有一條路：自建 Open5GS testbed
+#     產生可公開的 fixture。
+#
+# 尚未加入：
+#   - 外掛相容性測試（裝一個假 plugin，確認被載入且順序正確）。
+#     它依賴 entry-point 註冊表，而那個還沒實作。E1 落地後在此加一個 job。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# 同一分支的新 push 取消還在跑的舊 run。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 一個版本失敗不要掐掉其他版本 —— 我們要知道是全滅還是只有某一版。
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+        include:
+          # macOS 是主要開發平台，跑一個版本驗證 Homebrew 路徑的 tshark 定位。
+          # 注意：這裡驗的是 /opt/homebrew/bin 這條後備路徑，
+          # 不是 Wireshark.app 那條（cask 在 runner 上太重）。
+          - os: macos-latest
+            python: "3.13"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install tshark (Linux)
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # wireshark-common 的 postinst 會問「要不要讓非 root 使用者抓包」。
+          # 預先回答 false —— 我們只讀檔案，不需要抓包權限。
+          echo "wireshark-common wireshark-common/install-setuid boolean false" \
+            | sudo debconf-set-selections
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tshark
+
+      - name: Install tshark (macOS)
+        if: runner.os == 'macOS'
+        run: brew install wireshark
+
+      - name: Install package
+        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+
+      - name: Environment check
+        # 這一步本身就是測試：驗證 tshark 定位邏輯在這個作業系統上找得到，
+        # 且四個必要 dissector 都在。失敗代表 telcolens/tshark.py 的
+        # 後備路徑清單漏了這個平台。
+        run: telcolens check
+
+      - name: Run tests
+        # 需要真實擷取檔的測試會 skip（fixture 不進版控），
+        # -ra 讓 skip 的原因顯示出來，避免「全綠」掩蓋掉覆蓋缺口。
+        run: pytest -q -ra
