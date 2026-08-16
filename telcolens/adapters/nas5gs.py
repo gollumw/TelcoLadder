@@ -1,0 +1,185 @@
+"""NAS-5GS（UE ↔ AMF/SMF，經 gNB 透明轉送）—— TS 24.501。
+
+**NAS 不是獨立的一層** —— tshark 把它放在 `ngap` 層 dict 裡的 `nas-5gs` 鍵底下
+（因為 NAS PDU 是包在 NGAP 的 NAS-PDU IE 中）。這裡負責把它挖出來。
+
+Security Mode Command 之後 NAS 會被加密，`message_type` 就抽不到了 —— 這是
+真實網路的正常現象，不是解析失敗。那些訊息仍會由 `ngap` adapter 記錄下來，
+只是看不到內層是什麼。**不要為此加「猜測」邏輯。**
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from telcolens.extract import Frame, first
+from telcolens.model import CauseRef, Endpoint, IdKey, IdKind, Message
+
+NAME = "nas-5gs"
+
+#: TS 24.501 §9.7 —— 5GMM（行動性管理）訊息型別。
+MM_MESSAGE_TYPES: dict[int, str] = {
+    0x41: "Registration request",
+    0x42: "Registration accept",
+    0x43: "Registration complete",
+    0x44: "Registration reject",
+    0x45: "Deregistration request (UE originating)",
+    0x46: "Deregistration accept (UE originating)",
+    0x47: "Deregistration request (UE terminated)",
+    0x48: "Deregistration accept (UE terminated)",
+    0x4C: "Service request",
+    0x4D: "Service reject",
+    0x4E: "Service accept",
+    0x4F: "Control plane service request",
+    0x54: "Configuration update command",
+    0x55: "Configuration update complete",
+    0x56: "Authentication request",
+    0x57: "Authentication response",
+    0x58: "Authentication reject",
+    0x59: "Authentication failure",
+    0x5A: "Authentication result",
+    0x5B: "Identity request",
+    0x5C: "Identity response",
+    0x5D: "Security mode command",
+    0x5E: "Security mode complete",
+    0x5F: "Security mode reject",
+    0x64: "5GMM status",
+    0x65: "Notification",
+    0x66: "Notification response",
+    0x67: "UL NAS transport",
+    0x68: "DL NAS transport",
+}
+
+#: TS 24.501 §9.7 —— 5GSM（工作階段管理）訊息型別。
+SM_MESSAGE_TYPES: dict[int, str] = {
+    0xC1: "PDU session establishment request",
+    0xC2: "PDU session establishment accept",
+    0xC3: "PDU session establishment reject",
+    0xC4: "PDU session authentication command",
+    0xC5: "PDU session authentication complete",
+    0xC6: "PDU session authentication result",
+    0xC9: "PDU session modification request",
+    0xCA: "PDU session modification reject",
+    0xCB: "PDU session modification command",
+    0xCC: "PDU session modification complete",
+    0xCD: "PDU session modification command reject",
+    0xD1: "PDU session release request",
+    0xD2: "PDU session release reject",
+    0xD3: "PDU session release command",
+    0xD4: "PDU session release complete",
+    0xD6: "5GSM status",
+}
+
+#: 這些訊息型別代表程序失敗，畫圖時要高亮。
+_FAILURE_TYPES = {
+    0x44,  # Registration reject
+    0x4D,  # Service reject
+    0x58,  # Authentication reject
+    0x59,  # Authentication failure
+    0x5F,  # Security mode reject
+    0xC3,  # PDU session establishment reject
+    0xCA,  # PDU session modification reject
+    0xCD,  # PDU session modification command reject
+    0xD2,  # PDU session release reject
+}
+
+
+def _to_int(value: Any) -> int | None:
+    value = first(value)
+    if value is None:
+        return None
+    text = str(value).strip()
+    try:
+        return int(text, 16) if text.lower().startswith("0x") else int(text)
+    except ValueError:
+        return None
+
+
+def _nas_blocks(frame: Frame) -> list[dict[str, Any]]:
+    """把巢狀在 ngap 底下的 nas-5gs 挖出來。
+
+    也支援 nas-5gs 直接是頂層的情況（NAS-over-其他載體時 tshark 會這樣給），
+    但目前的擷取樣本都走 NGAP 這條路徑。
+    """
+    blocks: list[dict[str, Any]] = []
+    for parent in frame.layer("ngap"):
+        nested = parent.get("nas-5gs")
+        if isinstance(nested, dict):
+            blocks.append(nested)
+        elif isinstance(nested, list):
+            blocks.extend(item for item in nested if isinstance(item, dict))
+    blocks.extend(frame.layer(NAME))
+    return blocks
+
+
+def _supi_from_suci(block: dict[str, Any]) -> str | None:
+    """把 SUCI 的欄位拼回 SUPI（≈ IMSI）。
+
+    只有 null-scheme（未加密的 SUCI，scheme_id = 0）才拼得出來。
+    用了 ECIES 保護的 SUCI 拼不回去 —— 那時回 None，讓 NGAP ID 當關聯依據。
+    """
+    mcc = first(block.get("e212_e212_mcc"))
+    mnc = first(block.get("e212_e212_mnc"))
+    msin = first(block.get("nas-5gs_nas-5gs_mm_suci_msin"))
+    if not (mcc and mnc and msin):
+        return None
+    return f"{mcc}{mnc}{msin}"
+
+
+def _identity_keys(block: dict[str, Any]) -> frozenset[IdKey]:
+    """SUPI 是全域唯一的，**不需要**像 NGAP ID 那樣加連線範圍前綴。"""
+    supi = _supi_from_suci(block)
+    return frozenset({(IdKind.SUPI, supi)}) if supi else frozenset()
+
+
+def parse(frame: Frame) -> list[Message]:
+    messages: list[Message] = []
+
+    for block in _nas_blocks(frame):
+        mm_type = _to_int(block.get("nas-5gs_nas-5gs_mm_message_type"))
+        sm_type = _to_int(block.get("nas-5gs_nas-5gs_sm_message_type"))
+
+        if mm_type is not None:
+            label = MM_MESSAGE_TYPES.get(mm_type, f"5GMM message 0x{mm_type:02x}")
+            msg_type, cause_table, cause_field = (
+                mm_type,
+                "nas_5gmm",
+                "nas-5gs_nas-5gs_mm_5gmm_cause",
+            )
+        elif sm_type is not None:
+            label = SM_MESSAGE_TYPES.get(sm_type, f"5GSM message 0x{sm_type:02x}")
+            msg_type, cause_table, cause_field = (
+                sm_type,
+                "nas_5gsm",
+                "nas-5gs_nas-5gs_sm_5gsm_cause",
+            )
+        else:
+            # 多半是 Security Mode Command 之後的加密 NAS —— 內層看不到就跳過，
+            # 不編造。外層的 NGAP 訊息已由 ngap adapter 記錄。
+            continue
+
+        cause_value = _to_int(block.get(cause_field))
+        cause = (
+            CauseRef(table=cause_table, value=cause_value) if cause_value is not None else None
+        )
+
+        detail: dict[str, str] = {}
+        supi = _supi_from_suci(block)
+        if supi:
+            detail["SUPI"] = supi
+
+        messages.append(
+            Message(
+                frame=frame.number,
+                ts=frame.ts,
+                protocol=NAME,
+                src=Endpoint(frame.src_ip, frame.src_port),
+                dst=Endpoint(frame.dst_ip, frame.dst_port),
+                label=label,
+                identity_keys=_identity_keys(block),
+                cause=cause,
+                is_failure=msg_type in _FAILURE_TYPES,
+                detail=detail,
+            )
+        )
+    return messages
