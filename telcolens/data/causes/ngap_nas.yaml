@@ -1,0 +1,28 @@
+# NGAP CauseNas —— TS 38.413 §9.3.1.2。群組完整。
+table: ngap_nas
+spec: "3GPP TS 38.413"
+clause: "§9.3.1.2"
+causes:
+  0:
+    name: "normal-release"
+    plain: "正常釋放，不是錯誤。"
+    common_causes: []
+  1:
+    name: "authentication-failure"
+    plain: "鑑權失敗。真正的原因要看 NAS 層的 5GMM cause。"
+    common_causes:
+      - "SIM 的 K/OPc 與 UDM 不一致"
+      - "SQN 不同步"
+  2:
+    name: "deregister"
+    plain: "因登出而釋放。"
+    common_causes: []
+  3:
+    name: "unspecified"
+    plain: "NAS 層原因，未指明。"
+    common_causes: []
+  4:
+    name: "ue-not-in-plmn-serving-area"
+    plain: "UE 不在此 PLMN 的服務區內。"
+    common_causes:
+      - "漫遊或區域限制"

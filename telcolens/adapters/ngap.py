@@ -110,6 +110,27 @@ def _outcome(block: dict[str, Any]) -> str:
     return ""
 
 
+#: NGAP 的 Cause 是一個 CHOICE，分成五個群組（TS 38.413 §9.3.1.2）。
+#: `ngap.cause` 只是外層的選擇器 —— **真正的號碼在群組欄位裡**，
+#: 而且各群組的號碼各自從 0 開始編。讀錯欄位會把
+#: radioNetwork 的 #21（無線連線遺失）當成 nas 的 #21，兩者毫無關係。
+_CAUSE_GROUPS = {
+    "ngap_ngap_radioNetwork": "ngap_radioNetwork",
+    "ngap_ngap_transport": "ngap_transport",
+    "ngap_ngap_nas": "ngap_nas",
+    "ngap_ngap_protocol": "ngap_protocol",
+    "ngap_ngap_misc": "ngap_misc",
+}
+
+
+def _cause_of(block: dict[str, Any]) -> CauseRef | None:
+    for field, table in _CAUSE_GROUPS.items():
+        value = _to_int(block.get(field))
+        if value is not None:
+            return CauseRef(table=table, value=value)
+    return None
+
+
 def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     """抽出 NGAP 層的身分別名。
 
@@ -145,8 +166,7 @@ def parse(frame: Frame) -> list[Message]:
         base = PROCEDURE_CODES.get(code, f"ProcedureCode-{code}")
         label = f"{base}{outcome}"
 
-        cause_value = _to_int(block.get("ngap_ngap_cause"))
-        cause = CauseRef(table="ngap", value=cause_value) if cause_value is not None else None
+        cause = _cause_of(block)
 
         detail: dict[str, str] = {}
         establishment = _to_int(block.get("ngap_ngap_RRCEstablishmentCause"))

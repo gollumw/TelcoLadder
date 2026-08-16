@@ -1,0 +1,171 @@
+# 5GSM cause values —— TS 24.501 §9.11.4.2。
+# 人工核對的規範資產。AI 不得產出 spec / clause 欄位。
+
+table: nas_5gsm
+spec: "3GPP TS 24.501"
+clause: "§9.11.4.2"
+
+causes:
+  8:
+    name: "Operator determined barring"
+    plain: "營運商政策直接擋下這個 PDU session。"
+    common_causes:
+      - "欠費停話"
+      - "加值服務被關閉"
+
+  26:
+    name: "Insufficient resources"
+    plain: "網路資源不足，建不起這個 session。"
+    common_causes:
+      - "UPF 資源耗盡"
+      - "SMF 達到 session 數上限"
+
+  27:
+    name: "Missing or unknown DNN"
+    plain: "沒帶 DNN，或帶的 DNN 網路不認得。"
+    common_causes:
+      - "UE 的 APN/DNN 設定拼錯"
+      - "SMF 沒設定這個 DNN"
+      - "簽約資料裡沒有這個 DNN"
+
+  28:
+    name: "Unknown PDU session type"
+    plain: "要求的 PDU session 型別網路不認得。"
+    common_causes:
+      - "UE 要求了網路未支援的型別"
+
+  29:
+    name: "User authentication or authorization failed"
+    plain: "次級鑑權／授權沒過（DN-AAA 那一段）。"
+    common_causes:
+      - "外部 AAA 伺服器拒絕"
+      - "憑證或帳密錯誤"
+
+  31:
+    name: "Request rejected, unspecified"
+    plain: "請求被拒，未說明原因。"
+    common_causes:
+      - "SMF 內部策略拒絕"
+
+  32:
+    name: "Service option not supported"
+    plain: "網路不支援這個服務選項。"
+    common_causes:
+      - "功能未開通"
+
+  33:
+    name: "Requested service option not subscribed"
+    plain: "用戶沒有訂閱這個服務選項。"
+    common_causes:
+      - "簽約資料未包含該服務"
+
+  36:
+    name: "Regular deactivation"
+    plain: "正常釋放，不是錯誤。看到這個不必追。"
+    common_causes:
+      - "UE 主動關閉 session"
+      - "閒置逾時"
+
+  38:
+    name: "Network failure"
+    plain: "網路端出錯。"
+    common_causes:
+      - "SMF 與 UPF 之間的 PFCP 程序失敗"
+      - "UPF 不可達"
+
+  39:
+    name: "Reactivation requested"
+    plain: "網路要求 UE 重新啟用這個 session。"
+    common_causes:
+      - "網路端 context 需要重建"
+
+  43:
+    name: "Invalid PDU session identity"
+    plain: "PDU session 識別碼無效。"
+    common_causes:
+      - "UE 與網路對 session 編號的認知不同步"
+
+  46:
+    name: "Out of LADN service area"
+    plain: "UE 離開了該 LADN 的服務範圍。"
+    common_causes:
+      - "移動到 LADN 涵蓋範圍外"
+
+  50:
+    name: "PDU session type IPv4 only allowed"
+    plain: "只准 IPv4。UE 要了 IPv6 或 IPv4v6。"
+    common_causes:
+      - "DNN 只設定了 IPv4"
+
+  51:
+    name: "PDU session type IPv6 only allowed"
+    plain: "只准 IPv6。"
+    common_causes:
+      - "DNN 只設定了 IPv6"
+
+  54:
+    name: "PDU session does not exist"
+    plain: "要操作的 session 在網路端不存在。"
+    common_causes:
+      - "session 已被釋放，UE 還在用舊的識別碼"
+
+  57:
+    name: "PDU session type IPv4v6 only allowed"
+    plain: "只准雙堆疊。"
+    common_causes:
+      - "DNN 設定限制"
+
+  67:
+    name: "Insufficient resources for specific slice and DNN"
+    plain: "這個切片加上這個 DNN 的組合資源不足。"
+    common_causes:
+      - "切片配額用盡"
+
+  68:
+    name: "Not supported SSC mode"
+    plain: "不支援要求的 SSC 模式。"
+    common_causes:
+      - "UE 要求的 SSC mode 網路未實作"
+
+  69:
+    name: "Insufficient resources for specific slice"
+    plain: "該切片資源不足。"
+    common_causes:
+      - "切片配額用盡"
+
+  70:
+    name: "Missing or unknown DNN in a slice"
+    plain: "在這個切片裡找不到該 DNN。"
+    common_causes:
+      - "S-NSSAI 與 DNN 的組合沒設定"
+
+  82:
+    name: "Maximum data rate per UE for user-plane integrity protection is too low"
+    plain: "UE 支援的使用者面完整性保護速率太低，達不到網路要求。"
+    common_causes:
+      - "較舊的 UE 只支援 64 kbps 完整性保護，而網路要求全速率"
+
+  95:
+    name: "Semantically incorrect message"
+    plain: "訊息語意不正確。"
+    common_causes:
+      - "實作不相容"
+
+  96:
+    name: "Invalid mandatory information"
+    plain: "必要資訊元素內容無效。"
+    common_causes:
+      - "編碼錯誤"
+
+  97:
+    name: "Message type non-existent or not implemented"
+    plain: "訊息型別不存在或未實作。"
+    common_causes:
+      - "版本落差"
+
+  111:
+    name: "Protocol error, unspecified"
+    plain: "協定錯誤，規範未指明細節。"
+    common_causes:
+      - "編碼／解碼不相容，常見於跨廠商互連"
+      - "必要 IE 缺漏"

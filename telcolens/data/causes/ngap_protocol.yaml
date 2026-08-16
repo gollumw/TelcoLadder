@@ -1,0 +1,42 @@
+# NGAP CauseProtocol —— TS 38.413 §9.3.1.2。群組完整。
+# 這一組幾乎都指向「兩端實作對不上」，跨廠商互連時最常見。
+table: ngap_protocol
+spec: "3GPP TS 38.413"
+clause: "§9.3.1.2"
+causes:
+  0:
+    name: "transfer-syntax-error"
+    plain: "傳輸語法錯誤 —— ASN.1 PER 編碼解不開。"
+    common_causes:
+      - "編碼器實作錯誤"
+      - "訊息在傳輸途中被截斷"
+  1:
+    name: "abstract-syntax-error-reject"
+    plain: "抽象語法錯誤，直接拒絕。"
+    common_causes:
+      - "必要 IE 缺漏或型別不符"
+  2:
+    name: "abstract-syntax-error-ignore-and-notify"
+    plain: "抽象語法錯誤，忽略該部分並通知對方。"
+    common_causes:
+      - "收到不認得的選用 IE"
+  3:
+    name: "message-not-compatible-with-receiver-state"
+    plain: "訊息與接收端當下狀態不相容。"
+    common_causes:
+      - "狀態機不同步，常見於前一則訊息遺失"
+  4:
+    name: "semantic-error"
+    plain: "語意錯誤 —— 格式對，但內容講不通。"
+    common_causes:
+      - "參數組合互相矛盾"
+  5:
+    name: "abstract-syntax-error-falsely-constructed-message"
+    plain: "訊息結構本身就是錯的 —— 不是內容有誤，是組裝方式違反規範。"
+    common_causes:
+      - "發送端實作缺陷"
+  6:
+    name: "unspecified"
+    plain: "協定錯誤，未指明。"
+    common_causes:
+      - "跨廠商 release 版本落差"

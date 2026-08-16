@@ -8,6 +8,7 @@ from pathlib import Path
 
 from telcolens import __version__
 from telcolens.adapters import parse_frame
+from telcolens.causes import annotate
 from telcolens.correlate import correlate
 from telcolens.extract import ExtractError, read_frames
 from telcolens.nf import apply_roles
@@ -76,6 +77,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         return 1
 
     apply_roles(messages, nas_from_ue=not args.no_ue_lifeline)
+    annotate(messages)
     flows = correlate(messages)
     results = render_all(
         flows, max_messages=args.max_messages, show_frames=not args.no_frames

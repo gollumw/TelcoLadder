@@ -1,0 +1,185 @@
+# NGAP CauseRadioNetwork —— TS 38.413 §9.3.1.2。
+#
+# NGAP 的 Cause 是 CHOICE，五個群組各自從 0 開始編號。這份只涵蓋
+# radioNetwork 群組 —— 它是現場最常遇到的一組。
+# 未收錄的號碼一律輸出「未收錄」，不猜。
+
+table: ngap_radioNetwork
+spec: "3GPP TS 38.413"
+clause: "§9.3.1.2"
+
+causes:
+  0:
+    name: "unspecified"
+    plain: "未指明原因。資訊量等同於沒說。"
+    common_causes:
+      - "對端實作偷懶，什麼情況都送這個"
+
+  2:
+    name: "successful-handover"
+    plain: "換手成功而釋放，不是錯誤。"
+    common_causes: []
+
+  3:
+    name: "release-due-to-ngran-generated-reason"
+    plain: "由 NG-RAN（基地台側）發起的釋放。"
+    common_causes: []
+
+  4:
+    name: "release-due-to-5gc-generated-reason"
+    plain: "由 5GC（核網側）發起的釋放。"
+    common_causes: []
+
+  5:
+    name: "handover-cancelled"
+    plain: "換手被取消。"
+    common_causes: []
+
+  8:
+    name: "ho-target-not-allowed"
+    plain: "不允許換手到這個目標。"
+    common_causes:
+      - "目標細胞的鄰區關係或政策未開放"
+
+  11:
+    name: "cell-not-available"
+    plain: "細胞不可用。"
+    common_causes:
+      - "細胞被鎖定或正在重啟"
+
+  12:
+    name: "unknown-targetID"
+    plain: "不認得換手的目標識別碼。"
+    common_causes:
+      - "鄰區設定不一致，來源與目標對 ID 的認知不同"
+
+  13:
+    name: "no-radio-resources-available-in-target-cell"
+    plain: "目標細胞沒有可用的無線資源。"
+    common_causes:
+      - "目標細胞滿載"
+
+  14:
+    name: "unknown-local-UE-NGAP-ID"
+    plain: "收到的本地 UE NGAP ID 不認得。"
+    common_causes:
+      - "UE context 已被釋放，對端還在用舊 ID"
+      - "AMF 或 gNB 重啟後狀態不同步"
+
+  15:
+    name: "inconsistent-remote-UE-NGAP-ID"
+    plain: "遠端 UE NGAP ID 對不上。"
+    common_causes:
+      - "兩端的 UE context 不同步"
+
+  20:
+    name: "user-inactivity"
+    plain: "使用者閒置太久而釋放。正常行為，不是故障。"
+    common_causes: []
+
+  21:
+    name: "radio-connection-with-ue-lost"
+    plain: "與 UE 的無線連線中斷。這是現場最常見的釋放原因之一。"
+    common_causes:
+      - "涵蓋不足，UE 走出訊號範圍"
+      - "UE 突然斷電或進電梯／地下室"
+      - "無線環境劇烈干擾"
+
+  22:
+    name: "radio-resources-not-available"
+    plain: "無線資源不足。"
+    common_causes:
+      - "細胞負載過高"
+
+  23:
+    name: "invalid-qos-combination"
+    plain: "要求的 QoS 組合無效。"
+    common_causes:
+      - "5QI 與其他參數的組合不被支援"
+
+  24:
+    name: "failure-in-radio-interface-procedure"
+    plain: "無線介面程序失敗。"
+    common_causes:
+      - "RRC 程序逾時或失敗"
+
+  25:
+    name: "interaction-with-other-procedure"
+    plain: "與另一個同時進行的程序衝突。"
+    common_causes:
+      - "同一個 UE 上有兩個程序競爭"
+
+  26:
+    name: "unknown-PDU-session-ID"
+    plain: "不認得這個 PDU session ID。"
+    common_causes:
+      - "session 已釋放而對端仍在引用"
+
+  30:
+    name: "encryption-and-or-integrity-protection-algorithms-not-supported"
+    plain: "加密或完整性保護演算法不被支援。"
+    common_causes:
+      - "UE 與網路的安全演算法沒有交集"
+
+  34:
+    name: "not-supported-5QI-value"
+    plain: "不支援這個 5QI 值。"
+    common_causes:
+      - "基地台未設定該 5QI"
+
+  36:
+    name: "ims-voice-eps-fallback-or-rat-fallback-triggered"
+    plain: >-
+      觸發了 IMS 語音的 EPS fallback 或 RAT fallback —— UE 要打電話，
+      但這個 5G 細胞沒有 VoNR，所以把它推回 4G 用 VoLTE。
+    common_causes:
+      - "該區域未開通 VoNR，語音一律走 EPS fallback（設計如此，不是故障）"
+      - "UE 不支援 VoNR"
+
+  37:
+    name: "up-integrity-protection-not-possible"
+    plain: "無法提供使用者面完整性保護。"
+    common_causes:
+      - "UE 支援的完整性保護速率太低"
+
+  38:
+    name: "up-confidentiality-protection-not-possible"
+    plain: "無法提供使用者面加密保護。"
+    common_causes:
+      - "演算法不相容"
+
+  39:
+    name: "slice-not-supported"
+    plain: "不支援這個網路切片。"
+    common_causes:
+      - "基地台未設定該 S-NSSAI"
+      - "UE 要求的切片在此追蹤區不提供"
+
+  40:
+    name: "ue-in-rrc-inactive-state-not-reachable"
+    plain: "UE 處於 RRC inactive 且叫不到。"
+    common_causes:
+      - "RAN 尋呼失敗"
+
+  41:
+    name: "redirection"
+    plain: "因重導向而釋放。"
+    common_causes: []
+
+  42:
+    name: "resources-not-available-for-the-slice"
+    plain: "該切片沒有可用資源。"
+    common_causes:
+      - "切片配額用盡"
+
+  45:
+    name: "n26-interface-not-available"
+    plain: "N26 介面不可用，無法與 EPC 做互通換手。"
+    common_causes:
+      - "未部署 N26，5G↔4G 互通只能走非無縫的重新附著"
+
+  46:
+    name: "release-due-to-pre-emption"
+    plain: "被較高優先權的承載搶佔而釋放。"
+    common_causes:
+      - "ARP 優先權設定使此承載可被搶佔"
