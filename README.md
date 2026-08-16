@@ -1,5 +1,7 @@
 # TelcoLens
 
+[![CI](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml)
+
 Turn a telecom signalling capture into a Mermaid sequence diagram you can paste
 straight into GitHub, Notion, or Confluence.
 
@@ -139,6 +141,14 @@ pytest
   carries four HTTP/2 streams.
 
 Test captures are not committed — see `tests/conftest.py` for why.
+
+**What the green badge does and does not mean.** CI runs the suite on Python
+3.11/3.12/3.13 (Linux) and 3.13 (macOS), against three different tshark versions.
+But the 18 tests that need a real capture — including the tshark cross-check — skip
+there, so CI runs 44 of 62. It catches regressions in parsing logic, rendering, cause
+lookup, and platform support. It does **not** verify extraction correctness against
+real traffic. Closing that gap needs a self-hosted Open5GS testbed producing
+publishable fixtures.
 
 ## License
 
