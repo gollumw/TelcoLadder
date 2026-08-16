@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from telcolens.adapters.ngap import association_scope
+from telcolens.adapters.ngap import identity_keys as ngap_identity_keys
 from telcolens.extract import Frame, first
 from telcolens.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
@@ -95,20 +97,24 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-def _nas_blocks(frame: Frame) -> list[dict[str, Any]]:
-    """把巢狀在 ngap 底下的 nas-5gs 挖出來。
+def _nas_blocks(frame: Frame) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
+    """把巢狀在 ngap 底下的 nas-5gs 挖出來，**連同它的載體一起回傳**。
 
-    也支援 nas-5gs 直接是頂層的情況（NAS-over-其他載體時 tshark 會這樣給），
-    但目前的擷取樣本都走 NGAP 這條路徑。
+    載體不能丟：NAS PDU 是包在 NGAP 的 NAS-PDU IE 裡送的，兩者講的是同一個
+    UE context。少了這層連結，只帶 SUPI 的 Registration request 會跟其他
+    只有 NGAP ID 的訊息分成兩條流程 —— 而且分完各自看起來都很合理。
+
+    也支援 nas-5gs 直接是頂層的情況（NAS 走其他載體時 tshark 會這樣給），
+    那時沒有 NGAP 載體，回 None。
     """
-    blocks: list[dict[str, Any]] = []
+    blocks: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     for parent in frame.layer("ngap"):
         nested = parent.get("nas-5gs")
         if isinstance(nested, dict):
-            blocks.append(nested)
+            blocks.append((nested, parent))
         elif isinstance(nested, list):
-            blocks.extend(item for item in nested if isinstance(item, dict))
-    blocks.extend(frame.layer(NAME))
+            blocks.extend((item, parent) for item in nested if isinstance(item, dict))
+    blocks.extend((block, None) for block in frame.layer(NAME))
     return blocks
 
 
@@ -126,16 +132,29 @@ def _supi_from_suci(block: dict[str, Any]) -> str | None:
     return f"{mcc}{mnc}{msin}"
 
 
-def _identity_keys(block: dict[str, Any]) -> frozenset[IdKey]:
-    """SUPI 是全域唯一的，**不需要**像 NGAP ID 那樣加連線範圍前綴。"""
+def _identity_keys(
+    block: dict[str, Any], carrier: dict[str, Any] | None, scope: str
+) -> frozenset[IdKey]:
+    """SUPI 加上載體 NGAP 的 UE ID。
+
+    SUPI 是全域唯一的，**不需要**像 NGAP ID 那樣加連線範圍前綴。
+    但一定要把載體的 NGAP ID 一併帶上，這是把「明文帶 SUPI 的第一則訊息」
+    與「其後只剩 NGAP ID 的加密訊息」串成同一條流程的唯一連結。
+    """
+    keys: set[IdKey] = set()
     supi = _supi_from_suci(block)
-    return frozenset({(IdKind.SUPI, supi)}) if supi else frozenset()
+    if supi:
+        keys.add((IdKind.SUPI, supi))
+    if carrier is not None:
+        keys |= ngap_identity_keys(carrier, scope)
+    return frozenset(keys)
 
 
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
+    scope = association_scope(frame)
 
-    for block in _nas_blocks(frame):
+    for block, carrier in _nas_blocks(frame):
         mm_type = _to_int(block.get("nas-5gs_nas-5gs_mm_message_type"))
         sm_type = _to_int(block.get("nas-5gs_nas-5gs_sm_message_type"))
 
@@ -176,7 +195,7 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=_identity_keys(block),
+                identity_keys=_identity_keys(block, carrier, scope),
                 cause=cause,
                 is_failure=msg_type in _FAILURE_TYPES,
                 detail=detail,

@@ -110,7 +110,7 @@ def _outcome(block: dict[str, Any]) -> str:
     return ""
 
 
-def _identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
+def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     """抽出 NGAP 層的身分別名。
 
     RAN/AMF UE NGAP ID **只在單一 NG 連線內唯一** —— 兩個 gNB 都會從 1 開始配號。
@@ -161,7 +161,7 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=_identity_keys(block, scope),
+                identity_keys=identity_keys(block, scope),
                 cause=cause,
                 # 只有 unsuccessfulOutcome 才算失敗。帶 cause 的 successfulOutcome
                 # 是正常的（例如 UEContextRelease 會帶原因），不該被標紅。
