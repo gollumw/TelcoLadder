@@ -39,6 +39,8 @@ and every unfamiliar cause code sends you back to the specs. TelcoLens turns the
 capture into a diagram, names the network functions, and cites the clause the
 cause code comes from.
 
+> 中文使用指南（面向真實封包的操作與能力邊界）：[docs/使用指南.md](docs/使用指南.md)
+
 **Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, and PFCP are each exercised
 against real testbed captures, including one that carries all three from a single
 registration. What that capture does *not* contain is the long tail — see
