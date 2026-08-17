@@ -22,6 +22,8 @@ from telcolens.extract import read_frames
 from telcolens.model import IdKind
 from telcolens.tshark import TsharkNotFound, find_tshark
 
+from conftest import HTTP2_DECODE_AS
+
 
 def _tshark_frame_count(pcap: Path, display_filter: str) -> int:
     """獨立 oracle：直接問 tshark 有幾格符合條件。
@@ -179,8 +181,14 @@ def test_one_frame_can_yield_several_messages(multistream_http2_pcap):
 
     這是 `-T ek` 而非 `-T fields` 的存在理由。若哪天有人為了「輸出比較好剖析」
     把 extract 改回 `-T fields`，同名欄位會被逗號串成一串，這條會失敗。
+
+    **必須明講 decode-as。** 該擷取的 HTTP/2 跑在 TCP 3000，靠 tshark 的
+    啟發式偵測會隨版本給出不同結果 —— CI 的 Ubuntu(4.2.2) 就漏掉這一格，
+    而 macOS(4.6.7) 沒漏。不指定的話這條測試會變成在測 tshark 版本。
     """
-    frame_14 = next(f for f in read_frames(multistream_http2_pcap) if f.number == 14)
+    frames = read_frames(multistream_http2_pcap, decode_as=HTTP2_DECODE_AS)
+    frame_14 = next((f for f in frames if f.number == 14), None)
+    assert frame_14 is not None, "指定 decode-as 後仍找不到 frame 14"
     messages = parse_frame(frame_14)
 
     assert len(messages) == 4
@@ -223,3 +231,14 @@ def test_ngap_ids_are_scoped_to_their_association(registration_pcap):
     assert keys, "沒抽到任何 NGAP ID"
     for kind, value in keys:
         assert "/" in value, f"{kind} 的 key {value!r} 沒有連線範圍前綴"
+
+
+def test_decode_as_changes_what_tshark_finds(multistream_http2_pcap):
+    """明講 decode-as 必須比啟發式偵測抓到更多 —— 否則這個參數是裝飾品。
+
+    實測（tshark 4.4.9）：啟發式 42 格、明確指定 43 格。差距在不同版本
+    之間會變，所以只斷言「不少於」，不釘死數字。
+    """
+    heuristic = sum(1 for _ in read_frames(multistream_http2_pcap))
+    explicit = sum(1 for _ in read_frames(multistream_http2_pcap, decode_as=HTTP2_DECODE_AS))
+    assert explicit >= heuristic, "明確指定反而抓得更少，decode-as 規則可能寫錯了"

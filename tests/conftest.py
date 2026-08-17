@@ -58,3 +58,9 @@ def multistream_http2_pcap() -> Path:
     只是通用 HTTP/2 —— 這裡只拿它驗證 frame 內多訊息的邊界處理。
     """
     return require_capture("http2-multistream/capture.pcap")
+
+
+#: 那份擷取的 HTTP/2 跑在 TCP 3000，不是標準 port。不明講的話，
+#: tshark 的啟發式偵測會隨版本給出不同結果（CI 的 Ubuntu 4.2.2 漏掉
+#: 測試要用的那一格，macOS 4.6.7 沒漏）。
+HTTP2_DECODE_AS = ("tcp.port==3000,http2",)

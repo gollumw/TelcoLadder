@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -120,11 +120,22 @@ def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None
 
 
 def read_frames(
-    pcap: Path, *, display_filter: str = SIGNALLING_FILTER, tshark: Tshark | None = None
+    pcap: Path,
+    *,
+    display_filter: str = SIGNALLING_FILTER,
+    decode_as: Sequence[str] = (),
+    tshark: Tshark | None = None,
 ) -> Iterator[Frame]:
     """串流讀出 pcap 中符合過濾條件的封包。
 
     刻意用 generator：擷取檔動輒數百 MB，一次讀進記憶體沒有必要。
+
+    `decode_as` 直接轉成 tshark 的 `-d`，例如 `"tcp.port==5062,sip"`。
+    **這不是可有可無的便利功能。** 信令在真實部署常跑非標準 port，而 tshark
+    的啟發式偵測結果會隨版本改變：同一份 HTTP/2 擷取（port 3000），
+    tshark 4.4.9 靠啟發式抓到 42 格、明確指定 decode-as 抓到 43 格，
+    而 4.2.2 漏得更多 —— CI 的版本矩陣就是這樣抓到的。
+    要結果可重現，就得明講而不是靠猜。
     """
     if not pcap.is_file():
         raise ExtractError(f"找不到檔案：{pcap}")
@@ -132,6 +143,8 @@ def read_frames(
     tshark = tshark or find_tshark()
     # 相對時間由下方自行從 epoch 換算，不靠 tshark 的顯示偏好設定。
     args = ["-r", str(pcap), "-T", "ek", "-Y", display_filter]
+    for rule in decode_as:
+        args += ["-d", rule]
 
     proc = subprocess.Popen(
         [str(tshark.path), *args],

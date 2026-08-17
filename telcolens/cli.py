@@ -64,7 +64,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     ciphered = 0
     try:
         messages = []
-        for frame in read_frames(args.pcap):
+        for frame in read_frames(args.pcap, decode_as=args.decode_as or ()):
             messages.extend(parse_frame(frame))
             ciphered += count_ciphered(frame)
     except (ExtractError, TsharkNotFound) as exc:
@@ -135,6 +135,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,
         help=f"每條流程最多畫幾則訊息，超過會截斷並在圖上註明（預設 {DEFAULT_MAX_MESSAGES}）",
+    )
+    analyze.add_argument(
+        "--decode-as", action="append", metavar="規則",
+        help="強制某個 port 以指定協定解碼，如 tcp.port==5062,sip。"
+             "信令跑非標準 port 時必要 —— tshark 的啟發式偵測結果會隨版本改變。"
+             "可重複指定。",
     )
     analyze.add_argument(
         "--no-frames", action="store_true", help="不在箭頭上標封包編號"
