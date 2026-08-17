@@ -217,22 +217,27 @@ class _Handler(BaseHTTPRequestHandler):
         時機很要緊：上傳的暫存檔是客戶的封包，`analyse()` 一回來就不再需要
         它（報告此時已經在記憶體裡）。把刪除放在回應寫完之後會留下一個
         競態窗口 —— 客戶端可能在伺服器執行緒跑到清理之前就讀完回應，
-        看到的是「檔案還在」。Windows CI 就是這樣抓到的（macOS/Linux 上
-        那個窗口只有微秒，看起來永遠是對的）。
+        看到的是「檔案還在」。
 
-        放在 `finally` 裡，所以分析失敗、擷取檔讀不動、例外，每條路徑都會刪。
+        **`try` / `finally` 要包住的只有 `analyse()` 那一句，不能包住回應。**
+        這是第二次踩：第一版把 `except` 區塊裡的 `_send_html` 留在同一層
+        `try` 內，於是成功路徑修好了，而失敗路徑照樣先送回應才清理 ——
+        Windows CI 抓到兩次。現在的巢狀寫法讓清理**嚴格早於任何回應**，
+        每一條路徑都是。
         """
         try:
-            result = analyse(pcap, wire=wire)
+            try:
+                result = analyse(pcap, wire=wire)
+            finally:
+                # 內層 finally：先清理，才輪到外層的 except 送回應。
+                if cleanup is not None:
+                    cleanup()
         except TsharkNotFound as exc:
             self._send_html(_error_page("找不到 tshark。", detail=str(exc)), HTTPStatus.INTERNAL_SERVER_ERROR)
             return
         except ExtractError as exc:
             self._send_html(_error_page("讀不動這個檔案。", detail=str(exc)), HTTPStatus.BAD_REQUEST)
             return
-        finally:
-            if cleanup is not None:
-                cleanup()
 
         if not result.flows:
             self._send_html(

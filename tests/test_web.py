@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import socket
 import threading
+from http import HTTPStatus
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -27,6 +28,7 @@ import pytest
 from telcolens.pipeline import analyse
 from telcolens.render_html import render_report
 from telcolens.tshark import ENV_OVERRIDE, TsharkNotFound, find_tshark
+import telcolens.web as web
 from telcolens.web import _TMP_PREFIX, make_server
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -205,6 +207,46 @@ def test_temp_file_is_removed_even_when_analysis_fails(server):
 
 
 # ── 錯誤要給人話 ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (None, 200),                                  # 正常擷取檔
+        (b"this is definitely not a pcap", 400),      # 讀不動 → 走 except 路徑
+    ],
+    ids=["success", "failure"],
+)
+def test_upload_is_deleted_before_any_response_is_written(server, monkeypatch, body, expected):
+    """清理必須**嚴格早於**回應寫進 socket —— 每一條路徑都是。
+
+    另外兩條暫存檔測試是在客戶端讀完回應之後才檢查，所以在 macOS/Linux 上
+    那個競態窗口小到永遠測不出來。**Windows CI 抓到過兩次，兩次都是同一個
+    順序錯誤**：第一次是清理整個放在回應之後，第二次是失敗路徑的
+    `_send_html` 留在同一層 `try` 內，於是成功路徑修好了、失敗路徑沒有。
+
+    這條不靠時間差 —— 它在每次寫回應的當下檢查暫存目錄，所以在哪個平台上
+    都會紅。兩條路徑都測，因為上次就是只修好其中一條。
+    """
+    payload = KI_MISMATCH.read_bytes() if body is None else body
+    leaked_at_send: list[set] = []
+    before = _temp_uploads()
+    real_send = web._Handler._send_html
+
+    def spy(self, html, status=HTTPStatus.OK):
+        leaked_at_send.append(_temp_uploads() - before)
+        return real_send(self, html, status)
+
+    monkeypatch.setattr(web._Handler, "_send_html", spy)
+    status, _ = _post(server, "/upload", payload, headers={
+        "Content-Type": "application/octet-stream",
+        "X-TelcoLens-Filename": "capture.pcap",
+    })
+
+    assert status == expected
+    assert leaked_at_send, "spy 沒有被呼叫到，測試本身失效了"
+    for leaked in leaked_at_send:
+        assert leaked == set(), f"回應寫出時暫存檔還在：{leaked}"
 
 
 def test_missing_path_gives_a_readable_error_not_a_traceback(server):
