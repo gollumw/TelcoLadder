@@ -189,7 +189,12 @@ def test_upload_leaves_no_temp_file_behind(server):
 
 def test_temp_file_is_removed_even_when_analysis_fails(server):
     """**失敗路徑也要刪。** 成功時記得刪很容易，例外時忘記刪才是常態，
-    而那正是會慢慢堆積的那條路。"""
+    而那正是會慢慢堆積的那條路。
+
+    這裡直接斷言、不輪詢，因為刪除發生在**分析結束的那一刻**，早於回應
+    被寫進 socket（見 `web._analyse_and_respond`）。所以「拿到回應時檔案
+    已經不在」是一條真正的順序保證，不是時間差。原本清理放在回應之後，
+    Windows CI 就抓到了那個競態。"""
     before = _temp_uploads()
     status, _ = _post(server, "/upload", b"this is definitely not a pcap", headers={
         "Content-Type": "application/octet-stream",

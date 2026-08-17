@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -58,6 +60,27 @@ _CHUNK = 1 << 20  # 串流讀取的分塊大小
 #: 上傳暫存檔的前綴。挑一個認得出來的名字，萬一真的殘留（例如整個行程被
 #: kill -9），使用者找得到、刪得掉。
 _TMP_PREFIX = "telcolens-upload-"
+
+
+def _remove_upload(tmp: Path) -> None:
+    """刪掉上傳的暫存檔。刪不掉要出聲，不能默默留著。
+
+    Windows 上剛結束的行程可能還沒放掉檔案 handle，`unlink` 會丟
+    `PermissionError`（而 `missing_ok=True` 不涵蓋這種）。短暫重試幾次；
+    真的刪不掉就把路徑印出來 —— 那是客戶的封包留在磁碟上，使用者有權
+    知道並自己刪掉（Rule 12）。
+    """
+    for attempt in range(5):
+        try:
+            tmp.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(0.05 * (attempt + 1))
+    print(
+        f"⚠ 刪不掉上傳的暫存檔：{tmp}\n"
+        f"  那是你剛才上傳的擷取檔，請手動刪除。",
+        flush=True,
+    )
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -170,15 +193,35 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_html(_error_page("上傳中斷，檔案不完整。"), HTTPStatus.BAD_REQUEST)
                 return
             wire = (parse_qs(urlsplit(self.path).query).get("flow") or [""])[0] != "1"
-            self._analyse_and_respond(tmp, name, wire=wire)
+            # 清理交給 `_analyse_and_respond`，它會在**分析一結束就刪**，
+            # 不等回應寫完 —— 見那個函式裡的說明。
+            self._analyse_and_respond(
+                tmp, name, wire=wire, cleanup=lambda: _remove_upload(tmp)
+            )
         finally:
-            # **一定要刪。** 這是客戶的封包，不是我們的東西 —— 分析失敗、
-            # 例外、上傳中斷，每一條路徑都要走到這裡。
-            tmp.unlink(missing_ok=True)
+            # 保險：上傳中斷等走不到上面那條路的情況。刪過了就沒事。
+            _remove_upload(tmp)
 
     # ── 共用 ──────────────────────────────────────────────────────
 
-    def _analyse_and_respond(self, pcap: Path, display_name: str, *, wire: bool = False) -> None:
+    def _analyse_and_respond(
+        self,
+        pcap: Path,
+        display_name: str,
+        *,
+        wire: bool = False,
+        cleanup: Callable[[], None] | None = None,
+    ) -> None:
+        """分析並回應。`cleanup` 在**分析結束的那一刻**執行。
+
+        時機很要緊：上傳的暫存檔是客戶的封包，`analyse()` 一回來就不再需要
+        它（報告此時已經在記憶體裡）。把刪除放在回應寫完之後會留下一個
+        競態窗口 —— 客戶端可能在伺服器執行緒跑到清理之前就讀完回應，
+        看到的是「檔案還在」。Windows CI 就是這樣抓到的（macOS/Linux 上
+        那個窗口只有微秒，看起來永遠是對的）。
+
+        放在 `finally` 裡，所以分析失敗、擷取檔讀不動、例外，每條路徑都會刪。
+        """
         try:
             result = analyse(pcap, wire=wire)
         except TsharkNotFound as exc:
@@ -187,6 +230,9 @@ class _Handler(BaseHTTPRequestHandler):
         except ExtractError as exc:
             self._send_html(_error_page("讀不動這個檔案。", detail=str(exc)), HTTPStatus.BAD_REQUEST)
             return
+        finally:
+            if cleanup is not None:
+                cleanup()
 
         if not result.flows:
             self._send_html(
