@@ -172,3 +172,41 @@ def find_tshark() -> Tshark:
         + f"若已安裝但在非標準路徑，請設定 {ENV_OVERRIDE} 指向 tshark 執行檔。\n"
         + f"已搜尋：PATH、{', '.join(fallbacks)}"
     )
+
+
+def shutdown(proc: subprocess.Popen[str], consumed_fully: bool) -> str:
+    """收掉 tshark，回傳它的 stderr。
+
+    提早中止時的順序很要緊，而且**兩個平台要走不同的路**。
+
+    POSIX：必須先關 stdout。tshark 可能正卡在寫入一個沒人再讀的 pipe，
+    這時它連 SIGTERM 都反應不了（訊號處理器會再次嘗試寫入而繼續卡住）。
+    關掉 stdout 讓那個 write 立刻拿到 EPIPE，它才會真的結束。
+
+    Windows：**不能先關**。`terminate()` 在這裡是 TerminateProcess，
+    無條件立即生效，本來就不需要 EPIPE 那一招；而 `communicate()` 在 Windows
+    是靠背景讀取執行緒實作的，對已關閉的檔案呼叫 `read()` 會在那個執行緒裡
+    丟出 ValueError —— 主執行緒的 except 攔不到，使用者會看到一段看起來像
+    當機的 traceback。每次用 `--max-messages` 都會出現一次。
+    （這個 bug 是加了 windows-latest 這格 CI 之後才浮出來的。）
+
+    另外一定要用 `communicate()` 而不是「先 read stderr 再 wait」——
+    後者在子行程仍有 stdout 待寫時會直接死鎖：我們等 stderr 的 EOF，
+    它等有人把 stdout 讀走。
+    """
+    if not consumed_fully:
+        if sys.platform != "win32" and proc.stdout and not proc.stdout.closed:
+            proc.stdout.close()
+        proc.terminate()
+
+    try:
+        _, stderr = proc.communicate(timeout=15)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _, stderr = proc.communicate()
+    except ValueError:
+        # stdout 已被我們關掉時 communicate 會抱怨，此時只需確保行程結束。
+        proc.wait()
+        stderr = ""
+
+    return stderr or ""

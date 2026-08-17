@@ -28,7 +28,7 @@ build-backend = "setuptools.build_meta"
 include = ["telcolens*"]
 
 [tool.setuptools.package-data]
-telcolens = ["data/causes/*.yaml"]
+telcolens = ["data/causes/*.yaml", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
