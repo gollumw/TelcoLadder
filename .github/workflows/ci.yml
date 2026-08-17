@@ -5,8 +5,12 @@
 # 守得住：
 #   - 三個 Python 版本的相容性。3.13 拿掉了 EntryPoint 的 tuple 介面，
 #     而外掛註冊表（見 TODOS 的 E1）正要用 entry point，這個矩陣是它的安全網。
-#   - Linux 上的 tshark 定位。telcolens/tshark.py 的後備路徑清單至今
-#     只在 macOS 驗過，`telcolens check` 這一步是它在 Linux 的第一次真實測試。
+#   - 三個平台的 tshark 定位。telcolens/tshark.py 的後備路徑清單每個平台
+#     長得都不一樣（Wireshark.app / Program Files / /usr/bin），
+#     `telcolens check` 這一步就是它們各自的真實測試。
+#   - **Windows 的輸出編碼。** 這是這份矩陣裡唯一「只有真的在那個 OS 上跑
+#     才驗得到」的東西之外的補充：編碼測試本身用 PYTHONIOENCODING 在所有
+#     平台重現，但 Program Files 路徑組合與 core.autocrlf 只有 windows job 驗得到。
 #   - 邏輯層：cause 查表、Mermaid 渲染、關聯、跳脫。
 #
 #   - **抽取正確性。** fixture 已自建並進版控，所以 tshark 交叉驗證在 CI 上
@@ -51,6 +55,12 @@ jobs:
           # 不是 Wireshark.app 那條（cask 在 runner 上太重）。
           - os: macos-latest
             python: "3.13"
+          # Windows 驗兩件開發機上驗不到的事：
+          #   ① Program Files 的路徑組合（`Path` 在這裡才是 WindowsPath）
+          #   ② core.autocrlf 沒有毀掉 pcap fixture —— 若 .gitattributes 失效，
+          #      交叉驗證測試會紅，而且症狀完全看不出是 checkout 的錯。
+          - os: windows-latest
+            python: "3.13"
 
     steps:
       - uses: actions/checkout@v7
@@ -76,6 +86,12 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install wireshark
 
+      - name: Install tshark (Windows)
+        if: runner.os == 'Windows'
+        # 裝進 C:\Program Files\Wireshark —— 也就是 _fallback_paths() 找的位置。
+        # 刻意不設 TELCOLENS_TSHARK：讓自動定位邏輯真的被測到。
+        run: choco install wireshark --no-progress -y
+
       - name: Install package
         run: python -m pip install --upgrade pip && pip install -e ".[dev]"
 
@@ -86,6 +102,6 @@ jobs:
         run: telcolens check
 
       - name: Run tests
-        # 需要真實擷取檔的測試會 skip（fixture 不進版控），
-        # -ra 讓 skip 的原因顯示出來，避免「全綠」掩蓋掉覆蓋缺口。
+        # fixture 已進版控，所以這裡不該有任何 skip。
+        # -ra 保留著：真的出現 skip 時要看得到原因，別讓「全綠」掩蓋覆蓋缺口。
         run: pytest -q -ra

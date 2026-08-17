@@ -53,16 +53,29 @@ cause code comes from.
 ## Install
 
 Requires Python 3.11+ and `tshark` (Wireshark 4.0 or newer recommended).
+Tested on macOS, Linux, and Windows.
 
 ```bash
-brew install --cask wireshark    # macOS; or apt install tshark
+brew install --cask wireshark                       # macOS
+sudo apt install tshark                             # Debian/Ubuntu
+winget install WiresharkFoundation.Wireshark        # Windows
+
 pip install telcolens
 telcolens check                  # verifies tshark and dissectors
 ```
 
-On macOS, `tshark` ships inside `Wireshark.app` and is not on your `PATH`.
-TelcoLens finds it anyway. Point `TELCOLENS_TSHARK` at a specific binary if you
-need to pin a Wireshark version.
+**Neither the macOS nor the Windows installer puts `tshark` on your `PATH`** —
+macOS hides it inside `Wireshark.app`, and the Windows installer leaves the
+"Add to PATH" box unchecked by default. TelcoLens looks in the standard install
+directories, so it finds it anyway.
+
+If you installed somewhere else, or you need to pin a specific Wireshark
+version, point `TELCOLENS_TSHARK` at the binary:
+
+```bash
+export TELCOLENS_TSHARK=/path/to/tshark                      # macOS/Linux
+setx TELCOLENS_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
+```
 
 ## Usage
 

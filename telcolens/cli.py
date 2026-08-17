@@ -157,7 +157,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_output() -> None:
+    """把 stdout / stderr 釘成 UTF-8。
+
+    Windows 的預設輸出編碼是系統 code page —— 繁中機器 cp950、英文機器
+    cp1252 —— 而我們印的 `✓` `✗` `⚠` 兩者都編不出來，cp1252 更是連中文
+    摘要整行都編不出來。結果是 UnicodeEncodeError 直接中止。
+
+    **這個 bug 只在輸出被導向時出現。** 互動式 console 下 Python 走 Windows
+    的 console API 不受 code page 影響，所以手動敲一次看起來完全正常，
+    直到使用者寫 `telcolens analyze x.pcap > flow.mmd` 才炸 —— 也就是
+    README 教的那個用法。
+
+    macOS / Linux 本來就是 UTF-8，這裡是 no-op。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            # pytest 的 capsys 會換掉串流，那些替身沒有這個方法。
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (ValueError, OSError):
+            # 串流已被接管或已關閉。這是加固，不是功能 —— 失敗就照舊跑，
+            # 不該讓它變成 CLI 起不來的理由。
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
     if not hasattr(args, "func"):

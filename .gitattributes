@@ -1,0 +1,7 @@
+# 擷取檔是二進位。Git 通常自己偵測得出來（pcap 前幾個位元組就有 NUL），
+# 但 Windows 上 core.autocrlf=true 是預設值，GitHub Actions 的 windows runner
+# 也是。賭偵測正確等於拿 fixture 冒險 —— 一份被改成 CRLF 的 pcap
+# **不會報錯**，只會讓 tshark 讀出垃圾，然後交叉驗證測試莫名其妙地紅。
+*.pcap    binary
+*.pcapng  binary
+*.cap     binary

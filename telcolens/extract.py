@@ -151,6 +151,16 @@ def read_frames(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        # **一定要明講 utf-8。** `text=True` 預設跟隨系統 locale，
+        # Windows 上是 cp950 / cp1252，而 tshark 的 `-T ek` 一律吐 UTF-8。
+        # 封包裡一出現非 ASCII（SIP display name、APN、廠商字串）就會
+        # UnicodeDecodeError 整份擷取陣亡 —— 在 IMS 幾乎必中。
+        encoding="utf-8",
+        # errors="replace" 是權衡後的選擇：擷取檔裡的字串欄位是**原始位元組**，
+        # tshark 不保證它們是合法的 UTF-8。整份擷取因為某一格的一個壞位元組
+        # 而全滅，比那一格的標籤裡出現一個 U+FFFD 糟得多。替代字元在 JSON
+        # 字串裡合法，下方的 json.loads 不受影響。
+        errors="replace",
         bufsize=1,
     )
     assert proc.stdout is not None
