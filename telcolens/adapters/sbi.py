@@ -14,9 +14,21 @@ from __future__ import annotations
 from typing import Any
 
 from telcolens.extract import Frame, first
+from telcolens.identity import connection_scope, scoped
 from telcolens.model import Endpoint, IdKey, IdKind, Message
 
 NAME = "sbi"
+
+#: adapter 之間的排列順序（小的先跑）。**這個數字有語意**：
+#: 與 5GC 的 N2 介面無關，排最後即可。
+ORDER = 30
+
+#: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
+#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的三軸線說明。
+DISPLAY_FILTER = "http2"
+
+#: `telcolens check` 要驗證存在的 dissector。
+DISSECTORS = ('http2',)
 
 #: HTTP/2 frame type。只有 HEADERS(1) 帶得到 method/path/status，
 #: DATA(0)、SETTINGS(4)、WINDOW_UPDATE(8) 等不產生時序圖上的箭頭。
@@ -50,7 +62,7 @@ def _service_from_path(path: str) -> str | None:
 
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
-    scope = "|".join(sorted((frame.src_ip, frame.dst_ip)))
+    scope = connection_scope(frame)
 
     for block in frame.layer("http2"):
         if _to_int(block.get("http2_http2_type")) != _TYPE_HEADERS:
@@ -73,7 +85,7 @@ def parse(frame: Frame) -> list[Message]:
 
         identity: set[IdKey] = set()
         if stream_id is not None:
-            identity.add((IdKind.SBI_STREAM, f"{scope}/{stream_id}"))
+            identity.add(scoped(IdKind.SBI_STREAM, scope, stream_id))
 
         detail: dict[str, str] = {}
         if path:

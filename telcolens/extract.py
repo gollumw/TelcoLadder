@@ -33,8 +33,13 @@ from typing import Any
 
 from telcolens.tshark import Tshark, find_tshark
 
-#: 只撈信令，不撈使用者面。Phase 2 接 IMS 時在這裡加 sip、diameter、gtpv2。
-SIGNALLING_FILTER = "ngap || nas-5gs || pfcp || http2"
+# display filter 不再寫死在這裡 —— 它由各 adapter 宣告的片段聯集而來
+# （`telcolens.adapters.display_filter()`），所以裝一個 IMS 外掛就會自動
+# 把 sip / diameter 加進來。
+#
+# 這同時修掉一個既有的不一致：原本的常數含 `pfcp`，但沒有任何 adapter 解析
+# PFCP —— 也就是說我們會把 PFCP 封包抓進來，然後一則訊息都產生不出來。
+# 現在只會向 tshark 要「我們解得開」的東西，pfcp adapter 一落地就自動回來。
 
 
 class ExtractError(RuntimeError):
@@ -123,13 +128,16 @@ def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None
 def read_frames(
     pcap: Path,
     *,
-    display_filter: str = SIGNALLING_FILTER,
+    display_filter: str | None = None,
     decode_as: Sequence[str] = (),
     tshark: Tshark | None = None,
 ) -> Iterator[Frame]:
     """串流讀出 pcap 中符合過濾條件的封包。
 
     刻意用 generator：擷取檔動輒數百 MB，一次讀進記憶體沒有必要。
+
+    `display_filter` 留 None 就用註冊表推導出來的聯集（內建 + 外掛）。
+    傳字串可以覆蓋 —— 測試裡拿它當獨立 oracle 用。
 
     `decode_as` 直接轉成 tshark 的 `-d`，例如 `"tcp.port==5062,sip"`。
     **這不是可有可無的便利功能。** 信令在真實部署常跑非標準 port，而 tshark
@@ -140,6 +148,14 @@ def read_frames(
     """
     if not pcap.is_file():
         raise ExtractError(f"找不到檔案：{pcap}")
+
+    if display_filter is None:
+        # 函式內 import 是刻意的：adapter 模組需要本檔的 `Frame`，本檔需要
+        # 註冊表算出來的 filter —— 模組層級互相 import 會直接循環。
+        # 這裡一次分析只會執行一次，成本可以忽略。
+        from telcolens.adapters import display_filter as _derive_filter
+
+        display_filter = _derive_filter()
 
     tshark = tshark or find_tshark()
     # 相對時間由下方自行從 epoch 換算，不靠 tshark 的顯示偏好設定。

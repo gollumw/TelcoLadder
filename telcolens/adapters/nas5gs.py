@@ -15,9 +15,21 @@ from typing import Any
 from telcolens.adapters.ngap import association_scope
 from telcolens.adapters.ngap import identity_keys as ngap_identity_keys
 from telcolens.extract import Frame, first
+from telcolens.identity import globally_unique
 from telcolens.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "nas-5gs"
+
+#: adapter 之間的排列順序（小的先跑）。**這個數字有語意**：
+#: 排在 ngap 之後：它是被 NGAP 載著的內層協定。
+ORDER = 20
+
+#: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
+#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的三軸線說明。
+DISPLAY_FILTER = "nas-5gs"
+
+#: `telcolens check` 要驗證存在的 dissector。
+DISSECTORS = ('nas-5gs',)
 
 #: TS 24.501 §9.7 —— 5GMM（行動性管理）訊息型別。
 MM_MESSAGE_TYPES: dict[int, str] = {
@@ -144,7 +156,9 @@ def _identity_keys(
     keys: set[IdKey] = set()
     supi = _supi_from_suci(block)
     if supi:
-        keys.add((IdKind.SUPI, supi))
+        # SUPI 跨連線、跨網元都指同一個人，不加範圍前綴 ——
+        # 那正是它能把 5GC 與 IMS 串起來的原因。
+        keys.add(globally_unique(IdKind.SUPI, supi))
     if carrier is not None:
         keys |= ngap_identity_keys(carrier, scope)
     return frozenset(keys)

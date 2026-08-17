@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from telcolens.adapters import parse_frame
 from telcolens.correlate import correlate
+from telcolens.identity import connection_scope, scoped
 from telcolens.extract import read_frames
 from telcolens.model import Endpoint, IdKind, Message
 from telcolens.nf import UE_ROLE, apply_roles, resolve_roles
@@ -152,6 +155,43 @@ def test_two_ues_do_not_bleed_into_each_other():
                 identity_keys=frozenset({(IdKind.RAN_UE_NGAP_ID, f"{scope}/2")})),
     ]
     assert len(correlate(msgs)) == 2
+
+
+def test_same_ngap_id_on_two_associations_does_not_merge_subscribers():
+    """**同一個號碼、不同連線，絕對不能併成一條流程。**
+
+    上一條測的是「同連線不同號」，這條測真正危險的那一半：每個 gNB 都從 1
+    開始配 RAN_UE_NGAP_ID，所以兩個基地台底下各有一個用戶拿到 1。少了範圍
+    前綴，這兩個毫無關係的人會變成同一條流程 —— 而畫出來的圖看起來完全
+    合理，沒有例外、沒有紅字，沒有人會發現。
+
+    這是 `telcolens/identity.py` 存在的唯一理由，也是外掛契約裡最危險的
+    一條規則（Phase 2 的 GTP TEID 是同一類）。這裡刻意用 `scoped()`
+    而不是手寫字串 —— 如果哪天有人把 `scoped()` 改成不加前綴，這條會紅。
+    """
+    ep_a, ep_b, ep_c = Endpoint("10.0.0.1"), Endpoint("10.0.0.2"), Endpoint("10.0.0.9")
+    gnb_1 = connection_scope(SimpleNamespace(src_ip="10.0.0.1", dst_ip="10.0.0.2"))
+    gnb_2 = connection_scope(SimpleNamespace(src_ip="10.0.0.9", dst_ip="10.0.0.2"))
+    assert gnb_1 != gnb_2, "兩條連線的範圍字串本身就該不同"
+
+    msgs = [
+        Message(frame=1, ts=0.0, protocol="ngap", src=ep_a, dst=ep_b, label="InitialUEMessage",
+                identity_keys=frozenset({scoped(IdKind.RAN_UE_NGAP_ID, gnb_1, 1)})),
+        Message(frame=2, ts=0.1, protocol="ngap", src=ep_c, dst=ep_b, label="InitialUEMessage",
+                identity_keys=frozenset({scoped(IdKind.RAN_UE_NGAP_ID, gnb_2, 1)})),
+    ]
+    assert len(correlate(msgs)) == 2, "兩個不同基地台底下的用戶被併成一條了"
+
+
+def test_connection_scope_is_direction_independent():
+    """上行與下行必須算出同一個範圍字串。
+
+    不然請求與回應會被拆成兩條流程 —— 圖上會出現兩個半截的程序，
+    而每一半看起來都像「訊息不完整」。
+    """
+    up = connection_scope(SimpleNamespace(src_ip="10.0.0.1", dst_ip="10.0.0.2"))
+    down = connection_scope(SimpleNamespace(src_ip="10.0.0.2", dst_ip="10.0.0.1"))
+    assert up == down
 
 
 def test_shared_key_bridges_two_partial_identities():

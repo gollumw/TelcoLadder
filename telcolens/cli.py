@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from telcolens import __version__
+from telcolens.adapters import required_dissectors
 from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import render_report
@@ -35,27 +36,27 @@ def _cmd_check(_args: argparse.Namespace) -> int:
     if missing:
         print(f"✗ 缺少 dissector：{', '.join(missing)}", file=sys.stderr)
         return 1
-    print("✓ dissector  ngap, nas-5gs, pfcp, http2 皆可用")
+    print(f"✓ dissector  {', '.join(required_dissectors())} 皆可用")
     return 0
-
-
-#: Phase 1 一定要有的 dissector。Phase 2 會再加 sip、diameter、gtpv2。
-REQUIRED_DISSECTORS = ("ngap", "nas-5gs", "pfcp", "http2")
 
 
 def _missing_dissectors(tshark) -> list[str]:
     """回報缺少哪些必要的 dissector。
 
+    清單由 adapter 註冊表推導 —— 裝了 IMS 外掛就會自動要求 sip / diameter，
+    不必回來改這裡。
+
     `tshark -G protocols` 每列是 tab 分隔的
     ``描述<TAB>短名<TAB>過濾器名``，我們比對第三欄。
     """
+    required = required_dissectors()
     proc = tshark.run(["-G", "protocols"], timeout=30)
     if proc.returncode != 0:
-        return list(REQUIRED_DISSECTORS)
+        return list(required)
     available = {
         line.split("\t")[2] for line in proc.stdout.splitlines() if line.count("\t") >= 2
     }
-    return [name for name in REQUIRED_DISSECTORS if name not in available]
+    return [name for name in required if name not in available]
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:

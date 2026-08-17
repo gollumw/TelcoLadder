@@ -9,9 +9,22 @@ from __future__ import annotations
 from typing import Any
 
 from telcolens.extract import Frame, first
+from telcolens.identity import connection_scope, scoped
 from telcolens.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "ngap"
+
+#: adapter 之間的排列順序（小的先跑）。**這個數字有語意**：
+#: NGAP 是 NAS 的載體，必須排在 nas-5gs 前面 —— 同一格裡
+#: 先畫 InitialUEMessage 再畫 Registration request 才讀得通。
+ORDER = 10
+
+#: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
+#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的三軸線說明。
+DISPLAY_FILTER = "ngap"
+
+#: `telcolens check` 要驗證存在的 dissector。
+DISSECTORS = ('ngap',)
 
 #: TS 38.413 ProcedureCode。表本身是規範資產，
 #: `tests/test_adapters.py` 會拿 tshark 自己的 info 欄位交叉驗證，避免抄錯。
@@ -142,15 +155,19 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     ran_id = _to_int(block.get("ngap_ngap_RAN_UE_NGAP_ID"))
     amf_id = _to_int(block.get("ngap_ngap_AMF_UE_NGAP_ID"))
     if ran_id is not None:
-        keys.add((IdKind.RAN_UE_NGAP_ID, f"{scope}/{ran_id}"))
+        keys.add(scoped(IdKind.RAN_UE_NGAP_ID, scope, ran_id))
     if amf_id is not None:
-        keys.add((IdKind.AMF_UE_NGAP_ID, f"{scope}/{amf_id}"))
+        keys.add(scoped(IdKind.AMF_UE_NGAP_ID, scope, amf_id))
     return frozenset(keys)
 
 
 def association_scope(frame: Frame) -> str:
-    """一條 NG 連線的穩定識別。方向無關，故把兩端 IP 排序後串起來。"""
-    return "|".join(sorted((frame.src_ip, frame.dst_ip)))
+    """一條 NG 連線的穩定識別。
+
+    就是 `identity.connection_scope`，保留這個名字是因為 NGAP 的規範用語
+    是「NG association」，adapter 內部這樣讀比較順。
+    """
+    return connection_scope(frame)
 
 
 def parse(frame: Frame) -> list[Message]:
