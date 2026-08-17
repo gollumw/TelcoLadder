@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from importlib import resources
 
+from telcolens.packets import COLUMN_TITLES
 from telcolens.render_html import PAGE_CSS, esc
 from telcolens.session import Session
 
@@ -63,6 +64,64 @@ def static_body(name: str) -> tuple[bytes, str] | None:
     return _cache[name].encode("utf-8"), content_type
 
 
+def progress_json(session: Session) -> dict:
+    with session.lock:
+        p = session.progress
+        return {
+            "stage": p.stage,
+            "indexed": p.indexed,
+            # `total` 可以是 null —— capinfos 取不到時就是。前端必須處理
+            # 這個情況並顯示不定量進度，**不要在任何一側編一個分母**。
+            "total": p.total,
+            "truncated": p.truncated,
+            "error": p.error,
+            "elapsed": round(p.elapsed, 2),
+        }
+
+
+def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
+    """封包清單的一頁。
+
+    `matched` 是**篩選後**的列數，`indexed` 是已索引的列數，
+    `total` 是檔案裡真正的封包數（可能是 null）。三個是不同的東西，
+    UI 不能混用 —— 混用的症狀是進度條卡在奇怪的百分比。
+    """
+    with session.lock:
+        rows, matched = session.index.page(
+            offset, limit, keep=session.keep_frames, q=q
+        )
+        index = session.index
+        progress = session.progress
+        info_unavailable = index.info_unavailable
+        payload_rows = [
+            {
+                "n": r.number,
+                "t": r.time_rel,
+                "epoch": r.time_epoch,
+                "src": r.src,
+                "dst": r.dst,
+                "proto": r.protocol,
+                "len": r.length,
+                "info": r.info,
+                "stack": r.protocols,
+            }
+            for r in rows
+        ]
+        return {
+            "columns": list(COLUMN_TITLES),
+            "rows": payload_rows,
+            "offset": offset,
+            "limit": limit,
+            "matched": matched,
+            "indexed": progress.indexed,
+            "total": progress.total,
+            "done": progress.stage == "done",
+            "truncated": index.truncated,
+            "info_unavailable": info_unavailable,
+            "display_filter": session.display_filter,
+        }
+
+
 def viewer_page(session: Session, *, idle_ttl: float) -> str:
     """檢視器的外殼。
 
@@ -101,9 +160,32 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
     <button type="submit">{button}</button>
   </form>
 </header>
+<div class="vtools">
+  <label class="q">
+    <span>在已索引的封包裡搜尋（子字串）</span>
+    <input type="search" id="q" placeholder="reject、NGAP、172.22.0.10…" autocomplete="off">
+  </label>
+  <form class="df" id="df-form">
+    <label>
+      <span>以 tshark display filter 篩選（按 Enter 送出，會重新掃描）</span>
+      <input type="text" id="df" placeholder="nas-5gs.mm.5gmm_cause == 111" autocomplete="off"
+             value="{esc(session.display_filter)}">
+    </label>
+    <button type="submit">套用</button>
+    <button type="button" id="df-clear">清除</button>
+  </form>
+  <p class="df-error" id="df-error" hidden></p>
+</div>
 <main class="vmain">
   <p class="held-note">{held}</p>
-  <p class="stage-note" id="stage-note">封包清單、解碼窗與呼叫流程圖尚未接上（階段 2 起）。</p>
+  <div class="gridwrap">
+    <div class="gridhead" id="gridhead"></div>
+    <div class="gridscroll" id="gridscroll" tabindex="0">
+      <div class="gridspacer" id="gridspacer"><div class="gridrows" id="gridrows"></div></div>
+    </div>
+  </div>
+  <p class="status" id="status">正在索引……</p>
+  <p class="stage-note" id="stage-note">點一列看完整協定解碼樹 —— 階段 3。呼叫流程圖 —— 階段 5。</p>
 </main>
 <script src="/static/viewer.js" data-sid="{esc(session.sid)}"></script>
 </body></html>

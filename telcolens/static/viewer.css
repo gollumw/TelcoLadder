@@ -71,3 +71,103 @@ body.viewer {
   border-left: 3px solid var(--border);
   padding-left: 10px;
 }
+
+/* ── 工具列：兩個 filter，各自標明 ──────────────────────────────
+ * 刻意**不**合成一個叫「filter」的欄位。合了會讓 Wireshark 使用者打
+ * `ngap.procedureCode == 15` 然後從子字串比對得到零筆 —— 靜默、看起來
+ * 合理、而且錯（CLAUDE.md §4 那類失敗）。所以兩個欄位、兩個標籤。
+ */
+.vtools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.vtools label { display: flex; flex-direction: column; gap: 3px; }
+.vtools span { font-size: 11px; opacity: 0.72; }
+.vtools input {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  min-width: 260px;
+}
+.vtools input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.df { display: flex; gap: 8px; align-items: flex-end; margin: 0; }
+.df input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.df button {
+  font: inherit; font-size: 12px; padding: 5px 12px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: inherit; cursor: pointer;
+}
+.df button:hover { border-color: var(--accent); }
+
+/* tshark 自己的錯誤訊息，等寬顯示並保留換行與 caret 對齊。
+ * 我們不改寫它的措辭 —— 它比我們寫得出來的都好。 */
+.df-error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  color: var(--fail);
+  background: var(--fail-bg);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+/* ── 封包清單 ────────────────────────────────────────────────── */
+.gridwrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 60vh;
+}
+.gridhead, .gridrow {
+  display: grid;
+  /* Info 吃掉剩下的寬度 —— 它是最有資訊量的一欄。 */
+  grid-template-columns: 62px 92px 132px 132px 118px 62px 1fr;
+  align-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.gridhead {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  padding-right: 10px;
+  flex: 0 0 auto;
+}
+.gridhead span, .gridrow span {
+  padding: 0 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gridhead span { padding-top: 5px; padding-bottom: 5px; }
+
+/* 虛擬滾動：spacer 撐出總高度，rows 用 transform 平移到視窗位置。
+ * 列高**必須固定 22px** —— JS 靠它算 index，改這裡要同步改 viewer.js 的 ROW_H。 */
+.gridscroll { flex: 1 1 auto; overflow: auto; }
+.gridspacer { position: relative; }
+.gridrows { position: absolute; top: 0; left: 0; right: 0; }
+.gridrow { height: 22px; cursor: default; }
+.gridrow:nth-child(even) { background: color-mix(in srgb, var(--border) 18%, transparent); }
+.gridrow:hover { background: var(--hover); }
+.gridrow.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.gridrow.loading { opacity: 0.35; }
+.gridrow .c-n, .gridrow .c-len { text-align: right; }
+
+.status {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: pre-wrap;
+}

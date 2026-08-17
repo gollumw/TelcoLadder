@@ -46,14 +46,16 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import PAGE_CSS, esc, render_report
+from telcolens.packets import PacketColumnsUnavailable, matching_frames
 from telcolens.session import (
     IDLE_TTL,
     SessionStore,
     make_session_file,
+    start_index,
     sweep_stray_files,
 )
 from telcolens.tshark import TsharkNotFound, find_tshark
-from telcolens.viewer import CSP, static_body, viewer_page
+from telcolens.viewer import CSP, index_json, progress_json, static_body, viewer_page
 
 DEFAULT_PORT = 3005
 DEFAULT_HOST = "127.0.0.1"
@@ -131,6 +133,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_static(route[len("/static/"):])
         elif route.startswith("/v/") and self._viewer_enabled():
             self._send_viewer(route[len("/v/"):])
+        elif route.startswith("/api/") and self._viewer_enabled():
+            self._route_api(route[len("/api/"):])
         else:
             self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
 
@@ -150,6 +154,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._handle_open_upload()
         elif route == "/release" and self._viewer_enabled():
             self._handle_release()
+        elif route.startswith("/api/") and self._viewer_enabled():
+            self._route_api(route[len("/api/"):], post=True)
         else:
             self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
 
@@ -206,6 +212,70 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _route_api(self, rest: str, *, post: bool = False) -> None:
+        """`/api/<sid>/<action>`。sid 在路徑裡，不在 query string、不在 cookie。
+
+        localhost 的 cookie 是**主機範圍、不分 port** —— 這台機器上十幾個
+        服務跑在不同 port，任何一個都能讀寫我們的 cookie。放路徑同時也讓
+        這個 capability token 不出現在 query string 裡。
+        """
+        sid, _, action = rest.partition("/")
+        session = self._store.get(sid)
+        if session is None:
+            self._send_json({"error": "此工作階段已過期或已釋放。"}, HTTPStatus.NOT_FOUND)
+            return
+
+        query = parse_qs(urlsplit(self.path).query)
+        if not post and action == "progress":
+            self._send_json(progress_json(session))
+        elif not post and action == "index":
+            offset = max(0, self._int_param(query, "offset", 0))
+            # limit 夾在 500：一頁再多也沒人看得完，而它決定單次回應的大小。
+            limit = min(500, max(1, self._int_param(query, "limit", 200)))
+            self._send_json(index_json(
+                session, offset=offset, limit=limit,
+                q=(query.get("q") or [""])[0],
+            ))
+        elif post and action == "refilter":
+            self._handle_refilter(session)
+        else:
+            self._send_json({"error": "沒有這個 API。"}, HTTPStatus.NOT_FOUND)
+
+    @staticmethod
+    def _int_param(query: dict[str, list[str]], name: str, default: int) -> int:
+        try:
+            return int((query.get(name) or [""])[0])
+        except ValueError:
+            return default
+
+    def _handle_refilter(self, session) -> None:
+        """套用 tshark display filter，重新掃描一次只取 frame 編號。
+
+        **不重抓欄位** —— 它們已經在記憶體索引裡了。回來的編號集合與索引
+        取交集就是篩選結果。
+
+        語法錯誤原樣轉述 tshark 自己的訊息（含指到出錯位置的 caret）。
+        我們不自己寫 filter 驗證器：那等於維護第二套語法知識，一定漂移。
+        """
+        form = self._read_form()
+        expr = (form.get("filter") or [""])[0].strip()
+        if not expr:
+            with session.lock:
+                session.display_filter = ""
+                session.keep_frames = None
+            self._send_json({"matched": len(session.index.rows), "display_filter": ""})
+            return
+        try:
+            frames = matching_frames(session.pcap, expr, decode_as=session.decode_as)
+        except PacketColumnsUnavailable as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        keep = set(frames)
+        with session.lock:
+            session.display_filter = expr
+            session.keep_frames = keep
+        self._send_json({"matched": len(keep), "display_filter": expr})
+
     def _handle_open(self) -> None:
         """貼路徑開檢視器。**零複製** —— 那是使用者自己的檔案。
 
@@ -217,6 +287,7 @@ class _Handler(BaseHTTPRequestHandler):
         if pcap is None:
             return
         session = self._store.create(pcap, pcap.name, owns_file=False, wire=wire)
+        start_index(session)
         self._send_redirect(f"/v/{session.sid}")
 
     def _handle_open_upload(self) -> None:
@@ -263,6 +334,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         session = self._store.create(tmp, name, owns_file=True, wire=wire)
+        start_index(session)
         self._send_json({"sid": session.sid, "name": name, "url": f"/v/{session.sid}"})
 
     def _handle_release(self) -> None:

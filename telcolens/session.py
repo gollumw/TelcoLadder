@@ -29,6 +29,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcolens.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
+
 #: 閒置多久就釋放。15 分鐘是「泡杯咖啡回來還在」與「不要把客戶封包留一整天」
 #: 之間的取捨。`serve --idle-ttl` 可以改。
 IDLE_TTL = 900.0
@@ -39,6 +41,11 @@ SESSION_PREFIX = "telcolens-session-"
 
 #: 回收執行緒多久醒一次。比 TTL 小一個量級就夠，不需要更準。
 _SWEEP_INTERVAL = 30.0
+
+#: 索引每累積這麼多列才發布一次進度。
+#: 每列都發會把 lock 打爛 —— 實測 250 萬列的索引本身只花 50 秒，
+#: 為了進度數字多精確一點而讓它變慢是划不來的。
+_PUBLISH_EVERY = 2000
 
 
 class SessionError(RuntimeError):
@@ -52,6 +59,63 @@ def new_sid() -> str:
     所以它必須是密碼學隨機，不能用計數器或時間戳。
     """
     return secrets.token_urlsafe(16)
+
+
+@dataclass
+class Progress:
+    """索引的進度。**不准編造分母。**
+
+    `total` 是 `capinfos` 給的真實封包數；取不到就是 `None`，UI 那時顯示
+    「已索引 N 個封包」配不定量進度條。從檔案大小推估一個百分比會讓進度條
+    看起來很專業而數字是假的（Rule 12）。
+    """
+
+    stage: str = "index"
+    """`index`（進行中）、`done`、`error`。"""
+
+    indexed: int = 0
+    total: int | None = None
+    truncated: bool = False
+    error: str | None = None
+    started: float = field(default_factory=time.monotonic)
+    finished: float | None = None
+
+    @property
+    def elapsed(self) -> float:
+        return (self.finished or time.monotonic()) - self.started
+
+
+@dataclass
+class PacketIndex:
+    """記憶體裡的封包清單。"""
+
+    rows: list[PacketRow] = field(default_factory=list)
+    truncated: bool = False
+
+    @property
+    def info_unavailable(self) -> bool:
+        """這個 tshark 沒給我們 Info 欄嗎？
+
+        全空代表我們讀錯了 ek 的欄位 key，不代表這份擷取檔真的沒有 Info。
+        UI 必須把這件事講出來，而不是顯示一整欄空白讓人以為是資料不足。
+        """
+        return bool(self.rows) and all(not r.info for r in self.rows)
+
+    def page(
+        self, offset: int, limit: int, *,
+        keep: set[int] | None = None, q: str = "",
+    ) -> tuple[list[PacketRow], int]:
+        """取一頁。回傳 (該頁的列, 篩選後的總數)。
+
+        `keep` 是 display filter 篩出來的 frame 編號集合（None = 不篩），
+        `q` 是即時子字串搜尋。兩者是**不同的機制**，可以疊加。
+        """
+        rows = self.rows
+        if keep is not None:
+            rows = [r for r in rows if r.number in keep]
+        if q:
+            rows = [r for r in rows if r.matches(q)]
+        return rows[offset : offset + limit], len(rows)
 
 
 @dataclass
@@ -73,6 +137,17 @@ class Session:
     created: float = field(default_factory=time.monotonic)
     last_touch: float = field(default_factory=time.monotonic)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    index: PacketIndex = field(default_factory=PacketIndex)
+    progress: Progress = field(default_factory=Progress)
+
+    display_filter: str = ""
+    """目前套用的 tshark display filter（空字串 = 全部封包）。"""
+
+    keep_frames: set[int] | None = field(default=None, repr=False)
+    """display filter 篩出來的 frame 編號。None 代表沒有套 filter。"""
+
+    decode_as: tuple[str, ...] = ()
 
     def touch(self) -> None:
         self.last_touch = time.monotonic()
@@ -183,6 +258,78 @@ class SessionStore:
                 print(f"  工作階段回收失敗：{exc}", flush=True)
 
 
+# ── 索引 worker ───────────────────────────────────────────────────────
+
+
+def start_index(session: Session, *, on_done=None) -> threading.Thread:
+    """在背景把封包索引建起來，邊建邊發布進度。
+
+    **串流是重點。** 實測 436 MB / 250 萬封包：第一批 200 列 0.17 秒到位，
+    全部索引完要 50.9 秒。所以 grid 從第一頁就可用，首次可見時間與檔案大小
+    無關 —— 那才是讓分鐘級成本可以忍受的東西（`local/perf/README.md`）。
+
+    執行緒本體整個包在 try/except 裡，錯誤存進 `session.progress.error`
+    而**不往執行緒外丟**：`pyproject.toml` 把
+    `PytestUnhandledThreadExceptionWarning` 設成 error，背景執行緒漏一個例外
+    會讓整批測試以無關的原因失敗。而且對使用者來說，「索引失敗」是要顯示在
+    畫面上的狀態，不是一段 traceback。
+    """
+
+    def run() -> None:
+        try:
+            _index_into(session)
+        except BaseException as exc:  # noqa: BLE001 —— 見上方說明
+            with session.lock:
+                session.progress.stage = "error"
+                session.progress.error = str(exc) or exc.__class__.__name__
+                session.progress.finished = time.monotonic()
+        finally:
+            if on_done is not None:
+                try:
+                    on_done(session)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  索引後續處理失敗：{exc}", flush=True)
+
+    thread = threading.Thread(
+        target=run, name=f"telcolens-index-{session.sid[:8]}", daemon=True
+    )
+    thread.start()
+    return thread
+
+
+def _index_into(session: Session) -> None:
+    # 分母先問 —— capinfos 在 436 MB 上只要 0.32 秒，值得。
+    total = total_packets(session.pcap)
+    with session.lock:
+        session.progress.total = total
+        session.progress.stage = "index"
+
+    rows: list[PacketRow] = []
+    truncated = False
+    for row in read_packet_rows(
+        session.pcap,
+        display_filter=session.display_filter,
+        decode_as=session.decode_as,
+    ):
+        rows.append(row)
+        if len(rows) >= MAX_INDEX_ROWS:
+            # 上限不是靜默截斷。踩到就記下來，UI 會把**真實總數**講出來。
+            truncated = True
+            break
+        if len(rows) % _PUBLISH_EVERY == 0:
+            with session.lock:
+                session.index.rows = rows
+                session.progress.indexed = len(rows)
+
+    with session.lock:
+        session.index.rows = rows
+        session.index.truncated = truncated
+        session.progress.indexed = len(rows)
+        session.progress.truncated = truncated
+        session.progress.stage = "done"
+        session.progress.finished = time.monotonic()
+
+
 # ── 刪檔 ──────────────────────────────────────────────────────────────
 
 
@@ -264,10 +411,13 @@ def sweep_stray_files(older_than: float = 86400.0) -> list[Path]:
 __all__ = [
     "IDLE_TTL",
     "SESSION_PREFIX",
+    "PacketIndex",
+    "Progress",
     "Session",
     "SessionError",
     "SessionStore",
     "make_session_file",
     "new_sid",
+    "start_index",
     "sweep_stray_files",
 ]
