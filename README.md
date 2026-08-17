@@ -85,6 +85,7 @@ setx TELCOLENS_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
 telcolens analyze capture.pcapng                     # diagram to stdout
 telcolens analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
 telcolens analyze capture.pcapng --html report.html  # standalone HTML report
+telcolens analyze capture.pcapng --wire              # one row per packet
 telcolens analyze capture.pcapng --max-messages 80
 telcolens analyze capture.pcapng --no-frames         # drop packet numbers
 ```
@@ -108,6 +109,23 @@ a CDN tells an outside server that someone is looking at an analysis.
 
 Output is byte-for-byte reproducible: no generation timestamp, so two runs
 over the same capture diff cleanly.
+
+### Two views
+
+By default a captured NGAP frame carrying a NAS message draws **two** arrows,
+and the NAS one is drawn UE↔AMF because that is who is actually talking. It
+reads like a call flow, which is the point.
+
+`--wire` gives you the other thing: **one row per packet**, carrier and payload
+stacked on the same line (`DownlinkNASTransport ▸ Authentication request`) with
+the protocol stack labelled. That is the density you want when you look at
+captures all day and already know the procedures. The default is unchanged —
+`--wire` is a switch, not a new default.
+
+Either way the gutter carries both the absolute timestamp (to find the packet
+again in Wireshark) and the **delta from the previous row**. Gaps past one
+second are highlighted: signalling runs on millisecond rhythms, so a second-long
+hole is almost always a timer waiting, and that is usually where the fault is.
 
 ### In the browser
 

@@ -27,6 +27,7 @@ SVG 是自己排版的，不用 mermaid.js。除了省掉 3MB 的內嵌相依之
 from __future__ import annotations
 
 import html
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -55,6 +56,11 @@ FONT_LABEL = 12.5
 FONT_LANE = 13.0
 FONT_META = 10.5
 
+#: 兩則訊息之間隔超過這個秒數就標警示色。信令的內部節奏是毫秒級 ——
+#: 一旦出現秒級空窗，幾乎必然是某個 timer 在等（T3560 重傳、T3550 逾時），
+#: 而那正是診斷的起點。這是絕對時間欄給不了的資訊。
+SLOW_GAP = 1.0
+
 #: 網元 → 泳道配色類別。分組依「在網路裡的位置」而非字母序，
 #: 讓一眼掃過去就看得出訊息是在無線側、核網控制面、還是使用者面。
 _ROLE_GROUP = {
@@ -70,6 +76,33 @@ _ROLE_GROUP = {
 def _group_of(endpoint: Endpoint) -> str:
     """推不出角色的端點歸 `other`（顯示 IP）—— 不猜（Rule 12）。"""
     return _ROLE_GROUP.get(endpoint.role or "", "other")
+
+
+def _css_class(name: str) -> str:
+    """協定名轉成合法的 CSS class 片段（`nas-5gs` 之類本來就合法，防萬一）。"""
+    return re.sub(r"[^a-z0-9-]", "-", name.lower())
+
+
+def _fmt_delta(seconds: float) -> str:
+    """列間隔的顯示格式。毫秒級是常態，看得出數量級即可。"""
+    if seconds < 0.001:
+        return f"+{seconds * 1000:.2f}ms"
+    if seconds < 1.0:
+        return f"+{seconds * 1000:.0f}ms"
+    return f"+{seconds:.2f}s"
+
+
+#: 泳道名牌上的網元圖示 —— 自繪的幾何線條，刻意抽象：這裡要的是
+#: 「掃一眼就分得出無線側／核網／使用者面」，不是擬真的機櫃圖。
+_LANE_ICONS = {
+    "ue": '<rect x="-2.8" y="-5" width="5.6" height="10" rx="1.3"/>'
+          '<circle class="dot" cx="0" cy="3" r="0.8"/>',
+    "ran": '<path d="M0 5 V-1.8 M-2.6 0.6 L0 -2.4 L2.6 0.6"/><circle cx="0" cy="-4" r="1.1"/>',
+    "core": '<path d="M4.4 0 L2.2 3.8 L-2.2 3.8 L-4.4 0 L-2.2 -3.8 L2.2 -3.8 Z"/>',
+    "data": '<ellipse cx="0" cy="-2.8" rx="3.6" ry="1.5"/>'
+            '<path d="M-3.6 -2.8 V2.8 a3.6 1.5 0 0 0 7.2 0 V-2.8"/>',
+    "other": '<circle cx="0" cy="0" r="4"/>',
+}
 
 
 def _text_width(text: str, size: float) -> float:
@@ -121,7 +154,7 @@ def _lane_width(messages: list[Message], lanes: list[Endpoint], index: dict[str,
     needed = max((_text_width(e.label(), FONT_LANE) + 34 for e in lanes), default=LANE_MIN)
     for msg in messages:
         span = max(1, abs(index[msg.dst.label()] - index[msg.src.label()]))
-        label = f"#{msg.frame} {msg.label}"
+        label = f"#{msg.frame} {msg.detail.get('protocols', '')} {msg.label}"
         needed = max(needed, (_text_width(label, FONT_LABEL) + 26) / span)
     return min(LANE_MAX, max(LANE_MIN, needed))
 
@@ -215,7 +248,11 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
         x = lane_x(i)
         group = _group_of(endpoint)
         label = endpoint.label()
-        box_w = min(lane_w - 14, _text_width(label, FONT_LANE) + 26)
+        # 名牌內容 = 圖示(12) + 間距(5) + 文字。圖示置左、文字重心右移半個
+        # 圖示寬，整組仍以生命線為中心。
+        text_w = _text_width(label, FONT_LANE)
+        content_w = 17 + text_w
+        box_w = min(lane_w - 10, content_w + 22)
         out.append(
             f'<line class="lifeline {group}" x1="{x:.1f}" y1="{HEADER_H - 6:.1f}" '
             f'x2="{x:.1f}" y2="{height - BOT_PAD + 8:.1f}"/>'
@@ -225,27 +262,44 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
             f'width="{box_w:.1f}" height="30" rx="8"/>'
         )
         out.append(
-            f'<text class="lane-label {group}" x="{x:.1f}" y="38" text-anchor="middle">'
+            f'<g class="lane-icon {group}" transform="translate({x - content_w / 2 + 6:.1f}, 33)">'
+            f"{_LANE_ICONS[group]}</g>"
+        )
+        out.append(
+            f'<text class="lane-label {group}" x="{x + 8.5:.1f}" y="38" text-anchor="middle">'
             f"{esc(label)}</text>"
         )
 
     # 訊息
-    for row in rows:
+    for index, row in enumerate(rows):
         msg = row.msg
         x_src, x_dst = lane_x(row.src_lane), lane_x(row.dst_lane)
         kind = "fail" if msg.is_failure else "ok"
+        stripe = "even" if index % 2 else "odd"
+        proto = _css_class(msg.protocol)
 
-        out.append(f'<g class="row {kind}"><title>{esc(_hover_text(msg))}</title>')
+        out.append(
+            f'<g class="row {kind} {stripe} p-{proto}">'
+            f"<title>{esc(_hover_text(msg))}</title>"
+        )
         # 整列的 hover 感應區 + 失敗底色。放最前面，才不會蓋住線與字。
         out.append(
             f'<rect class="row-band" x="0" y="{row.y:.1f}" '
             f'width="{width:.0f}" height="{row.height:.1f}"/>'
         )
-        # 時間欄
+        # 時間欄：絕對秒數（定位用，回 Wireshark 對照）＋ 列間隔 Δ（診斷用）。
+        # 兩個都要 —— 只有絕對時間看不出 timer 在等，只有間隔回不了 pcap。
         out.append(
             f'<text class="gutter" x="{GUTTER - 12:.1f}" y="{row.y + ROW_H * 0.62 + 3.5:.1f}" '
             f'text-anchor="end">{msg.ts:.3f}s</text>'
         )
+        if index > 0:
+            gap = msg.ts - rows[index - 1].msg.ts
+            slow = " slow" if gap >= SLOW_GAP else ""
+            out.append(
+                f'<text class="delta{slow}" x="{GUTTER - 12:.1f}" '
+                f'y="{row.y + ROW_H * 0.62 + 16:.1f}" text-anchor="end">{_fmt_delta(gap)}</text>'
+            )
         out.extend(_arrow_svg(row, x_src, x_dst, kind))
 
         # 標籤置中於箭頭上方；自環的話靠右擺，免得壓在生命線上。
@@ -253,10 +307,16 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
             label_x, anchor = x_src + 34, "start"
         else:
             label_x, anchor = (x_src + x_dst) / 2, "middle"
+        # wire view 的堆疊協定標籤（「NGAP,NAS-5GS」）。一般視圖一列一協定，
+        # 標了只是雜訊，所以只有 wire 合併過的列才有這個 detail。
+        stack = msg.detail.get("protocols", "")
+        stack_tspan = (
+            f'<tspan class="proto">{esc(stack.upper())}</tspan> ' if "," in stack else ""
+        )
         out.append(
             f'<text class="msg-label {kind}" x="{label_x:.1f}" y="{row.y + ROW_H * 0.62 - 9:.1f}" '
             f'text-anchor="{anchor}">'
-            f'<tspan class="frame-no">#{msg.frame}</tspan> {esc(msg.label)}</text>'
+            f'<tspan class="frame-no">#{msg.frame}</tspan> {stack_tspan}{esc(msg.label)}</text>'
         )
 
         note = msg.detail.get("cause_note")
@@ -445,14 +505,22 @@ header { margin-bottom: 24px; }
 .lane-label.other { fill: var(--other); }
 
 .row-band { fill: transparent; }
+.row.even .row-band { fill: color-mix(in srgb, var(--text) 3%, transparent); }
 .row.fail .row-band { fill: var(--fail-bg); }
 .row:hover .row-band { fill: var(--hover); }
 .row.fail:hover .row-band { fill: color-mix(in srgb, var(--fail) 13%, transparent); }
 
-.arrow { stroke: var(--dim); stroke-width: 1.6; }
-.arrow.fail { stroke: var(--fail); stroke-width: 2; }
+.arrow { stroke: var(--dim); stroke-width: 1.6; stroke-linecap: round; }
 .head { fill: var(--dim); }
-.head.fail { fill: var(--fail); }
+.row.p-ngap .arrow { stroke: var(--ue); }
+.row.p-ngap .head { fill: var(--ue); }
+.row.p-nas-5gs .arrow { stroke: var(--core); }
+.row.p-nas-5gs .head { fill: var(--core); }
+.row.p-http2 .arrow { stroke: var(--data); }
+.row.p-http2 .head { fill: var(--data); }
+/* fail 必須壓過協定色 —— 這幾條的順序與特異度是刻意的，別搬動 */
+.row.fail .arrow { stroke: var(--fail); stroke-width: 2; }
+.row.fail .head { fill: var(--fail); }
 
 .msg-label { font: 12.5px system-ui, sans-serif; fill: var(--text); }
 .msg-label.fail { fill: var(--fail); font-weight: 600; }
@@ -466,6 +534,23 @@ header { margin-bottom: 24px; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 10.5px; fill: var(--dim);
 }
+.delta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9.5px; fill: var(--faint);
+}
+.delta.slow { fill: var(--warn); font-weight: 700; }
+.proto {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px; fill: var(--faint); letter-spacing: .04em;
+}
+.lane-icon { fill: none; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.lane-icon.ue { stroke: var(--ue); }
+.lane-icon.ran { stroke: var(--ran); }
+.lane-icon.core { stroke: var(--core); }
+.lane-icon.data { stroke: var(--data); }
+.lane-icon.other { stroke: var(--other); }
+.lane-icon .dot { stroke: none; }
+.lane-icon.ue .dot { fill: var(--ue); }
 
 /* ── 失敗詳情 ────────────────────────────────────────────── */
 .causes { padding: 4px 18px 18px; border-top: 1px solid var(--border); }

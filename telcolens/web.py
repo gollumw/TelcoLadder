@@ -110,7 +110,9 @@ class _Handler(BaseHTTPRequestHandler):
     def _handle_path_form(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length).decode("utf-8", "replace")
-        raw = (parse_qs(body).get("path") or [""])[0].strip()
+        form = parse_qs(body)
+        raw = (form.get("path") or [""])[0].strip()
+        wire = (form.get("wire") or [""])[0] == "1"
 
         # 從檔案總管拖到輸入框常常會帶上引號，直接吃掉而不是叫使用者自己修。
         raw = raw.strip("'\"")
@@ -128,7 +130,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         # 貼路徑不複製、不刪除 —— 那是使用者自己的檔案。
-        self._analyse_and_respond(pcap, pcap.name)
+        self._analyse_and_respond(pcap, pcap.name, wire=wire)
 
     # ── 上傳：raw body 串流落地 ───────────────────────────────────
 
@@ -167,7 +169,8 @@ class _Handler(BaseHTTPRequestHandler):
             if remaining > 0:
                 self._send_html(_error_page("上傳中斷，檔案不完整。"), HTTPStatus.BAD_REQUEST)
                 return
-            self._analyse_and_respond(tmp, name)
+            wire = (parse_qs(urlsplit(self.path).query).get("wire") or [""])[0] == "1"
+            self._analyse_and_respond(tmp, name, wire=wire)
         finally:
             # **一定要刪。** 這是客戶的封包，不是我們的東西 —— 分析失敗、
             # 例外、上傳中斷，每一條路徑都要走到這裡。
@@ -175,9 +178,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ── 共用 ──────────────────────────────────────────────────────
 
-    def _analyse_and_respond(self, pcap: Path, display_name: str) -> None:
+    def _analyse_and_respond(self, pcap: Path, display_name: str, *, wire: bool = False) -> None:
         try:
-            result = analyse(pcap)
+            result = analyse(pcap, wire=wire)
         except TsharkNotFound as exc:
             self._send_html(_error_page("找不到 tshark。", detail=str(exc)), HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -247,6 +250,10 @@ form.path input[type=text] {
 form.path button {
   padding: 9px 18px; border: 0; border-radius: 8px; cursor: pointer;
   background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+}
+form.path .opt {
+  flex-basis: 100%; color: var(--dim); font-size: 12.5px;
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
 }
 .hint { margin-top: 8px; color: var(--faint); font-size: 12px; line-height: 1.7; }
 .spinner { display: none; margin-top: 20px; text-align: center; color: var(--dim); font-size: 13px; }
@@ -322,6 +329,8 @@ def _home_page() -> str:
 <form class="path" method="post" action="/analyze">
   <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="擷取檔路徑">
   <button type="submit">分析</button>
+  <label class="opt"><input type="checkbox" name="wire" id="wire" value="1">
+    wire view —— 一格封包一列（載體＋載荷同列，密度高）</label>
 </form>
 <p class="hint">
   <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——
@@ -346,7 +355,8 @@ def _home_page() -> str:
   function send(f) {{
     if (!f) return;
     spin.classList.add('on');
-    fetch('/upload', {{
+    var wire = document.getElementById('wire');
+    fetch('/upload' + (wire && wire.checked ? '?wire=1' : ''), {{
       method: 'POST',
       headers: {{ 'X-TelcoLens-Filename': encodeURIComponent(f.name) }},
       body: f

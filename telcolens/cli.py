@@ -65,6 +65,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
             args.pcap,
             decode_as=args.decode_as or (),
             nas_from_ue=not args.no_ue_lifeline,
+            wire=args.wire,
         )
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
@@ -167,6 +168,13 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--no-ue-lifeline", action="store_true",
         help="NAS 照封包畫在 gNB↔AMF，而非依協定語意畫成 UE↔AMF",
+    )
+    analyze.add_argument(
+        "--wire", action="store_true",
+        help="wire view：一格封包一列，載體與載荷堆疊在同一列上"
+             "（如「DownlinkNASTransport ▸ Authentication request」）。"
+             "密度比照商用 probe 的 ladder view；天天看包的人要的是這個。"
+             "隱含 --no-ue-lifeline。",
     )
     analyze.set_defaults(func=_cmd_analyze)
 
