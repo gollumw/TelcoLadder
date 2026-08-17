@@ -12,7 +12,7 @@ Phase 2 接 IMS 時這個檔**不需要改**：SIP 的 Call-ID、Diameter 的 Se
 
 from __future__ import annotations
 
-from telcolens.model import Flow, IdKey, Message
+from telcolens.model import Flow, IdKey, Message, is_flow_worthy
 
 
 class _UnionFind:
@@ -43,9 +43,18 @@ class _UnionFind:
 def correlate(messages: list[Message]) -> list[Flow]:
     """把訊息分組成流程，依每組最早的訊息排序。
 
-    沒有任何身分別名的訊息（NGSetup、SBI 的 NF 管理訊息等，本來就不屬於
-    任何用戶）會被歸進一條共用的「無用戶關聯」流程，而不是被丟掉。
-    丟掉會讓「圖上少了幾則訊息」變成無聲的錯誤。
+    兩種訊息會被歸進共用的「無用戶關聯」流程，而不是被丟掉 —— 丟掉會讓
+    「圖上少了幾則訊息」變成無聲的錯誤：
+
+    1. **沒有任何身分別名的**（NGSetup 等，本來就不屬於任何用戶）。
+    2. **只有 `EXCHANGE` 類別別名的**（見 `model.IdClass`）。一次 NF↔NF 的
+       SBI 呼叫只有 HTTP/2 stream id 可認，那把 key 只把請求與回應配起來，
+       不指向任何人 —— 讓它自成一條流程，會讓 `5gc-e2e` 那份擷取檔產出
+       69 條流程、其中 50 條只有一則訊息。
+
+    第二條在**分組之後**才判定，不是在 union-find 之前。順序很要緊：
+    stream id 仍然是有效的橋樑（帶 SUPI 的那則訊息靠它把同一串交換拉進
+    用戶的流程裡），只是當一整組合併完仍然只剩 stream id 時，那組才降級。
     """
     uf = _UnionFind()
     for msg in messages:
@@ -64,13 +73,25 @@ def correlate(messages: list[Message]) -> list[Flow]:
             root = None  # 無用戶關聯
         grouped.setdefault(root, []).append(msg)
 
-    flows: list[Flow] = []
+    # 先算出每一組的完整 key 集合，才判定它撐不撐得起一條流程。
+    resolved: dict[IdKey | None, list[Message]] = {}
+    shared: list[Message] = grouped.pop(None, [])
     for root, group in grouped.items():
+        keys = {kind for msg in group for kind, _ in msg.identity_keys}
+        if is_flow_worthy(keys):
+            resolved[root] = group
+        else:
+            shared.extend(group)
+    if shared:
+        resolved[None] = shared
+
+    flows: list[Flow] = []
+    for root, group in resolved.items():
         group.sort(key=lambda m: (m.ts, m.frame))
-        keys: set[IdKey] = set()
+        keys_full: set[IdKey] = set()
         for msg in group:
-            keys |= msg.identity_keys
-        flows.append(Flow(messages=group, identity_keys=frozenset(keys)))
+            keys_full |= msg.identity_keys
+        flows.append(Flow(messages=group, identity_keys=frozenset(keys_full)))
 
     # 依首則訊息的時間排序，讓輸出順序穩定且符合直覺。
     flows.sort(key=lambda f: (f.messages[0].ts, f.messages[0].frame))

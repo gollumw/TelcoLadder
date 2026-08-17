@@ -35,6 +35,78 @@ class IdKind(StrEnum):
     DIAMETER_SESSION_ID = "diameter_session_id"
     GTP_TEID = "gtp_teid"
 
+    @property
+    def id_class(self) -> "IdClass":
+        """這把別名指向什麼層級的東西。見 `IdClass`。"""
+        return ID_CLASSES[self]
+
+    @property
+    def is_subscriber(self) -> bool:
+        """這把別名是否直接指向一個人。
+
+        呈現層要靠它把「訂戶的流程」與「NF 之間的交換」分開，**而且不要
+        自己硬寫一份 kind 清單** —— 硬寫的清單在 Phase 2 加 IMS 時會靜默
+        過期（新增 `IMPU` 是訂戶、`GTP_TEID` 不是，清單不會自己知道）。
+
+        注意這與「值不值得單獨成一條流程」是兩件事：`PFCP_SEID` 不是訂戶
+        身分，但它是某個用戶的 PDU session，照樣要畫出來。那個判斷用
+        `is_flow_worthy()`。
+        """
+        return self.id_class is IdClass.SUBSCRIBER
+
+
+class IdClass(StrEnum):
+    """一把身分別名**指向什麼層級的東西**。
+
+    加這一層是被真實資料逼出來的。`5gc-e2e` 那份擷取檔跑出 **69 條流程，
+    其中 50 條是單則訊息的殘段** —— 因為每個 NF↔NF 的 SBI 交換都拿到自己的
+    `SBI_STREAM` key，於是各自成為一條「流程」。資料是對的，但一份報告
+    列出 69 個章節、50 個只有一行，讀的人會直接放棄。
+
+    分類的判準是：**這把 key 單獨存在時，足以構成一條值得單獨畫出來的流程嗎？**
+    """
+
+    SUBSCRIBER = "subscriber"
+    """指向一個人。SUPI、IMPU、MSISDN —— 也包含 NGAP 的 UE ID：
+    它們只在一條連線內唯一，但指的確實是某個 UE。"""
+
+    SESSION = "session"
+    """指向那個人的一段會話或連線。PFCP SEID 是某個用戶的 PDU session、
+    SIP Call-ID 是一通電話 —— **接不上 SUPI 不代表它是雜訊**，
+    只代表我們還沒有橋樑。這種流程要照樣畫出來。"""
+
+    EXCHANGE = "exchange"
+    """只把一次請求與它的回應配起來，不指向任何人或任何會話。
+    HTTP/2 stream id 是唯一的例子：一個 NF 打給另一個 NF 的單次呼叫。
+    **單獨存在時不足以構成一條流程。**"""
+
+
+#: 每個 `IdKind` 都必須在這裡分類。
+#: 漏掉會被 `tests/test_correlate_nf.py` 擋下來 —— 這是刻意的：
+#: 外掛作者新增 `IdKind` 時若不表態，預設值會替他做一個他沒想過的決定。
+ID_CLASSES: dict["IdKind", "IdClass"] = {
+    IdKind.SUPI: IdClass.SUBSCRIBER,
+    IdKind.IMPI: IdClass.SUBSCRIBER,
+    IdKind.IMPU: IdClass.SUBSCRIBER,
+    IdKind.MSISDN: IdClass.SUBSCRIBER,
+    IdKind.RAN_UE_NGAP_ID: IdClass.SUBSCRIBER,
+    IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
+    IdKind.PFCP_SEID: IdClass.SESSION,
+    IdKind.GTP_TEID: IdClass.SESSION,
+    IdKind.SIP_CALL_ID: IdClass.SESSION,
+    IdKind.DIAMETER_SESSION_ID: IdClass.SESSION,
+    IdKind.SBI_STREAM: IdClass.EXCHANGE,
+}
+
+
+def is_flow_worthy(kinds: "frozenset[IdKind] | set[IdKind]") -> bool:
+    """這組身分別名足以構成一條單獨的流程嗎？
+
+    只要有任何一把不是 `EXCHANGE`，就算數。全部都是 `EXCHANGE` 的話，
+    這組訊息是「某個 NF 打給另一個 NF 的一次呼叫」，該併進共用桶。
+    """
+    return any(ID_CLASSES[kind] is not IdClass.EXCHANGE for kind in kinds)
+
 
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。
 IdKey = tuple[IdKind, str]

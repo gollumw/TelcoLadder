@@ -13,9 +13,9 @@ import pytest
 
 from telcolens.adapters import parse_frame
 from telcolens.correlate import correlate
-from telcolens.identity import connection_scope, scoped
+from telcolens.identity import connection_scope, globally_unique, scoped
 from telcolens.extract import read_frames
-from telcolens.model import Endpoint, IdKind, Message
+from telcolens.model import ID_CLASSES, Endpoint, Flow, IdKind, Message, is_flow_worthy
 from telcolens.nf import UE_ROLE, apply_roles, resolve_roles
 from telcolens.tshark import TsharkNotFound, find_tshark
 
@@ -213,6 +213,87 @@ def test_shared_key_bridges_two_partial_identities():
     flows = correlate(msgs)
     assert len(flows) == 1
     assert len(flows[0].messages) == 3
+
+
+def test_every_id_kind_is_classified():
+    """新增 `IdKind` 卻不分類，要在這裡就被擋下來。
+
+    這是外掛契約的一部分：`docs/plugin-contract.md` 說「需要新的 IdKind
+    就加到 model.py 的 enum 裡」。若分類漏了而預設值替作者做決定，症狀是
+    某一類訊息悄悄被歸錯桶 —— 不報錯，只是圖不一樣。
+    """
+    unclassified = [k.name for k in IdKind if k not in ID_CLASSES]
+    assert not unclassified, f"這些 IdKind 沒有分類：{unclassified}"
+
+
+def test_exchange_only_group_does_not_become_its_own_flow():
+    """只有 EXCHANGE 類別的一組訊息不得自成流程。
+
+    真實案例：`5gc-e2e` 那份擷取檔裡每個 NF↔NF 的 SBI 呼叫都只帶
+    HTTP/2 stream id。讓它們各自成為流程的話，那份擷取檔會產出 **69 條
+    流程、其中 50 條只有一則訊息** —— 報告列出 69 個章節，讀的人直接放棄。
+    """
+    ep_a, ep_b = Endpoint("10.0.0.1"), Endpoint("10.0.0.2")
+    msgs = [
+        Message(frame=1, ts=0.0, protocol="sbi", src=ep_a, dst=ep_b, label="POST /nudm-sdm/v2/…",
+                identity_keys=frozenset({scoped(IdKind.SBI_STREAM, "a|b", 1)})),
+        Message(frame=2, ts=0.1, protocol="sbi", src=ep_b, dst=ep_a, label="200 OK",
+                identity_keys=frozenset({scoped(IdKind.SBI_STREAM, "a|b", 1)})),
+        Message(frame=3, ts=0.2, protocol="sbi", src=ep_a, dst=ep_b, label="POST /nausf-auth/…",
+                identity_keys=frozenset({scoped(IdKind.SBI_STREAM, "a|b", 3)})),
+    ]
+    flows = correlate(msgs)
+    assert len(flows) == 1, "兩串不同的 stream 應該一起降級進共用桶，而不是各自成流"
+    assert len(flows[0].messages) == 3, "降級不等於丟掉 —— 訊息一則都不能少"
+
+
+def test_exchange_key_still_bridges_into_a_subscriber_flow():
+    """**降級是在分組之後才判定的**，stream id 仍然是有效的橋樑。
+
+    順序若反過來（先把 EXCHANGE key 從 union-find 拿掉），帶 SUPI 的那則
+    訊息就接不回同一串交換 —— 而那正是 `5gc-e2e` 裡把 AUSF/UDM/UDR/PCF
+    拉進用戶流程的機制。這條守的就是那個順序。
+    """
+    ep_a, ep_b = Endpoint("10.0.0.1"), Endpoint("10.0.0.2")
+    stream = scoped(IdKind.SBI_STREAM, "a|b", 7)
+    msgs = [
+        Message(frame=1, ts=0.0, protocol="sbi", src=ep_a, dst=ep_b, label="帶 SUPI 的請求",
+                identity_keys=frozenset({stream, globally_unique(IdKind.SUPI, "001010000000001")})),
+        Message(frame=2, ts=0.1, protocol="sbi", src=ep_b, dst=ep_a, label="只有 stream 的回應",
+                identity_keys=frozenset({stream})),
+    ]
+    flows = correlate(msgs)
+    assert len(flows) == 1
+    assert len(flows[0].messages) == 2, "回應沒有被拉進用戶的流程"
+    assert flows[0].describe_identity().startswith("SUPI")
+
+
+def test_session_identifier_earns_its_own_flow_even_without_a_subscriber():
+    """接不上訂戶的 PFCP session 仍要單獨畫出來 —— 它不是雜訊。
+
+    SEID 指向某個用戶的 PDU session；我們只是還沒有橋樑把它接回 SUPI。
+    把它跟 NF↔NF 的呼叫一起降級會**丟掉一段真實的 N4 程序**。
+    """
+    ep_a, ep_b = Endpoint("10.0.0.1", role="SMF"), Endpoint("10.0.0.2", role="UPF")
+    seid = scoped(IdKind.PFCP_SEID, "a|b", 42)
+    msgs = [
+        Message(frame=1, ts=0.0, protocol="pfcp", src=ep_a, dst=ep_b,
+                label="Session Establishment Request", identity_keys=frozenset({seid})),
+        Message(frame=2, ts=0.1, protocol="pfcp", src=ep_b, dst=ep_a,
+                label="Session Establishment Response", identity_keys=frozenset({seid})),
+    ]
+    assert len(correlate(msgs)) == 1
+    assert len(correlate(msgs)[0].messages) == 2
+
+
+def test_subscriber_predicate_matches_the_classification():
+    """`is_subscriber` 是呈現層的公開介面，不得與內部分類漂移。"""
+    assert IdKind.SUPI.is_subscriber and IdKind.IMPU.is_subscriber
+    assert not IdKind.SBI_STREAM.is_subscriber
+    # PFCP SEID 不是訂戶身分，但**仍然值得單獨成流** —— 兩個判斷不同。
+    assert not IdKind.PFCP_SEID.is_subscriber
+    assert is_flow_worthy({IdKind.PFCP_SEID})
+    assert not is_flow_worthy({IdKind.SBI_STREAM})
 
 
 def test_messages_without_identity_are_kept_not_dropped():
