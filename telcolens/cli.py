@@ -13,6 +13,7 @@ from telcolens.causes import annotate
 from telcolens.correlate import correlate
 from telcolens.extract import ExtractError, read_frames
 from telcolens.nf import apply_roles
+from telcolens.render_html import render_report
 from telcolens.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
 from telcolens.tshark import TsharkNotFound, find_tshark
 
@@ -88,11 +89,24 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         flows, max_messages=args.max_messages, show_frames=not args.no_frames
     )
 
+    if args.html:
+        args.html.write_text(
+            render_report(
+                flows,
+                source_name=args.pcap.name,
+                ciphered=ciphered,
+                max_messages=args.max_messages,
+            ),
+            encoding="utf-8",
+        )
+        print(f"已寫入 {args.html}", file=sys.stderr)
+
     output = "\n".join(r.text for r in results)
     if args.output:
         args.output.write_text(output, encoding="utf-8")
         print(f"已寫入 {args.output}", file=sys.stderr)
-    else:
+    elif not args.html:
+        # 只要了 HTML 就不要再把圖倒進 stdout —— 那是雜訊，不是輸出。
         print(output, end="")
 
     # 摘要走 stderr，這樣 `telcolens analyze x.pcap > flow.mmd` 拿到的是乾淨的圖。
@@ -131,6 +145,11 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("pcap", type=Path, help="pcap / pcapng 檔")
     analyze.add_argument(
         "-o", "--output", type=Path, help="寫入檔案（預設印到 stdout）"
+    )
+    analyze.add_argument(
+        "--html", type=Path, metavar="檔案",
+        help="另外產生一份自包含的 HTML 報告（零外部請求、可離線開啟、可直接寄出）。"
+             "指定後不再把 Mermaid 倒進 stdout，除非同時給了 -o。",
     )
     analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,

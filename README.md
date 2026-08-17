@@ -49,6 +49,8 @@ cause code comes from.
   hop where the packets happened to be captured.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
+- **Exports two ways**: Mermaid for version control and GitHub, or a
+  self-contained HTML report you can hand to someone else.
 
 ## Install
 
@@ -80,14 +82,37 @@ setx TELCOLENS_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
 ## Usage
 
 ```bash
-telcolens analyze capture.pcapng                  # diagram to stdout
-telcolens analyze capture.pcapng -o flow.mmd      # write to a file
+telcolens analyze capture.pcapng                     # diagram to stdout
+telcolens analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
+telcolens analyze capture.pcapng --html report.html  # standalone HTML report
 telcolens analyze capture.pcapng --max-messages 80
-telcolens analyze capture.pcapng --no-frames      # drop packet numbers
+telcolens analyze capture.pcapng --no-frames         # drop packet numbers
 ```
 
 The diagram goes to stdout and the summary to stderr, so
 `telcolens analyze x.pcapng > flow.mmd` gives you a clean file.
+
+### The HTML report
+
+`--html` writes one file you can double-click, or attach to a ticket and send
+to a vendor. It draws its own SVG — colour-coded lanes, failures highlighted
+in place, hover a message for the packet detail, expand a failure for the
+plain-language explanation and the causes engineers actually hit in the field.
+
+It is **completely self-contained**: no CDN, no web fonts, no remote images,
+and **no JavaScript at all** (`<details>` for expanding, CSS for hover, SVG
+`<title>` for tooltips). It opens on an air-gapped machine and inside strict
+CSP. That is not a purity exercise — the whole point of this tool is that
+customer captures do not leave the building, and a report that phones home to
+a CDN tells an outside server that someone is looking at an analysis.
+
+Output is byte-for-byte reproducible: no generation timestamp, so two runs
+over the same capture diff cleanly.
+
+> A flow is only badged **正常 / normal** when nothing was hidden from us.
+> If the capture contains ciphered NAS, the badge reads **未見失敗 /
+> no failure seen** instead — because not seeing a failure is not the same
+> as there not being one.
 
 ## Honest limitations
 

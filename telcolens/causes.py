@@ -94,6 +94,12 @@ def annotate(messages: list) -> list:
         info = lookup(msg.cause)
         if info and info.plain:
             msg.detail["cause_plain"] = info.plain
+        if info and info.common_causes:
+            # detail 的型別是 dict[str, str]，所以用換行串起來由 renderer 拆。
+            # 讓 renderer 自己呼叫 lookup() 會比較直觀，但那會打破本檔開頭
+            # 那條「查表只在這裡發生」的規矩 —— 那條規矩是 AI 永遠碰不到
+            # 規範條號的結構性保證，不值得為了少一次 split 而鬆掉。
+            msg.detail["cause_common"] = "\n".join(info.common_causes)
     return messages
 
 
