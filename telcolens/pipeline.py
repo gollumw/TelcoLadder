@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from telcolens.adapters import default_decode_as, parse_frame
-from telcolens.adapters.nas5gs import count_ciphered
+from telcolens.adapters.nas5gs import count_ciphered, count_protected_suci
 from telcolens.causes import annotate
 from telcolens.correlate import correlate
 from telcolens.extract import read_frames
@@ -41,6 +41,18 @@ class Analysis:
     **這個數字一定要一路傳到最終呈現**，不能在中間被丟掉：它可能整個藏著
     一次失敗，而圖上會看起來一切正常（Rule 12）。`tests/fixtures/unknown-dnn`
     就是那個情況。
+    """
+
+    protected_suci: int = 0
+    """用 ECIES 保護、**原理上**拼不回 SUPI 的 SUCI 個數。
+
+    與 `ciphered` 是同一套 Rule 12 邏輯的兩半，但**處置不同**：
+    加密的 NAS 要對照核網日誌；ECIES 的 SUCI 是「IMSI 根本不在線上」，
+    使用者要改用 NGAP UE ID 搜尋。
+
+    少了這個數字，「這份擷取沒有這個 IMSI」與「這份擷取的 IMSI 取不出來」
+    在畫面上長得一模一樣 —— 前者代表使用者搜錯了，後者代表他再怎麼搜都
+    不會有結果。
     """
 
     @property
@@ -78,13 +90,15 @@ def analyse(
     rules = (*default_decode_as(), *decode_as)
     messages = []
     ciphered = 0
+    protected_suci = 0
     for frame in read_frames(pcap, decode_as=rules):
         messages.extend(parse_frame(frame))
         ciphered += count_ciphered(frame)
+        protected_suci += count_protected_suci(frame)
 
     apply_roles(messages, nas_from_ue=nas_from_ue)
     annotate(messages)
     flows = correlate(messages)
     if wire:
         flows = collapse(flows)
-    return Analysis(flows=flows, ciphered=ciphered)
+    return Analysis(flows=flows, ciphered=ciphered, protected_suci=protected_suci)

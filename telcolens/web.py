@@ -59,6 +59,8 @@ from telcolens.tshark import TsharkNotFound, find_tshark
 from telcolens.viewer import (
     CSP,
     decode_json,
+    identities_json,
+    select_identity,
     index_json,
     progress_json,
     static_body,
@@ -253,6 +255,19 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(decode_json(session, frame))
             except DecodeError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif not post and action == "identities":
+            self._send_json(identities_json(session, q=(query.get("q") or [""])[0]))
+        elif post and action == "select":
+            form = self._read_form()
+            ident = (form.get("identity") or [""])[0]
+            if ident == "":
+                with session.lock:
+                    session.keep_frames = None
+                    session.selected_identity = None
+                self._send_json({"matched": len(session.index.rows), "identity": None})
+                return
+            kind, _, raw = ident.partition(":")
+            self._send_json(select_identity(session, kind, raw))
         elif post and action == "refilter":
             self._handle_refilter(session)
         else:

@@ -143,6 +143,12 @@ class Session:
     progress: Progress = field(default_factory=Progress)
     decode: DecodeCache = field(default_factory=DecodeCache, repr=False)
 
+    analysis: object | None = field(default=None, repr=False)
+    """完整解剖的結果（`pipeline.Analysis`）。索引跑完後才開始跑，所以會有一段
+    時間是 None —— 封包清單那時已經可用，但身分還不行。**不要假裝已經有了。**"""
+
+    selected_identity: str | None = None
+
     display_filter: str = ""
     """目前套用的 tshark display filter（空字串 = 全部封包）。"""
 
@@ -349,6 +355,18 @@ def _index_into(session: Session) -> None:
         session.index.truncated = truncated
         session.progress.indexed = len(rows)
         session.progress.truncated = truncated
+        session.progress.stage = "analyse"
+
+    # 第二階段：完整解剖，身分與（階段 5 的）梯形圖靠它。
+    #
+    # **循序而非併行。** 兩個 tshark 同時解剖同一份大檔會讓 I/O 與 CPU 雙倍，
+    # 而且會讓使用者**正在看的那個東西**（封包清單）變慢。實測 436 MB 上
+    # 索引 50.9 秒、解剖 71.6 秒，併行不會比循序快多少卻會拖慢前者。
+    from telcolens.pipeline import analyse
+
+    result = analyse(session.pcap, decode_as=session.decode_as, wire=session.wire)
+    with session.lock:
+        session.analysis = result
         session.progress.stage = "done"
         session.progress.finished = time.monotonic()
 

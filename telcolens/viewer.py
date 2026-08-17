@@ -23,8 +23,15 @@ from __future__ import annotations
 from importlib import resources
 
 from telcolens.decode import decode_frames, window_around
+from telcolens.identities import (
+    availability,
+    frames_for,
+    lookup,
+    no_result_explanation,
+)
 from telcolens.packets import COLUMN_TITLES
 from telcolens.render_html import PAGE_CSS, esc
+from telcolens.model import IdKind
 from telcolens.session import Session
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -148,6 +155,55 @@ def decode_json(session: Session, frame: int) -> dict:
     return {"frame": frame, "tree": [n.to_json() for n in cached]}
 
 
+def identities_json(session: Session, *, q: str = "") -> dict:
+    """左欄的資料：有哪些身分、哪些取不到、為什麼。
+
+    `analysis` 還沒跑完時回 `ready: false` —— 封包清單先可用，
+    身分要等完整解剖（實測 436 MB 要 71.6 秒）。**不要假裝已經有答案。**
+    """
+    with session.lock:
+        analysis = session.analysis
+    if analysis is None:
+        return {"ready": False, "groups": [], "ciphered": 0, "protected_suci": 0}
+
+    payload = {
+        "ready": True,
+        "groups": availability(analysis),
+        "ciphered": analysis.ciphered,
+        "protected_suci": analysis.protected_suci,
+    }
+    if q:
+        hits = lookup(analysis, q)
+        payload["matches"] = [h.to_json() for h in hits]
+        # 查無結果時**說出原因**。三種原因的處置完全不同，
+        # 混成一句「找不到」就是這個模組存在的理由被抹掉。
+        payload["explanation"] = None if hits else no_result_explanation(analysis, q)
+    return payload
+
+
+def select_identity(session: Session, kind_value: str, raw: str) -> dict:
+    """選一個身分：把封包清單縮到那個人碰過的 frame。
+
+    這是「輸入 IMSI → 看那個人的流程」的前半。梯形圖是階段 5。
+    """
+    with session.lock:
+        analysis = session.analysis
+    if analysis is None:
+        return {"error": "完整解剖還沒跑完，身分資訊尚未可用。"}
+    try:
+        kind = IdKind(kind_value)
+    except ValueError:
+        return {"error": f"未知的身分類別：{kind_value}"}
+
+    frames = frames_for(analysis, kind, raw)
+    if not frames:
+        return {"error": f"這個身分沒有對應的封包：{raw}"}
+    with session.lock:
+        session.keep_frames = set(frames)
+        session.selected_identity = f"{kind_value}:{raw}"
+    return {"matched": len(frames), "identity": f"{kind_value}:{raw}"}
+
+
 def viewer_page(session: Session, *, idle_ttl: float) -> str:
     """檢視器的外殼。
 
@@ -204,6 +260,17 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
 </div>
 <main class="vmain">
   <p class="held-note">{held}</p>
+  <div class="panes">
+  <aside class="rail" id="rail">
+    <div class="railhead">訂戶 / 身分</div>
+    <label class="railsearch">
+      <span>IMSI / SUPI（可只打後幾碼）</span>
+      <input type="search" id="idq" placeholder="001011234567895" autocomplete="off">
+    </label>
+    <p class="railnote" id="railnote">完整解剖進行中……</p>
+    <div class="railbody" id="railbody"></div>
+  </aside>
+  <div class="mainpane">
   <div class="gridwrap">
     <div class="gridhead" id="gridhead"></div>
     <div class="gridscroll" id="gridscroll" tabindex="0">
@@ -218,7 +285,9 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
     </div>
     <div class="decodetree" id="decodetree"></div>
   </div>
-  <p class="stage-note" id="stage-note">身分搜尋與呼叫流程圖 —— 階段 4、5。</p>
+  </div>
+  </div>
+  <p class="stage-note" id="stage-note">呼叫流程圖（node-by-node 梯形圖）—— 階段 5。</p>
 </main>
 <script src="/static/viewer.js" data-sid="{esc(session.sid)}"></script>
 </body></html>

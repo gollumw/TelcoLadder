@@ -57,7 +57,10 @@
     dfError: document.getElementById("df-error"),
     tree: document.getElementById("decodetree"),
     treeTitle: document.getElementById("decode-title"),
-    treeHint: document.getElementById("decode-hint")
+    treeHint: document.getElementById("decode-hint"),
+    rail: document.getElementById("railbody"),
+    railNote: document.getElementById("railnote"),
+    idq: document.getElementById("idq")
   };
 
   var COLS = ["No.", "Time", "Source", "Destination", "Protocol", "Length", "Info"];
@@ -189,7 +192,11 @@
         renderStatus();
         // 索引還在跑時，已知列數會長 —— 重抓當前頁讓畫面跟上。
         if (!state.done || !wasDone) { state.rows = {}; state.pending = {}; fetchPage(0); }
-        if (!state.done) setTimeout(poll, 500);
+        if (!state.done) {
+          setTimeout(poll, 500);
+        } else {
+          loadRail();   // 完整解剖跑完了，身分才有東西可列
+        }
       })
       .catch(function () { setTimeout(poll, 2000); });
   }
@@ -231,6 +238,168 @@
   }
 
   el.scroll.addEventListener("scroll", draw);
+  // ── 左欄：訂戶 / 身分 ──────────────────────────────────────
+  //
+  // 三種「查無結果」的原因由**伺服器**給文案（`identities.py`）——
+  // 前端不自己組那句話。原因是它們的處置完全不同（看清單 / 換 NGAP ID /
+  // 等 adapter），而把那個判斷放兩份一定會漂移成一句籠統的「找不到」。
+
+  function railGroup(group) {
+    var box = document.createElement("div");
+    box.className = "railgroup" + (group.implemented ? "" : " unavailable");
+
+    var head = document.createElement("div");
+    head.className = "railgrouphead";
+    head.textContent = group.label;
+    box.appendChild(head);
+
+    if (!group.implemented) {
+      var why = document.createElement("div");
+      why.className = "railwhy";
+      why.textContent = group.reason || "尚未實作";
+      box.appendChild(why);
+      return box;
+    }
+
+    // 傳輸層的身分（SBI stream 之類）可能有上百個 —— 全列出來會把訂戶
+    // 擠出視線。截斷但**講出總數**，不要靜默只顯示前幾個。
+    var cap = group.is_subscriber ? 200 : 8;
+    var shown = group.values.slice(0, cap);
+    for (var i = 0; i < shown.length; i++) {
+      box.appendChild(railValue(group, shown[i]));
+    }
+    if (group.values.length > shown.length) {
+      var more = document.createElement("div");
+      more.className = "railwhy";
+      more.textContent = "另有 " + (group.values.length - shown.length) +
+        " 個未列出（傳輸層識別碼，不是訂戶）";
+      box.appendChild(more);
+    }
+    return box;
+  }
+
+  function railValue(group, hit) {
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "railitem";
+    if (state.selectedIdentity === group.kind + ":" + hit.raw) {
+      row.className += " sel";
+    }
+
+    var main = document.createElement("span");
+    main.className = "railvalue";
+    main.textContent = hit.value;
+    row.appendChild(main);
+
+    var meta = document.createElement("span");
+    meta.className = "railmeta";
+    var bits = hit.messages + " 則";
+    if (hit.flows > 1) bits += " · " + hit.flows + " 條流程";
+    if (hit.failures) bits += " · ⚠ " + hit.failures + " 失敗";
+    meta.textContent = bits;
+    row.appendChild(meta);
+
+    // 範圍前綴必須看得見 —— 兩個 gNB 都會配出 ID 1，只顯示裸「1」
+    // 等於把 identity.py 的 scoped() 防住的碰撞重新引進來。
+    if (hit.scope) {
+      var scope = document.createElement("span");
+      scope.className = "railscope";
+      scope.textContent = hit.scope;
+      row.appendChild(scope);
+    }
+    if (hit.failures) row.className += " fail";
+
+    row.addEventListener("click", function () {
+      var id = group.kind + ":" + hit.raw;
+      selectIdentity(state.selectedIdentity === id ? "" : id);
+    });
+    return row;
+  }
+
+  function selectIdentity(identity) {
+    fetch("/api/" + state.sid + "/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "identity=" + encodeURIComponent(identity)
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) { el.railNote.textContent = j.error; return; }
+      state.selectedIdentity = j.identity;
+      el.railNote.textContent = j.identity
+        ? "已篩到這個身分的 " + j.matched + " 個封包（再點一次取消）"
+        : "";
+      loadRail();
+      reset();
+    });
+  }
+
+  // 每次請求帶一個序號，回來時若已經不是最新的就丟掉。
+  //
+  // 沒有這個守衛時：使用者打字很快 → 送出 q="999" 與 q="" 兩個請求，
+  // 誰先回來不保證。慢的那個後到就會把畫面蓋回舊狀態 ——
+  // 症狀是「清空搜尋框之後，那句『沒有符合 999』又跳回來」。
+  // 解碼窗那邊用的是同一招（`j.frame !== state.selectedFrame` 就丟掉）。
+  var railSeq = 0;
+
+  function loadRail() {
+    var q = el.idq ? el.idq.value.trim() : "";
+    var seq = ++railSeq;
+    fetch("/api/" + state.sid + "/identities" + (q ? "?q=" + encodeURIComponent(q) : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (seq !== railSeq) return;   // 已經有更新的請求了，這個作廢
+        if (!j.ready) {
+          el.railNote.textContent = "完整解剖進行中…… 身分要等它跑完";
+          return;
+        }
+        el.rail.textContent = "";
+        // 說明列每次都要重算。只在「有東西可講」時才覆寫的話，清空搜尋框
+        // 之後那句「沒有符合『x』的身分」會留在畫面上 —— 而使用者已經
+        // 不在搜尋了，那句話變成假的。
+        if (q && j.explanation) {
+          // 伺服器算出來的原因，原樣顯示（三種原因的處置不同，前端不重寫）。
+          el.railNote.textContent = j.explanation;
+        } else if (state.selectedIdentity) {
+          el.railNote.textContent = "已篩到這個身分的封包（再點一次取消）";
+        } else {
+          var warn = [];
+          if (j.protected_suci) {
+            warn.push("⚠ " + j.protected_suci +
+              " 個 SUCI 用 ECIES 保護，那些用戶的 IMSI 原理上取不出來");
+          }
+          if (j.ciphered) warn.push("⚠ " + j.ciphered + " 則 NAS 已加密");
+          el.railNote.textContent = warn.join("　");
+        }
+        var groups = j.matches
+          ? [{ label: "搜尋結果", implemented: true, is_subscriber: true,
+               kind: null, values: j.matches }]
+          : j.groups;
+        for (var i = 0; i < groups.length; i++) {
+          // 搜尋結果的 kind 在每個 hit 上，不在 group 上。
+          var g = groups[i];
+          if (g.kind === null && g.values.length) {
+            for (var k = 0; k < g.values.length; k++) {
+              el.rail.appendChild(railValue({ kind: g.values[k].kind, is_subscriber: true },
+                                            g.values[k]));
+            }
+            continue;
+          }
+          el.rail.appendChild(railGroup(g));
+        }
+      })
+      .catch(function (e) {
+        if (seq !== railSeq) return;
+        el.railNote.textContent = "取身分清單失敗：" + e;
+      });
+  }
+
+  var idqTimer = null;
+  if (el.idq) {
+    el.idq.addEventListener("input", function () {
+      clearTimeout(idqTimer);
+      idqTimer = setTimeout(loadRail, 200);
+    });
+  }
+
   // ── 解碼窗 ──────────────────────────────────────────────────
   //
   // 一律 textContent 建節點。這棵樹的每一行字都是 tshark 從**客戶封包**

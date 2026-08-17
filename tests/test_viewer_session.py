@@ -48,6 +48,8 @@ VIEWER_ROUTES = [
     ("GET", "/api/whatever/progress"),
     ("GET", "/api/whatever/index"),
     ("GET", "/api/whatever/decode"),
+    ("GET", "/api/whatever/identities"),
+    ("POST", "/api/whatever/select"),
     ("POST", "/api/whatever/refilter"),
 ]
 

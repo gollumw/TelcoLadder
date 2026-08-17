@@ -193,6 +193,38 @@ def count_ciphered(frame: Frame) -> int:
     return ciphered
 
 
+def count_protected_suci(frame: Frame) -> int:
+    """這一格裡有幾個 SUCI 是**原理上**拼不回 SUPI 的。
+
+    這與 `count_ciphered` 是同一個概念的兩半：「看得到協定層，但讀不到內容」。
+    差別在原因，而**原因決定使用者該做什麼**：
+
+    - `ciphered`：Security Mode Command 之後 NAS 全程加密 → 要對照核網日誌
+    - `protected_suci`：SUCI 用了 ECIES 保護（scheme_id ≠ 0），
+      MSIN 根本不在封包裡 → **改用 NGAP UE ID 搜尋**，因為 IMSI 不存在於線上
+
+    為什麼要數它：沒有這個計數，「這份擷取裡找不到你要的 IMSI」與
+    「這份擷取的 IMSI 在密碼學上取不出來」在畫面上長得一模一樣 ——
+    而前者代表使用者搜錯了，後者代表他再怎麼搜都不會有結果。
+    把兩者混在一起就是本專案最痛恨的那種靜默失敗（CLAUDE.md §4）。
+
+    判準刻意複用 `_supi_from_suci()`：有 SUCI 的痕跡、而它拼不出 SUPI。
+    自己另寫一套「什麼算 ECIES」的判斷會跟它漂移，而漂移的症狀是
+    計數與實際能不能搜到不一致。
+    """
+    protected = 0
+    for block, _carrier in _nas_blocks(frame):
+        # SUCI 存在的痕跡。scheme_id 是 0 也算「有 SUCI」——
+        # 它是不是 null-scheme 由 `_supi_from_suci` 判斷，不在這裡重複一次。
+        has_suci = (
+            block.get("nas-5gs_nas-5gs_mm_suci_scheme_id") is not None
+            or block.get("nas-5gs_nas-5gs_mm_suci_supi_fmt") is not None
+        )
+        if has_suci and _supi_from_suci(block) is None:
+            protected += 1
+    return protected
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
     scope = association_scope(frame)
