@@ -57,13 +57,15 @@ def analyse(
     *,
     decode_as: Sequence[str] = (),
     nas_from_ue: bool = True,
-    wire: bool = False,
+    wire: bool = True,
 ) -> Analysis:
     """跑完整條管線。
 
-    `wire=True` 啟用 wire view：一格封包一列，載體與載荷堆疊（見
-    `telcolens/wireview.py`）。它會強制 `nas_from_ue=False` —— 載荷必須
-    畫在載體的實際端點上才有得合併，這不是可以分開調的兩個旋鈕。
+    **`wire` 預設開啟**（2026-08-17 起）：一格封包一列，載體與載荷堆疊
+    （見 `telcolens/wireview.py`）。它會強制 `nas_from_ue=False` ——
+    載荷必須畫在載體的實際端點上才有得合併，這不是可以分開調的兩個旋鈕。
+
+    `wire=False` 回到流程視圖：一則訊息一列，NAS 依協定語意畫在 UE↔AMF。
 
     例外一律往上拋（`ExtractError` / `TsharkNotFound`）—— 這一層不知道
     呼叫端是 CLI 還是 HTTP，把錯誤翻譯成人話是呼叫端的責任。

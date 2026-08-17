@@ -12,19 +12,27 @@ telcolens analyze failed_attach.pcapng
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UE
     participant gNB
     participant AMF
-    Note over gNB,AMF: SUPI 001010000000001
-    gNB->>AMF: #35;86 InitialUEMessage
-    UE->>AMF: #35;86 Registration request
-    AMF->>UE: #35;93 Authentication request
-    UE->>AMF: #35;94 Authentication response
+    Note over gNB,AMF: SUPI 001011234567895
+    gNB->>AMF: #35;7 InitialUEMessage ▸ Registration request
+    AMF->>gNB: #35;8 DownlinkNASTransport ▸ Authentication request
     rect rgb(255, 226, 226)
-    AMF->>UE: #35;97 Authentication reject
-    Note over UE: MAC failure (#35;20) — 3GPP TS 24.501 §9.11.3.2
+    gNB->>AMF: #35;9 UplinkNASTransport ▸ Authentication failure
+    Note over AMF: Synch failure (#35;21) — 3GPP TS 24.501 §9.11.3.2
+    end
+    rect rgb(255, 226, 226)
+    AMF->>gNB: #35;10 DownlinkNASTransport ▸ Registration reject
+    Note over gNB: Protocol error, unspecified (#35;111) — 3GPP TS 24.501 §9.11.3.2
     end
 ```
+
+That is real output from `tests/fixtures/ki-mismatch`, not an illustration —
+a UE provisioned with the wrong key, captured on a local Open5GS testbed. Note
+that it is **not** the MAC failure you would expect: a UE whose K does not match
+computes an AUTS the network cannot resynchronise from, so you get `#21` and
+then a bare `#111`. The cause table says so because we ran it, not because it
+sounded right.
 
 Reading a 5G call flow in the Wireshark GUI means scrolling packet by packet,
 and every unfamiliar cause code sends you back to the specs. TelcoLens turns the
@@ -44,9 +52,14 @@ cause code comes from.
   rather than guessing.
 - **Correlates one subscriber** across identifiers: SUPI (recovered from a
   null-scheme SUCI), RAN/AMF UE NGAP IDs, HTTP/2 stream IDs.
-- **Draws NAS from the UE.** NAS is a UE↔AMF protocol that the gNB relays
-  transparently, so that is where the arrows go — not squeezed onto the gNB↔AMF
-  hop where the packets happened to be captured.
+- **One row per packet by default**, with the carrier and its payload stacked
+  on the same line (`DownlinkNASTransport ▸ Authentication request`). Pass
+  `--flow` to spread them out and draw NAS UE↔AMF instead — NAS is a UE↔AMF
+  protocol that the gNB only relays, and seeing it that way is easier when you
+  are learning a procedure rather than scanning one.
+- **Times every gap.** The gutter carries the absolute timestamp *and* the
+  delta from the row above, with second-long gaps highlighted — signalling runs
+  on millisecond rhythms, so a hole that big is a timer waiting.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
 - **Exports two ways**: Mermaid for version control and GitHub, or a
@@ -85,7 +98,7 @@ setx TELCOLENS_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
 telcolens analyze capture.pcapng                     # diagram to stdout
 telcolens analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
 telcolens analyze capture.pcapng --html report.html  # standalone HTML report
-telcolens analyze capture.pcapng --wire              # one row per packet
+telcolens analyze capture.pcapng --flow              # one row per message
 telcolens analyze capture.pcapng --max-messages 80
 telcolens analyze capture.pcapng --no-frames         # drop packet numbers
 ```
@@ -112,15 +125,15 @@ over the same capture diff cleanly.
 
 ### Two views
 
-By default a captured NGAP frame carrying a NAS message draws **two** arrows,
-and the NAS one is drawn UE↔AMF because that is who is actually talking. It
-reads like a call flow, which is the point.
+**The default is the wire view**: one row per packet, carrier and payload
+stacked on the same line, protocol stack labelled. It is what you want when you
+look at captures all day and already know the procedures — a whole registration
+fits on one screen.
 
-`--wire` gives you the other thing: **one row per packet**, carrier and payload
-stacked on the same line (`DownlinkNASTransport ▸ Authentication request`) with
-the protocol stack labelled. That is the density you want when you look at
-captures all day and already know the procedures. The default is unchanged —
-`--wire` is a switch, not a new default.
+`--flow` gives you the other one: a captured NGAP frame carrying a NAS message
+becomes **two** arrows, and the NAS one is drawn UE↔AMF because that is who is
+actually talking. Looser, but it reads like a call flow, which is easier when
+you are trying to understand a procedure rather than scan for the break.
 
 Either way the gutter carries both the absolute timestamp (to find the packet
 again in Wireshark) and the **delta from the previous row**. Gaps past one

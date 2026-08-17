@@ -40,7 +40,7 @@ def _require_tshark():
 
 def test_wire_view_has_one_row_per_frame():
     """同一條流程內，一格 frame 只能出現一列。"""
-    result = analyse(KI_MISMATCH, wire=True)
+    result = analyse(KI_MISMATCH)
     for flow in result.flows:
         frames = [m.frame for m in flow.messages]
         assert len(frames) == len(set(frames)), f"frame 重複：{frames}"
@@ -52,7 +52,7 @@ def test_wire_row_count_matches_packet_count():
     多了代表沒合併乾淨，**少了代表整格封包無聲消失** —— 後者正是這類
     工具最致命的失敗模式。
     """
-    result = analyse(KI_MISMATCH, wire=True)
+    result = analyse(KI_MISMATCH)
     rows = sum(len(f.messages) for f in result.flows)
     packets = sum(1 for _ in read_frames(KI_MISMATCH))
     assert rows == packets
@@ -60,7 +60,7 @@ def test_wire_row_count_matches_packet_count():
 
 def test_carrier_and_payload_share_a_row():
     """載體與載荷要堆在同一列，標籤兩段都在，協定堆疊完整。"""
-    result = analyse(KI_MISMATCH, wire=True)
+    result = analyse(KI_MISMATCH)
     all_messages = [m for f in result.flows for m in f.messages]
     reject = next(m for m in all_messages if "Registration reject" in m.label)
     assert "DownlinkNASTransport" in reject.label, "載體的名字被弄丟了"
@@ -69,7 +69,7 @@ def test_carrier_and_payload_share_a_row():
 
 def test_failure_and_cause_survive_the_collapse():
     """被壓進載體那列的失敗必須還是失敗，cause 條號原樣保留。"""
-    result = analyse(KI_MISMATCH, wire=True)
+    result = analyse(KI_MISMATCH)
     all_messages = [m for f in result.flows for m in f.messages]
     causes = [m.cause.value for m in all_messages if m.cause is not None and m.is_failure]
     assert causes == [21, 111], "ki-mismatch 的特徵（#21 緊接 #111）在 wire view 裡消失了"
@@ -77,11 +77,34 @@ def test_failure_and_cause_survive_the_collapse():
     assert "cause_note" in reject.detail, "cause 的條號說明沒跟過來"
 
 
-def test_default_view_is_untouched():
-    """預設視圖一列不併 —— wire 是選項，不是新預設（決策）。"""
-    result = analyse(KI_MISMATCH)
+def test_flow_view_is_still_reachable_and_uncollapsed():
+    """流程視圖沒有消失，只是不再是預設（決策，2026-08-17）。
+
+    `wire=False` 必須拿回一則訊息一列 —— 同一格的載體與載荷各自成列，
+    所以 frame 編號會重複。這條同時守住「翻預設沒有把另一個視圖弄丟」。
+    """
+    result = analyse(KI_MISMATCH, wire=False)
     frames = [m.frame for f in result.flows for m in f.messages]
-    assert len(frames) > len(set(frames)), "預設視圖也被合併了 —— 這改變了既有輸出"
+    assert len(frames) > len(set(frames)), "流程視圖也被合併了 —— wire=False 沒生效"
+
+
+def test_flow_view_draws_nas_from_the_ue():
+    """流程視圖的差異化在這裡：NAS 依協定語意畫在 UE↔AMF。
+
+    線路視圖刻意不這樣做（載荷要畫在載體的實際端點上才有得合併），
+    所以這條也順帶釘住「兩個視圖真的不一樣」。
+    """
+    flow_view = analyse(KI_MISMATCH, wire=False)
+    assert any(
+        "UE" in (m.src.role or "", m.dst.role or "")
+        for f in flow_view.flows for m in f.messages
+    ), "流程視圖裡找不到 UE 泳道"
+
+    wire_view = analyse(KI_MISMATCH)
+    assert not any(
+        "UE" in (m.src.role or "", m.dst.role or "")
+        for f in wire_view.flows for m in f.messages
+    ), "線路視圖不該有 UE 泳道 —— 它畫的是實際封包端點"
 
 
 # ── 合成情境：cause 取捨方向 ──────────────────────────────────────────
@@ -147,6 +170,6 @@ def test_normal_gap_is_not_flagged():
 
 def test_wire_report_shows_the_protocol_stack():
     """wire view 的列上要看得到協定堆疊（「NGAP,NAS-5GS」）。"""
-    result = analyse(KI_MISMATCH, wire=True)
+    result = analyse(KI_MISMATCH)
     html = render_report(result.flows, source_name="x.pcap", ciphered=result.ciphered)
     assert "NGAP,NAS-5GS" in html

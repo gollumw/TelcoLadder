@@ -112,7 +112,7 @@ class _Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length).decode("utf-8", "replace")
         form = parse_qs(body)
         raw = (form.get("path") or [""])[0].strip()
-        wire = (form.get("wire") or [""])[0] == "1"
+        wire = (form.get("flow") or [""])[0] != "1"
 
         # 從檔案總管拖到輸入框常常會帶上引號，直接吃掉而不是叫使用者自己修。
         raw = raw.strip("'\"")
@@ -169,7 +169,7 @@ class _Handler(BaseHTTPRequestHandler):
             if remaining > 0:
                 self._send_html(_error_page("上傳中斷，檔案不完整。"), HTTPStatus.BAD_REQUEST)
                 return
-            wire = (parse_qs(urlsplit(self.path).query).get("wire") or [""])[0] == "1"
+            wire = (parse_qs(urlsplit(self.path).query).get("flow") or [""])[0] != "1"
             self._analyse_and_respond(tmp, name, wire=wire)
         finally:
             # **一定要刪。** 這是客戶的封包，不是我們的東西 —— 分析失敗、
@@ -329,8 +329,8 @@ def _home_page() -> str:
 <form class="path" method="post" action="/analyze">
   <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="擷取檔路徑">
   <button type="submit">分析</button>
-  <label class="opt"><input type="checkbox" name="wire" id="wire" value="1">
-    wire view —— 一格封包一列（載體＋載荷同列，密度高）</label>
+  <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
+    流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）</label>
 </form>
 <p class="hint">
   <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——
@@ -355,8 +355,8 @@ def _home_page() -> str:
   function send(f) {{
     if (!f) return;
     spin.classList.add('on');
-    var wire = document.getElementById('wire');
-    fetch('/upload' + (wire && wire.checked ? '?wire=1' : ''), {{
+    var flow = document.getElementById('flow');
+    fetch('/upload' + (flow && flow.checked ? '?flow=1' : ''), {{
       method: 'POST',
       headers: {{ 'X-TelcoLens-Filename': encodeURIComponent(f.name) }},
       body: f

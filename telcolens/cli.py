@@ -60,12 +60,20 @@ def _missing_dissectors(tshark) -> list[str]:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
+    if args.no_ue_lifeline and not args.flow:
+        # 靜默忽略一個使用者明確給的旗標是不可以的（Rule 12）——
+        # 線路視圖本來就把 NAS 畫在實際封包端點上，這個旗標無事可做。
+        print(
+            "註：--no-ue-lifeline 在預設的線路視圖下沒有作用"
+            "（NAS 本來就畫在實際封包端點上）。它是給 --flow 用的。",
+            file=sys.stderr,
+        )
     try:
         result = analyse(
             args.pcap,
             decode_as=args.decode_as or (),
             nas_from_ue=not args.no_ue_lifeline,
-            wire=args.wire,
+            wire=not args.flow,
         )
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
@@ -166,15 +174,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-frames", action="store_true", help="不在箭頭上標封包編號"
     )
     analyze.add_argument(
-        "--no-ue-lifeline", action="store_true",
-        help="NAS 照封包畫在 gNB↔AMF，而非依協定語意畫成 UE↔AMF",
+        "--flow", action="store_true",
+        help="流程視圖：一則訊息一列，NAS 依協定語意畫在 UE↔AMF。"
+             "比預設的線路視圖鬆，但看得出「這段程序在做什麼」。"
+             "預設是線路視圖 —— 一格封包一列，載體與載荷堆疊在同一列。",
     )
     analyze.add_argument(
-        "--wire", action="store_true",
-        help="wire view：一格封包一列，載體與載荷堆疊在同一列上"
-             "（如「DownlinkNASTransport ▸ Authentication request」）。"
-             "密度比照商用 probe 的 ladder view；天天看包的人要的是這個。"
-             "隱含 --no-ue-lifeline。",
+        "--no-ue-lifeline", action="store_true",
+        help="（僅配合 --flow）NAS 照封包畫在 gNB↔AMF，而非畫成 UE↔AMF",
     )
     analyze.set_defaults(func=_cmd_analyze)
 
