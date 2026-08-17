@@ -33,6 +33,7 @@ multipart 解析器約 80 行、且是容易寫錯的那種程式碼。所以兩
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import time
@@ -45,7 +46,14 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import PAGE_CSS, esc, render_report
+from telcolens.session import (
+    IDLE_TTL,
+    SessionStore,
+    make_session_file,
+    sweep_stray_files,
+)
 from telcolens.tshark import TsharkNotFound, find_tshark
+from telcolens.viewer import CSP, static_body, viewer_page
 
 DEFAULT_PORT = 3005
 DEFAULT_HOST = "127.0.0.1"
@@ -109,39 +117,195 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ── 路由 ──────────────────────────────────────────────────────
 
+    # 每一條路由 —— GET 與 POST 都算 —— 第一件事都是 `_rejected_by_origin_checks()`。
+    # 新增路由時忘記這件事，那條路由就是沒有守衛的；
+    # `test_every_route_enforces_host_and_origin` 會把整張路由表跑一遍抓這件事。
+
     def do_GET(self) -> None:  # noqa: N802 —— BaseHTTPRequestHandler 的命名慣例
         if self._rejected_by_origin_checks():
             return
-        if urlsplit(self.path).path != "/":
+        route = urlsplit(self.path).path
+        if route == "/":
+            self._send_html(_home_page())
+        elif route.startswith("/static/") and self._viewer_enabled():
+            self._send_static(route[len("/static/"):])
+        elif route.startswith("/v/") and self._viewer_enabled():
+            self._send_viewer(route[len("/v/"):])
+        else:
             self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
-            return
-        self._send_html(_home_page())
 
     def do_POST(self) -> None:  # noqa: N802
         if self._rejected_by_origin_checks():
             return
         route = urlsplit(self.path).path
+        # `/analyze` 與 `/upload` 是既有的靜態報告路徑 —— 逐位元組等於 `--html`，
+        # 由 test_web_output_is_identical_to_the_html_export 守著。**不要動它們。**
         if route == "/analyze":
             self._handle_path_form()
         elif route == "/upload":
             self._handle_upload()
+        elif route == "/open" and self._viewer_enabled():
+            self._handle_open()
+        elif route == "/open-upload" and self._viewer_enabled():
+            self._handle_open_upload()
+        elif route == "/release" and self._viewer_enabled():
+            self._handle_release()
         else:
             self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
 
+    # ── 互動檢視器 ────────────────────────────────────────────────
+
+    def _viewer_enabled(self) -> bool:
+        return getattr(self.server, "store", None) is not None
+
+    @property
+    def _store(self) -> SessionStore:
+        return self.server.store  # type: ignore[attr-defined]
+
+    def _send_static(self, name: str) -> None:
+        """提供靜態資產。**白名單查表，不做路徑拼接。**
+
+        於是 `/static/../../etc/passwd` 不是「被擋下來」，而是查不到那個 key
+        —— 路徑穿越在結構上不可能，不是靠一條檢查。
+        """
+        found = static_body(name)
+        if found is None:
+            self._send_html(_error_page("找不到這個資源。"), HTTPStatus.NOT_FOUND)
+            return
+        payload, content_type = found
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        # 不快取：這是本機工具，改了程式重整就要看到新的。
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_viewer(self, sid: str) -> None:
+        session = self._store.get(sid)
+        if session is None:
+            # 過期是正常的（閒置逾時就是這樣），所以給人話而不是 traceback。
+            self._send_html(
+                _error_page(
+                    "此工作階段已過期或已釋放。",
+                    hint="回首頁重新開啟擷取檔即可。上傳的複本會在閒置逾時後自動刪除。",
+                ),
+                HTTPStatus.NOT_FOUND,
+            )
+            return
+        body = viewer_page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Cache-Control", "no-store")
+        # 讓「零外部請求」變成瀏覽器強制的，而不只是我們自律。
+        self.send_header("Content-Security-Policy", CSP)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_open(self) -> None:
+        """貼路徑開檢視器。**零複製** —— 那是使用者自己的檔案。
+
+        普通的 `<form>`，關掉 JS 照樣能用。
+        """
+        form = self._read_form()
+        wire = (form.get("flow") or [""])[0] != "1"
+        pcap = self._pcap_from_form(form)
+        if pcap is None:
+            return
+        session = self._store.create(pcap, pcap.name, owns_file=False, wire=wire)
+        self._send_redirect(f"/v/{session.sid}")
+
+    def _handle_open_upload(self) -> None:
+        """上傳開檢視器。檔案會**留下來**直到釋放或閒置逾時。
+
+        這是與 `/upload` 唯一的實質差別，也是整個檢視器的代價：
+        drill-down 要跨請求讀同一份檔，做不到「分析完就刪」。
+        契約寫在 `session.py` 的檔頭。
+        """
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            self._send_json({"error": "沒有收到檔案內容。"}, HTTPStatus.BAD_REQUEST)
+            return
+        if length > MAX_UPLOAD_BYTES:
+            self._send_json(
+                {"error": f"檔案超過 {MAX_UPLOAD_BYTES >> 20} MB 的上傳上限。"
+                          "改用「貼上路徑」——不搬檔、不落地。"},
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+            return
+
+        raw_name = unquote(self.headers.get("X-TelcoLens-Filename") or "")
+        name = Path(raw_name).name or "capture.pcap"
+        wire = (parse_qs(urlsplit(self.path).query).get("flow") or [""])[0] != "1"
+
+        fd, tmp = make_session_file()
+        ok = False
+        try:
+            remaining = length
+            with os.fdopen(fd, "wb") as out:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(_CHUNK, remaining))
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    remaining -= len(chunk)
+            ok = remaining == 0
+        finally:
+            if not ok:
+                # 上傳中斷 —— 半份客戶封包沒有留下的理由。
+                _remove_upload(tmp)
+        if not ok:
+            self._send_json({"error": "上傳中斷，檔案不完整。"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        session = self._store.create(tmp, name, owns_file=True, wire=wire)
+        self._send_json({"sid": session.sid, "name": name, "url": f"/v/{session.sid}"})
+
+    def _handle_release(self) -> None:
+        form = self._read_form()
+        sid = (form.get("sid") or [""])[0]
+        self._store.release(sid)
+        # 沒有 JS 也要能用：釋放完就回首頁。
+        self._send_redirect("/")
+
+    def _send_redirect(self, location: str) -> None:
+        self.send_response(HTTPStatus.SEE_OTHER)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.end_headers()
+        self.wfile.write(body)
+
     # ── 貼路徑：零複製，且不需要 JavaScript ───────────────────────
 
-    def _handle_path_form(self) -> None:
+    def _read_form(self) -> dict[str, list[str]]:
         length = int(self.headers.get("Content-Length") or 0)
-        body = self.rfile.read(length).decode("utf-8", "replace")
-        form = parse_qs(body)
-        raw = (form.get("path") or [""])[0].strip()
-        wire = (form.get("flow") or [""])[0] != "1"
+        return parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
 
+    def _pcap_from_form(self, form: dict[str, list[str]]) -> Path | None:
+        """解析並驗證表單裡的路徑。失敗時自己回錯誤頁並回 None。
+
+        `/analyze` 與 `/open` 共用 —— 兩份實作會漂移，而漂移的症狀是
+        「同一個路徑在一個入口能開、另一個不能」。
+        """
+        raw = (form.get("path") or [""])[0].strip()
         # 從檔案總管拖到輸入框常常會帶上引號，直接吃掉而不是叫使用者自己修。
         raw = raw.strip("'\"")
         if not raw:
             self._send_html(_error_page("請貼上擷取檔的路徑。"), HTTPStatus.BAD_REQUEST)
-            return
+            return None
 
         pcap = Path(os.path.expanduser(raw))
         if not pcap.is_file():
@@ -150,8 +314,15 @@ class _Handler(BaseHTTPRequestHandler):
                 _error_page(f"找不到這個檔案：{raw}", hint="路徑要是這台機器上的絕對路徑。"),
                 HTTPStatus.BAD_REQUEST,
             )
-            return
+            return None
+        return pcap
 
+    def _handle_path_form(self) -> None:
+        form = self._read_form()
+        wire = (form.get("flow") or [""])[0] != "1"
+        pcap = self._pcap_from_form(form)
+        if pcap is None:
+            return
         # 貼路徑不複製、不刪除 —— 那是使用者自己的檔案。
         self._analyse_and_respond(pcap, pcap.name, wire=wire)
 
@@ -298,6 +469,11 @@ form.path input[type=text] {
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+form.path button.secondary {
+  background: var(--surface);
+  color: inherit;
+  border: 1px solid var(--border);
+}
 form.path button {
   padding: 9px 18px; border: 0; border-radius: 8px; cursor: pointer;
   background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
@@ -373,6 +549,8 @@ def _home_page() -> str:
   <h2>把 pcap 拖進來</h2>
   <p>或點下面的按鈕選檔。上限 {MAX_UPLOAD_BYTES >> 20} MB。</p>
   <label class="pick">選擇檔案<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
+  <label class="opt"><input type="checkbox" id="to-viewer" value="1">
+    在互動檢視器開啟（可篩選、逐封包看解碼）—— 上傳的複本會<b>保留</b>到你按釋放或閒置逾時</label>
 </div>
 
 <div class="or">或</div>
@@ -380,14 +558,16 @@ def _home_page() -> str:
 <form class="path" method="post" action="/analyze">
   <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="擷取檔路徑">
   <button type="submit">分析</button>
+  <button type="submit" formaction="/open" class="secondary" id="open-viewer">在檢視器開啟</button>
   <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
     流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）</label>
 </form>
 <p class="hint">
   <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——
   把幾百 MB 透過 HTTP 傳給同一台機器上的伺服器沒有意義。<br>
-  上傳的檔案只在分析期間存在於系統暫存目錄，<b>分析結束立即刪除</b>；
-  貼路徑則完全不複製你的檔案。<br>
+  走「分析」時上傳的檔案只在分析期間存在於系統暫存目錄，<b>分析結束立即刪除</b>；
+  走「檢視器」時它必須<b>留到你釋放或閒置逾時</b>（逐封包解碼要跨請求讀同一份檔）。
+  貼路徑兩者都完全不複製你的檔案。<br>
   分析是同步的，沒有中間進度可以回報 —— 超過約 100 MB 的擷取檔會看起來像卡住，
   但它在跑。
 </p>
@@ -407,14 +587,26 @@ def _home_page() -> str:
     if (!f) return;
     spin.classList.add('on');
     var flow = document.getElementById('flow');
-    fetch('/upload' + (flow && flow.checked ? '?flow=1' : ''), {{
+    var viewer = document.getElementById('to-viewer');
+    var q = flow && flow.checked ? '?flow=1' : '';
+    // 檢視器那條回 JSON（裡面是要跳去的 URL），報告那條回整頁 HTML。
+    // 兩條路徑刻意分開 —— /upload 的回應逐位元組等於 --html，不能動。
+    var toViewer = viewer && viewer.checked;
+    fetch((toViewer ? '/open-upload' : '/upload') + q, {{
       method: 'POST',
       headers: {{ 'X-TelcoLens-Filename': encodeURIComponent(f.name) }},
       body: f
     }})
-      .then(function (r) {{ return r.text(); }})
-      .then(function (html) {{
-        document.open(); document.write(html); document.close();
+      .then(function (r) {{
+        if (toViewer) {{
+          return r.json().then(function (j) {{
+            if (j.error) throw new Error(j.error);
+            location.href = j.url;
+          }});
+        }}
+        return r.text().then(function (html) {{
+          document.open(); document.write(html); document.close();
+        }});
       }})
       .catch(function (e) {{
         spin.classList.remove('on');
@@ -442,17 +634,36 @@ def _home_page() -> str:
 # ── 伺服器 ────────────────────────────────────────────────────────────
 
 
-def make_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
-    """建好伺服器但不開始服務。測試靠這個拿到真的 socket。"""
+def make_server(
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    *,
+    idle_ttl: float = IDLE_TTL,
+    viewer: bool = True,
+) -> ThreadingHTTPServer:
+    """建好伺服器但不開始服務。測試靠這個拿到真的 socket。
+
+    `viewer=False` 是緊急關閉開關：互動檢視器的所有路由都消失，只留下
+    既有的靜態報告路徑。它存在的理由是那個檢視器會把上傳的客戶封包留在
+    磁碟上一段時間 —— 有人不想要那個行為時，應該有辦法完全關掉它，
+    而不是只能「不要去點」。
+    """
     server = ThreadingHTTPServer((host, port), _Handler)
     # 沒有 daemon_threads 的話，還在跑的請求會擋住關閉 —— Windows 上尤其
-    # 容易變成「關不掉還噴執行緒例外」（extract.py 的 _shutdown 才踩過同類問題）。
+    # 容易變成「關不掉還噴執行緒例外」（tshark.shutdown 才踩過同類問題）。
     server.daemon_threads = True
+    server.store = SessionStore(idle_ttl=idle_ttl) if viewer else None  # type: ignore[attr-defined]
     return server
 
 
-def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
-    server = make_server(host, port)
+def serve(
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    *,
+    idle_ttl: float = IDLE_TTL,
+    viewer: bool = True,
+) -> int:
+    server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer)
     bound_host, bound_port = server.server_address[:2]
     print(f"TelcoLens → http://{bound_host}:{bound_port}   （Ctrl-C 結束）")
     try:
@@ -460,11 +671,28 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     except TsharkNotFound as exc:
         # 不擋啟動 —— 網頁上會顯示同一則訊息，而那則訊息本身就是修復指示。
         print(f"\n⚠ 找不到 tshark，現在還不能分析：\n{exc}\n")
+
+    if viewer:
+        # 前一次執行若被 kill -9，沒有任何清理程式跑得到。**回報而不自動刪** ——
+        # 我們無法確定那個檔案是不是還有別的行程在用，而擅自刪掉一個來歷不明
+        # 的檔案比留著它更糟。使用者看到清單就能自己決定。
+        strays = sweep_stray_files()
+        if strays:
+            print(f"\n⚠ 找到 {len(strays)} 個前次執行留下的暫存擷取檔（超過一天）：")
+            for path in strays:
+                print(f"    {path}")
+            print("  那是客戶封包。確認不需要之後請自行刪除 —— 本工具不會替你刪。\n")
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n收工。")
     finally:
         server.shutdown()
+        # **先清工作階段再關 socket。** 這是唯一保證會跑到的清理點
+        # （atexit 也掛了一份，但那條在 kill -9 下同樣不會跑）。
+        store = getattr(server, "store", None)
+        if store is not None:
+            store.close_all()
         server.server_close()
     return 0

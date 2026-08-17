@@ -12,6 +12,7 @@ from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import render_report
 from telcolens.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
+from telcolens.session import IDLE_TTL
 from telcolens.web import DEFAULT_HOST, DEFAULT_PORT, serve
 from telcolens.tshark import TsharkNotFound, find_tshark
 
@@ -138,7 +139,12 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
-    return serve(host=args.host, port=args.port)
+    return serve(
+        host=args.host,
+        port=args.port,
+        idle_ttl=args.idle_ttl,
+        viewer=not args.no_viewer,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -199,6 +205,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--host", default=DEFAULT_HOST,
         help="監聽位址。預設只綁 127.0.0.1 —— 這是一個會拿路徑去執行 tshark "
              "的伺服器，改成對外監聽等於把客戶封包分析器暴露到網路上。",
+    )
+    serve_cmd.add_argument(
+        "--idle-ttl",
+        type=float,
+        default=IDLE_TTL,
+        metavar="秒",
+        help=f"互動檢視器閒置多久就釋放上傳的複本（預設 {int(IDLE_TTL)} 秒）。"
+        "貼路徑開的不受影響 —— 那從來不複製。",
+    )
+    serve_cmd.add_argument(
+        "--no-viewer",
+        action="store_true",
+        help="完全關掉互動檢視器，只留靜態報告。"
+        "檢視器會把上傳的複本留在暫存目錄一段時間，不想要那個行為就用這個關掉。",
     )
     serve_cmd.set_defaults(func=_cmd_serve)
 

@@ -1,0 +1,73 @@
+/* 檢視器的外框樣式 —— 只有三窗格的骨架與工具列。
+ *
+ * 色票、泳道底色、失敗紅帶、協定配色**一律不在這裡**：那些來自
+ * `/static/report.css`，而它就是 `render_html.PAGE_CSS` 本身（同一個字串，
+ * 不是複本）。在這裡重新定義任何顏色都會製造出兩套主題，而兩套必然漂移。
+ *
+ * 一樣不放 @font-face、不放 @import、不放任何 url() 外連 —— 檢視器的 CSP
+ * 是 default-src 'none'，外連會被瀏覽器直接擋掉。
+ */
+
+body.viewer {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.vhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.vhead h1 { font-size: 15px; margin: 0; }
+
+.vhead .source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
+.vhead .spacer { flex: 1 1 auto; }
+
+/* 「現在持有什麼」必須永遠看得見，不能收進選單裡。
+ * 使用者有權隨時知道自己的客戶封包還在不在這台機器上。 */
+.held {
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.held.owned { background: var(--fail-bg); }
+.held.borrowed { background: transparent; }
+
+.release { margin: 0; }
+.release button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+}
+.release button:hover { border-color: var(--accent); }
+
+.vmain { flex: 1 1 auto; padding: 20px 16px; }
+
+.held-note { margin: 0 0 10px; font-size: 13px; }
+
+.stage-note {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: 0.7;
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+}
