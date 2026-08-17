@@ -194,9 +194,18 @@ def _delete_if_ours(session: Session) -> None:
     """
     if not session.owns_file:
         return
-    assert SESSION_PREFIX in session.pcap.name, (
-        f"要刪的檔案沒有工作階段前綴，拒絕動它：{session.pcap}"
-    )
+    # **不可以用 assert。** 這是實際的第二道防線，不是文件用的斷言 ——
+    # `python -O`（打包成 .pyz、某些 systemd 服務、`PYTHONOPTIMIZE=1` 的 CI）
+    # 會把 assert 整句移除，於是守衛消失、檔案真的被刪掉。實測過。
+    #
+    # 而且必須是**前綴**比對而不是子字串：使用者完全可能把自己的檔案取名叫
+    # `my-telcolens-session-notes.pcap`（例如從殘檔訊息複製再改名），
+    # `in` 會讓它通過。第二道防線的意義是「第一道已經錯了還擋得住」，
+    # 它自己不能有洞。
+    if not session.pcap.name.startswith(SESSION_PREFIX):
+        raise RuntimeError(
+            f"要刪的檔案沒有工作階段前綴，拒絕動它：{session.pcap}"
+        )
     _unlink_with_retry(session.pcap)
 
 

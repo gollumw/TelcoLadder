@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 import tempfile
+import textwrap
 import threading
 import time
 import urllib.error
@@ -160,11 +163,63 @@ def test_delete_refuses_a_file_without_the_session_prefix() -> None:
     victim.write_bytes(b"x")
     try:
         bogus = Session(sid="x", pcap=victim, display_name="x", owns_file=True)
-        with pytest.raises(AssertionError, match="拒絕動它"):
+        with pytest.raises(RuntimeError, match="拒絕動它"):
             session_mod._delete_if_ours(bogus)
         assert victim.exists()
     finally:
         victim.unlink(missing_ok=True)
+
+
+def test_delete_guard_is_a_prefix_check_not_a_substring_check() -> None:
+    """使用者的檔案名字裡**含有**前綴時不能通過。
+
+    `my-telcolens-session-notes.pcap` 用子字串比對會過關 —— 而使用者從殘檔
+    訊息複製檔名再改名，很容易產生這種名字。
+    """
+    victim = Path(tempfile.gettempdir()) / f"my-{SESSION_PREFIX}notes.pcap"
+    victim.write_bytes(b"x")
+    try:
+        bogus = Session(sid="x", pcap=victim, display_name="x", owns_file=True)
+        with pytest.raises(RuntimeError, match="拒絕動它"):
+            session_mod._delete_if_ours(bogus)
+        assert victim.exists(), "子字串比對讓使用者的檔案被刪掉了"
+    finally:
+        victim.unlink(missing_ok=True)
+
+
+def test_delete_guard_survives_python_dash_O() -> None:
+    """守衛在 `python -O` 之下必須仍然有效。
+
+    這條的存在理由很具體：這個檢查原本寫成 `assert`，而 `-O` 會把 assert
+    整句移除 —— 實測之下守衛消失、檔案真的被刪掉。`.pyz` 打包、某些
+    systemd 服務、`PYTHONOPTIMIZE=1` 的 CI 都會用 `-O`。
+
+    所以用 subprocess 真的跑一次 `-O`，而不是相信「我們記得不要用 assert」。
+    """
+    probe = textwrap.dedent(f"""
+        import tempfile
+        from pathlib import Path
+        import telcolens.session as sm
+        victim = Path(tempfile.gettempdir()) / "dash-O-probe-{SESSION_PREFIX}not.pcap"
+        victim.write_bytes(b"x")
+        bogus = sm.Session(sid="x", pcap=victim, display_name="x", owns_file=True)
+        try:
+            sm._delete_if_ours(bogus)
+        except RuntimeError:
+            print("GUARD_FIRED" if victim.exists() else "GUARD_FIRED_BUT_DELETED")
+        else:
+            print("NO_GUARD_DELETED" if not victim.exists() else "NO_GUARD_KEPT")
+        finally:
+            victim.unlink(missing_ok=True)
+    """)
+    out = subprocess.run(
+        [sys.executable, "-O", "-c", probe],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert out == "GUARD_FIRED", (
+        f"`python -O` 之下守衛沒有生效（得到 {out!r}）——"
+        " 這個檢查不能寫成 assert。"
+    )
 
 
 # ── 生命週期 ──────────────────────────────────────────────────────
