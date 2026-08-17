@@ -5,6 +5,10 @@
 *.pcapng
 *.cap
 *.pdml
+# 白名單必須用 ** —— 平面 glob 只吃 tests/fixtures/ 底下第一層，
+# 每個場景各自一個子目錄（capture + logs + scenario.md）的結構會整個被擋掉。
+!tests/fixtures/**/*.pcap
+!tests/fixtures/**/*.pcapng
 !tests/fixtures/*.pcap
 !tests/fixtures/*.pcapng
 

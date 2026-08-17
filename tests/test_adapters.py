@@ -53,14 +53,43 @@ def _messages(pcap: Path):
 # ── 交叉驗證 ───────────────────────────────────────────────────────────
 
 
-def test_ngap_message_count_matches_tshark(registration_pcap):
-    """NGAP 訊息數必須等於 tshark 認定的 NGAP 封包數。
+def _tshark_ngap_pdu_count(pcap: Path) -> int:
+    """獨立 oracle：tshark 認定的 NGAP **PDU** 數，不是封包數。
 
-    本擷取檔每格恰好一則 NGAP PDU，故格數即訊息數。若日後換成一格多則
-    PDU 的擷取檔，這條要改成比對 PDU 數而非格數 —— 屆時失敗是正確行為。
+    一格可以帶多則 NGAP PDU（本 fixture 的 frame 23 就是兩則）。`-T fields`
+    對同名欄位以逗號串接，所以逐列數逗號分隔的值才是 PDU 數。
+    """
+    tshark = find_tshark()
+    proc = subprocess.run(
+        [str(tshark.path), "-r", str(pcap), "-Y", "ngap",
+         "-T", "fields", "-e", "ngap.procedureCode"],
+        capture_output=True, text=True, check=True,
+    )
+    return sum(
+        len([v for v in line.split(",") if v.strip()])
+        for line in proc.stdout.splitlines()
+        if line.strip()
+    )
+
+
+def test_ngap_message_count_matches_tshark(registration_pcap):
+    """NGAP 訊息數必須等於 tshark 認定的 NGAP PDU 數。
+
+    比對 PDU 數而非封包數 —— 一格多則 PDU 是真實情況，拿封包數比會漏。
     """
     ours = [m for m in _messages(registration_pcap) if m.protocol == "ngap"]
-    assert len(ours) == _tshark_frame_count(registration_pcap, "ngap")
+    assert len(ours) == _tshark_ngap_pdu_count(registration_pcap)
+
+
+def test_capture_actually_exercises_the_multi_pdu_path(registration_pcap):
+    """守住這份 fixture 的價值：它必須真的含一格多則 NGAP PDU。
+
+    若哪天換成一格一則的擷取檔，上面那條交叉驗證就退化成封包數比對，
+    `-T ek` 的存在理由也不再被測到 —— 那時這條會失敗，提醒你補一份。
+    """
+    assert _tshark_ngap_pdu_count(registration_pcap) > _tshark_frame_count(
+        registration_pcap, "ngap"
+    )
 
 
 def test_nas_visible_messages_are_not_over_reported(registration_pcap):
@@ -174,7 +203,8 @@ def test_supi_recovered_from_null_scheme_suci(registration_pcap):
         for kind, value in m.identity_keys
         if kind is IdKind.SUPI
     }
-    assert supis == {"001010000000001"}
+    # fixture 是自產的，訂戶就是 scenario.md 裡佈建的那一個。
+    assert supis == {"001011234567895"}
 
 
 def test_ngap_ids_are_scoped_to_their_association(registration_pcap):

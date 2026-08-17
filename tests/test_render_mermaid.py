@@ -139,9 +139,16 @@ def test_real_capture_produces_wellformed_diagram(registration_pcap):
     except TsharkNotFound:
         pytest.skip("本機沒有 tshark")
 
+    from telcolens.model import IdKind
+
     messages = [m for f in read_frames(registration_pcap) for m in parse_frame(f)]
     apply_roles(messages)
-    flows = correlate(messages)
+    # 取帶 SUPI 的那條 —— 擷取檔裡還有 NGSetup 這種無用戶關聯的流程。
+    flows = [
+        f for f in correlate(messages)
+        if any(k is IdKind.SUPI for k, _ in f.identity_keys)
+    ]
+    assert flows, "找不到帶 SUPI 的流程"
     result = render(flows[0])
 
     lines = result.text.splitlines()

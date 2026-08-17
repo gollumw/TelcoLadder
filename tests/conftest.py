@@ -1,12 +1,16 @@
 """測試用擷取檔的尋找規則。
 
-**為什麼 fixture 不在版控裡**：目前唯一涵蓋完整 5G SA 註冊流程的公開擷取檔
-來自 `DLTeamTUC/5GDatasets`（TU Chemnitz，BSI 資助）。該 repo **沒有 LICENSE 檔**，
-README 只寫「研究引用請 cite 論文」—— 那是引用要求，不構成再散布授權。
-在授權明確之前不得 vendor 進本 repo（見 `.gitignore` 的紅線）。
+**fixture 都在版控裡**，每個場景一個子目錄，含擷取檔、核網日誌與 `scenario.md`
+（來源、內容、重現步驟）。授權乾淨：`5gc-registration/` 是自建 Open5GS testbed
+產生的（Apache-2.0，同本 repo），`http2-multistream/` 來自 telekom/5g-trace-visualizer
+（Apache-2.0，已於其 scenario.md 保留著作權聲明）。
 
-因此測試改成：`tests/fixtures/` 找不到就往 `local/` 找，兩處都沒有就 skip。
-自建 Open5GS testbed 產生可公開的 fixture 之後，這個 fallback 就可以拿掉。
+歷史備註：早期用過 `DLTeamTUC/5GDatasets` 的樣本，但該 repo 無 LICENSE 檔，
+README 只寫「研究引用請 cite 論文」—— 那是引用要求，不構成再散布授權，故從未進版控。
+自建 testbed 之後這個限制消失了。
+
+仍保留 `local/` 作為第二搜尋路徑，純粹是方便本機拿手上的擷取檔臨時對照 ——
+`local/` 整個目錄在 `.gitignore` 裡，工作用的封包不會誤入版控。
 """
 
 from __future__ import annotations
@@ -39,9 +43,11 @@ def require_capture(name: str) -> Path:
 
 @pytest.fixture(scope="session")
 def registration_pcap() -> Path:
-    """一段完整的 5G SA 註冊：Registration request → Authentication →
-    Security mode command → InitialContextSetup，其後有一串重傳。"""
-    return require_capture("007b-fuzz-open5gs.pcapng")
+    """自產的 5G SA 註冊：NGSetup → Registration → Authentication（含一次真實的
+    Synch failure 與重試）→ Security mode → InitialContextSetup → PDU session。
+
+    來源與重現步驟見 `tests/fixtures/5gc-registration/scenario.md`。"""
+    return require_capture("5gc-registration/capture.pcap")
 
 
 @pytest.fixture(scope="session")
@@ -51,4 +57,4 @@ def multistream_http2_pcap() -> Path:
     來自 telekom/5g-trace-visualizer（Apache 2.0）。它**不是** 5G SBI 流量，
     只是通用 HTTP/2 —— 這裡只拿它驗證 frame 內多訊息的邊界處理。
     """
-    return require_capture("dt-http2-sbi.pcap")
+    return require_capture("http2-multistream/capture.pcap")

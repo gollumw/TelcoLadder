@@ -140,15 +140,16 @@ pytest
 - The multi-message frame case is pinned with a real capture where one frame
   carries four HTTP/2 streams.
 
-Test captures are not committed — see `tests/conftest.py` for why.
+Test captures live in `tests/fixtures/`, one directory per scenario, each with the
+capture, the core network's own logs, and a `scenario.md` explaining what it contains
+and how to regenerate it. `5gc-registration/` was produced on a local Open5GS +
+UERANSIM testbed, so it carries this repo's licence and no third-party constraints.
 
-**What the green badge does and does not mean.** CI runs the suite on Python
-3.11/3.12/3.13 (Linux) and 3.13 (macOS), against three different tshark versions.
-But the 18 tests that need a real capture — including the tshark cross-check — skip
-there, so CI runs 44 of 62. It catches regressions in parsing logic, rendering, cause
-lookup, and platform support. It does **not** verify extraction correctness against
-real traffic. Closing that gap needs a self-hosted Open5GS testbed producing
-publishable fixtures.
+**What the green badge does and does not mean.** CI runs the full suite on Python
+3.11/3.12/3.13 (Linux) and 3.13 (macOS), against three tshark versions — no skips,
+so the cross-checks above genuinely run. It does **not** cover PFCP (no adapter yet),
+SBI's 5G semantics (the HTTP/2 fixture is generic HTTP/2, not real SBI traffic), or
+IMS. Those gaps are real and are named in `.github/workflows/ci.yml`.
 
 ## License
 

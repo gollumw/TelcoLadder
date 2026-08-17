@@ -1,0 +1,163 @@
+Deploying component: 'smf'
+...................................++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+.......................................................++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----
+Using configuration from /usr/lib/ssl/openssl.cnf
+40A70AFFFF7F0000:error:0700006C:configuration file routines:NCONF_get_string:no value:../crypto/conf/conf_lib.c:315:group=<NULL> name=unique_subject
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 1 (0x1)
+        Validity
+            Not Before: Aug 17 10:49:28 2026 GMT
+            Not After : Aug 14 10:49:28 2036 GMT
+        Subject:
+            countryName               = KO
+            stateOrProvinceName       = Seoul
+            organizationName          = Open5GS
+            organizationalUnitName    = Tests
+            commonName                = mme.epc.mnc001.mcc001.3gppnetwork.org
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                29:A7:DB:7A:17:FE:DC:B3:B5:D9:99:67:42:EF:44:2A:E2:C9:49:5B
+            X509v3 Authority Key Identifier: 
+                68:86:94:2C:C3:EC:D2:D8:B5:F0:E8:83:9E:32:C6:52:3C:3F:DA:60
+Certificate is to be certified until Aug 14 10:49:28 2036 GMT (3650 days)
+
+Write out database with 1 new entries
+Data Base Updated
+Using configuration from /usr/lib/ssl/openssl.cnf
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 2 (0x2)
+        Validity
+            Not Before: Aug 17 10:49:28 2026 GMT
+            Not After : Aug 14 10:49:28 2036 GMT
+        Subject:
+            countryName               = KO
+            stateOrProvinceName       = Seoul
+            organizationName          = Open5GS
+            organizationalUnitName    = Tests
+            commonName                = hss.epc.mnc001.mcc001.3gppnetwork.org
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                00:8D:E6:26:D5:D0:A1:B6:01:F8:62:84:25:43:1C:CC:1C:9B:F4:5D
+            X509v3 Authority Key Identifier: 
+                68:86:94:2C:C3:EC:D2:D8:B5:F0:E8:83:9E:32:C6:52:3C:3F:DA:60
+Certificate is to be certified until Aug 14 10:49:28 2036 GMT (3650 days)
+
+Write out database with 1 new entries
+Data Base Updated
+Using configuration from /usr/lib/ssl/openssl.cnf
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 3 (0x3)
+        Validity
+            Not Before: Aug 17 10:49:28 2026 GMT
+            Not After : Aug 14 10:49:28 2036 GMT
+        Subject:
+            countryName               = KO
+            stateOrProvinceName       = Seoul
+            organizationName          = Open5GS
+            organizationalUnitName    = Tests
+            commonName                = smf.epc.mnc001.mcc001.3gppnetwork.org
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                22:F6:12:35:36:21:0C:68:69:09:9E:04:B1:95:74:25:20:13:F3:E7
+            X509v3 Authority Key Identifier: 
+                68:86:94:2C:C3:EC:D2:D8:B5:F0:E8:83:9E:32:C6:52:3C:3F:DA:60
+Certificate is to be certified until Aug 14 10:49:28 2036 GMT (3650 days)
+
+Write out database with 1 new entries
+Data Base Updated
+Using configuration from /usr/lib/ssl/openssl.cnf
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 4 (0x4)
+        Validity
+            Not Before: Aug 17 10:49:28 2026 GMT
+            Not After : Aug 14 10:49:28 2036 GMT
+        Subject:
+            countryName               = KO
+            stateOrProvinceName       = Seoul
+            organizationName          = Open5GS
+            organizationalUnitName    = Tests
+            commonName                = pcrf.epc.mnc001.mcc001.3gppnetwork.org
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                D6:80:AF:98:24:45:80:9D:D0:5C:B3:02:0C:17:E6:9C:26:CC:4E:44
+            X509v3 Authority Key Identifier: 
+                68:86:94:2C:C3:EC:D2:D8:B5:F0:E8:83:9E:32:C6:52:3C:3F:DA:60
+Certificate is to be certified until Aug 14 10:49:28 2036 GMT (3650 days)
+
+Write out database with 1 new entries
+Data Base Updated
+Open5GS daemon v2.8.0-48-gf87da61
+
+08/17 18:49:28.611: [app] INFO: Configuration: '/open5gs/install/etc/open5gs/smf.yaml' (../lib/app/ogs-init.c:144)
+08/17 18:49:28.613: [app] INFO: File Logging: '/open5gs/install/var/log/open5gs/smf.log' (../lib/app/ogs-init.c:147)
+08/17 18:49:28.646: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/context.c:451)
+08/17 18:49:28.646: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.35:7777] (../lib/sbi/context.c:499)
+08/17 18:49:28.649: [metrics] INFO: metrics_server() [http://172.22.0.7]:9091 (../lib/metrics/prometheus/context.c:392)
+08/17 18:49:28.750: [app] INFO: Polling freeDiameter stats every 60000000 usecs (../lib/diameter/common/stats.c:77)
+08/17 18:49:28.751: [gtp] INFO: gtp_server() [172.22.0.7]:2123 (../lib/gtp/path.c:30)
+08/17 18:49:28.751: [gtp] INFO: gtp_server() [172.22.0.7]:2152 (../lib/gtp/path.c:30)
+08/17 18:49:28.751: [pfcp] INFO: pfcp_server() [172.22.0.7]:8805 (../lib/pfcp/path.c:30)
+08/17 18:49:28.759: [sbi] INFO: NF Service [nsmf-pdusession] (../lib/sbi/context.c:2012)
+08/17 18:49:28.765: [sbi] INFO: nghttp2_server() [http://172.22.0.7]:7777 (../lib/sbi/nghttp2-server.c:454)
+08/17 18:49:28.765: [app] INFO: SMF initialize...done (../src/smf/app.c:31)
+08/17 18:49:28.777: [smf] INFO: PFCP associated [172.22.0.8]:8805 (../src/smf/pfcp-sm.c:189)
+08/17 18:49:28.784: [sbi] INFO: [5211361e-9a29-41f1-901e-7b0885b663d1] NF registered [Heartbeat:10s] (../lib/sbi/nf-sm.c:322)
+08/17 18:49:28.789: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/nnrf-handler.c:1113)
+08/17 18:49:28.790: [sbi] INFO: [5227c46a-9a29-41f1-97a2-fb0e3d667fc0] Subscription created until 2026-08-18T18:49:28.787178+08:00 [duration:86400000000,validity:86400.000000,patch:43200.000000] (../lib/sbi/nnrf-handler.c:1032)
+08/17 18:49:28.790: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/nnrf-handler.c:1113)
+08/17 18:49:28.790: [sbi] INFO: [5227d0fe-9a29-41f1-97a2-fb0e3d667fc0] Subscription created until 2026-08-18T18:49:28.787438+08:00 [duration:86400000000,validity:86400.000000,patch:43200.000000] (../lib/sbi/nnrf-handler.c:1032)
+08/17 18:49:28.790: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/nnrf-handler.c:1113)
+08/17 18:49:28.790: [sbi] INFO: [5227d662-9a29-41f1-97a2-fb0e3d667fc0] Subscription created until 2026-08-18T18:49:28.787568+08:00 [duration:86400000000,validity:86400.000000,patch:43200.000000] (../lib/sbi/nnrf-handler.c:1032)
+08/17 18:49:28.790: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/nnrf-handler.c:1113)
+08/17 18:49:28.790: [sbi] INFO: [5227dda6-9a29-41f1-97a2-fb0e3d667fc0] Subscription created until 2026-08-18T18:49:28.787751+08:00 [duration:86400000000,validity:86400.000000,patch:43200.000000] (../lib/sbi/nnrf-handler.c:1032)
+08/17 18:49:28.790: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.12:7777] (../lib/sbi/nnrf-handler.c:1113)
+08/17 18:49:28.790: [sbi] INFO: [5227e314-9a29-41f1-97a2-fb0e3d667fc0] Subscription created until 2026-08-18T18:49:28.787948+08:00 [duration:86400000000,validity:86400.000000,patch:43200.000000] (../lib/sbi/nnrf-handler.c:1032)
+08/17 18:49:28.794: [sbi] INFO: [5100fd0e-9a29-41f1-a527-23ad1bcf02e1] (NRF-profile-get) NF registered (../lib/sbi/nf-sm.c:104)
+08/17 18:49:28.794: [sbi] INFO: [UDM] NFInstance associated [5100fd0e-9a29-41f1-a527-23ad1bcf02e1] (../lib/sbi/context.c:2498)
+08/17 18:49:28.794: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.13:80] (../lib/sbi/context.c:2503)
+08/17 18:49:28.794: [sbi] INFO: [nudm-ueau] NFService associated [5101d9c2-9a29-41f1-a527-23ad1bcf02e1] (../lib/sbi/context.c:2138)
+08/17 18:49:28.794: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.13:7777] (../lib/sbi/context.c:2141)
+08/17 18:49:28.794: [sbi] INFO: [nudm-uecm] NFService associated [5101f2b8-9a29-41f1-a527-23ad1bcf02e1] (../lib/sbi/context.c:2138)
+08/17 18:49:28.794: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.13:7777] (../lib/sbi/context.c:2141)
+08/17 18:49:28.794: [sbi] INFO: [nudm-sdm] NFService associated [5101f5c4-9a29-41f1-a527-23ad1bcf02e1] (../lib/sbi/context.c:2138)
+08/17 18:49:28.794: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.13:7777] (../lib/sbi/context.c:2141)
+08/17 18:49:28.795: [sbi] INFO: [5125c3a0-9a29-41f1-974e-8d16b067d018] (NRF-profile-get) NF registered (../lib/sbi/nf-sm.c:104)
+08/17 18:49:28.795: [sbi] INFO: [AMF] NFInstance associated [5125c3a0-9a29-41f1-974e-8d16b067d018] (../lib/sbi/context.c:2498)
+08/17 18:49:28.795: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.10:80] (../lib/sbi/context.c:2503)
+08/17 18:49:28.795: [sbi] INFO: [namf-comm] NFService associated [51273bc2-9a29-41f1-974e-8d16b067d018] (../lib/sbi/context.c:2138)
+08/17 18:49:28.795: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.10:7777] (../lib/sbi/context.c:2141)
+08/17 18:49:31.015: [smf] WARNING: PFCP[REQ] has already been associated [172.22.0.8]:8805 (../src/smf/pfcp-sm.c:287)
+08/17 18:49:36.928: [sbi] INFO: [56fb7c3e-9a29-41f1-941f-95eae6feb113] (NRF-notify) NF registered (../lib/sbi/nnrf-handler.c:1397)
+08/17 18:49:36.928: [sbi] INFO: [56fb7c3e-9a29-41f1-941f-95eae6feb113] (NRF-notify) NF Profile updated [type:PCF] (../lib/sbi/nnrf-handler.c:1435)
+08/17 18:49:36.928: [sbi] INFO: [PCF] NFInstance associated [56fb7c3e-9a29-41f1-941f-95eae6feb113] (../lib/sbi/context.c:2498)
+08/17 18:49:36.928: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.27:80] (../lib/sbi/context.c:2503)
+08/17 18:49:36.928: [sbi] INFO: [npcf-smpolicycontrol] NFService associated [56fe8ea6-9a29-41f1-941f-95eae6feb113] (../lib/sbi/context.c:2138)
+08/17 18:49:36.928: [sbi] INFO: Setup NF EndPoint(addr) [172.22.0.27:7777] (../lib/sbi/context.c:2141)
+08/17 18:54:14.992: [smf] INFO: [Added] Number of SMF-UEs is now 1 (../src/smf/context.c:1069)
+08/17 18:54:14.993: [smf] INFO: [Added] Number of SMF-Sessions is now 1 (../src/smf/context.c:3612)
+08/17 18:54:14.994: [smf] INFO: Setup NF EndPoint(addr) [172.22.0.10:7777] (../src/smf/nsmf-handler.c:317)
+08/17 18:54:14.996: [sbi] INFO: [5100fd0e-9a29-41f1-a527-23ad1bcf02e1] Setup NF Instance [type:UDM] (../lib/sbi/path.c:349)
+08/17 18:54:15.007: [smf] INFO: Setup NF EndPoint(addr) [172.22.0.13:7777] (../src/smf/nudm-handler.c:466)
+08/17 18:54:15.009: [sbi] INFO: [56fb7c3e-9a29-41f1-941f-95eae6feb113] Setup NF Instance [type:PCF] (../lib/sbi/path.c:349)
+08/17 18:54:15.025: [smf] INFO: Setup NF EndPoint(addr) [172.22.0.27:7777] (../src/smf/npcf-handler.c:414)
+08/17 18:54:15.026: [smf] INFO: UE SUPI[imsi-001011234567895] DNN[internet] IPv4[192.168.100.2] IPv6[] (../src/smf/npcf-handler.c:647)
+08/17 18:54:15.034: [gtp] INFO: gtp_connect() [172.22.0.8]:2152 (../lib/gtp/path.c:60)
+08/17 18:54:15.039: [sbi] INFO: [5125c3a0-9a29-41f1-974e-8d16b067d018] Setup NF Instance [type:AMF] (../lib/sbi/path.c:349)
+08/17 18:54:15.052: [sbi] INFO: [5100fd0e-9a29-41f1-a527-23ad1bcf02e1] Setup NF Instance [type:UDM] (../lib/sbi/path.c:349)

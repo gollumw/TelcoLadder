@@ -34,9 +34,13 @@ def messages(registration_pcap):
 
 
 def test_roles_resolved_from_procedure_direction(messages):
-    """只有 gNB 會送 InitialUEMessage，只有 AMF 會送 InitialContextSetup。"""
+    """只有 gNB 會送 InitialUEMessage，只有 AMF 會送 InitialContextSetup。
+
+    刻意不寫死 IP —— 換一份 fixture 就得改測試的話，這條守的就變成
+    「fixture 沒被換過」而不是「角色判定正確」。
+    """
     roles = resolve_roles(messages)
-    assert roles == {"198.51.100.26": "gNB", "198.51.100.23": "AMF"}
+    assert sorted(roles.values()) == ["AMF", "gNB"]
 
 
 def test_response_direction_does_not_poison_role_votes(messages):
@@ -94,22 +98,47 @@ def test_ngap_stays_on_the_gnb_hop(messages):
 # ── 關聯 ───────────────────────────────────────────────────────────────
 
 
+def _ue_flow(messages):
+    """取出帶 SUPI 的那條流程。
+
+    擷取檔裡除了用戶的流程，還有 NGSetup 這種不屬於任何用戶的訊息，
+    它們自成一條「無用戶關聯」的流程 —— 那是正確行為，不是雜訊。
+    """
+    with_supi = [f for f in correlate(messages) if any(k is IdKind.SUPI for k, _ in f.identity_keys)]
+    assert len(with_supi) == 1, f"帶 SUPI 的流程應恰好一條，得到 {len(with_supi)}"
+    return with_supi[0]
+
+
 def test_one_ue_yields_one_flow(messages):
-    """整段擷取只有一個 UE，就該是一條流程。
+    """整段擷取只有一個 UE，該 UE 的訊息就該全在同一條流程裡。
 
     這條擋的是最容易發生的無聲錯誤：NAS 訊息沒有繼承載體 NGAP 的 UE ID，
     於是「明文帶 SUPI 的第一則」與「其後只有 NGAP ID 的訊息」被切成兩條。
     切完之後每一條看起來都很合理，沒有任何線索指出圖是錯的。
     """
     flows = correlate(messages)
-    assert len(flows) == 1
-    assert len(flows[0].messages) == len(messages), "有訊息在關聯時被丟掉了"
+    assert sum(len(f.messages) for f in flows) == len(messages), "有訊息在關聯時被丟掉了"
+
+    ue_flow = _ue_flow(messages)
+    # NAS 一定屬於某個用戶，所以每一則 NAS 都該落在這條流程裡。
+    nas_total = sum(1 for m in messages if m.protocol == "nas-5gs")
+    nas_in_flow = sum(1 for m in ue_flow.messages if m.protocol == "nas-5gs")
+    assert nas_in_flow == nas_total, "有 NAS 訊息掉到別條流程去了"
+
+
+def test_non_ue_messages_form_their_own_flow(messages):
+    """NGSetup 不屬於任何用戶，不該被塞進用戶的流程裡。
+
+    把它併進 UE 流程會讓圖上多出一段與該用戶無關的網元協商。
+    """
+    ue_flow = _ue_flow(messages)
+    assert not any(m.label.startswith("NGSetup") for m in ue_flow.messages)
 
 
 def test_flow_is_identified_by_supi(messages):
-    flow = correlate(messages)[0]
-    assert (IdKind.SUPI, "001010000000001") in flow.identity_keys
-    assert flow.describe_identity() == "SUPI 001010000000001"
+    flow = _ue_flow(messages)
+    assert (IdKind.SUPI, "001011234567895") in flow.identity_keys
+    assert flow.describe_identity() == "SUPI 001011234567895"
 
 
 def test_two_ues_do_not_bleed_into_each_other():

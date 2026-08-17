@@ -9,11 +9,15 @@
 #     只在 macOS 驗過，`telcolens check` 這一步是它在 Linux 的第一次真實測試。
 #   - 邏輯層：cause 查表、Mermaid 渲染、關聯、跳脫。
 #
+#   - **抽取正確性。** fixture 已自建並進版控，所以 tshark 交叉驗證在 CI 上
+#     真的會跑（全部測試無 skip）。這是靠 tests/fixtures/5gc-registration/
+#     那份自產擷取檔換來的。
+#
 # 守不住：
-#   - **抽取正確性。** 需要真實擷取檔的 18 條測試（含 tshark 交叉驗證）
-#     在這裡一律 skip，因為 fixture 授權未明不進版控（見 tests/conftest.py）。
-#     CI 上會跑 44/62。要補上這個缺口，只有一條路：自建 Open5GS testbed
-#     產生可公開的 fixture。
+#   - PFCP：adapter 尚未實作，也沒有擷取檔。
+#   - SBI 的 5G 語意：現有的 http2 fixture 是通用 HTTP/2 不是 SBI，
+#     服務名→網元的對應未經真實流量驗證。
+#   - IMS（SIP/Diameter/H.248）：adapter 與 fixture 都還沒有。
 #
 # 尚未加入：
 #   - 外掛相容性測試（裝一個假 plugin，確認被載入且順序正確）。
