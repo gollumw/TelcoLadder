@@ -32,3 +32,10 @@ telcolens = ["data/causes/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 背景執行緒裡的例外預設只是警告 —— 測試照樣全綠，沒人會看到。
+# 而它代表的東西很實在：使用者會在終端機看到一段像當機的 traceback。
+# 這條把它變成失敗。（Windows 的 communicate() 是靠讀取執行緒實作的，
+# 這個坑只在那裡出現，見 extract.py 的 _shutdown。）
+filterwarnings = [
+    "error::pytest.PytestUnhandledThreadExceptionWarning",
+]
