@@ -1,0 +1,2 @@
+08/17 19:10:10.481: [ausf] WARNING: UnRef NF EndPoint(addr) [172.22.0.13:7777] (../src/ausf/nudm-handler.c:339)
+08/17 19:10:10.481: [ausf] INFO: Setup NF EndPoint(addr) [172.22.0.13:7777] (../src/ausf/nudm-handler.c:339)

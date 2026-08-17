@@ -1,0 +1,2 @@
+08/17 19:07:49.764: [ausf] ERROR: [suci-0-001-01-0000-0-0-1234567895] HTTP response error [401] (../src/ausf/ue-sm.c:180)
+08/17 19:07:49.764: [ausf] WARNING: [suci-0-001-01-0000-0-0-1234567895] State machine exception (../src/ausf/ausf-sm.c:382)

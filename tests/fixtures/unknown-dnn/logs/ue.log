@@ -1,0 +1,27 @@
+Deploying component: 'ueransim-ue'
+UERANSIM v3.2.6
+[2026-08-17 19:10:10.446] [nas] [info] UE switches to state [MM-DEREGISTERED/PLMN-SEARCH]
+[2026-08-17 19:10:10.449] [rrc] [debug] New signal detected for cell[1], total [1] cells in coverage
+[2026-08-17 19:10:10.455] [nas] [info] Selected plmn[001/01]
+[2026-08-17 19:10:10.455] [rrc] [info] Selected cell plmn[001/01] tac[1] category[SUITABLE]
+[2026-08-17 19:10:10.456] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-08-17 19:10:10.456] [nas] [info] UE switches to state [MM-DEREGISTERED/NORMAL-SERVICE]
+[2026-08-17 19:10:10.456] [nas] [debug] Initial registration required due to [MM-DEREG-NORMAL-SERVICE]
+[2026-08-17 19:10:10.456] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 19:10:10.456] [nas] [debug] Sending Initial Registration
+[2026-08-17 19:10:10.461] [nas] [info] UE switches to state [MM-REGISTER-INITIATED]
+[2026-08-17 19:10:10.461] [rrc] [debug] Sending RRC Setup Request
+[2026-08-17 19:10:10.463] [rrc] [info] RRC connection established
+[2026-08-17 19:10:10.463] [rrc] [info] UE switches to state [RRC-CONNECTED]
+[2026-08-17 19:10:10.464] [nas] [info] UE switches to state [CM-CONNECTED]
+[?2004h]0;root@df88e92659f4: /UERANSIM/buildroot@df88e92659f4:/UERANSIM/build# [2026-08-17 19:10:10.475] [nas] [debug] Authentication Request received
+[2026-08-17 19:10:10.482] [nas] [debug] Security Mode Command received
+[2026-08-17 19:10:10.483] [nas] [debug] Selected integrity[2] ciphering[0]
+[2026-08-17 19:10:10.492] [nas] [debug] Registration accept received
+[2026-08-17 19:10:10.493] [nas] [info] UE switches to state [MM-REGISTERED/NORMAL-SERVICE]
+[2026-08-17 19:10:10.493] [nas] [debug] Sending Registration Complete
+[2026-08-17 19:10:10.493] [nas] [info] Initial Registration is successful
+[2026-08-17 19:10:10.494] [nas] [debug] Sending PDU Session Establishment Request
+[2026-08-17 19:10:10.495] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 19:10:10.697] [nas] [debug] Configuration Update Command received
+[2026-08-17 19:10:10.697] [nas] [error] MM status received with cause [DNN_NOT_SUPPORTED_OR_NOT_SUBSCRIBED]

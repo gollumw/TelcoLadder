@@ -150,6 +150,35 @@ def _identity_keys(
     return frozenset(keys)
 
 
+def count_ciphered(frame: Frame) -> int:
+    """這一格裡有幾則 NAS 是加密而讀不到內層的。
+
+    Security Mode Command 之後 NAS 全程加密，擷取檔裡看得到「有一則 NAS」
+    但看不到它是什麼。**這件事必須讓使用者知道**：一次 PDU session 失敗
+    可能整個藏在加密的 5GMM STATUS 裡，圖上卻看起來一切正常
+    （實測：DNN 不存在時，cause #91 就是這樣消失的）。
+
+    判斷依據是 `security_header_type` 非 0 且抽不到 message_type ——
+    不是「解析失敗」，是「原理上看不到」，兩者的處置完全不同。
+
+    註：E1 外掛契約落地後，這種「adapter 想附帶回報的觀察」應該收進
+    adapter 介面（例如 parse 回傳 messages + notes），而不是讓 CLI
+    認識特定 adapter。現在先用最小的方式解決。
+    """
+    ciphered = 0
+    for block, _carrier in _nas_blocks(frame):
+        has_type = (
+            block.get("nas-5gs_nas-5gs_mm_message_type") is not None
+            or block.get("nas-5gs_nas-5gs_sm_message_type") is not None
+        )
+        if has_type:
+            continue
+        header = _to_int(block.get("nas-5gs_nas-5gs_security_header_type"))
+        if header:  # 非 0 即為受保護／加密
+            ciphered += 1
+    return ciphered
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
     scope = association_scope(frame)

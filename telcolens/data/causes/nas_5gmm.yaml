@@ -41,6 +41,9 @@ causes:
     name: "5GS services not allowed"
     plain: "這個用戶沒有訂閱 5GS 服務。"
     common_causes:
+      - "**該 SUPI 根本不在 UDM/UDR 裡** —— SIM 從未開通。實務上最常見的一種，
+         核網日誌會寫 `Cannot find SUPI [404]`
+         （tests/fixtures/supi-not-provisioned 實測）"
       - "簽約資料裡沒開 5G 存取"
       - "UDM 的 access restriction 擋掉 3GPP 存取"
 
@@ -221,6 +224,10 @@ causes:
       協定錯誤，規範未指明細節。這是最沒有資訊量的 cause —— 它的意思接近
       「對方看不懂這則訊息，但說不出哪裡不對」。
     common_causes:
+      - "**鑑權金鑰不符**：Ki 或 OPc 兩邊不一致時，UE 會先回 Synch failure(#21)，
+         而它算出的 AUTS 網路無法用來重同步，最後就以本 cause 拒絕。
+         看到 #21 緊接 #111 幾乎必然是金鑰問題
+         （tests/fixtures/ki-mismatch 實測）"
       - "編碼／解碼不相容，常見於不同廠商設備互連"
       - "必要 IE 缺漏或長度欄位算錯"
       - "3GPP release 版本落差導致新 IE 被舊端拒收"

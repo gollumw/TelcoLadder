@@ -1,0 +1,22 @@
+Deploying component: 'ueransim-ue'
+UERANSIM v3.2.6
+[2026-08-17 19:06:45.038] [nas] [info] UE switches to state [MM-DEREGISTERED/PLMN-SEARCH]
+[2026-08-17 19:06:45.041] [rrc] [debug] New signal detected for cell[1], total [1] cells in coverage
+[2026-08-17 19:06:45.044] [nas] [info] Selected plmn[001/01]
+[2026-08-17 19:06:45.045] [rrc] [info] Selected cell plmn[001/01] tac[1] category[SUITABLE]
+[2026-08-17 19:06:45.045] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-08-17 19:06:45.045] [nas] [info] UE switches to state [MM-DEREGISTERED/NORMAL-SERVICE]
+[2026-08-17 19:06:45.045] [nas] [debug] Initial registration required due to [MM-DEREG-NORMAL-SERVICE]
+[2026-08-17 19:06:45.046] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 19:06:45.046] [nas] [debug] Sending Initial Registration
+[2026-08-17 19:06:45.050] [nas] [info] UE switches to state [MM-REGISTER-INITIATED]
+[2026-08-17 19:06:45.050] [rrc] [debug] Sending RRC Setup Request
+[2026-08-17 19:06:45.052] [rrc] [info] RRC connection established
+[2026-08-17 19:06:45.052] [rrc] [info] UE switches to state [RRC-CONNECTED]
+[2026-08-17 19:06:45.052] [nas] [info] UE switches to state [CM-CONNECTED]
+[?2004h]0;root@426c83bd1c5b: /UERANSIM/buildroot@426c83bd1c5b:/UERANSIM/build# [2026-08-17 19:06:45.061] [rrc] [debug] RRC Release received
+[2026-08-17 19:06:45.061] [nas] [error] Initial Registration failed [FIVEG_SERVICES_NOT_ALLOWED]
+[2026-08-17 19:06:45.062] [nas] [info] UE switches to state [5U3-ROAMING-NOT-ALLOWED]
+[2026-08-17 19:06:45.062] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-08-17 19:06:45.062] [nas] [info] UE switches to state [CM-IDLE]
+[2026-08-17 19:06:45.062] [nas] [info] UE switches to state [MM-DEREGISTERED/NO-SUPI]

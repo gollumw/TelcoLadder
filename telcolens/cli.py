@@ -8,6 +8,7 @@ from pathlib import Path
 
 from telcolens import __version__
 from telcolens.adapters import parse_frame
+from telcolens.adapters.nas5gs import count_ciphered
 from telcolens.causes import annotate
 from telcolens.correlate import correlate
 from telcolens.extract import ExtractError, read_frames
@@ -60,8 +61,12 @@ def _missing_dissectors(tshark) -> list[str]:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
+    ciphered = 0
     try:
-        messages = [m for frame in read_frames(args.pcap) for m in parse_frame(frame)]
+        messages = []
+        for frame in read_frames(args.pcap):
+            messages.extend(parse_frame(frame))
+            ciphered += count_ciphered(frame)
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -100,6 +105,16 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         + (f"、{failures} 則失敗" if failures else ""),
         file=sys.stderr,
     )
+    if ciphered:
+        # Rule 12：看不到就要說。加密的 NAS 可能整個藏著一次失敗，
+        # 而圖上會看起來一切正常。
+        print(
+            f"⚠ 另有 {ciphered} 則 NAS 訊息已加密，內層看不到"
+            f"（Security Mode Command 之後為正常現象）。\n"
+            f"  若流程看起來成功但實際失敗，原因可能就在其中 —— "
+            f"請對照核網日誌。",
+            file=sys.stderr,
+        )
     return 0
 
 

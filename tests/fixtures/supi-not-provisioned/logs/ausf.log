@@ -1,0 +1,3 @@
+08/17 19:06:45.054: [sbi] INFO: [5100fd0e-9a29-41f1-a527-23ad1bcf02e1] Setup NF Instance [type:UDM] (../lib/sbi/path.c:349)
+08/17 19:06:45.058: [ausf] WARNING: [suci-0-001-01-0000-0-0-9999999999] Cannot find SUPI [404] (../src/ausf/ue-sm.c:177)
+08/17 19:06:45.059: [ausf] WARNING: [suci-0-001-01-0000-0-0-9999999999] State machine exception (../src/ausf/ausf-sm.c:382)

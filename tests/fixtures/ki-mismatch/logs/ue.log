@@ -1,0 +1,22 @@
+Deploying component: 'ueransim-ue'
+UERANSIM v3.2.6
+[2026-08-17 19:07:49.730] [nas] [info] UE switches to state [MM-DEREGISTERED/PLMN-SEARCH]
+[2026-08-17 19:07:49.732] [rrc] [debug] New signal detected for cell[1], total [1] cells in coverage
+[2026-08-17 19:07:49.737] [nas] [info] Selected plmn[001/01]
+[2026-08-17 19:07:49.738] [rrc] [info] Selected cell plmn[001/01] tac[1] category[SUITABLE]
+[2026-08-17 19:07:49.738] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-08-17 19:07:49.738] [nas] [info] UE switches to state [MM-DEREGISTERED/NORMAL-SERVICE]
+[2026-08-17 19:07:49.738] [nas] [debug] Initial registration required due to [MM-DEREG-NORMAL-SERVICE]
+[2026-08-17 19:07:49.739] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 19:07:49.739] [nas] [debug] Sending Initial Registration
+[2026-08-17 19:07:49.743] [nas] [info] UE switches to state [MM-REGISTER-INITIATED]
+[2026-08-17 19:07:49.743] [rrc] [debug] Sending RRC Setup Request
+[2026-08-17 19:07:49.746] [rrc] [info] RRC connection established
+[2026-08-17 19:07:49.746] [rrc] [info] UE switches to state [RRC-CONNECTED]
+[2026-08-17 19:07:49.746] [nas] [info] UE switches to state [CM-CONNECTED]
+[?2004h]0;root@49c5248be81b: /UERANSIM/buildroot@49c5248be81b:/UERANSIM/build# [2026-08-17 19:07:49.761] [nas] [debug] Authentication Request received
+[2026-08-17 19:07:49.762] [nas] [debug] Sending Authentication Failure due to SQN out of range
+[2026-08-17 19:07:49.765] [nas] [error] Initial Registration failed [UNSPECIFIED_PROTOCOL_ERROR]
+[2026-08-17 19:07:49.765] [nas] [debug] Handling Registration Reject abnormal case
+[2026-08-17 19:07:49.766] [nas] [info] UE switches to state [5U2-NOT-UPDATED]
+[2026-08-17 19:07:49.766] [nas] [info] UE switches to state [MM-DEREGISTERED/ATTEMPTING-REGISTRATION]

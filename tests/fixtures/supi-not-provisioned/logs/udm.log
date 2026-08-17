@@ -1,0 +1,4 @@
+08/17 19:06:45.055: [sbi] INFO: [56fad7ca-9a29-41f1-b771-255f325d5ab4] Setup NF Instance [type:UDR] (../lib/sbi/path.c:349)
+08/17 19:06:45.057: [udm] WARNING: [suci-0-001-01-0000-0-0-9999999999] HTTP response error [404] (../src/udm/nudr-handler.c:87)
+08/17 19:06:45.058: [udm] WARNING: udm_nudr_dr_handle_subscription_authentication() failed (../src/udm/ue-sm.c:349)
+08/17 19:06:45.058: [udm] WARNING: [suci-0-001-01-0000-0-0-9999999999] State machine exception (../src/udm/udm-sm.c:537)
