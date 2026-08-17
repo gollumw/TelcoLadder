@@ -25,13 +25,12 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from telcolens.tshark import Tshark, find_tshark
+from telcolens.tshark import Tshark, find_tshark, shutdown
 
 # display filter 不再寫死在這裡 —— 它由各 adapter 宣告的片段聯集而來
 # （`telcolens.adapters.display_filter()`），所以裝一個 IMS 外掛就會自動
@@ -59,6 +58,15 @@ class Frame:
     src_port: int | None
     dst_port: int | None
     layers: dict[str, Any]
+
+    abs_ts: float = 0.0
+    """擷取當下的 epoch 秒數（牆鐘時間）。
+
+    `ts` 是相對秒數 —— 時序圖只在乎間隔，所以它是主要欄位。但**相對值減掉
+    基準之後推不回絕對時間**（基準是 `read_frames` 的區域變數），而對時間這件
+    事有兩個真實需求：跟核網日誌對照，以及在封包清單上顯示 Wireshark 的絕對
+    時間欄。所以兩個都留，不是二選一。
+    """
 
     def layer(self, name: str) -> list[dict[str, Any]]:
         """取某一層，**一律回傳 list**。
@@ -218,7 +226,8 @@ def read_frames(
             if number is None:
                 continue
 
-            # timestamp 是毫秒 epoch。轉成相對秒數，時序圖只在乎間隔。
+            # timestamp 是毫秒 epoch。相對秒數給時序圖（只在乎間隔），
+            # 絕對秒數留在 abs_ts 給對時間與封包清單用 —— 見 Frame.abs_ts。
             raw_ts = record.get("timestamp")
             abs_ts = (float(raw_ts) / 1000.0) if raw_ts is not None else 0.0
             if base_ts is None:
@@ -233,51 +242,14 @@ def read_frames(
                 src_port=src_port,
                 dst_port=dst_port,
                 layers=layers,
+                abs_ts=abs_ts,
             )
         consumed_fully = True
     finally:
-        stderr = _shutdown(proc, consumed_fully)
+        stderr = shutdown(proc, consumed_fully)
         # tshark 對某些擷取檔會在 stderr 出警告卻正常結束，只有 returncode 才算數。
         # 但提早中止時的非 0 是我們自己造成的，不能報成讀取失敗。
         if consumed_fully and proc.returncode != 0:
             raise ExtractError(
                 f"tshark 讀取 {pcap.name} 失敗（exit {proc.returncode}）：\n{stderr.strip()}"
             )
-
-
-def _shutdown(proc: subprocess.Popen[str], consumed_fully: bool) -> str:
-    """收掉 tshark，回傳它的 stderr。
-
-    提早中止時的順序很要緊，而且**兩個平台要走不同的路**。
-
-    POSIX：必須先關 stdout。tshark 可能正卡在寫入一個沒人再讀的 pipe，
-    這時它連 SIGTERM 都反應不了（訊號處理器會再次嘗試寫入而繼續卡住）。
-    關掉 stdout 讓那個 write 立刻拿到 EPIPE，它才會真的結束。
-
-    Windows：**不能先關**。`terminate()` 在這裡是 TerminateProcess，
-    無條件立即生效，本來就不需要 EPIPE 那一招；而 `communicate()` 在 Windows
-    是靠背景讀取執行緒實作的，對已關閉的檔案呼叫 `read()` 會在那個執行緒裡
-    丟出 ValueError —— 主執行緒的 except 攔不到，使用者會看到一段看起來像
-    當機的 traceback。每次用 `--max-messages` 都會出現一次。
-    （這個 bug 是加了 windows-latest 這格 CI 之後才浮出來的。）
-
-    另外一定要用 `communicate()` 而不是「先 read stderr 再 wait」——
-    後者在子行程仍有 stdout 待寫時會直接死鎖：我們等 stderr 的 EOF，
-    它等有人把 stdout 讀走。
-    """
-    if not consumed_fully:
-        if sys.platform != "win32" and proc.stdout and not proc.stdout.closed:
-            proc.stdout.close()
-        proc.terminate()
-
-    try:
-        _, stderr = proc.communicate(timeout=15)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        _, stderr = proc.communicate()
-    except ValueError:
-        # stdout 已被我們關掉時 communicate 會抱怨，此時只需確保行程結束。
-        proc.wait()
-        stderr = ""
-
-    return stderr or ""
