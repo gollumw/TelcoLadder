@@ -52,11 +52,15 @@ registration. What that capture does *not* contain is the long tail — see
   `tshark`.
 - **Names the network functions** instead of showing IP addresses, and shows
   the IP when the evidence is ambiguous rather than guessing. Roles a test
-  capture has actually produced: `gNB`, `AMF`, `AUSF`, `UDM`, `UDR`, `PCF`,
-  `SMF`, `UPF`. The ambiguity rule is not decoration — in a deployment that
-  routes SBI through an **SCP**, the proxy's address collects votes for five
-  different NF types and stays an IP address, because a relay is not a
-  producer.
+  capture has actually produced: `gNB`, `AMF`, `SCP`, `AUSF`, `UDM`, `UDR`,
+  `PCF`, `SMF`, `UPF`.
+- **Understands relays.** A production core almost always has one — a 5G
+  **SCP**, a Diameter **DRA**, a SIP proxy — and then every message's wire peer
+  is the middlebox, not the network function you care about. TelcoLens reads the
+  target the message *names* (`3gpp-Sbi-Target-apiRoot` for SBI) rather than the
+  address it was sent to, labels the relay as what it is, and refuses to
+  attribute the services behind it to it. The relay keeps its own lane, so a
+  forward that never happened is still visible.
 - **Correlates one subscriber** across identifiers and across protocols: SUPI
   (recovered from a null-scheme SUCI in NAS, and from `imsi-…` / `suci-…` in
   SBI resource paths) and RAN/AMF UE NGAP IDs. A test capture ties the NGAP/NAS
@@ -192,6 +196,12 @@ the large-capture path works with scripting turned off.
   SUPI extraction are exercised — but only for the services that deployment
   emits, and only for null-scheme SUCIs. Real SBI is usually TLS encrypted; you
   need a testbed or cleartext h2c to see inside at all.
+- **Relay detection needs the deployment to say so.** It keys on the target the
+  message names — `3gpp-Sbi-Target-apiRoot` in SBI. A fully transparent SCP that
+  sends no such header is indistinguishable from the real endpoint, and its
+  address falls back to an unlabelled IP. That is the correct failure direction,
+  but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
+  `Origin-Host`, and it signs its own passage with a `Route-Record`.
 - **PFCP carries no cause explanations.** The adapter reads message types and
   SEIDs and marks failures, but TS 29.244's cause table has not been
   transcribed yet, so a failed N4 message is highlighted without a clause

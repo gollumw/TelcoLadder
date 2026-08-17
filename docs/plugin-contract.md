@@ -88,6 +88,66 @@ tshark 只採用最後一條 `-d`，落選的那個 adapter 一格都收不到 �
 
 ---
 
+## detail 契約 —— 餵給 nf.py 的證據
+
+`Message.detail` 不只是給人看的附註，其中幾把鑰匙是 `nf.py` 判定網元角色的
+**證據來源**。填錯或不填，圖上就會出現一排 IP 位址。
+
+| 鑰匙 | 意義 | 誰在用 |
+|---|---|---|
+| `service` | SBI 的服務名（`/nausf-auth/…` → `nausf-auth`） | `nf.py` 階梯 3：請求打向誰，誰就是提供者 |
+| `user-agent` | 發送端自報的 NF 型別 | `nf.py` 階梯 3：來源角色 |
+| `relay-target` | **這則訊息指名的真正收件者**（主機部分） | `nf.py` 第一趟：找出轉送者 |
+
+### relay-target：線路上的對端不一定是邏輯上的對端
+
+真實核網幾乎都有轉送者。5G 的 SCP（間接通訊）、Diameter 的 DRA 與 SLF、
+IMS 的 SIP proxy —— 症狀完全一樣：**所有訊息的線路對端都是那個中間人**，
+而它後面的網元一個都看不到。
+
+沒有這把鑰匙時會發生什麼（實測，`tests/fixtures/5gc-e2e/`）：SCP 的位址同時
+收到 AUSF、UDM、PCF、SMF、NRF 五種票，`resolve_roles` 因為矛盾而拒絕採納，
+圖上留下一個裸 IP。更糟的是它**主動投出錯票** —— SCP 轉送請求時會原封不動
+保留原始發送端的 `User-Agent`（`SCP → NRF` 帶著 `user-agent: SMF`），
+那一票會落在 SCP 身上。
+
+所以 adapter 要如實填上「這則訊息說它要去哪裡」，`nf.py` 據此判斷：
+
+> **收到一則指名別人的訊息的那一端，就是轉送者。**
+
+各協定從哪裡取：
+
+| 協定 | 欄位 | 備註 |
+|---|---|---|
+| SBI | `3gpp-Sbi-Target-apiRoot` | 間接通訊時由發送端帶上；`:authority` 指的是 SCP 自己 |
+| Diameter | `Destination-Host` | 另有更強的獨立證據，見下 |
+| SIP | `Route` | 與 `Record-Route` 搭配 |
+
+只填主機部分，不要帶埠號 —— `nf.py` 是拿 IP 比對的。
+
+**Diameter 把這件事分得比 SBI 更徹底。** DRA 轉送時**不得改寫**
+`Origin-Host` / `Origin-Realm`（那永遠是原始發送端），而是自己疊一個
+`Route-Record` 上去；`Destination-Host` / `Destination-Realm` 指名真正的
+收件者。所以 Diameter adapter 除了填 `relay-target`，還可以拿
+`Route-Record` 的存在當第二個獨立證據 —— 那是轉送者自己留下的簽名。
+
+> ⚠ 上面列的是**欄位與 AVP 名稱，不是條號**。要在程式或文件裡引用 3GPP
+> 條文出處，一律人工核對後才寫（見 CLAUDE.md §2.3）。實作時 AVP 的實際
+> tshark 欄位名請用 `tshark -G fields` 對過，不要憑印象。
+
+**為什麼不做成「SCP 規則」**：那樣 Diameter 進來時就得再寫一次，IMS 再一次。
+判定邏輯裡沒有任何一個字提到 SCP —— 它只認 `relay-target` 這把鑰匙。
+新協定要支援轉送者，填鑰匙即可，`nf.py` 不必動。
+
+角色名稱在 `nf.py` 的 `RELAY_ROLE_BY_PROTOCOL` 對照表裡（`sbi` → `SCP`），
+新協定在那裡加一行。同一個位址被兩個協定判成不同種轉送者時**不標** ——
+比照全檔的哲學：證據矛盾時，標錯比不標更糟。
+
+**限制**：只有在部署真的送出那個欄位時才有效。完全透明的 SCP 不送
+`3gpp-Sbi-Target-apiRoot`，那時仍然退回顯示 IP —— 那是正確的 fail-safe。
+
+---
+
 ## cause 表契約
 
 entry point 的值要解析成一個**含 `*.yaml` 的目錄 `Path`**：

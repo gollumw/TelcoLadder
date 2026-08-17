@@ -46,6 +46,7 @@ SBI_SERVICE_TO_NF: dict[str, str] = {
     "npcf-am-policy-control": "PCF",
     "npcf-smpolicycontrol": "PCF",
     "npcf-policyauthorization": "PCF",
+    "nbsf-management": "BSF",
     "nnrf-nfm": "NRF",
     "nnrf-disc": "NRF",
     "nudr-dr": "UDR",
@@ -64,6 +65,46 @@ _AMF_INITIATED = {"AMFConfigurationUpdate", "AMFStatusIndication", "Paging", "In
 #: 把 NAS 畫在 gNB↔AMF 那一段是照封包畫，而不是照協定語意畫。
 UE_ROLE = "UE"
 
+#: 轉送者的角色名稱，依「揭露它的那個協定」決定。
+#: Diameter adapter 落地時在這裡加 `"diameter": "DRA"` —— 判定邏輯不必動。
+RELAY_ROLE_BY_PROTOCOL: dict[str, str] = {
+    "sbi": "SCP",
+}
+
+
+def find_relays(messages: list[Message]) -> dict[str, str]:
+    """找出轉送者：**收到一則指名別人的訊息的那一端**。
+
+    判準只有一條，而且是協定中立的 —— adapter 在 `detail["relay-target"]`
+    如實填上「這則訊息說它要去哪裡」，若那個目標不是線路上的收件者，
+    收件者就是個轉送者。
+
+    這條規則同時吃得下三個東西：
+
+    * 5G 的 SCP —— `3gpp-Sbi-Target-apiRoot`（間接通訊）
+    * Diameter 的 DRA / SLF —— `Destination-Host`
+    * IMS 的 SIP proxy —— `Route`
+
+    **為什麼不是特判 SCP**：在任何有轉送者的拓撲裡，線路上的對端都不是
+    邏輯上的對端。把它寫成「SCP 的規則」，等 Diameter 進來時就得再寫一次，
+    而那正是外掛契約要消滅的東西。
+
+    同一個 IP 被兩個協定判成不同種轉送者時**不標** —— 比照 `resolve_roles`
+    的哲學：證據矛盾時標錯比不標更糟。
+    """
+    candidates: dict[str, set[str]] = defaultdict(set)
+    for msg in messages:
+        target = msg.detail.get("relay-target")
+        if not target or target == msg.dst.ip:
+            # 目標就是收件者本人 —— 那是直接通訊，不是轉送。
+            # 少了這個判斷會把真正的網元標成 SCP。
+            continue
+        role = RELAY_ROLE_BY_PROTOCOL.get(msg.protocol)
+        if role:
+            candidates[msg.dst.ip].add(role)
+
+    return {ip: next(iter(roles)) for ip, roles in candidates.items() if len(roles) == 1}
+
 
 def _endpoint_key(endpoint: Endpoint) -> str:
     return endpoint.ip
@@ -73,8 +114,26 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
     """掃過所有訊息，判定每個 IP 的網元角色。
 
     回傳 IP → 角色名稱。判不出來的 IP 不會出現在結果裡。
+
+    **分兩趟，順序有語意。** 先找出轉送者（`find_relays`），再跑判定階梯 ——
+    因為階梯上的證據對轉送者是無效的，而不知道誰是轉送者就分不出哪些票被
+    污染了。實測 SCP 的例子：打向它的請求，服務名描述的是**最終目標**；
+    它轉送出來的請求，User-Agent 描述的是**原始發送端**。兩者都不是它自己，
+    而它會因此同時收到五種 NF 的票、全部互相抵銷。
     """
+    relays = find_relays(messages)
     votes: dict[str, set[str]] = defaultdict(set)
+
+    def vote(ip: str, role: str) -> None:
+        """記一票。**落在轉送者身上的一律丟掉。**
+
+        轉送者的角色已由第一趟決定，而階梯上的每一條規則都在推論
+        「這個位址扮演哪個網元」—— 對一個只是把訊息傳下去的中間人來說，
+        那個推論從前提就不成立。
+        """
+        if ip in relays:
+            return
+        votes[ip].add(role)
 
     for msg in messages:
         src_ip, dst_ip = _endpoint_key(msg.src), _endpoint_key(msg.dst)
@@ -96,22 +155,22 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
             initiator = dst_ip if is_reply else src_ip
             responder = src_ip if is_reply else dst_ip
             if base in _GNB_INITIATED:
-                votes[initiator].add("gNB")
-                votes[responder].add("AMF")
+                vote(initiator, "gNB")
+                vote(responder, "AMF")
             elif base in _AMF_INITIATED:
-                votes[initiator].add("AMF")
-                votes[responder].add("gNB")
+                vote(initiator, "AMF")
+                vote(responder, "gNB")
 
         if msg.protocol == "pfcp" and msg.label.startswith("Session Establishment Request"):
-            votes[src_ip].add("SMF")
-            votes[dst_ip].add("UPF")
+            vote(src_ip, "SMF")
+            vote(dst_ip, "UPF")
 
         # ── 階梯 2：標準埠 ──
         if msg.protocol == "ngap":
             if msg.dst.port == NGAP_PORT:
-                votes[dst_ip].add("AMF")
+                vote(dst_ip, "AMF")
             if msg.src.port == NGAP_PORT:
-                votes[src_ip].add("AMF")
+                vote(src_ip, "AMF")
         # PFCP **不能**用埠號判角色：8805 是 N4 兩端共用的埠（實測 Open5GS，
         # SMF 與 UPF 的 src/dst 全是 8805），與 NGAP 的 38412 只有 AMF 側在聽
         # 完全不同。照 dst 埠判會讓 SMF 同時收到 SMF 與 UPF 兩票而互相抵銷，
@@ -122,17 +181,21 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
         if msg.protocol == "sbi":
             service = msg.detail.get("service")
             if service and service in SBI_SERVICE_TO_NF:
-                # 請求打向誰，誰就是那個服務的提供者。
-                votes[dst_ip].add(SBI_SERVICE_TO_NF[service])
+                # 請求打向誰，誰就是那個服務的提供者 —— **除非那是轉送者**，
+                # 那時服務名描述的是它後面的最終目標。`vote()` 會擋掉。
+                vote(dst_ip, SBI_SERVICE_TO_NF[service])
             agent = msg.detail.get("user-agent")
             if agent:
                 nf_type = agent.split("-")[0].split("/")[0].strip().upper()
                 if nf_type in set(SBI_SERVICE_TO_NF.values()):
-                    votes[src_ip].add(nf_type)
+                    # 轉送出來的請求會保留**原始發送端**的 User-Agent
+                    # （實測：`SCP → NRF` 帶著 `user-agent: SMF`），
+                    # 照收會把 SMF 這一票投在 SCP 身上。`vote()` 會擋掉。
+                    vote(src_ip, nf_type)
 
     # 只採納沒有矛盾的判定。同一個 IP 收到兩種角色代表推論鏈有問題，
     # 這時寧可不標 —— 標錯比不標更糟。
-    resolved: dict[str, str] = {}
+    resolved: dict[str, str] = dict(relays)
     for ip, candidates in votes.items():
         if len(candidates) == 1:
             resolved[ip] = next(iter(candidates))
@@ -164,7 +227,7 @@ def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Me
 
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
 #: 依首次出現順序。這只是呈現偏好，不影響任何判定。
-PARTICIPANT_ORDER = ("UE", "gNB", "AMF", "AUSF", "UDM", "UDR", "PCF", "NSSF", "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF")
+PARTICIPANT_ORDER = ("UE", "gNB", "AMF", "SCP", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF", "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF")
 
 
 def participant_rank(endpoint: Endpoint) -> tuple[int, str]:

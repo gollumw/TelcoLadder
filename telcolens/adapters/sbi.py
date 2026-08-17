@@ -114,6 +114,59 @@ def _supis_in_path(path: str) -> set[str]:
     return found
 
 
+#: 間接通訊時，發送端用這個標頭指名**真正**的目標；`:authority` 指的則是
+#: 中間的 SCP。名稱一律轉小寫比對 —— HTTP/2 的標頭名本來就是小寫，
+#: 但別把那個假設寫死在比對上。
+_TARGET_APIROOT = "3gpp-sbi-target-apiroot"
+
+
+def _relay_target(block: dict[str, Any]) -> str | None:
+    """這則訊息指名的真正收件者（只取主機部分）。
+
+    `3gpp-Sbi-Target-apiRoot` 不是 tshark 的具名欄位（不像 `:path` 有
+    `http2_http2_headers_path`），而是兩條平行的清單：標頭名一條、值一條。
+    所以要自己走訪配對。
+
+    回傳主機部分即可（`http://172.22.0.11:7777` → `172.22.0.11`）——
+    `nf.py` 是拿 IP 比對的，埠號留著只會讓比對失敗。
+
+    這把鑰匙本身不解讀「誰是轉送者」，那是 `nf.py` 的事。adapter 只負責
+    如實報出「這則訊息說它要去哪裡」。
+    """
+    names = block.get("http2_http2_header_name")
+    values = block.get("http2_http2_header_value")
+    names = names if isinstance(names, list) else [names]
+    values = values if isinstance(values, list) else [values]
+
+    for name, value in zip(names, values):
+        if name is None or value is None:
+            continue
+        if str(name).strip().lower() != _TARGET_APIROOT:
+            continue
+        return _host_of(str(value))
+    return None
+
+
+def _host_of(api_root: str) -> str | None:
+    """`http://172.22.0.11:7777` → `172.22.0.11`。
+
+    刻意不用 `urllib.parse` —— apiRoot 在實務上可能缺 scheme、可能帶路徑
+    前綴（TS 29.500 允許 apiRoot 含 deployment-specific 字串）。手工切三刀
+    比較好預測，而且切不出來時回 None 不猜。
+    """
+    text = api_root.strip()
+    if not text:
+        return None
+    _, _, rest = text.rpartition("//")  # 有 scheme 就切掉，沒有就原樣
+    host = rest.split("/", 1)[0]
+    # IPv6 字面值是 [::1]:7777，冒號不能當埠號分隔
+    if host.startswith("["):
+        host = host.partition("]")[0].lstrip("[")
+    else:
+        host = host.split(":", 1)[0]
+    return host or None
+
+
 def _service_from_path(path: str) -> str | None:
     """由 `:path` 取出服務名，如 `/nsmf-pdusession/v1/sm-contexts` → `nsmf-pdusession`。
 
@@ -166,8 +219,17 @@ def parse(frame: Frame) -> list[Message]:
         user_agent = first(block.get("http2_http2_headers_user_agent"))
         if user_agent:
             # TS 29.500 要求 SBI 的 User-Agent 帶發送端的 NF type，
-            # `nf.py` 會拿它判定來源角色。
+            # `nf.py` 會拿它判定來源角色。**但轉送出來的請求例外** ——
+            # SCP 會原封不動保留原始發送端的 User-Agent（實測：
+            # `SCP → NRF` 帶著 `user-agent: SMF`），所以 `nf.py` 必須先知道
+            # 誰是轉送者才能用這一票。
             detail["user-agent"] = str(user_agent)
+        relay_target = _relay_target(block)
+        if relay_target:
+            # 契約裡的通用鑰匙：這則訊息指名的真正收件者。SBI 從
+            # `3gpp-Sbi-Target-apiRoot` 取，Diameter 之後從 `Destination-Host`
+            # 取，SIP 從 `Route` 取 —— `nf.py` 只認這把鑰匙，不認協定。
+            detail["relay-target"] = relay_target
 
         messages.append(
             Message(
