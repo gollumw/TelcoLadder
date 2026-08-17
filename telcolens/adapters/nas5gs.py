@@ -25,7 +25,7 @@ NAME = "nas-5gs"
 ORDER = 20
 
 #: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
-#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的三軸線說明。
+#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的軸線說明。
 DISPLAY_FILTER = "nas-5gs"
 
 #: `telcolens check` 要驗證存在的 dissector。

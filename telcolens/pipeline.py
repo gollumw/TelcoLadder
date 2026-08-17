@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from telcolens.adapters import parse_frame
+from telcolens.adapters import default_decode_as, parse_frame
 from telcolens.adapters.nas5gs import count_ciphered
 from telcolens.causes import annotate
 from telcolens.correlate import correlate
@@ -67,14 +67,18 @@ def analyse(
 
     `wire=False` 回到流程視圖：一則訊息一列，NAS 依協定語意畫在 UE↔AMF。
 
+    `decode_as` 疊加在各 adapter 宣告的 `DECODE_AS` **之後** ——
+    tshark 同一個選擇器取最後一條，所以使用者給的一定蓋得過預設。
+
     例外一律往上拋（`ExtractError` / `TsharkNotFound`）—— 這一層不知道
     呼叫端是 CLI 還是 HTTP，把錯誤翻譯成人話是呼叫端的責任。
     """
     if wire:
         nas_from_ue = False
+    rules = (*default_decode_as(), *decode_as)
     messages = []
     ciphered = 0
-    for frame in read_frames(pcap, decode_as=decode_as):
+    for frame in read_frames(pcap, decode_as=rules):
         messages.extend(parse_frame(frame))
         ciphered += count_ciphered(frame)
 

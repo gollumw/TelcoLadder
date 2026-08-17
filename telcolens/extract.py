@@ -129,7 +129,7 @@ def read_frames(
     pcap: Path,
     *,
     display_filter: str | None = None,
-    decode_as: Sequence[str] = (),
+    decode_as: Sequence[str] | None = None,
     tshark: Tshark | None = None,
 ) -> Iterator[Frame]:
     """串流讀出 pcap 中符合過濾條件的封包。
@@ -138,6 +138,10 @@ def read_frames(
 
     `display_filter` 留 None 就用註冊表推導出來的聯集（內建 + 外掛）。
     傳字串可以覆蓋 —— 測試裡拿它當獨立 oracle 用。
+
+    `decode_as` 留 None 就用註冊表聚合出來的預設（各 adapter 宣告的
+    `DECODE_AS`）。傳空序列代表「一條規則都不要」—— 測試拿它比對
+    「靠 tshark 啟發式」與「明確指定」的差別時需要這個。
 
     `decode_as` 直接轉成 tshark 的 `-d`，例如 `"tcp.port==5062,sip"`。
     **這不是可有可無的便利功能。** 信令在真實部署常跑非標準 port，而 tshark
@@ -156,6 +160,11 @@ def read_frames(
         from telcolens.adapters import display_filter as _derive_filter
 
         display_filter = _derive_filter()
+
+    if decode_as is None:
+        from telcolens.adapters import default_decode_as as _derive_decode_as
+
+        decode_as = _derive_decode_as()
 
     tshark = tshark or find_tshark()
     # 相對時間由下方自行從 epoch 換算，不靠 tshark 的顯示偏好設定。

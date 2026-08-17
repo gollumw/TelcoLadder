@@ -6,17 +6,23 @@
 IMS 的 cause 知識庫是商業模組。所以「加一個協定」必須是**裝一個套件**，
 不是改核心程式碼 —— 否則兩份 codebase 會分家。
 
-## 三個軸線，不是一個
+## 四個軸線，不是一個
 
-一開始只想到 adapter，但一個協定要真的接上來，得同時提供三樣東西：
+一開始只想到 adapter，但一個協定要真的接上來，得同時提供這些東西：
 
 1. **adapter** —— 怎麼把封包變成 `Message`（`telcolens.adapters` group）
 2. **cause 表** —— 那個協定的 cause code 怎麼查（`telcolens.cause_tables` group）
 3. **display filter 片段** —— 不然 tshark 根本不會把那些封包吐出來
    （由 adapter 的 `DISPLAY_FILTER` 屬性宣告，見 `adapters/__init__.py`）
+4. **decode-as 規則** —— 協定跑在非標準 port 時，tshark 認不出那是什麼
+   （由 adapter 的選用屬性 `DECODE_AS` 宣告）
 
-第三個是最容易漏的：adapter 寫得再完美，只要 filter 沒有含它的協定，
-它永遠收不到任何一格，而且**完全不會報錯**。
+後兩個最容易漏，而且是兩件事：filter 是「把這個協定的封包留下來」，
+前提是 tshark **已經認出**那是什麼協定。擷取起點在 TCP 連線建立之後時，
+那個判斷會失敗（看不到 HTTP/2 的 preface、SIP 跑在 5062…），整條串流
+退回 `data` —— 這時 filter 寫得再對也留不下任何東西。
+
+兩種漏法的症狀相同：adapter 一格都收不到，而且**完全不會報錯**。
 
 ## 兩種失敗，兩種處理
 

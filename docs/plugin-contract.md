@@ -10,9 +10,9 @@ TelcoLens 的協定支援是可插拔的。**加一個協定 = 裝一個套件**
 
 ---
 
-## 三個軸線，不是一個
+## 四個軸線，不是一個
 
-一個協定要真的接上來，得同時提供三樣東西。只做前兩樣，症狀是**完全不報錯，
+一個協定要真的接上來，得同時提供這些東西。少任何一樣，症狀都是**完全不報錯，
 但一則訊息都沒解析出來**：
 
 | 軸線 | 怎麼提供 | 漏掉的症狀 |
@@ -20,20 +20,25 @@ TelcoLens 的協定支援是可插拔的。**加一個協定 = 裝一個套件**
 | adapter | `telcolens.adapters` entry point | 沒有人解析那個協定 |
 | cause 表 | `telcolens.cause_tables` entry point | 每個 cause 都印「尚未收錄」 |
 | **display filter** | adapter 的 `DISPLAY_FILTER` 屬性 | **tshark 根本不吐那些封包** |
+| **decode-as** | adapter 的 `DECODE_AS` 屬性（選用） | **tshark 認不出那是什麼協定** |
 
-第三個最容易漏，因為它不是一個獨立的註冊動作，只是 adapter 上的一個屬性。
+後兩個最容易漏，因為它們不是獨立的註冊動作，只是 adapter 上的屬性。
+
+而且它們是兩件事：**filter 是「把這個協定的封包留下來」，前提是 tshark
+已經認出那是什麼協定。** 認不出來的時候，filter 寫得再對也留不下任何東西。
 
 ---
 
 ## adapter 契約
 
-一個 adapter 是任何具備這五樣的物件（通常就是一個模組）：
+一個 adapter 是任何具備這五樣的物件（通常就是一個模組），外加一個選用的：
 
 ```python
 NAME = "sip"                              # 出現在 Message.protocol 上
 ORDER = 40                                # 排列順序，小的先跑
 DISPLAY_FILTER = "sip || sdp"             # 丟給 tshark 的 filter 片段
 DISSECTORS = ("sip", "sdp")               # telcolens check 要驗證的 dissector
+DECODE_AS = ("tcp.port==5062,sip",)       # 選用，見下
 
 def parse(frame: Frame) -> list[Message]:
     ...
@@ -48,10 +53,33 @@ sip = "telcolens_ims.adapters.sip"
 
 **載體協定要排在載荷之前。** NGAP 內嵌 NAS，同一格裡先畫
 `InitialUEMessage` 再畫 `Registration request` 才讀得通 —— ORDER 決定的
-就是這個。內建的用 10（ngap）／20（nas-5gs）／30（sbi），中間留了空隙。
+就是這個。內建的用 10（ngap）／20（nas-5gs）／30（sbi）／40（pfcp），中間留了空隙。
 
 同 ORDER 時以 `NAME` 為第二鍵，所以順序不會隨安裝順序改變。**同一份擷取檔
 在兩台機器上必須畫出同一張圖。**
+
+### DECODE_AS：光有 filter 不夠
+
+tshark 靠啟發式判斷一條 TCP 串流跑的是什麼協定，而**擷取起點若在連線建立
+之後，那個判斷會失敗**。實測一份含 5GC SBI 的擷取檔：連線在抓包前就建好，
+tshark 沒看到 HTTP/2 的 preface，整條串流退回 `data` —— `DISPLAY_FILTER = "http2"`
+一格都收不到，而且完全不報錯。同一份擷取檔加上 `-d tcp.port==7777,http2`
+之後，SBI 訊息從 60 則變成 146 則。
+
+IMS 會更常遇到：SIP 跑 5062 / 6060、Diameter 被改 port 都是常態。
+
+**這些 port 是啟發式提示，不是規範值。** 與 NGAP 的 38412（TS 38.412）、
+PFCP 的 8805（TS 29.244）不同 —— 那兩個是規範定死的，而 SBI 的 port 由
+NRF discovery 決定，7777 只是 Open5GS 的預設。所以 `DECODE_AS` 的意義是
+「常見部署能開箱即用」，不是「這個協定就跑在這個 port」。其他部署一律用
+CLI 的 `--decode-as` 疊加，它排在 adapter 的預設**之後**，所以蓋得過預設。
+
+選用而非必填是刻意的：多數協定跑在標準 port 上，不該為了一個用不到的欄位
+逼既有外掛改版。沒宣告就當空的。
+
+**同一個選擇器被兩個 adapter 指向不同協定時會直接報錯**（`PluginError`）。
+tshark 只採用最後一條 `-d`，落選的那個 adapter 一格都收不到 —— 靜默取其一
+等於把這個失敗藏起來。撞號時請改用 CLI 明確指定。
 
 ### DISPLAY_FILTER 會被括起來
 

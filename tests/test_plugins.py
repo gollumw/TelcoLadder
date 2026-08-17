@@ -138,7 +138,7 @@ def test_plugin_adapter_lands_in_its_declared_position(install_plugin):
     importlib.invalidate_caches()
     _clear_caches()
     names = [a.NAME for a in adapters_mod.adapters()]
-    assert names == ["ngap", "faketel", "nas-5gs", "sbi"]
+    assert names == ["ngap", "faketel", "nas-5gs", "sbi", "pfcp"]
 
 
 def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
@@ -159,7 +159,7 @@ def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
     try:
         with pytest.warns(RuntimeWarning, match="entry point"):
             names = [a.NAME for a in adapters_mod.adapters()]
-        assert names == ["ngap", "nas-5gs", "sbi"]
+        assert names == ["ngap", "nas-5gs", "sbi", "pfcp"]
         # filter 也要還在，否則 read_frames 會拿到空字串而撈不到任何封包。
         assert "(ngap)" in adapters_mod.display_filter()
     finally:
@@ -267,3 +267,66 @@ def test_cause_table_pointing_at_a_non_directory_is_rejected(install_plugin):
     _clear_caches()
     with pytest.raises(PluginError, match="不是一個目錄"):
         causes_mod.lookup(CauseRef("nas_5gmm", 111))
+
+
+# ── 軸線四：decode-as（光有 filter 不夠）──────────────────────────────
+
+
+class _FakeAdapter:
+    """只帶契約屬性的假 adapter，用來驗聚合行為。"""
+
+    def __init__(self, name: str, decode_as: tuple[str, ...]):
+        self.NAME = name
+        self.ORDER = 900
+        self.DISPLAY_FILTER = name
+        self.DISSECTORS = (name,)
+        self.DECODE_AS = decode_as
+
+    def parse(self, frame):  # pragma: no cover - 這些測試不會走到解析
+        return []
+
+
+def test_decode_as_is_optional(monkeypatch):
+    """沒宣告 `DECODE_AS` 的 adapter 不該讓聚合爆掉。
+
+    契約落地（`edcbc14`）時還沒有這個欄位，既有外掛不必改版就要能繼續用。
+    """
+    class _NoDecodeAs:
+        NAME = "olderplugin"
+        ORDER = 900
+        DISPLAY_FILTER = "olderplugin"
+        DISSECTORS = ("olderplugin",)
+
+        def parse(self, frame):  # pragma: no cover
+            return []
+
+    monkeypatch.setattr(adapters_mod, "adapters", lambda: (_NoDecodeAs(),))
+    assert adapters_mod.default_decode_as() == ()
+
+
+def test_same_rule_declared_twice_is_deduped(monkeypatch):
+    """兩個 adapter 宣告**同一條**規則只是重複，不是衝突。"""
+    rule = "tcp.port==7777,http2"
+    monkeypatch.setattr(
+        adapters_mod, "adapters",
+        lambda: (_FakeAdapter("a", (rule,)), _FakeAdapter("b", (rule,))),
+    )
+    assert adapters_mod.default_decode_as() == (rule,)
+
+
+def test_conflicting_decode_as_fails_loudly(monkeypatch):
+    """同一個選擇器被指向兩個協定時必須大聲報錯。
+
+    tshark 只會採用最後一條 `-d`，落選的那個 adapter 的症狀是
+    **一格都收不到而且不報錯** —— 又是「裝了卻沒生效」。
+    靜默取其一等於把這個失敗藏起來，所以這裡選擇炸掉。
+    """
+    monkeypatch.setattr(
+        adapters_mod, "adapters",
+        lambda: (
+            _FakeAdapter("sipish", ("tcp.port==5060,sip",)),
+            _FakeAdapter("otherish", ("tcp.port==5060,diameter",)),
+        ),
+    )
+    with pytest.raises(PluginError, match="decode-as 撞號"):
+        adapters_mod.default_decode_as()

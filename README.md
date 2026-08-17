@@ -39,25 +39,33 @@ and every unfamiliar cause code sends you back to the specs. TelcoLens turns the
 capture into a diagram, names the network functions, and cites the clause the
 cause code comes from.
 
-**Status: early.** The N2/NAS side (NGAP + NAS-5GS) is exercised end to end
-against real testbed captures. SBI and PFCP are not — see
+**Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, and PFCP are each exercised
+against real testbed captures, including one that carries all three from a single
+registration. What that capture does *not* contain is the long tail — see
 [Honest limitations](#honest-limitations) before you rely on it.
 
 ---
 
 ## What it does today
 
-- **Reads** NGAP, NAS-5GS, and HTTP/2 SBI from `pcap` / `pcapng` via `tshark`.
+- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, and PFCP from `pcap` / `pcapng` via
+  `tshark`.
 - **Names the network functions** instead of showing IP addresses, and shows
-  the IP when the evidence is ambiguous rather than guessing. In practice today
-  that means `gNB` and `AMF` — those are the only roles any test capture has
-  ever produced. The ladder also covers SMF/UPF (from PFCP) and the SBI
-  producers, but **no capture we have exercises those paths yet**, so treat
-  them as untested code rather than working features.
-- **Correlates one subscriber** across identifiers: SUPI (recovered from a
-  null-scheme SUCI) and RAN/AMF UE NGAP IDs — both verified against real
-  captures. HTTP/2 stream IDs are also tracked, but they pair a request with
-  its response; **no capture has yet tied an SBI exchange to a subscriber**.
+  the IP when the evidence is ambiguous rather than guessing. Roles a test
+  capture has actually produced: `gNB`, `AMF`, `AUSF`, `UDM`, `UDR`, `PCF`,
+  `SMF`, `UPF`. The ambiguity rule is not decoration — in a deployment that
+  routes SBI through an **SCP**, the proxy's address collects votes for five
+  different NF types and stays an IP address, because a relay is not a
+  producer.
+- **Correlates one subscriber** across identifiers and across protocols: SUPI
+  (recovered from a null-scheme SUCI in NAS, and from `imsi-…` / `suci-…` in
+  SBI resource paths) and RAN/AMF UE NGAP IDs. A test capture ties the NGAP/NAS
+  attach and the SBI exchanges behind it into **one** flow. HTTP/2 stream IDs
+  are tracked separately, pairing a request with its response.
+- **Needs to be told how to decode non-standard ports.** A capture that starts
+  after the TCP connections are up has no HTTP/2 preface for `tshark` to find,
+  so SBI silently decodes as raw data. Adapters declare the common cases
+  (`DECODE_AS`); anything else goes through `--decode-as`.
 - **One row per packet by default**, with the carrier and its payload stacked
   on the same line (`DownlinkNASTransport ▸ Authentication request`). Pass
   `--flow` to spread them out and draw NAS UE↔AMF instead — NAS is a UE↔AMF
@@ -179,11 +187,19 @@ the large-capture path works with scripting turned off.
 
 ## Honest limitations
 
-- **SBI is structurally parsed but not semantically verified.** No public 5G SBI
-  capture was available to test against; the HTTP/2 message splitting is
-  verified, the service-name-to-NF mapping is not. Real SBI is usually TLS
-  encrypted anyway — you need a testbed or cleartext h2c to see inside.
-- **PFCP is not implemented yet.** No test capture, so no code.
+- **SBI is verified against exactly one deployment.** `tests/fixtures/5gc-e2e/`
+  is Open5GS with an SCP in the path, so the service-name-to-NF mapping and the
+  SUPI extraction are exercised — but only for the services that deployment
+  emits, and only for null-scheme SUCIs. Real SBI is usually TLS encrypted; you
+  need a testbed or cleartext h2c to see inside at all.
+- **PFCP carries no cause explanations.** The adapter reads message types and
+  SEIDs and marks failures, but TS 29.244's cause table has not been
+  transcribed yet, so a failed N4 message is highlighted without a clause
+  citation. Transcribing that table is manual work by design — no clause number
+  in this repo is machine-generated.
+- **N4 does not join the subscriber's flow.** No message carries both a SUPI and
+  a PFCP SEID, so the union-find has nothing to join them on. The N4 session
+  renders as its own flow rather than an invented link.
 - **Failure highlighting is verified against real testbed captures**, not
   synthetic ones — see `tests/fixtures/`, where each scenario ships the
   core-network log that independently confirms the cause code. What is *not*
@@ -251,15 +267,17 @@ pytest
 
 Test captures live in `tests/fixtures/`, one directory per scenario, each with the
 capture, the core network's own logs, and a `scenario.md` explaining what it contains
-and how to regenerate it. `5gc-registration/` was produced on a local Open5GS +
-UERANSIM testbed, so it carries this repo's licence and no third-party constraints.
+and how to regenerate it. `5gc-registration/` (N2 only) and `5gc-e2e/` (N2 + SBI +
+N4, captured at three disjoint points and merged) were both produced on a local
+Open5GS + UERANSIM testbed, so they carry this repo's licence and no third-party
+constraints.
 
 **What the green badge does and does not mean.** CI runs the full suite on Python
 3.11/3.12/3.13 (Linux) plus 3.13 on macOS and Windows — five jobs, three operating
 systems, and whatever tshark each of them ships. No skips, so the cross-checks
-above genuinely run. It does **not** cover PFCP (no adapter yet),
-SBI's 5G semantics (the HTTP/2 fixture is generic HTTP/2, not real SBI traffic), or
-IMS. Those gaps are real and are named in `.github/workflows/ci.yml`.
+above genuinely run. It does **not** cover IMS, TLS-protected SBI, ECIES-protected
+SUCIs, or any deployment other than the one Open5GS topology the fixtures came from.
+Those gaps are real and are named in `.github/workflows/ci.yml`.
 
 ## License
 

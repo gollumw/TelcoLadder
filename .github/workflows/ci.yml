@@ -18,9 +18,14 @@
 #     那份自產擷取檔換來的。
 #
 # 守不住：
-#   - PFCP：adapter 尚未實作，也沒有擷取檔。
-#   - SBI 的 5G 語意：現有的 http2 fixture 是通用 HTTP/2 不是 SBI，
-#     服務名→網元的對應未經真實流量驗證。
+#   - 只有一種部署：SBI 與 PFCP 的驗證全部來自 tests/fixtures/5gc-e2e/，
+#     那是一套帶 SCP 的 Open5GS。換一家核網廠商的服務組合、路徑形狀、
+#     甚至 SBI 的 port 都會不一樣，而症狀是「圖比較短」不是報錯。
+#   - 加密的 SUCI：SBI 與 NAS 都只驗過 null-scheme。ECIES 保護過的
+#     拼不回 SUPI，跨協定關聯會退回只靠 NGAP ID。
+#   - TLS 保護的 SBI：看不到內容，整個 SBI 半邊會消失。
+#   - PFCP 的 cause 語意：型別與 SEID 有驗，但 TS 29.244 的 cause 表
+#     尚未人工建立，失敗訊息標得出來、給不出條文出處。
 #   - IMS（SIP/Diameter/H.248）：adapter 與 fixture 都還沒有。
 #
 # 尚未加入：

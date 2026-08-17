@@ -51,6 +51,16 @@ def registration_pcap() -> Path:
 
 
 @pytest.fixture(scope="session")
+def e2e_pcap() -> Path:
+    """同一次註冊的 N2 + SBI + N4，三個擷取點合併而成。
+
+    `registration_pcap` 只有 N2，AMF 之後的核網在它裡面完全看不到 ——
+    SBI 的 decode-as、SUPI 跨協定關聯、PFCP 這三件事只有這份驗得到。
+    來源與重現步驟見 `tests/fixtures/5gc-e2e/scenario.md`。"""
+    return require_capture("5gc-e2e/capture.pcap")
+
+
+@pytest.fixture(scope="session")
 def multistream_http2_pcap() -> Path:
     """一格內含 4 個 HTTP/2 stream 的擷取，用來守住多訊息拆解。
 

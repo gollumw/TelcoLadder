@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from telcolens.extract import Frame, first
-from telcolens.identity import connection_scope, scoped
+from telcolens.identity import connection_scope, globally_unique, scoped
 from telcolens.model import Endpoint, IdKey, IdKind, Message
 
 NAME = "sbi"
@@ -24,8 +24,18 @@ NAME = "sbi"
 ORDER = 30
 
 #: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
-#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的三軸線說明。
+#: 而且完全不會報錯** —— 見 telcolens/plugins.py 的軸線說明。
 DISPLAY_FILTER = "http2"
+
+#: tshark 的 decode-as 規則。**光有 DISPLAY_FILTER 不夠**：擷取起點若在
+#: TCP 連線建立之後，tshark 看不到 HTTP/2 的 preface，整條連線會退回 `data`，
+#: `http2` 這個 filter 一格都收不到 —— 而且完全不報錯。
+#: （實測：一份含 140 格 SBI 的 5GC 擷取檔，不指定時全部退回 `data`。）
+#:
+#: **7777 是啟發式提示，不是規範值。** TS 29.500 沒有規定 SBI 的 port，
+#: 真實 port 來自 NRF discovery；7777 只是 Open5GS 的預設。其他部署
+#: （free5GC 常見 8000）一律用 CLI 的 `--decode-as` 疊加。
+DECODE_AS = ("tcp.port==7777,http2",)
 
 #: `telcolens check` 要驗證存在的 dissector。
 DISSECTORS = ('http2',)
@@ -47,6 +57,61 @@ def _to_int(value: Any) -> int | None:
         return int(text, 16) if text.lower().startswith("0x") else int(text)
     except ValueError:
         return None
+
+
+def _supi_from_identifier(token: str) -> str | None:
+    """SBI 的識別碼字串 → 與 NAS 對得起來的 SUPI（裸數字）。
+
+    **格式必須跟 `nas5gs._supi_from_suci()` 產出的一模一樣**（`mcc + mnc + msin`，
+    沒有任何前綴）。差一個 `imsi-` 前綴，`correlate` 就併不起來 ——
+    而症狀是兩條各自看起來都合理的獨立流程，不是報錯。
+
+    收兩種形式（TS 29.571 的 `Supi` / `Suci`）：
+
+    * `imsi-001011234567895` → 去掉前綴即是。
+    * `suci-0-001-01-0000-0-0-1234567895`
+      → `<supi type>-<mcc>-<mnc>-<routing indicator>-<protection scheme>-
+         <home network public key id>-<scheme output>`
+
+    **只有 null-scheme（protection scheme = 0）的 SUCI 拼得回 SUPI。**
+    用 ECIES 保護過的 scheme output 是密文，而且每次註冊都不同 ——
+    那時回 None。把密文當成 SUPI 建 key 會把毫無關係的用戶黏成一條流程，
+    這個方向的錯誤比不關聯嚴重得多（見 `identity.globally_unique` 的說明）。
+    """
+    if token.startswith("imsi-"):
+        digits = token[len("imsi-"):]
+        return digits if digits.isdigit() else None
+
+    if not token.startswith("suci-"):
+        return None
+
+    parts = token.split("-")
+    if len(parts) != 8:
+        return None
+    _, supi_type, mcc, mnc, _routing, scheme, _hnpki, output = parts
+    if supi_type != "0":  # 0 = IMSI；其他型別（NAI 等）不是數字 SUPI
+        return None
+    if scheme != "0":  # 非 null-scheme：output 是密文，拼不回去
+        return None
+    if not (mcc.isdigit() and mnc.isdigit() and output.isdigit()):
+        return None
+    return f"{mcc}{mnc}{output}"
+
+
+def _supis_in_path(path: str) -> set[str]:
+    """路徑裡帶的用戶識別碼。
+
+    SBI 把識別碼放在資源路徑上，位置隨服務而異（`/nudm-sdm/v2/imsi-.../am-data`
+    在第 3 段，`/namf-comm/v1/ue-contexts/imsi-.../n1-n2-messages` 在第 4 段），
+    所以逐段掃描而不是固定取第幾段。查詢字串先切掉 —— `?plmn-id=...`
+    裡不會有用戶識別碼，掃它只是多餘的風險。
+    """
+    found = set()
+    for segment in path.split("?", 1)[0].split("/"):
+        supi = _supi_from_identifier(segment)
+        if supi:
+            found.add(supi)
+    return found
 
 
 def _service_from_path(path: str) -> str | None:
@@ -86,6 +151,11 @@ def parse(frame: Frame) -> list[Message]:
         identity: set[IdKey] = set()
         if stream_id is not None:
             identity.add(scoped(IdKind.SBI_STREAM, scope, stream_id))
+        if path:
+            # SUPI 全網唯一，不加範圍前綴 —— 它正是把 SBI 這半邊接回
+            # NGAP/NAS 那條流程的唯一連結。
+            for supi in _supis_in_path(str(path)):
+                identity.add(globally_unique(IdKind.SUPI, supi))
 
         detail: dict[str, str] = {}
         if path:

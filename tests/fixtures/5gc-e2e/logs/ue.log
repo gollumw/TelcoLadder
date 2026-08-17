@@ -1,0 +1,30 @@
+Deploying component: 'ueransim-ue'
+UERANSIM v3.2.6
+[2026-08-17 23:02:26.727] [nas] [info] UE switches to state [MM-DEREGISTERED/PLMN-SEARCH]
+[2026-08-17 23:02:26.729] [rrc] [debug] New signal detected for cell[1], total [1] cells in coverage
+[2026-08-17 23:02:26.733] [nas] [info] Selected plmn[001/01]
+[2026-08-17 23:02:26.734] [rrc] [info] Selected cell plmn[001/01] tac[1] category[SUITABLE]
+[2026-08-17 23:02:26.734] [nas] [info] UE switches to state [MM-DEREGISTERED/PS]
+[2026-08-17 23:02:26.734] [nas] [info] UE switches to state [MM-DEREGISTERED/NORMAL-SERVICE]
+[2026-08-17 23:02:26.734] [nas] [debug] Initial registration required due to [MM-DEREG-NORMAL-SERVICE]
+[2026-08-17 23:02:26.735] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 23:02:26.735] [nas] [debug] Sending Initial Registration
+[2026-08-17 23:02:26.739] [nas] [info] UE switches to state [MM-REGISTER-INITIATED]
+[2026-08-17 23:02:26.739] [rrc] [debug] Sending RRC Setup Request
+[2026-08-17 23:02:26.742] [rrc] [info] RRC connection established
+[2026-08-17 23:02:26.742] [rrc] [info] UE switches to state [RRC-CONNECTED]
+[2026-08-17 23:02:26.742] [nas] [info] UE switches to state [CM-CONNECTED]
+[?2004h]0;root@1d24c7556da2: /UERANSIM/buildroot@1d24c7556da2:/UERANSIM/build# [2026-08-17 23:02:26.754] [nas] [debug] Authentication Request received
+[2026-08-17 23:02:26.761] [nas] [debug] Security Mode Command received
+[2026-08-17 23:02:26.762] [nas] [debug] Selected integrity[2] ciphering[0]
+[2026-08-17 23:02:26.770] [nas] [debug] Registration accept received
+[2026-08-17 23:02:26.771] [nas] [info] UE switches to state [MM-REGISTERED/NORMAL-SERVICE]
+[2026-08-17 23:02:26.772] [nas] [debug] Sending Registration Complete
+[2026-08-17 23:02:26.772] [nas] [info] Initial Registration is successful
+[2026-08-17 23:02:26.772] [nas] [debug] Sending PDU Session Establishment Request
+[2026-08-17 23:02:26.773] [nas] [debug] UAC access attempt is allowed for identity[0], category[MO_sig]
+[2026-08-17 23:02:26.974] [nas] [debug] Configuration Update Command received
+[2026-08-17 23:02:26.984] [nas] [debug] PDU Session Establishment Accept received
+[2026-08-17 23:02:26.984] [nas] [info] PDU Session establishment is successful PSI[1]
+terminate called after throwing an instance of 'LibError'
+  what():  select failed:  Interrupted system call

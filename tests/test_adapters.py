@@ -18,6 +18,8 @@ import pytest
 from telcolens.adapters import parse_frame
 from telcolens.adapters.nas5gs import MM_MESSAGE_TYPES
 from telcolens.adapters.ngap import PROCEDURE_CODES
+from telcolens.adapters.pfcp import MESSAGE_TYPES as PFCP_MESSAGE_TYPES
+from telcolens.adapters.sbi import _supi_from_identifier
 from telcolens.extract import read_frames
 from telcolens.model import IdKind
 from telcolens.tshark import TsharkNotFound, find_tshark
@@ -239,6 +241,111 @@ def test_decode_as_changes_what_tshark_finds(multistream_http2_pcap):
     實測（tshark 4.4.9）：啟發式 42 格、明確指定 43 格。差距在不同版本
     之間會變，所以只斷言「不少於」，不釘死數字。
     """
-    heuristic = sum(1 for _ in read_frames(multistream_http2_pcap))
+    # 明講 `()`：現在 read_frames 的 None 代表「用註冊表的預設規則」，
+    # 而這一支要測的正是「完全不給規則、純靠 tshark 啟發式」。
+    heuristic = sum(1 for _ in read_frames(multistream_http2_pcap, decode_as=()))
     explicit = sum(1 for _ in read_frames(multistream_http2_pcap, decode_as=HTTP2_DECODE_AS))
     assert explicit >= heuristic, "明確指定反而抓得更少，decode-as 規則可能寫錯了"
+
+
+# ── PFCP（N4）─────────────────────────────────────────────────────────
+
+
+def test_pfcp_message_names_agree_with_tshark(e2e_pcap):
+    """PFCP 訊息型別表必須與 tshark 自己的解讀一致。
+
+    比照 `test_procedure_names_agree_with_tshark`：MESSAGE_TYPES 是手寫的
+    規範表，抄錯一個號碼就會在圖上標錯訊息名，而且完全不會報錯。
+    """
+    tshark = find_tshark()
+    proc = subprocess.run(
+        [str(tshark.path), "-r", str(e2e_pcap), "-Y", "pfcp",
+         "-T", "fields", "-e", "pfcp.msg_type", "-e", "_ws.col.info"],
+        capture_output=True, text=True, check=True,
+    )
+
+    checked = 0
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        raw_type, _, info = line.partition("\t")
+        msg_type = int(raw_type.split(",")[0])
+        expected = PFCP_MESSAGE_TYPES.get(msg_type)
+        if expected is None:
+            continue
+        assert expected in info, (
+            f"型別 {msg_type} 我們叫它 {expected!r}，tshark 說 {info!r}"
+        )
+        checked += 1
+    assert checked, "這份擷取檔裡一則 PFCP 都沒有 —— 交叉驗證等於沒跑"
+
+
+def test_pfcp_message_count_matches_tshark(e2e_pcap):
+    """PFCP 訊息數必須與 tshark 獨立數出來的一致。
+
+    少一則就是整格封包無聲消失 —— 這類工具最致命的失敗模式。
+    **新增 adapter 必須一併加上這條**，否則等於沒測（見專案 CLAUDE.md §4）。
+    """
+    ours = sum(1 for m in _messages(e2e_pcap) if m.protocol == "pfcp")
+    assert ours == _tshark_frame_count(e2e_pcap, "pfcp")
+
+
+def test_pfcp_never_keys_on_the_unknown_seid(e2e_pcap):
+    """SEID 0 是「還不知道對方的」佔位值，**不得**拿來當關聯 key。
+
+    每個 Session Establishment Request 都填 0。若拿它建 key，所有不相干
+    用戶的 N4 工作階段會被併成同一條流程 —— 而圖看起來完全合理。
+    這份擷取檔裡真的有 SEID 0（Establishment Request 的標頭），所以這條
+    測得到東西。
+    """
+    seid_values = {
+        value
+        for m in _messages(e2e_pcap)
+        for kind, value in m.identity_keys
+        if kind is IdKind.PFCP_SEID
+    }
+    assert seid_values, "沒抽到任何 SEID —— 這條測試沒有在測東西"
+    for value in seid_values:
+        assert "/" in value, f"SEID key {value!r} 沒有連線範圍前綴"
+        assert not value.endswith("/0"), f"SEID 0 被拿來當 key 了：{value!r}"
+
+
+# ── SBI 的身分抽取 ─────────────────────────────────────────────────────
+
+
+def test_sbi_supi_has_the_same_shape_as_the_one_nas_produces(e2e_pcap):
+    """SBI 抽出來的 SUPI 必須與 NAS 抽出來的**逐字元相同**。
+
+    NAS 給的是裸數字（`mcc + mnc + msin`），SBI 路徑上是 `imsi-<digits>`。
+    少做一次正規化，`correlate` 就併不起來 —— 而症狀是兩條各自看起來
+    都合理的獨立流程，不是報錯。這條就是守那個正規化。
+    """
+    by_protocol: dict[str, set[str]] = {}
+    for m in _messages(e2e_pcap):
+        for kind, value in m.identity_keys:
+            if kind is IdKind.SUPI:
+                by_protocol.setdefault(m.protocol, set()).add(value)
+
+    assert "nas-5gs" in by_protocol, "NAS 沒抽到 SUPI"
+    assert "sbi" in by_protocol, "SBI 沒抽到 SUPI —— 跨協定關聯會斷"
+    assert by_protocol["sbi"] == by_protocol["nas-5gs"], (
+        f"兩邊格式對不起來：SBI {by_protocol['sbi']} vs NAS {by_protocol['nas-5gs']}"
+    )
+
+
+def test_encrypted_suci_never_becomes_a_supi_key():
+    """ECIES 保護過的 SUCI 不得被當成 SUPI。
+
+    那串 scheme output 是密文，而且**每次註冊都不同**。把它當全域唯一的
+    SUPI 建 key，會把毫無關係的用戶黏成一條流程 —— 這個方向的錯誤比
+    不關聯嚴重得多（見 `identity.globally_unique` 的說明）。
+    """
+    null_scheme = "suci-0-001-01-0000-0-0-1234567895"
+    assert _supi_from_identifier(null_scheme) == "001011234567895"
+
+    # protection scheme 1 = Profile A（ECIES）。同樣的位數，拼不回去。
+    protected = "suci-0-001-01-0000-1-0-a1b2c3d4e5"
+    assert _supi_from_identifier(protected) is None
+
+    # SUPI type 1 = NAI，不是數字 IMSI。
+    assert _supi_from_identifier("suci-1-001-01-0000-0-0-1234567895") is None

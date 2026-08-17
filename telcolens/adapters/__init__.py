@@ -12,9 +12,33 @@
 | `DISSECTORS` | `telcolens check` 要驗證存在的 dissector 名稱 |
 | `parse(frame)` | `Frame` → `list[Message]` |
 
+外加一個**選用**的：
+
+| 屬性 | 用途 |
+|---|---|
+| `DECODE_AS` | tshark `-d` 規則，如 `("tcp.port==7777,http2",)` |
+
 `DISPLAY_FILTER` 是最容易漏的一個：adapter 寫得再完美，只要它的協定不在
 filter 裡，tshark 根本不會把那些封包吐出來 —— 而症狀是「圖比較短」，
 不是報錯。
+
+## DECODE_AS：光有 filter 不夠
+
+filter 是「把這個協定的封包留下來」，前提是 tshark **已經認出**那是什麼協定。
+擷取起點若在 TCP 連線建立之後，tshark 看不到 HTTP/2 的 preface，整條連線會
+退回 `data` —— 這時 `DISPLAY_FILTER = "http2"` 一格都收不到，**而且不報錯**。
+（實測：一份含 140 格 SBI 的 5GC 擷取檔，不指定 decode-as 時全部退回 `data`。）
+
+所以宣告了 `DISPLAY_FILTER` 還不夠，跑在非標準 port 上的協定要一併宣告
+`DECODE_AS`。IMS 會更常遇到：SIP 跑 5062 / 6060、Diameter 被改 port 都是常態。
+
+**這些 port 是啟發式提示，不是規範值。** 與 `nf.py` 裡的 38412（TS 38.412）、
+8805（TS 29.244）不同 —— 那兩個規範定死，而 SBI 的 port 是 NRF discovery 給的，
+7777 只是 Open5GS 的預設。所以 `DECODE_AS` 只是「常見情況能開箱即用」，
+其他部署一律用 CLI 的 `--decode-as` 疊加。
+
+選用而非必填是刻意的：多數協定跑在標準 port 上，不該為了一個用不到的欄位
+逼所有既有外掛改版。沒宣告就當空的。
 
 ## ORDER 為什麼是數字而不是清單位置
 
@@ -44,14 +68,16 @@ class Adapter(Protocol):
     ORDER: int
     DISPLAY_FILTER: str
     DISSECTORS: tuple[str, ...]
+    #: 選用。沒宣告的 adapter 一律當空的，見 `default_decode_as()`。
+    DECODE_AS: tuple[str, ...]
 
     def parse(self, frame: Frame) -> list[Message]: ...
 
 
-from telcolens.adapters import nas5gs, ngap, sbi  # noqa: E402
+from telcolens.adapters import nas5gs, ngap, pfcp, sbi  # noqa: E402
 
 #: 不經外掛機制、永遠都在的那些。
-BUILTIN_ADAPTERS: tuple[Adapter, ...] = (ngap, nas5gs, sbi)  # type: ignore[assignment]
+BUILTIN_ADAPTERS: tuple[Adapter, ...] = (ngap, nas5gs, sbi, pfcp)  # type: ignore[assignment]
 
 _REQUIRED_ATTRS = ("NAME", "ORDER", "DISPLAY_FILTER", "DISSECTORS", "parse")
 
@@ -88,6 +114,44 @@ def display_filter() -> str:
     （例如 `"sip || sdp"`），不括起來會讓運算優先序悄悄改變。
     """
     return " || ".join(f"({a.DISPLAY_FILTER})" for a in adapters())
+
+
+def _decode_as_selector(rule: str) -> str:
+    """`"tcp.port==7777,http2"` → `"tcp.port==7777"`。
+
+    切最後一個逗號：tshark 的規則是「選擇器,協定」，而選擇器本身
+    可以含逗號（`tcp.port==80,443`）。
+    """
+    return rule.rsplit(",", 1)[0].strip()
+
+
+def default_decode_as() -> tuple[str, ...]:
+    """全部 adapter 宣告的 decode-as 規則，去重後保持穩定順序。
+
+    `DECODE_AS` 是選用屬性 —— 用 `getattr` 而不是直接存取，是為了讓
+    契約落地（`edcbc14`）之前寫好的外掛不必改版就能繼續用。
+
+    **同一個選擇器被指向兩個協定時大聲報錯，不靜默取其一。** tshark 只會
+    採用最後一條，而落選的那個 adapter 的症狀是「一格都收不到」——
+    又是一個不報錯的失敗。裝了兩個都宣告 5060 的外掛（SIP 與某個自訂協定）
+    正是這種情況，比照 cause 表撞號的處理方式。
+    """
+    seen: dict[str, None] = {}
+    owner: dict[str, str] = {}  # 選擇器 → 先宣告它的 adapter 名稱
+    for adapter in adapters():
+        for rule in getattr(adapter, "DECODE_AS", ()):
+            selector = _decode_as_selector(rule)
+            previous = owner.get(selector)
+            if previous is not None and rule not in seen:
+                raise PluginError(
+                    f"decode-as 撞號：{selector!r} 同時被 {previous!r} 與 "
+                    f"{adapter.NAME!r} 指向不同協定。tshark 只會採用其中一條，"
+                    f"另一個 adapter 會一格都收不到而且不報錯。"
+                    f"請改用 CLI 的 --decode-as 明確指定。"
+                )
+            owner.setdefault(selector, adapter.NAME)
+            seen.setdefault(rule, None)
+    return tuple(seen)
 
 
 def required_dissectors() -> tuple[str, ...]:
