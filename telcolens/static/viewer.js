@@ -54,7 +54,10 @@
     df: document.getElementById("df"),
     dfForm: document.getElementById("df-form"),
     dfClear: document.getElementById("df-clear"),
-    dfError: document.getElementById("df-error")
+    dfError: document.getElementById("df-error"),
+    tree: document.getElementById("decodetree"),
+    treeTitle: document.getElementById("decode-title"),
+    treeHint: document.getElementById("decode-hint")
   };
 
   var COLS = ["No.", "Time", "Source", "Destination", "Protocol", "Length", "Info"];
@@ -228,11 +231,108 @@
   }
 
   el.scroll.addEventListener("scroll", draw);
+  // ── 解碼窗 ──────────────────────────────────────────────────
+  //
+  // 一律 textContent 建節點。這棵樹的每一行字都是 tshark 從**客戶封包**
+  // 解出來的 —— SIP display name、APN、廠商字串都可能含 markup。
+  // 見檔頭第 ① 條。
+
+  function expandAll(wrap) {
+    // 把整棵子樹打開。最上面那個協定（通常是信令）預設全開 ——
+    // NGAP 把 NAS 包在五、六層 ASN.1 底下，只展開一層等於沒展開，
+    // 使用者點那一列要看的就是最裡面那則訊息。
+    var boxes = wrap.querySelectorAll(".tkids");
+    for (var i = 0; i < boxes.length; i++) boxes[i].hidden = false;
+    var tw = wrap.querySelectorAll(".twisty");
+    for (var j = 0; j < tw.length; j++) {
+      if (tw[j].className.indexOf("leaf") === -1) tw[j].textContent = "▾";
+    }
+  }
+
+  function treeNode(node, depth) {
+    var wrap = document.createElement("div");
+    wrap.className = "tnode";
+    var line = document.createElement("div");
+    line.className = "tline";
+    line.style.paddingLeft = (depth * 14 + 6) + "px";
+
+    var kids = node.children && node.children.length;
+    var twisty = document.createElement("span");
+    twisty.className = "twisty" + (kids ? "" : " leaf");
+    twisty.textContent = kids ? "▸" : "";
+    line.appendChild(twisty);
+
+    var label = document.createElement("span");
+    label.className = "tlabel";
+    label.textContent = node.label;
+    line.appendChild(label);
+    wrap.appendChild(line);
+
+    if (kids) {
+      var box = document.createElement("div");
+      box.className = "tkids";
+      box.hidden = true;
+      for (var i = 0; i < node.children.length; i++) {
+        box.appendChild(treeNode(node.children[i], depth + 1));
+      }
+      wrap.appendChild(box);
+      line.className += " expandable";
+      line.addEventListener("click", function (e) {
+        e.stopPropagation();
+        box.hidden = !box.hidden;
+        twisty.textContent = box.hidden ? "▸" : "▾";
+      });
+    }
+    // 欄位的 filter 名稱放在 title 上 —— 使用者常常要拿它去寫 display filter。
+    if (node.name) line.title = node.name + (node.value ? "  [" + node.value + "]" : "");
+    return wrap;
+  }
+
+  function showDecode(frame) {
+    el.treeTitle.textContent = "封包詳情 — frame " + frame;
+    el.treeHint.textContent = "載入中……";
+    fetch("/api/" + state.sid + "/decode?frame=" + frame)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.frame !== state.selectedFrame) return;  // 使用者已經點別的了
+        el.tree.textContent = "";
+        if (j.error) { el.treeHint.textContent = j.error; return; }
+        el.treeHint.textContent = "";
+        for (var i = 0; i < j.tree.length; i++) {
+          var n = treeNode(j.tree[i], 0);
+          // 最上層的協定整棵展開，其餘（frame / sll / ip / sctp）保持收合。
+          // 沿用報告端 cause 卡片的同一個判斷：被打開時最重要的資訊
+          // 不該需要點擊。
+          if (i === j.tree.length - 1) expandAll(n);
+          el.tree.appendChild(n);
+        }
+      })
+      .catch(function (e) { el.treeHint.textContent = "解碼失敗：" + e; });
+  }
+
   el.rows.addEventListener("click", function (e) {
     var line = e.target.closest ? e.target.closest(".gridrow") : null;
     if (!line || !line.dataset.frame) return;
     state.selectedFrame = parseInt(line.dataset.frame, 10);
-    draw();  // 解碼窗在階段 3 接上
+    draw();
+    showDecode(state.selectedFrame);
+  });
+
+  // 上下鍵在清單裡移動 —— 這是「像 probe 而不像網頁」的一半。
+  el.scroll.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    var order = [];
+    for (var k in state.rows) order.push(state.rows[k].n);
+    order.sort(function (a, b) { return a - b; });
+    if (!order.length) return;
+    var at = order.indexOf(state.selectedFrame);
+    var next = e.key === "ArrowDown"
+      ? (at < 0 ? order[0] : order[Math.min(order.length - 1, at + 1)])
+      : (at < 0 ? order[0] : order[Math.max(0, at - 1)]);
+    state.selectedFrame = next;
+    draw();
+    showDecode(next);
   });
 
   header();

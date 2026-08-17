@@ -46,6 +46,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import PAGE_CSS, esc, render_report
+from telcolens.decode import DecodeError
 from telcolens.packets import PacketColumnsUnavailable, matching_frames
 from telcolens.session import (
     IDLE_TTL,
@@ -55,7 +56,14 @@ from telcolens.session import (
     sweep_stray_files,
 )
 from telcolens.tshark import TsharkNotFound, find_tshark
-from telcolens.viewer import CSP, index_json, progress_json, static_body, viewer_page
+from telcolens.viewer import (
+    CSP,
+    decode_json,
+    index_json,
+    progress_json,
+    static_body,
+    viewer_page,
+)
 
 DEFAULT_PORT = 3005
 DEFAULT_HOST = "127.0.0.1"
@@ -236,6 +244,15 @@ class _Handler(BaseHTTPRequestHandler):
                 session, offset=offset, limit=limit,
                 q=(query.get("q") or [""])[0],
             ))
+        elif not post and action == "decode":
+            frame = self._int_param(query, "frame", 0)
+            if frame <= 0:
+                self._send_json({"error": "frame 參數不正確。"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(decode_json(session, frame))
+            except DecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         elif post and action == "refilter":
             self._handle_refilter(session)
         else:

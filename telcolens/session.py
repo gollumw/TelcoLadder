@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcolens.decode import DecodeCache
 from telcolens.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
 
 #: 閒置多久就釋放。15 分鐘是「泡杯咖啡回來還在」與「不要把客戶封包留一整天」
@@ -140,6 +141,7 @@ class Session:
 
     index: PacketIndex = field(default_factory=PacketIndex)
     progress: Progress = field(default_factory=Progress)
+    decode: DecodeCache = field(default_factory=DecodeCache, repr=False)
 
     display_filter: str = ""
     """目前套用的 tshark display filter（空字串 = 全部封包）。"""
@@ -148,6 +150,18 @@ class Session:
     """display filter 篩出來的 frame 編號。None 代表沒有套 filter。"""
 
     decode_as: tuple[str, ...] = ()
+
+    tshark: object | None = field(default=None, repr=False)
+    """已定位好的 tshark，在建立工作階段時解析一次。
+
+    `find_tshark()` 每次呼叫都會跑一次 `tshark -v` 探版本。不快取的話，
+    使用者每點一列封包就是**兩個** subprocess（探版本 ＋ 解碼）——
+    在 Windows 上 process spawn 明顯比 POSIX 慢，點得快就會有感。
+
+    不用全域快取是刻意的：`test_home_page_explains_how_to_fix_a_missing_tshark`
+    靠 monkeypatch 環境變數來模擬「找不到 tshark」，全域快取會讓那條測試
+    看不到變更。綁在工作階段上剛好 —— 一份擷取檔的生命週期內 tshark 不會變。
+    """
 
     def touch(self) -> None:
         self.last_touch = time.monotonic()
@@ -175,8 +189,16 @@ class SessionStore:
 
     def create(self, pcap: Path, display_name: str, *, owns_file: bool,
                wire: bool = True) -> Session:
+        # 一次解析，整個工作階段共用。失敗不擋建立 —— 後續呼叫會各自
+        # 再試一次並得到那則「找不到 tshark」的修復指示。
+        try:
+            from telcolens.tshark import find_tshark
+
+            resolved = find_tshark()
+        except Exception:  # noqa: BLE001 —— TsharkNotFound 以外也不該擋建立
+            resolved = None
         session = Session(sid=new_sid(), pcap=pcap, display_name=display_name,
-                          owns_file=owns_file, wire=wire)
+                          owns_file=owns_file, wire=wire, tshark=resolved)
         with self._lock:
             self._sessions[session.sid] = session
         self._ensure_reaper()
@@ -299,7 +321,7 @@ def start_index(session: Session, *, on_done=None) -> threading.Thread:
 
 def _index_into(session: Session) -> None:
     # 分母先問 —— capinfos 在 436 MB 上只要 0.32 秒，值得。
-    total = total_packets(session.pcap)
+    total = total_packets(session.pcap, tshark=session.tshark)
     with session.lock:
         session.progress.total = total
         session.progress.stage = "index"
@@ -310,6 +332,7 @@ def _index_into(session: Session) -> None:
         session.pcap,
         display_filter=session.display_filter,
         decode_as=session.decode_as,
+        tshark=session.tshark,
     ):
         rows.append(row)
         if len(rows) >= MAX_INDEX_ROWS:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from importlib import resources
 
+from telcolens.decode import decode_frames, window_around
 from telcolens.packets import COLUMN_TITLES
 from telcolens.render_html import PAGE_CSS, esc
 from telcolens.session import Session
@@ -122,6 +123,31 @@ def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
         }
 
 
+def decode_json(session: Session, frame: int) -> dict:
+    """一格的解碼樹。快取沒有就連同前後幾格一起解，全部存起來。
+
+    回應裡**不含** PDML 根元素的 `capture_file=`（客戶擷取檔的絕對路徑）
+    與 `creator=` / 產生時間 —— `_parse_pdml` 只取 `<packet>` 底下的東西，
+    那些屬性從來沒有進到我們的資料結構裡。
+    """
+    cached = session.decode.get(frame)
+    if cached is None:
+        with session.lock:
+            highest = session.index.rows[-1].number if session.index.rows else None
+            decode_as = session.decode_as
+        trees = decode_frames(
+            session.pcap,
+            window_around(frame, highest=highest),
+            decode_as=decode_as,
+            tshark=session.tshark,
+        )
+        session.decode.put(trees)
+        cached = session.decode.get(frame)
+    if cached is None:
+        return {"frame": frame, "tree": [], "error": f"擷取檔裡沒有 frame {frame}。"}
+    return {"frame": frame, "tree": [n.to_json() for n in cached]}
+
+
 def viewer_page(session: Session, *, idle_ttl: float) -> str:
     """檢視器的外殼。
 
@@ -185,7 +211,14 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
     </div>
   </div>
   <p class="status" id="status">正在索引……</p>
-  <p class="stage-note" id="stage-note">點一列看完整協定解碼樹 —— 階段 3。呼叫流程圖 —— 階段 5。</p>
+  <div class="decodewrap">
+    <div class="decodehead">
+      <span id="decode-title">封包詳情</span>
+      <span class="decode-hint" id="decode-hint">點上面任一列</span>
+    </div>
+    <div class="decodetree" id="decodetree"></div>
+  </div>
+  <p class="stage-note" id="stage-note">身分搜尋與呼叫流程圖 —— 階段 4、5。</p>
 </main>
 <script src="/static/viewer.js" data-sid="{esc(session.sid)}"></script>
 </body></html>
