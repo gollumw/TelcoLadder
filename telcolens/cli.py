@@ -7,14 +7,11 @@ import sys
 from pathlib import Path
 
 from telcolens import __version__
-from telcolens.adapters import parse_frame
-from telcolens.adapters.nas5gs import count_ciphered
-from telcolens.causes import annotate
-from telcolens.correlate import correlate
-from telcolens.extract import ExtractError, read_frames
-from telcolens.nf import apply_roles
+from telcolens.extract import ExtractError
+from telcolens.pipeline import analyse
 from telcolens.render_html import render_report
 from telcolens.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
+from telcolens.web import DEFAULT_HOST, DEFAULT_PORT, serve
 from telcolens.tshark import TsharkNotFound, find_tshark
 
 
@@ -62,17 +59,18 @@ def _missing_dissectors(tshark) -> list[str]:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
-    ciphered = 0
     try:
-        messages = []
-        for frame in read_frames(args.pcap, decode_as=args.decode_as or ()):
-            messages.extend(parse_frame(frame))
-            ciphered += count_ciphered(frame)
+        result = analyse(
+            args.pcap,
+            decode_as=args.decode_as or (),
+            nas_from_ue=not args.no_ue_lifeline,
+        )
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if not messages:
+    flows, ciphered = result.flows, result.ciphered
+    if not flows:
         # 空結果要講清楚是「這個檔沒有信令」而不是「工具壞了」（Rule 12）。
         print(
             f"{args.pcap.name} 裡沒有找到任何 5G 信令訊息。\n"
@@ -82,9 +80,6 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         )
         return 1
 
-    apply_roles(messages, nas_from_ue=not args.no_ue_lifeline)
-    annotate(messages)
-    flows = correlate(messages)
     results = render_all(
         flows, max_messages=args.max_messages, show_frames=not args.no_frames
     )
@@ -112,7 +107,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     # 摘要走 stderr，這樣 `telcolens analyze x.pcap > flow.mmd` 拿到的是乾淨的圖。
     total = sum(r.total for r in results)
     shown = sum(r.shown for r in results)
-    failures = sum(1 for m in messages if m.is_failure)
+    failures = result.failure_count
     print(
         f"\n{len(flows)} 條流程、{total} 則訊息"
         + (f"（顯示 {shown} 則，其餘已截斷）" if shown < total else "")
@@ -130,6 +125,10 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    return serve(host=args.host, port=args.port)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -172,6 +171,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser("check", help="檢查 tshark 與 dissector 是否就緒")
     check.set_defaults(func=_cmd_check)
+
+    serve_cmd = sub.add_parser(
+        "serve", help="在瀏覽器裡分析：拖放擷取檔，或貼上路徑"
+    )
+    serve_cmd.add_argument(
+        "--port", type=int, default=DEFAULT_PORT,
+        help=f"監聽的 port（預設 {DEFAULT_PORT}）",
+    )
+    serve_cmd.add_argument(
+        "--host", default=DEFAULT_HOST,
+        help="監聽位址。預設只綁 127.0.0.1 —— 這是一個會拿路徑去執行 tshark "
+             "的伺服器，改成對外監聽等於把客戶封包分析器暴露到網路上。",
+    )
+    serve_cmd.set_defaults(func=_cmd_serve)
 
     return parser
 

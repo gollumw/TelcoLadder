@@ -109,6 +109,30 @@ a CDN tells an outside server that someone is looking at an analysis.
 Output is byte-for-byte reproducible: no generation timestamp, so two runs
 over the same capture diff cleanly.
 
+### In the browser
+
+```bash
+telcolens serve            # → http://localhost:3005
+```
+
+Drop a capture onto the page, or paste a path. You get **exactly** the report
+`--html` produces — same code path, byte for byte.
+
+**Paste the path for anything large.** It reads the file where it already is:
+no copy, no temp file, starts immediately. Pushing a few hundred MB through
+HTTP to a server on the same machine buys you nothing. Uploaded files live in
+the system temp directory only while they are being analysed and are deleted
+as soon as the report is rendered — that path is for convenience, not for the
+2 GB capture from a customer site.
+
+Analysis is synchronous with no intermediate progress to report, so a capture
+over roughly 100 MB will look like it has hung. It has not.
+
+The server binds `127.0.0.1` only and checks the `Host` header. It runs
+`tshark` on paths you hand it, so **do not put it on a public interface**.
+Drag-and-drop needs JavaScript; the paste-a-path form does not — which means
+the large-capture path works with scripting turned off.
+
 > A flow is only badged **正常 / normal** when nothing was hidden from us.
 > If the capture contains ciphered NAS, the badge reads **未見失敗 /
 > no failure seen** instead — because not seeing a failure is not the same
@@ -121,8 +145,11 @@ over the same capture diff cleanly.
   verified, the service-name-to-NF mapping is not. Real SBI is usually TLS
   encrypted anyway — you need a testbed or cleartext h2c to see inside.
 - **PFCP is not implemented yet.** No test capture, so no code.
-- **Failure highlighting is verified on synthetic data only.** None of the
-  public captures we could find contain a failing procedure with a cause code.
+- **Failure highlighting is verified against real testbed captures**, not
+  synthetic ones — see `tests/fixtures/`, where each scenario ships the
+  core-network log that independently confirms the cause code. What is *not*
+  covered is the long tail: the cause table holds the codes we have actually
+  seen, and anything else prints "尚未收錄" rather than a guess.
 - **NAS after Security Mode Command is encrypted** and its content is invisible.
   Those packets still appear as their NGAP carrier. This is how the network
   works, not a parsing failure.

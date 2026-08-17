@@ -85,7 +85,7 @@ def _text_width(text: str, size: float) -> float:
     return width * size
 
 
-def _esc(text: str) -> str:
+def esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
@@ -226,7 +226,7 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
         )
         out.append(
             f'<text class="lane-label {group}" x="{x:.1f}" y="38" text-anchor="middle">'
-            f"{_esc(label)}</text>"
+            f"{esc(label)}</text>"
         )
 
     # 訊息
@@ -235,7 +235,7 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
         x_src, x_dst = lane_x(row.src_lane), lane_x(row.dst_lane)
         kind = "fail" if msg.is_failure else "ok"
 
-        out.append(f'<g class="row {kind}"><title>{_esc(_hover_text(msg))}</title>')
+        out.append(f'<g class="row {kind}"><title>{esc(_hover_text(msg))}</title>')
         # 整列的 hover 感應區 + 失敗底色。放最前面，才不會蓋住線與字。
         out.append(
             f'<rect class="row-band" x="0" y="{row.y:.1f}" '
@@ -256,14 +256,14 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
         out.append(
             f'<text class="msg-label {kind}" x="{label_x:.1f}" y="{row.y + ROW_H * 0.62 - 9:.1f}" '
             f'text-anchor="{anchor}">'
-            f'<tspan class="frame-no">#{msg.frame}</tspan> {_esc(msg.label)}</text>'
+            f'<tspan class="frame-no">#{msg.frame}</tspan> {esc(msg.label)}</text>'
         )
 
         note = msg.detail.get("cause_note")
         if msg.is_failure and note:
             out.append(
                 f'<text class="cause-note" x="{label_x:.1f}" '
-                f'y="{row.y + ROW_H * 0.62 + 17:.1f}" text-anchor="{anchor}">{_esc(note)}</text>'
+                f'y="{row.y + ROW_H * 0.62 + 17:.1f}" text-anchor="{anchor}">{esc(note)}</text>'
             )
         out.append("</g>")
 
@@ -288,14 +288,14 @@ def _cause_cards(messages: list[Message]) -> str:
         cards.append(f'<details class="cause"{" open" if i == 0 else ""}>')
         cards.append(
             f"<summary><span class='cause-frame'>#{msg.frame}</span>"
-            f"<span class='cause-msg'>{_esc(msg.label)}</span>"
-            f"<span class='cause-ref'>{_esc(msg.detail['cause_note'])}</span></summary>"
+            f"<span class='cause-msg'>{esc(msg.label)}</span>"
+            f"<span class='cause-ref'>{esc(msg.detail['cause_note'])}</span></summary>"
         )
         if plain := msg.detail.get("cause_plain"):
-            cards.append(f'<p class="plain">{_esc(plain)}</p>')
+            cards.append(f'<p class="plain">{esc(plain)}</p>')
         if common:
             cards.append("<p class='common-title'>現場最常見的根因</p><ul>")
-            cards.extend(f"<li>{_esc(c)}</li>" for c in common)
+            cards.extend(f"<li>{esc(c)}</li>" for c in common)
             cards.append("</ul>")
         cards.append("</details>")
     cards.append("</section>")
@@ -304,7 +304,7 @@ def _cause_cards(messages: list[Message]) -> str:
 
 #: 全部樣式內嵌。外連 stylesheet 或 web font 會打破「零外部請求」——
 #: 見本檔開頭第 ① 條。深色主題只重新定義色票，版面規則不重複一遍。
-_CSS = """
+PAGE_CSS = """
 :root {
   color-scheme: light dark;
   --bg: #f5f6f8;
@@ -531,12 +531,12 @@ def render_report(
         "<!doctype html>",
         '<html lang="zh-Hant"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        f"<title>TelcoLens — {_esc(source_name)}</title>",
-        f"<style>{_CSS}</style>",
+        f"<title>TelcoLens — {esc(source_name)}</title>",
+        f"<style>{PAGE_CSS}</style>",
         "</head><body><div class='wrap'>",
         "<header>",
         '<div class="brand"><span class="dot"></span><h1>TelcoLens</h1></div>',
-        f'<p class="source">{_esc(source_name)}</p>',
+        f'<p class="source">{esc(source_name)}</p>',
         '<div class="stats">',
         f'<span class="pill"><b>{len(flows)}</b> 條流程</span>',
         f'<span class="pill"><b>{total}</b> 則訊息</span>',
@@ -569,7 +569,7 @@ def render_report(
             state, badge = "ok", "正常"
         parts.append('<section class="flow">')
         parts.append(
-            f'<div class="flow-head"><h2>{_esc(flow.describe_identity())}</h2>'
+            f'<div class="flow-head"><h2>{esc(flow.describe_identity())}</h2>'
             f'<span class="badge {state}">{badge}</span>'
             f'<span class="flow-count">{len(flow.messages)} 則訊息</span></div>'
         )
