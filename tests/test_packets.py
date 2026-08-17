@@ -8,6 +8,24 @@
 
 所以這裡拿 **tshark 當獨立 oracle**：用另一種輸出模式問同一件事，兩邊必須對得上。
 比照 `NCC Report` 的 ODS↔PDF 交叉驗證。
+
+## ⚠ 不要寫死 tshark 的措辭
+
+本檔第一版犯了這個錯三次，讓 master 的三個 Linux job 全紅：
+`"RRCEstablishmentCause=mo-Signalling"`（4.4.9 有、4.2.2 沒有）、
+`"not a valid protocol or protocol field"`（4.2.2 說的是
+`Constant expression is invalid.`）、以及一個依賴 Info 措辭算出來的期望清單。
+
+**tshark 的顯示欄與錯誤訊息會隨版本改寫**，而 CI 跑三個平台上的三個版本。
+規則：
+
+- 要斷言欄位值 → **拿 tshark 自己當 oracle**（另一種輸出模式取一次，斷言相等）
+- 要斷言協定組成 → 用 `frame.protocols` 的 **dissector 短名**，不用顯示欄
+- 要斷言錯誤訊息 → 錨「非空」與「含使用者打的那個 filter」，不錨英文句子
+- 期望清單 → **從實際資料算出來**，不要寫死
+
+版本浮動不是意外，是這個 repo 已知的問題（見 `conftest.py` 的
+`HTTP2_DECODE_AS` 註解記的 4.2.2/4.6.7 差異）。
 """
 
 from __future__ import annotations
@@ -123,19 +141,46 @@ def test_packet_index_columns_match_tsharks_own_columns() -> None:
         assert row.protocols == protocols
 
 
-def test_info_and_protocol_are_tsharks_words_not_ours() -> None:
-    """Protocol / Info 欄必須是 Wireshark 自己的字，不是我們合成的。
+def test_info_column_is_populated_and_comes_from_tshark() -> None:
+    """Info / Protocol 欄必須是 tshark 給的，而且真的有內容。
 
-    釘住具體的值 —— 這是「不用自己合成」這句話唯一的證明。
+    **不可以寫死 tshark 的英文措辭。** 第一版寫了
+    `"RRCEstablishmentCause=mo-Signalling"`，那句話在 4.4.9 有、在 Ubuntu CI 的
+    4.2.2 沒有 —— 於是 master 的三個 Linux job 全紅。tshark 的欄位文字**會隨版本
+    改寫**（repo 裡 `HTTP2_DECODE_AS` 的註解早就記過 4.2.2/4.6.7 的差異）。
+
+    所以這裡錨的是**與版本無關的不變量**：
+
+    1. 每一格的 Info 都不是空的（空代表我們讀錯了 ek 的 key）
+    2. 值與 tshark 自己用另一種輸出模式吐出來的完全相同（它是 oracle）
+    3. 協定堆疊用 **dissector 短名**（`frame.protocols`）判斷，那是結構性的，
+       不像顯示欄那樣會被改寫
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
-    by_number = {r.number: r for r in read_packet_rows(pcap)}
-    assert by_number[7].protocol == "NGAP/NAS-5GS"
-    assert "Registration request" in by_number[7].info
-    assert "RRCEstablishmentCause=mo-Signalling" in by_number[7].info
-    assert "Registration reject (Protocol error, unspecified)" in by_number[10].info
-    assert by_number[1].protocol == "SCTP"
-    assert "HEARTBEAT" in by_number[1].info
+    rows = list(read_packet_rows(pcap))
+    oracle = {int(c[0]): c for c in _oracle_columns(pcap)}
+
+    for row in rows:
+        assert row.info, f"frame {row.number} 的 Info 是空的 —— ek 的欄位 key 可能讀錯了"
+        assert row.protocol, f"frame {row.number} 的 Protocol 是空的"
+        assert row.info == oracle[row.number][7], f"frame {row.number} 的 Info 與 oracle 不符"
+        assert row.protocol == oracle[row.number][5], f"frame {row.number} 的 Protocol 與 oracle 不符"
+
+    # 結構性斷言：frame 7 是 NGAP 內嵌 NAS，堆疊裡兩者都要在。
+    # dissector 短名比顯示欄穩定得多 —— 顯示欄是 `NGAP/NAS-5GS` 還是別的寫法
+    # 由版本決定，但堆疊裡有 ngap 與 nas-5gs 是這格封包的事實。
+    frame7 = next(r for r in rows if r.number == 7)
+    assert "ngap" in frame7.protocols
+    assert "nas-5gs" in frame7.protocols
+    assert "sctp" in frame7.protocols
+    # 刻意**不**斷言顯示用的 Protocol 欄長什麼樣（例如 `NGAP/NAS-5GS`）——
+    # 那個欄位怎麼組是 Wireshark 的呈現決定，同樣會隨版本改。
+    # 堆疊裡有沒有 nas-5gs 才是這格封包的事實。
+
+    # frame 1 只有 SCTP，沒有 NGAP —— 用堆疊判斷，不用 Info 的字。
+    frame1 = next(r for r in rows if r.number == 1)
+    assert "sctp" in frame1.protocols
+    assert "ngap" not in frame1.protocols
 
 
 # ── 「全部封包」這句話的證明 ──────────────────────────────────────
@@ -180,17 +225,32 @@ def test_matching_frames_applies_a_real_display_filter() -> None:
 
 
 def test_a_bad_display_filter_reports_tsharks_own_words() -> None:
-    """語法錯誤要原樣帶出 tshark 的訊息，包含它指到出錯位置的說明。
+    """語法錯誤要把 **tshark 自己的訊息**帶到使用者面前。
 
-    我們**不自己寫 filter 驗證器** —— tshark 的訊息比我們寫得出來的都好，
-    而自己寫一份等於維護第二套語法知識，它一定會跟 tshark 漂移。
+    **不可以斷言特定英文措辭。** 第一版寫了
+    `"not a valid protocol or protocol field"` —— 4.4.9 是這樣講，
+    Ubuntu CI 的 4.2.2 卻說 `Constant expression is invalid.`，於是 CI 全紅。
+
+    版本無關的不變量有三個，而且它們才是這條測試真正在乎的事：
+
+    1. 訊息非空 —— 我們沒有把 tshark 的話吞掉
+    2. 訊息裡有**使用者自己打的那個 filter**，所以他看得出是哪裡錯
+    3. 我們沒有換成自己編的解釋 —— 不自己寫 filter 驗證器，
+       維護第二套語法知識一定會跟 tshark 漂移
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
     with pytest.raises(PacketColumnsUnavailable) as exc:
         matching_frames(pcap, "notafield == 1")
     message = str(exc.value)
-    assert "notafield" in message, "沒有把 tshark 的原話帶出來"
-    assert "not a valid protocol or protocol field" in message
+
+    assert message.strip(), "把 tshark 的錯誤訊息吞掉了"
+    assert "notafield" in message, (
+        "訊息裡沒有使用者打的 filter —— 他看不出是哪裡錯了。"
+        f"實際訊息：{message!r}"
+    )
+    # tshark 各版本的措辭不同，但它一定會**提到**這是個 filter 問題：
+    # 我們只確認自己沒有另寫一套說法蓋掉它。
+    assert "TelcoLens" not in message, "我們用自己的措辭蓋掉了 tshark 的訊息"
 
 
 def test_row_matches_is_substring_search_not_a_display_filter() -> None:
@@ -201,8 +261,22 @@ def test_row_matches_is_substring_search_not_a_display_filter() -> None:
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
     rows = list(read_packet_rows(pcap))
-    assert [r.number for r in rows if r.matches("heartbeat_ack")] == [2, 4, 6, 13]
-    assert [r.number for r in rows if r.matches("reject")] == [10]
+
+    # 需要的字串**從實際資料取**，不寫死 tshark 的措辭。
+    # 取一格的 Info 的前幾個字當 needle —— 不管哪個版本，
+    # 拿它自己的話去搜自己一定找得到。
+    sample = next(r for r in rows if r.info)
+    needle = sample.info.split()[0]
+    found = [r.number for r in rows if r.matches(needle)]
+    assert sample.number in found, f"用 {needle!r} 搜不到它自己來的那一格"
+
+    # 期望值同樣由資料算出來，而不是我對 tshark 措辭的記憶。
+    expected = [r.number for r in rows if needle.casefold() in r.info.casefold()]
+    assert found == expected, "子字串比對的結果與直接比對 Info 不一致"
+
+    # 大小寫不敏感 —— 這是我們自己的行為，可以寫死。
+    assert [r.number for r in rows if r.matches(needle.swapcase())] == expected
+
     assert all(r.matches("") for r in rows), "空字串應該全部通過"
     # 子字串比對對 display filter 語法**不會**給出正確答案 —— 這就是重點。
     assert [r.number for r in rows if r.matches("nas-5gs.mm.5gmm_cause == 111")] == []
