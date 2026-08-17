@@ -3,7 +3,7 @@
 [![CI](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml)
 
 Turn a telecom signalling capture into a Mermaid sequence diagram you can paste
-straight into GitHub, Notion, or Confluence.
+straight into GitHub — or anywhere else that renders Mermaid.
 
 ```bash
 telcolens analyze failed_attach.pcapng
@@ -39,7 +39,8 @@ and every unfamiliar cause code sends you back to the specs. TelcoLens turns the
 capture into a diagram, names the network functions, and cites the clause the
 cause code comes from.
 
-**Status: early.** 5G core (N2/NAS) works end to end. See
+**Status: early.** The N2/NAS side (NGAP + NAS-5GS) is exercised end to end
+against real testbed captures. SBI and PFCP are not — see
 [Honest limitations](#honest-limitations) before you rely on it.
 
 ---
@@ -47,11 +48,16 @@ cause code comes from.
 ## What it does today
 
 - **Reads** NGAP, NAS-5GS, and HTTP/2 SBI from `pcap` / `pcapng` via `tshark`.
-- **Names the network functions** — participants show up as `gNB`, `AMF`, `SMF`,
-  `UPF`, not as IP addresses. When the evidence is ambiguous it shows the IP
-  rather than guessing.
+- **Names the network functions** instead of showing IP addresses, and shows
+  the IP when the evidence is ambiguous rather than guessing. In practice today
+  that means `gNB` and `AMF` — those are the only roles any test capture has
+  ever produced. The ladder also covers SMF/UPF (from PFCP) and the SBI
+  producers, but **no capture we have exercises those paths yet**, so treat
+  them as untested code rather than working features.
 - **Correlates one subscriber** across identifiers: SUPI (recovered from a
-  null-scheme SUCI), RAN/AMF UE NGAP IDs, HTTP/2 stream IDs.
+  null-scheme SUCI) and RAN/AMF UE NGAP IDs — both verified against real
+  captures. HTTP/2 stream IDs are also tracked, but they pair a request with
+  its response; **no capture has yet tied an SBI exchange to a subscriber**.
 - **One row per packet by default**, with the carrier and its payload stacked
   on the same line (`DownlinkNASTransport ▸ Authentication request`). Pass
   `--flow` to spread them out and draw NAS UE↔AMF instead — NAS is a UE↔AMF
@@ -108,8 +114,8 @@ The diagram goes to stdout and the summary to stderr, so
 
 ### The HTML report
 
-`--html` writes one file you can double-click, or attach to a ticket and send
-to a vendor. It draws its own SVG — colour-coded lanes, failures highlighted
+`--html` writes one file you can double-click — no viewer, no toolchain, no
+network. It draws its own SVG — colour-coded lanes, failures highlighted
 in place, hover a message for the packet detail, expand a failure for the
 plain-language explanation and the causes engineers actually hit in the field.
 
@@ -156,8 +162,10 @@ the system temp directory only while they are being analysed and are deleted
 as soon as the report is rendered — that path is for convenience, not for the
 2 GB capture from a customer site.
 
-Analysis is synchronous with no intermediate progress to report, so a capture
-over roughly 100 MB will look like it has hung. It has not.
+Analysis is synchronous with no intermediate progress to report, so a large
+capture will sit there looking hung until the whole report appears. It has not
+crashed. We have not measured where "large" starts — every capture we have is
+small enough to finish instantly.
 
 The server binds `127.0.0.1` only and checks the `Host` header. It runs
 `tshark` on paths you hand it, so **do not put it on a public interface**.
@@ -195,9 +203,14 @@ VoWiFi spans SIP (IMS), Diameter (Cx/Dx/Rx/S6a/SWx/SWm), GTP/NAS (EPC), and
 NGAP (5G), and no open tool stitches those into a single diagram.
 
 The architecture is built for that from day one: protocols are pluggable
-adapters, and the identity model already has slots for IMPI, IMPU, MSISDN, SIP
-Call-ID, Diameter Session-Id, and GTP TEID. Adding IMS means adding adapters,
-not rewriting the core.
+adapters registered through entry points, and the identity model already has
+slots for IMPI, IMPU, MSISDN, SIP Call-ID, Diameter Session-Id, and GTP TEID.
+
+The goal is that adding IMS means adding adapters rather than rewriting the
+core. That is a goal, not yet a proven property — wiring up SBI already forced
+one new axis into the adapter contract (`DECODE_AS`, because a display filter
+alone does not make tshark decode a protocol on a non-standard port). Expect
+IMS to find more.
 
 Planned, in order: IMS adapters (SIP, Diameter, GTP) → local-LLM root cause
 annotation over the extracted facts → optional web UI.
@@ -242,8 +255,9 @@ and how to regenerate it. `5gc-registration/` was produced on a local Open5GS +
 UERANSIM testbed, so it carries this repo's licence and no third-party constraints.
 
 **What the green badge does and does not mean.** CI runs the full suite on Python
-3.11/3.12/3.13 (Linux) and 3.13 (macOS), against three tshark versions — no skips,
-so the cross-checks above genuinely run. It does **not** cover PFCP (no adapter yet),
+3.11/3.12/3.13 (Linux) plus 3.13 on macOS and Windows — five jobs, three operating
+systems, and whatever tshark each of them ships. No skips, so the cross-checks
+above genuinely run. It does **not** cover PFCP (no adapter yet),
 SBI's 5G semantics (the HTTP/2 fixture is generic HTTP/2, not real SBI traffic), or
 IMS. Those gaps are real and are named in `.github/workflows/ci.yml`.
 
