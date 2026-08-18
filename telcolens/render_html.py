@@ -453,6 +453,8 @@ header { margin-bottom: 24px; }
   font-size: 13px;
 }
 .notice b { display: block; margin-bottom: 2px; }
+.notice ul { margin: 4px 0 0; padding-left: 18px; }
+.notice li { margin: 2px 0; }
 
 /* ── 流程卡 ──────────────────────────────────────────────── */
 .flow {
@@ -601,6 +603,7 @@ def render_report(
     *,
     source_name: str,
     ciphered: int = 0,
+    auto_decode: object | None = None,
     max_messages: int = 300,
 ) -> str:
     """產生完整的一份 HTML 報告。回傳整份文件的字串。
@@ -608,6 +611,11 @@ def render_report(
     `ciphered` 是無法解讀的加密 NAS 訊息數。**它一定要出現在報告裡**，
     不能只留在 CLI 的 stderr —— 報告會被寄給別人，而收到報告的人看到的
     是一張「看起來一切正常」的圖。警告必須跟著圖走（Rule 12）。
+
+    `auto_decode` 是 `pipeline.AutoDecode`（型別寫成 `object` 只為了避免
+    render 層反向依賴 pipeline）。**同樣一定要出現在報告裡**：這份圖是
+    「調整過解碼方式」才有的，收到報告的人有權知道那個判斷存在，
+    也才有辦法反駁它。只在 CLI 印、報告裡不印，就是把靜默調整換個介面重演。
     """
     total = sum(len(f.messages) for f in flows)
     failures = sum(1 for f in flows for m in f.messages if m.is_failure)
@@ -636,6 +644,15 @@ def render_report(
             "Security Mode Command 之後的 NAS 由網路加密，這是正常現象，不是解析失敗。"
             "但<strong>失敗有可能整個藏在裡面</strong> —— 若下面的流程看起來成功卻與現象不符，"
             "請對照核網日誌。</div>" % ciphered
+        )
+
+    if auto_decode is not None:
+        told = "".join(
+            f"<li>{esc(line)}</li>" for line in auto_decode.describe()  # type: ignore[attr-defined]
+        )
+        parts.append(
+            '<div class="notice"><b>ℹ 這份擷取檔的解碼方式經過自動調整</b>'
+            f"<ul>{told}</ul></div>"
         )
 
     parts.append("</header>")

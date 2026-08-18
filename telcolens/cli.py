@@ -76,6 +76,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
             decode_as=args.decode_as or (),
             nas_from_ue=not args.no_ue_lifeline,
             wire=not args.flow,
+            auto_decode=not args.no_auto_decode,
         )
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
@@ -102,6 +103,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
                 flows,
                 source_name=args.pcap.name,
                 ciphered=ciphered,
+                auto_decode=result.auto_decode,
                 max_messages=args.max_messages,
             ),
             encoding="utf-8",
@@ -126,6 +128,13 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         + (f"、{failures} 則失敗" if failures else ""),
         file=sys.stderr,
     )
+    # 自動調整排在覆蓋率之前：上面那些數字是**調整過**才有的，使用者要先
+    # 知道這件事，才有辦法判斷後面的覆蓋率該怎麼讀（也才有辦法反駁）。
+    if result.auto_decode is not None:
+        print("\nℹ 這份擷取檔需要調整解碼方式，已自動處理：", file=sys.stderr)
+        for line in result.auto_decode.describe():
+            print(f"  · {line}", file=sys.stderr)
+
     # 覆蓋率排在加密警告之前：「我根本沒看到那些封包」比「我看到但讀不懂」
     # 更根本，使用者要先知道自己屬於哪一種。
     if result.coverage is not None:
@@ -195,6 +204,13 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--no-ue-lifeline", action="store_true",
         help="（僅配合 --flow）NAS 照封包畫在 gNB↔AMF，而非畫成 UE↔AMF",
+    )
+    analyze.add_argument(
+        "--no-auto-decode", action="store_true",
+        help="不要自動判斷擷取檔形狀。預設會先掃一趟：偵測到網元 trace 的"
+             "合成 TCP 序號、或沒被認領的 TCP 埠時，用調整過的參數重跑一次，"
+             "**只在訊息數真的增加時採用**，並在摘要裡說明做了什麼。"
+             "關掉可省一趟掃描，代價是網元 trace 會只解出 NGAP。",
     )
     analyze.set_defaults(func=_cmd_analyze)
 

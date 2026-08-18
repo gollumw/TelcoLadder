@@ -31,6 +31,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from telcolens.model import CauseRef, Endpoint, Flow, IdKind, Message
+from telcolens.pipeline import AutoDecode
 from telcolens.render_html import render_report
 
 GOLDEN = Path(__file__).parent / "golden" / "report-synthetic.html"
@@ -114,6 +115,17 @@ def render_golden() -> str:
         build_flows(),
         source_name="synthetic-golden.pcap",
         ciphered=2,
+        # 這份圖是「調整過解碼方式」才有的，報告必須自己講出來 ——
+        # 只在 CLI 印、報告裡不印，就是把靜默調整換個介面重演。
+        # `AutoDecode` 是純資料類別，建構它不需要 tshark，所以本檔
+        # 「刻意不經 tshark」的前提仍然成立。
+        auto_decode=AutoDecode(
+            relaxed_seq=True,
+            synthetic_directions=2,
+            decode_as=("tcp.port==7070,http2",),
+            messages_before=211,
+            messages_after=380,
+        ),
         max_messages=6,
     )
 
@@ -154,6 +166,8 @@ def test_golden_actually_exercises_every_branch() -> None:
         ("已截斷", "截斷公告"),
         ("--max-messages", "截斷公告要指名旗標"),
         ("已加密", "加密警告"),
+        ("解碼方式經過自動調整", "自動調整公告"),
+        ("--no-auto-decode", "自動調整公告要講怎麼關掉"),
         ("cause-ref", "cause 卡片"),
         ("第二個常見原因", "cause_common 多行"),
         ("未識別的流程", "無身分流程"),

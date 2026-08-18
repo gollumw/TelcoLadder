@@ -91,6 +91,8 @@ header { margin-bottom: 24px; }
   font-size: 13px;
 }
 .notice b { display: block; margin-bottom: 2px; }
+.notice ul { margin: 4px 0 0; padding-left: 18px; }
+.notice li { margin: 2px 0; }
 
 /* ── 流程卡 ──────────────────────────────────────────────── */
 .flow {
@@ -242,6 +244,7 @@ footer code {
 <span class="pill bad"><b>1</b> 則失敗</span>
 </div>
 <div class="notice"><b>⚠ 有 2 則 NAS 訊息已加密，內容看不到</b>Security Mode Command 之後的 NAS 由網路加密，這是正常現象，不是解析失敗。但<strong>失敗有可能整個藏在裡面</strong> —— 若下面的流程看起來成功卻與現象不符，請對照核網日誌。</div>
+<div class="notice"><b>ℹ 這份擷取檔的解碼方式經過自動調整</b><ul><li>這份擷取檔有 2 個傳輸方向的 TCP 序號從頭到尾沒有前進過 —— 那是網元匯出的 trace，不是線路側錄。tshark 會把那些封包當成重傳而略過，已關閉序號分析重跑。</li><li>TCP 埠 7070 上有沒被任何 dissector 認領的載荷，試著解成 HTTP/2 之後讀得出 SBI 訊息，已納入。</li><li>訊息數 211 → 380。不想要這個行為就加 --no-auto-decode。</li></ul></div>
 </header>
 <section class="flow">
 <div class="flow-head"><h2>SUPI 001010000000001</h2><span class="badge fail">失敗</span><span class="flow-count">6 則訊息</span></div>

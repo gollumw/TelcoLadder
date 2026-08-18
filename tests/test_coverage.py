@@ -159,3 +159,32 @@ def test_full_role_set_is_not_called_n2_only():
     cov = Coverage(total=1000, parsed=900,
                    roles_found=frozenset({"gNB", "AMF", "SMF", "UPF"}))
     assert not cov.looks_n2_only
+
+
+# ── 觸發訊號：為什麼不能只看全域命中率 ──────────────────────────
+
+
+def test_high_hit_rate_still_scans_when_a_transport_yields_nothing(e2e_pcap: Path):
+    """**這條是 2026-08-18 那次漏報的回歸測試。**
+
+    第一份真實封包的命中率是 187/356 = 52.5%，剛好高過
+    `COVERAGE_ALERT_THRESHOLD` 的 0.5，於是這個模組一句話都沒說 ——
+    而沒說出口的那 47% 是全部的 SBI 流量與 15 則 HTTP 404。
+
+    錯不在門檻值訂多少，錯在**指標**：全域比率會被「已經解得很好的那個
+    協定」稀釋。NGAP 解了 187 格，就足以把 TCP 上 100% 的失敗蓋過去。
+    分傳輸層的訊號不會被稀釋。
+    """
+    parsed = 500  # 626 格裡的 500，命中率 80%，遠高於門檻
+    quiet = measure(e2e_pcap, parsed_frames=parsed)
+    assert not quiet.scanned, "命中率 80%，單看比率本來就不該掃"
+
+    loud = measure(e2e_pcap, parsed_frames=parsed, unclaimed_tcp_frames=212)
+    assert loud.scanned, "TCP 上有 212 格沒人認領，命中率再高也要查"
+
+
+def test_a_trickle_of_unclaimed_tcp_is_not_worth_a_scan(e2e_pcap: Path):
+    """對照組：幾格雜訊不該害使用者多等一趟全檔掃描。"""
+    assert not measure(
+        e2e_pcap, parsed_frames=500, unclaimed_tcp_frames=1
+    ).scanned

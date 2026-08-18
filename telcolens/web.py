@@ -526,7 +526,12 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._send_html(
             render_report(
-                result.flows, source_name=display_name, ciphered=result.ciphered
+                result.flows,
+                source_name=display_name,
+                ciphered=result.ciphered,
+                # 漏掉這個參數，網頁報告就會少掉「解碼方式被調整過」那段宣告，
+                # 而 `--html` 有 —— 正是本檔開頭要防的那種漂移。
+                auto_decode=result.auto_decode,
             )
         )
 

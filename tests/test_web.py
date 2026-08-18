@@ -33,6 +33,10 @@ from telcolens.web import _TMP_PREFIX, make_server
 
 FIXTURES = Path(__file__).parent / "fixtures"
 KI_MISMATCH = FIXTURES / "ki-mismatch" / "capture.pcap"
+#: 漂移測試刻意用這一份：它會觸發自動解碼調整，所以報告裡多一整段公告。
+#: 用不觸發的擷取檔，那條逐字元比對會在兩邊都少一段的情況下空過 ——
+#: 實測 `web.py` 確實漏傳了 `auto_decode`，而測試全綠。
+NE_TRACE = FIXTURES / "ne-trace" / "capture.pcap"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -155,12 +159,18 @@ def test_web_output_is_identical_to_the_html_export(server):
     這條擋的是「網頁這邊順手改一下版面」。一旦兩套呈現分家，使用者
     螢幕上看到的與寄給廠商的就不是同一份東西，而沒有任何其他測試會發現。
     """
-    status, body = _post(server, "/analyze", f"path={KI_MISMATCH}".encode())
+    status, body = _post(server, "/analyze", f"path={NE_TRACE}".encode())
     assert status == 200
 
-    result = analyse(KI_MISMATCH)
+    result = analyse(NE_TRACE)
+    assert result.auto_decode is not None, (
+        "這份 fixture 必須觸發自動調整，否則這條測試比的是兩邊都沒有的東西"
+    )
     expected = render_report(
-        result.flows, source_name=KI_MISMATCH.name, ciphered=result.ciphered
+        result.flows,
+        source_name=NE_TRACE.name,
+        ciphered=result.ciphered,
+        auto_decode=result.auto_decode,
     )
     assert body == expected
 

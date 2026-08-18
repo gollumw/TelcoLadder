@@ -26,6 +26,7 @@ class IdKind(StrEnum):
     AMF_UE_NGAP_ID = "amf_ue_ngap_id"
     PFCP_SEID = "pfcp_seid"
     SBI_STREAM = "sbi_stream"  # HTTP/2 stream，用於配對 SBI request/response
+    SM_CONTEXT_REF = "sm_context_ref"  # SMF 配發的 PDU session 上下文參照
 
     # ── Phase 2：IMS。現在只是佔位，adapter 尚未實作 ──
     IMPI = "impi"
@@ -92,6 +93,7 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.RAN_UE_NGAP_ID: IdClass.SUBSCRIBER,
     IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
     IdKind.PFCP_SEID: IdClass.SESSION,
+    IdKind.SM_CONTEXT_REF: IdClass.SESSION,
     IdKind.GTP_TEID: IdClass.SESSION,
     IdKind.SIP_CALL_ID: IdClass.SESSION,
     IdKind.DIAMETER_SESSION_ID: IdClass.SESSION,
@@ -204,4 +206,12 @@ class Flow:
         for kind in (IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
             if kind in by_kind:
                 return f"{kind.value} {by_kind[kind]}"
+        # 會話層的 key 接不上訂戶，但**它本身就是一個值得命名的東西** ——
+        # 一段 PDU session。標成「未識別的流程」會讓讀的人以為那是雜訊，
+        # 而它其實是那個用戶的一條資料連線（`IdClass.SESSION` 的說明）。
+        for kind in (IdKind.SM_CONTEXT_REF, IdKind.PFCP_SEID, IdKind.GTP_TEID):
+            if kind in by_kind:
+                # 範圍前綴（`<SMF 位址>/<ref>`）對讀的人是雜訊，只留 ref。
+                value = str(by_kind[kind]).rpartition("/")[2]
+                return f"PDU session {value}"
         return "未識別的流程"

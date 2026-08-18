@@ -61,6 +61,17 @@ def e2e_pcap() -> Path:
 
 
 @pytest.fixture(scope="session")
+def ne_trace_pcap() -> Path:
+    """`e2e_pcap` 被改寫成「網元 UE trace 形狀」：序號全部合成、SBI 埠改號。
+
+    這是唯一一份**不是側錄線路**的擷取檔。真實世界那份（電信商 AMF 匯出的
+    per-IMSI trace）含真實訂戶資料，依 CLAUDE.md §2.1 不得進版控 ——
+    所以這裡複製它的形狀。**它複製不到的兩件事**（雙位址空間、TCP 流有缺口）
+    寫在 `tests/fixtures/ne-trace/scenario.md`，別把測試通過當成涵蓋了它們。"""
+    return require_capture("ne-trace/capture.pcap")
+
+
+@pytest.fixture(scope="session")
 def multi_imsi_pcap() -> Path:
     """五個訂戶在**同一次** tcpdump 內依序註冊。
 

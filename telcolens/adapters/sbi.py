@@ -33,8 +33,13 @@ DISPLAY_FILTER = "http2"
 #: （實測：一份含 140 格 SBI 的 5GC 擷取檔，不指定時全部退回 `data`。）
 #:
 #: **7777 是啟發式提示，不是規範值。** TS 29.500 沒有規定 SBI 的 port，
-#: 真實 port 來自 NRF discovery；7777 只是 Open5GS 的預設。其他部署
-#: （free5GC 常見 8000）一律用 CLI 的 `--decode-as` 疊加。
+#: 真實 port 來自 NRF discovery；7777 只是 Open5GS 的預設。實測第一份真實
+#: 封包用的是 7070 / 8080 / 80 / 81 —— 靠這裡列舉常見 port 是追不完的。
+#:
+#: 所以**這份清單不是唯一防線**：`telcolens/probe.py` 會找出沒有任何
+#: dissector 認領的 TCP 埠、試著解成 HTTP/2，只在真的多解出訊息時採用。
+#: 這裡只負責「常見情況連掃描都省下來」。CLI 的 `--decode-as` 排在最後，
+#: 兩者都蓋得過。
 DECODE_AS = ("tcp.port==7777,http2",)
 
 #: `telcolens check` 要驗證存在的 dissector。
@@ -167,6 +172,51 @@ def _host_of(api_root: str) -> str | None:
     return host or None
 
 
+#: `/nsmf-pdusession/v1/sm-contexts/<ref>` 之後可能還跟著 `/modify`、`/release`。
+_SM_CONTEXTS = "/sm-contexts/"
+
+
+def _sm_context_ref(url_or_path: str, authority: str | None) -> tuple[str, str] | None:
+    """由請求路徑或 `location` 標頭取出 (SMF 位址, smContextRef)。
+
+    **這是把散落的 PDU session 訊息接起來的唯一橋樑。** 實測一份真實
+    trace（TS 29.502 的 Nsmf_PDUSession）：
+
+        #48 POST /nsmf-pdusession/v1/sm-contexts          :authority = smf:7070
+        #49 201  location: http://smf:7070/nsmf-pdusession/v1/sm-contexts/215042048
+        #62 POST /nsmf-pdusession/v1/sm-contexts/215042048/modify
+
+    `#48` 與 `#49` 靠 HTTP/2 stream 就併得起來；`#62` 在另一條 stream 上，
+    少了這把 key 就會變成一則孤立的訊息。那份 trace 裡有 40 則這樣的 modify。
+
+    **範圍前綴取自 SMF 自己的位址**（請求取 `:authority`，回應取 `location`
+    URL 的 host）—— smContextRef 由 SMF 配發，只在該 SMF 內唯一。兩個 SMF
+    都從相近的號碼起跳是常見的實作，少了前綴就會把兩個用戶併成一條流程
+    （同 CLAUDE.md §3.3 對 NGAP ID 的理由）。實測那份 trace 裡 `location`
+    的 host 與 modify 的 `:authority` 逐字相同，這個前綴接得起來。
+
+    **刻意不做通用化。** TS 29.5xx 的資源路徑形狀各服務不同 ——
+    `/nudm-sdm/v2/imsi-<supi>/sms-data` 的第 4 段是子資源而不是 id，
+    套通用規則會抽出 `sms-data` 當成一把身分 key，把不相干的訊息黏在一起，
+    而且圖看起來完全合理（CLAUDE.md §4 那類錯誤）。要支援新服務就照這裡
+    再寫一個明確的規則。
+    """
+    if _SM_CONTEXTS not in url_or_path:
+        return None
+    host = authority
+    if "://" in url_or_path:
+        # `location` 是絕對 URL，host 在裡面，不能用請求的 :authority。
+        _, _, rest = url_or_path.partition("://")
+        host, _, url_or_path = rest.partition("/")
+        url_or_path = "/" + url_or_path
+    if not host:
+        return None
+    ref = url_or_path.partition(_SM_CONTEXTS)[2].split("/", 1)[0]
+    # 查詢字串與空值都不是參照。
+    ref = ref.split("?", 1)[0]
+    return (host, ref) if ref else None
+
+
 def _service_from_path(path: str) -> str | None:
     """由 `:path` 取出服務名，如 `/nsmf-pdusession/v1/sm-contexts` → `nsmf-pdusession`。
 
@@ -201,6 +251,9 @@ def parse(frame: Frame) -> list[Message]:
             # 老實跳過，不要編一個假的標籤（Rule 12）。
             continue
 
+        authority = first(block.get("http2_http2_headers_authority"))
+        location = first(block.get("http2_http2_headers_location"))
+
         identity: set[IdKey] = set()
         if stream_id is not None:
             identity.add(scoped(IdKind.SBI_STREAM, scope, stream_id))
@@ -209,6 +262,16 @@ def parse(frame: Frame) -> list[Message]:
             # NGAP/NAS 那條流程的唯一連結。
             for supi in _supis_in_path(str(path)):
                 identity.add(globally_unique(IdKind.SUPI, supi))
+        # 請求看 `:path`、回應看 `location` —— 建立回應的 201 是唯一講出
+        # 新 smContextRef 的地方，漏了它整條鏈就從第一環斷掉。
+        for source in (path, location):
+            if not source:
+                continue
+            found = _sm_context_ref(
+                str(source), str(authority) if authority else None
+            )
+            if found:
+                identity.add(scoped(IdKind.SM_CONTEXT_REF, found[0], found[1]))
 
         detail: dict[str, str] = {}
         if path:

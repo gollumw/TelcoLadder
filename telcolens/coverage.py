@@ -61,6 +61,26 @@ MIN_INTERESTING_FRAMES = 10
 #: 而全部都警告等於沒有警告。真實世界會出問題的是大檔。
 MIN_TOTAL_FOR_ALERT = 200
 
+#: TCP 上有這麼多格未認領的載荷，就無條件觸發掃描 —— 不管命中率多高。
+MIN_UNCLAIMED_TCP_FOR_ALERT = 10
+
+_TRANSPORT_SIGNAL_NOTE = """為什麼不能只看全域命中率。
+
+2026-08-18，第一份真實封包（356 格）的命中率是 **187/356 = 52.5%**，
+剛好高過 `COVERAGE_ALERT_THRESHOLD` 的 0.5 —— 於是這個模組**一句話都沒說**。
+而那沒說出口的 47% 裡，是全部的 SBI 流量與 15 則 HTTP 404。
+
+錯不在門檻值訂多少，錯在**指標選錯了**。全域比率會被「已經解得很好的那個
+協定」稀釋：NGAP 解了 187 格，就足以把 TCP 上 100% 的失敗蓋過去。
+
+對的訊號是**分傳輸層看**：某個傳輸層有可觀的載荷、卻一則訊息都沒產出。
+那與整體比率無關，也不會被別的協定稀釋。
+
+侷限講明白：這個訊號目前**只涵蓋 TCP**（來自 `probe.inspect()`）。
+SCTP 與 UDP 上的訊令沒有重組問題、埠也由規範定死，實務上不會發生
+「有流量但零產出」；真遇到了，仍然只有全域比率那條路會發現。
+"""
+
 #: `-z io,phs` 每列長這樣：縮排 + 協定名 + `frames:N bytes:M`
 _PHS_LINE = re.compile(r"^(\s*)([\w.-]+)\s+frames:(\d+)\s+bytes:(\d+)")
 
@@ -195,9 +215,14 @@ def measure(
     parsed_frames: int,
     roles_found: frozenset[str] | set[str] = frozenset(),
     decode_as: tuple[str, ...] = (),
+    unclaimed_tcp_frames: int = 0,
     tshark: Tshark | None = None,
 ) -> Coverage:
     """量這份擷取檔的覆蓋率。**便宜的那一半永遠跑，貴的那一半條件觸發。**
+
+    `unclaimed_tcp_frames` 由 `probe.inspect()` 提供：TCP 上有多少格帶載荷
+    的封包沒有任何 dissector 認領。**它是比命中率更可靠的觸發訊號**，
+    理由見 `_TRANSPORT_SIGNAL_NOTE`。傳 0 就退回只看命中率。
 
     任何一步失敗都退回「量不到」而不是猜 —— 這個模組的存在理由是誠實地
     說出我們不知道什麼，它自己更不該編造數字。
@@ -213,12 +238,16 @@ def measure(
 
     if total is None or total == 0 or base.ratio is None:
         return base
-    if total < MIN_TOTAL_FOR_ALERT:
-        # 小擷取檔的命中率天生偏低，不值得打擾使用者。見常數的說明。
-        return base
-    if base.ratio >= COVERAGE_ALERT_THRESHOLD:
-        # 命中率正常，不值得花第二趟全檔掃描。
-        return base
+    # **傳輸層零產出的訊號優先於命中率。** 命中率高不代表沒漏東西 ——
+    # 見 `_TRANSPORT_SIGNAL_NOTE`。
+    transport_signal = unclaimed_tcp_frames >= MIN_UNCLAIMED_TCP_FOR_ALERT
+    if not transport_signal:
+        if total < MIN_TOTAL_FOR_ALERT:
+            # 小擷取檔的命中率天生偏低，不值得打擾使用者。見常數的說明。
+            return base
+        if base.ratio >= COVERAGE_ALERT_THRESHOLD:
+            # 命中率正常，不值得花第二趟全檔掃描。
+            return base
 
     from telcolens.adapters import display_filter as _claimed
 

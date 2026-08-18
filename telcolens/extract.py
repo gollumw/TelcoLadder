@@ -138,6 +138,7 @@ def read_frames(
     *,
     display_filter: str | None = None,
     decode_as: Sequence[str] | None = None,
+    relax_seq: bool = False,
     tshark: Tshark | None = None,
 ) -> Iterator[Frame]:
     """串流讀出 pcap 中符合過濾條件的封包。
@@ -157,6 +158,14 @@ def read_frames(
     tshark 4.4.9 靠啟發式抓到 42 格、明確指定 decode-as 抓到 43 格，
     而 4.2.2 漏得更多 —— CI 的版本矩陣就是這樣抓到的。
     要結果可重現，就得明講而不是靠猜。
+
+    `relax_seq=True` 關掉 tshark 的 TCP 序號分析。**只給網元 trace 用**，
+    判定交給 `probe.inspect()`，這裡不自己決定。
+
+    為什麼不能永遠開著：關掉之後 tshark 不再辨識重傳，同一份資料會**餵給
+    解碼器兩次**，於是產生重複的訊息。真實線路擷取上有重傳是常態，那會變成
+    一個安靜的、讓人做出錯誤判斷的錯誤（本專案 CLAUDE.md §4 那張表）。
+    網元 trace 沒有這個問題 —— 它的序號本來就是假的，沒有真正的重傳。
     """
     if not pcap.is_file():
         raise ExtractError(f"找不到檔案：{pcap}")
@@ -177,6 +186,8 @@ def read_frames(
     tshark = tshark or find_tshark()
     # 相對時間由下方自行從 epoch 換算，不靠 tshark 的顯示偏好設定。
     args = ["-r", str(pcap), "-T", "ek", "-Y", display_filter]
+    if relax_seq:
+        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
     for rule in decode_as:
         args += ["-d", rule]
 
