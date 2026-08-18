@@ -196,6 +196,8 @@
           setTimeout(poll, 500);
         } else {
           loadRail();   // 完整解剖跑完了，身分才有東西可列
+          fl.tabdot.hidden = false;   // 工作階段表就緒 —— 分頁上亮提示點
+          if (!fl.paneSessions.hidden) fetchFlows();
         }
       })
       .catch(function () { setTimeout(poll, 2000); });
@@ -503,6 +505,306 @@
     draw();
     showDecode(next);
   });
+
+
+  // ── 工作階段表（NetScout 式 session 分析）──────────────────────────
+  //
+  // 兩層表：訂戶父列 → session 子列。點子列看單一流程的 ladder，
+  // 點父列看該訂戶全部訊息按絕對時間合排的合併 ladder。
+  // SVG 來自伺服器（與報告同一個 renderer），插入走 DOMParser 白名單
+  // —— 規則①「不用 innerHTML」在這裡的形狀見 safeSvg() 的說明。
+
+  var fl = {
+    tabPackets: document.getElementById("tab-packets"),
+    tabSessions: document.getElementById("tab-sessions"),
+    tabdot: document.getElementById("tabdot"),
+    panePackets: document.getElementById("pane-packets"),
+    paneSessions: document.getElementById("pane-sessions"),
+    note: document.getElementById("flownote"),
+    table: document.getElementById("flowtable"),
+    timeForm: document.getElementById("timefilter"),
+    since: document.getElementById("tf-since"),
+    until: document.getElementById("tf-until"),
+    tfClear: document.getElementById("tf-clear"),
+    tfNote: document.getElementById("tfnote"),
+    ladder: document.getElementById("ladder"),
+    ladderTitle: document.getElementById("ladder-title"),
+    ladderClose: document.getElementById("ladder-close"),
+    ladderSvg: document.getElementById("laddersvg"),
+    ladderEvents: document.getElementById("ladderevents")
+  };
+  var flowsLoaded = false;
+
+  function switchTab(which) {
+    var sessions = which === "sessions";
+    fl.panePackets.hidden = sessions;
+    fl.paneSessions.hidden = !sessions;
+    fl.tabPackets.className = "vtab" + (sessions ? "" : " on");
+    fl.tabSessions.className = "vtab" + (sessions ? " on" : "");
+    if (sessions && !flowsLoaded) fetchFlows();
+  }
+  fl.tabPackets.addEventListener("click", function () { switchTab("packets"); });
+  fl.tabSessions.addEventListener("click", function () { switchTab("sessions"); });
+
+  // 本機時區要標出來 —— 對照核網日誌的人必須知道自己在看哪個鐘。
+  (function () {
+    var off = -new Date().getTimezoneOffset();
+    var sign = off >= 0 ? "+" : "-";
+    var hh = Math.floor(Math.abs(off) / 60);
+    fl.tfNote.textContent = "以本機時區顯示（UTC" + sign + hh + "）";
+  })();
+
+  function toLocalInput(epoch) {
+    // datetime-local 的 value 是無時區字串，按本機時區組。
+    var d = new Date(epoch * 1000);
+    function two(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate())
+      + "T" + two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+  }
+  function fromLocalInput(value) {
+    if (!value) return null;
+    var ms = new Date(value).getTime();
+    return isNaN(ms) ? null : ms / 1000;
+  }
+
+  fl.timeForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetchFlows();
+  });
+  fl.tfClear.addEventListener("click", function () {
+    fl.since.value = ""; fl.until.value = ""; fetchFlows();
+  });
+  fl.ladderClose.addEventListener("click", function () {
+    fl.ladder.hidden = true;
+  });
+
+  function fetchFlows() {
+    var qs = [];
+    var since = fromLocalInput(fl.since.value);
+    var until = fromLocalInput(fl.until.value);
+    if (since !== null) qs.push("since=" + since);
+    if (until !== null) qs.push("until=" + until);
+    fetch("/api/" + state.sid + "/flows" + (qs.length ? "?" + qs.join("&") : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ready) {
+          fl.note.textContent = "關聯分析中，完成後這張表自動亮起。";
+          return;
+        }
+        flowsLoaded = true;
+        renderFlows(j);
+      })
+      .catch(function (e) { fl.note.textContent = "取工作階段表失敗：" + e; });
+  }
+
+  function fmtAbs(epoch) {
+    if (!epoch) return "—";
+    var d = new Date(epoch * 1000);
+    function two(n) { return (n < 10 ? "0" : "") + n; }
+    return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+  }
+  function fmtDur(seconds) {
+    if (seconds >= 60) return Math.floor(seconds / 60) + "m" + Math.round(seconds % 60) + "s";
+    return seconds.toFixed(seconds < 1 ? 3 : 1) + "s";
+  }
+
+  function mkCell(tag, cls, text) {
+    var td = document.createElement(tag);
+    if (cls) td.className = cls;
+    if (text !== undefined && text !== null) td.textContent = text;
+    return td;
+  }
+  function lightDot(light, reason) {
+    var dot = mkCell("span", "light " + light, "●");
+    if (reason) dot.title = reason;
+    return dot;
+  }
+
+  function renderFlows(data) {
+    fl.table.textContent = "";
+    if (!data.abs_time_available) {
+      fl.since.disabled = fl.until.disabled = true;
+      fl.tfNote.textContent = "此檔沒有絕對時間戳，時間過濾不可用";
+    } else if (!fl.since.value && !fl.until.value) {
+      fl.since.min = fl.until.min = toLocalInput(data.capture_start);
+      fl.since.max = fl.until.max = toLocalInput(data.capture_end);
+    }
+    fl.note.textContent = data.matched === data.total
+      ? data.total + " 個工作階段"
+      : data.matched + " / " + data.total + " 個工作階段在時間範圍內（其餘已濾除）";
+    if (data.note) fl.note.textContent += " —— " + data.note;
+
+    var table = document.createElement("table");
+    table.className = "flows";
+    var thead = document.createElement("thead");
+    var hr = document.createElement("tr");
+    var titles = ["", "訂戶 / 工作階段", "開始", "結束", "持續", "協定",
+                  "訊息", "失敗", "重傳", "未回應"];
+    for (var i = 0; i < titles.length; i++) hr.appendChild(mkCell("th", null, titles[i]));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+
+    for (var si = 0; si < data.subscribers.length; si++) {
+      (function (sub, subIndex) {
+        var parent = document.createElement("tr");
+        parent.className = "subrow";
+        parent.appendChild(mkCell("td", null, "")).appendChild(
+          lightDot(sub.light, null));
+        var titleCell = mkCell("td", "subtitle");
+        var twisty = mkCell("span", "twisty", "▸");
+        titleCell.appendChild(twisty);
+        titleCell.appendChild(mkCell("span", null,
+          " " + sub.title + "（" + sub.sessions.length + "）"));
+        parent.appendChild(titleCell);
+        parent.appendChild(mkCell("td", "num", fmtAbs(sub.start)));
+        parent.appendChild(mkCell("td", "num", fmtAbs(sub.end)));
+        parent.appendChild(mkCell("td", "num", ""));
+        parent.appendChild(mkCell("td", null, ""));
+        parent.appendChild(mkCell("td", "num", String(sub.messages)));
+        parent.appendChild(mkCell("td", "num bad", sub.failures ? String(sub.failures) : ""));
+        parent.appendChild(mkCell("td", "num warn", sub.retrans ? String(sub.retrans) : ""));
+        parent.appendChild(mkCell("td", "num warn", sub.unanswered ? String(sub.unanswered) : ""));
+        tbody.appendChild(parent);
+
+        var kids = [];
+        for (var ri = 0; ri < sub.sessions.length; ri++) {
+          (function (row) {
+            var tr = document.createElement("tr");
+            tr.className = "sessrow";
+            tr.hidden = true;
+            tr.appendChild(mkCell("td", null, "")).appendChild(
+              lightDot(row.light, row.light_reason));
+            tr.appendChild(mkCell("td", "sesstitle", row.title));
+            tr.appendChild(mkCell("td", "num", fmtAbs(row.start)));
+            tr.appendChild(mkCell("td", "num", fmtAbs(row.end)));
+            tr.appendChild(mkCell("td", "num", fmtDur(row.duration)));
+            tr.appendChild(mkCell("td", null, row.protocols.join(" ")));
+            tr.appendChild(mkCell("td", "num", String(row.messages)));
+            tr.appendChild(mkCell("td", "num bad", row.failures ? String(row.failures) : ""));
+            tr.appendChild(mkCell("td", "num warn", row.retrans ? String(row.retrans) : ""));
+            tr.appendChild(mkCell("td", "num warn", row.unanswered ? String(row.unanswered) : ""));
+            tr.addEventListener("click", function () {
+              openLadder("/api/" + state.sid + "/flow?id=" + row.id);
+            });
+            tbody.appendChild(tr);
+            kids.push(tr);
+          })(sub.sessions[ri]);
+        }
+
+        twisty.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var open = twisty.textContent === "▾";
+          twisty.textContent = open ? "▸" : "▾";
+          for (var k = 0; k < kids.length; k++) kids[k].hidden = open;
+        });
+        // 點父列本體 → 合併時序 ladder（F2）：該訂戶全部訊息合排一張圖。
+        parent.addEventListener("click", function () {
+          openLadder("/api/" + state.sid + "/subscriber?i=" + subIndex);
+        });
+      })(data.subscribers[si], si);
+    }
+    table.appendChild(tbody);
+    fl.table.appendChild(table);
+  }
+
+  // SVG 只允許 renderer 實際會產的元素。白名單失配代表 renderer 加了
+  // 新元素而這裡沒跟上 —— 那要**整張拒繪並大聲失敗**，不是默默剝掉
+  // （默默剝掉的圖看起來完整，其實少東西）。
+  var SVG_ALLOWED = { svg: 1, g: 1, line: 1, path: 1, rect: 1, circle: 1, ellipse: 1, text: 1, tspan: 1, title: 1 };
+
+  function safeSvg(svgText) {
+    // 為什麼這不是繞道的 innerHTML：parseFromString 產出**離線文件**，
+    // script 不執行；MIME 必須是 image/svg+xml（text/html 才是 innerHTML
+    // 的同義詞）；內容在伺服器端已被 esc() 逃逸，這裡的白名單是第二道，
+    // 頁面 CSP（default-src 'none'）是第三道。
+    var doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+    if (doc.getElementsByTagName("parsererror").length) return null;
+    var root = doc.documentElement;
+    if (root.nodeName.toLowerCase() !== "svg") return null;
+    var stack = [root];
+    while (stack.length) {
+      var node = stack.pop();
+      if (!SVG_ALLOWED[node.nodeName.toLowerCase()]) return null;
+      for (var a = 0; a < node.attributes.length; a++) {
+        var an = node.attributes[a].name.toLowerCase();
+        if (an.indexOf("on") === 0 || an.indexOf("href") !== -1) return null;
+      }
+      for (var c = node.firstElementChild; c; c = c.nextElementSibling) stack.push(c);
+    }
+    return document.importNode(root, true);
+  }
+
+  function openLadder(url) {
+    fl.ladder.hidden = false;
+    fl.ladderTitle.textContent = "載入中……";
+    fl.ladderSvg.textContent = "";
+    fl.ladderEvents.textContent = "";
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.error) { fl.ladderTitle.textContent = j.error; return; }
+        fl.ladderTitle.textContent = j.title
+          + (j.truncated ? "（超長，只畫前 300 則，另 " + j.truncated + " 則未畫）" : "");
+        var svg = safeSvg(j.svg);
+        if (svg === null) {
+          // Rule 12：拒繪要說原因，不要留一塊空白讓人以為圖就長這樣。
+          fl.ladderSvg.textContent =
+            "圖未顯示：SVG 含未預期的元素或屬性（renderer 與檢視器的白名單不同步）。";
+          return;
+        }
+        fl.ladderSvg.appendChild(svg);
+        renderEvents(j.events);
+      })
+      .catch(function (e) { fl.ladderTitle.textContent = "載入失敗：" + e; });
+  }
+
+  function renderEvents(events) {
+    if (!events || !events.length) return;
+    var head = document.createElement("div");
+    head.className = "evhead";
+    head.textContent = "狀態事件（" + events.length + "）";
+    fl.ladderEvents.appendChild(head);
+    for (var i = 0; i < events.length; i++) {
+      (function (ev) {
+        var box = document.createElement("div");
+        box.className = "ev ev-" + ev.kind;
+        var kindName = { failure: "失敗", retrans: "重傳", unanswered: "未獲回應" }[ev.kind] || ev.kind;
+        if (ev.certainty === "suspected") kindName = "疑似" + kindName;
+        var title = document.createElement("div");
+        title.className = "evtitle";
+        title.appendChild(mkCell("span", "evkind", kindName));
+        title.appendChild(mkCell("span", null, " " + ev.label));
+        box.appendChild(title);
+        var frames = document.createElement("div");
+        frames.className = "evframes";
+        frames.appendChild(mkCell("span", null, "frame "));
+        for (var f = 0; f < ev.frames.length; f++) {
+          (function (frameNo) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.className = "framelink";
+            b.textContent = "#" + frameNo;
+            // 點 frame → 切回封包分頁並解碼那一格（回 Wireshark 對照的橋）。
+            b.addEventListener("click", function () {
+              switchTab("packets");
+              state.selectedFrame = frameNo;
+              draw();
+              showDecode(frameNo);
+            });
+            frames.appendChild(b);
+          })(ev.frames[f]);
+        }
+        box.appendChild(frames);
+        box.appendChild(mkCell("div", "evbasis", ev.basis));
+        for (var kkey = 0; kkey < 3; kkey++) {
+          var key = ["cause_note", "cause_plain", "cause_common"][kkey];
+          if (ev[key]) box.appendChild(mkCell("div", "evcause", ev[key]));
+        }
+        fl.ladderEvents.appendChild(box);
+      })(events[i]);
+    }
+  }
 
   header();
   renderStatus();

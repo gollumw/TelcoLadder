@@ -453,6 +453,32 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
 </div>
 <main class="vmain">
   <p class="held-note">{held}</p>
+  <nav class="vtabs" aria-label="視圖切換">
+    <button type="button" id="tab-packets" class="vtab on">封包</button>
+    <button type="button" id="tab-sessions" class="vtab">工作階段
+      <span class="tabdot" id="tabdot" hidden aria-label="已就緒">●</span></button>
+  </nav>
+  <div id="pane-sessions" hidden>
+    <form class="timefilter" id="timefilter">
+      <label>起 <input type="datetime-local" step="1" id="tf-since"></label>
+      <label>迄 <input type="datetime-local" step="1" id="tf-until"></label>
+      <button type="submit">套用</button>
+      <button type="button" id="tf-clear">清除</button>
+      <span class="tfnote" id="tfnote">以本機時區顯示</span>
+    </form>
+    <p class="flownote" id="flownote">關聯分析中，完成後這張表自動亮起。
+      大檔可以<a href="/">回首頁用時間範圍縮小再開一次</a>（會先切片，快很多）。</p>
+    <div class="flowtable" id="flowtable"></div>
+    <div class="ladder" id="ladder" hidden>
+      <div class="ladderhead">
+        <span id="ladder-title"></span>
+        <button type="button" id="ladder-close">收合</button>
+      </div>
+      <div class="laddersvg" id="laddersvg"></div>
+      <div class="ladderevents" id="ladderevents"></div>
+    </div>
+  </div>
+  <div id="pane-packets">
   <div class="panes">
   <aside class="rail" id="rail">
     <div class="railhead">訂戶 / 身分</div>
@@ -480,7 +506,7 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
   </div>
   </div>
   </div>
-  <p class="stage-note" id="stage-note">呼叫流程圖（node-by-node 梯形圖）—— 階段 5。</p>
+  </div>
 </main>
 <script src="/static/viewer.js" data-sid="{esc(session.sid)}"></script>
 </body></html>
