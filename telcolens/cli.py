@@ -10,7 +10,8 @@ from telcolens import __version__
 from telcolens.adapters import required_dissectors
 from telcolens.coverage import describe as describe_coverage
 from telcolens.extract import ExtractError
-from telcolens.pipeline import analyse
+from telcolens.pipeline import Prefilter, analyse
+from telcolens.prefilter import PrefilterError, TimeWindow
 from telcolens.render_html import render_report
 from telcolens.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
 from telcolens.session import IDLE_TTL
@@ -77,7 +78,17 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
             nas_from_ue=not args.no_ue_lifeline,
             wire=not args.flow,
             auto_decode=not args.no_auto_decode,
+            prefilter=Prefilter(
+                window=TimeWindow(args.since, args.until),
+                subscriber=args.subscriber,
+                display_filter=args.filter or "",
+                slice_first=not args.no_slice,
+            ),
         )
+    except PrefilterError as exc:
+        # 使用者給的條件本身有問題 —— 錯在輸入不在擷取檔，訊息要指向輸入。
+        print(f"過濾條件有問題：{exc}", file=sys.stderr)
+        return 2
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -103,6 +114,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
                 flows,
                 source_name=args.pcap.name,
                 ciphered=ciphered,
+                prefilter=result.prefilter,
                 auto_decode=result.auto_decode,
                 max_messages=args.max_messages,
             ),
@@ -128,6 +140,13 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         + (f"、{failures} 則失敗" if failures else ""),
         file=sys.stderr,
     )
+    # 前置過濾排在最前面：底下每一個數字都是**在這個範圍內**算出來的，
+    # 使用者要先知道範圍才讀得懂數字。
+    if result.prefilter is not None:
+        print("\nℹ 這次分析先收窄了範圍：", file=sys.stderr)
+        for line in result.prefilter.describe():
+            print(f"  · {line}", file=sys.stderr)
+
     # 自動調整排在覆蓋率之前：上面那些數字是**調整過**才有的，使用者要先
     # 知道這件事，才有辦法判斷後面的覆蓋率該怎麼讀（也才有辦法反駁）。
     if result.auto_decode is not None:
@@ -204,6 +223,36 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--no-ue-lifeline", action="store_true",
         help="（僅配合 --flow）NAS 照封包畫在 gNB↔AMF，而非畫成 UE↔AMF",
+    )
+    narrow = analyze.add_argument_group(
+        "先收窄範圍（大檔會快很多）",
+        "時間範圍是唯一可以直接下推到封包層的條件；訂戶識別碼走兩段式擴展，"
+        "因為多數封包根本不帶識別碼（加密的 NAS、已註冊的 UE），直接拿它過濾"
+        "會把整個 N2 介面丟掉。工具會告訴你哪些流量沒被納入。",
+    )
+    narrow.add_argument(
+        "--since", type=float, metavar="秒",
+        help="只看第一格之後這麼多秒開始的封包（相對時間）",
+    )
+    narrow.add_argument(
+        "--until", type=float, metavar="秒",
+        help="只看到第一格之後這麼多秒為止",
+    )
+    narrow.add_argument(
+        "--subscriber", metavar="IMSI",
+        help="只看這個訂戶（IMSI / MSISDN，純數字）。先找出直接帶著它的封包，"
+             "再擴展到那些封包所在的 TCP 串流與 SCTP association —— "
+             "**擴展不到的傳輸會明確列出來**，不會安靜地少給。",
+    )
+    narrow.add_argument(
+        "--filter", metavar="運算式",
+        help="原樣疊上去的 tshark display filter，如 'ngap || http2'、'ip.addr==10.1.2.3'。"
+             "這一欄不做任何檢查 —— 你比我們更清楚要看什麼。",
+    )
+    narrow.add_argument(
+        "--no-slice", action="store_true",
+        help="有時間範圍時不要先用 editcap 切片。預設會切 —— `-Y` 只省解析，"
+             "tshark 仍要讀完整個檔，切片才省得掉讀取。切片是暫存檔，跑完即刪。",
     )
     analyze.add_argument(
         "--no-auto-decode", action="store_true",

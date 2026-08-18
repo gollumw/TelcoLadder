@@ -44,7 +44,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from telcolens.extract import ExtractError
-from telcolens.pipeline import analyse
+from telcolens.pipeline import Prefilter, analyse
+from telcolens.prefilter import PrefilterError, TimeWindow
 from telcolens.render_html import PAGE_CSS, esc, render_report
 from telcolens.decode import DecodeError
 from telcolens.packets import PacketColumnsUnavailable, matching_frames
@@ -427,8 +428,15 @@ class _Handler(BaseHTTPRequestHandler):
         pcap = self._pcap_from_form(form)
         if pcap is None:
             return
+        try:
+            prefilter = _prefilter_from_form(form)
+        except PrefilterError as exc:
+            self._send_html(
+                _error_page("過濾條件有問題。", detail=str(exc)), HTTPStatus.BAD_REQUEST
+            )
+            return
         # 貼路徑不複製、不刪除 —— 那是使用者自己的檔案。
-        self._analyse_and_respond(pcap, pcap.name, wire=wire)
+        self._analyse_and_respond(pcap, pcap.name, wire=wire, prefilter=prefilter)
 
     # ── 上傳：raw body 串流落地 ───────────────────────────────────
 
@@ -486,6 +494,7 @@ class _Handler(BaseHTTPRequestHandler):
         *,
         wire: bool = False,
         cleanup: Callable[[], None] | None = None,
+        prefilter: Prefilter | None = None,
     ) -> None:
         """分析並回應。`cleanup` 在**分析結束的那一刻**執行。
 
@@ -502,7 +511,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         try:
             try:
-                result = analyse(pcap, wire=wire)
+                result = analyse(pcap, wire=wire, prefilter=prefilter)
             finally:
                 # 內層 finally：先清理，才輪到外層的 except 送回應。
                 if cleanup is not None:
@@ -512,6 +521,12 @@ class _Handler(BaseHTTPRequestHandler):
             return
         except ExtractError as exc:
             self._send_html(_error_page("讀不動這個檔案。", detail=str(exc)), HTTPStatus.BAD_REQUEST)
+            return
+        except PrefilterError as exc:
+            # 條件本身有問題 —— 錯在輸入不在擷取檔（例如 IMSI 不是數字）。
+            self._send_html(
+                _error_page("過濾條件有問題。", detail=str(exc)), HTTPStatus.BAD_REQUEST
+            )
             return
 
         if not result.flows:
@@ -532,6 +547,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # 漏掉這個參數，網頁報告就會少掉「解碼方式被調整過」那段宣告，
                 # 而 `--html` 有 —— 正是本檔開頭要防的那種漂移。
                 auto_decode=result.auto_decode,
+                prefilter=result.prefilter,
             )
         )
 
@@ -572,6 +588,33 @@ _EXTRA_CSS = """
 }
 .or { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--faint); font-size: 12px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+/* 收窄範圍那一區。**選擇器要夠specific** —— form.path 是 flex 容器，
+   它的 `input[type=text] { flex: 1 1 320px }` 會直接把這裡的巢狀輸入撐爆。 */
+form.path fieldset.narrow {
+  flex-basis: 100%; margin: 4px 0 0; padding: 10px 12px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+form.path fieldset.narrow legend { padding: 0 6px; font-size: 12px; color: var(--dim); }
+form.path fieldset.narrow .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+form.path fieldset.narrow label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; color: var(--dim); cursor: auto;
+}
+form.path fieldset.narrow label.grow { flex: 1 1 260px; margin-top: 10px; }
+form.path fieldset.narrow input[type=text],
+form.path fieldset.narrow input[type=number] {
+  flex: 0 1 auto; width: 100%; padding: 7px 10px; font-size: 12.5px;
+  border-radius: 7px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+form.path fieldset.narrow input[type=number] { width: 92px; }
+form.path fieldset.narrow .fine {
+  margin: 10px 0 0; font-size: 11.5px; line-height: 1.7; color: var(--faint);
+}
+form.path fieldset.narrow code {
+  font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--surface);
+}
 form.path { display: flex; gap: 8px; flex-wrap: wrap; }
 form.path input[type=text] {
   flex: 1 1 320px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
@@ -652,6 +695,32 @@ def _tshark_banner() -> str:
     )
 
 
+def _prefilter_from_form(form: dict[str, list[str]]) -> Prefilter:
+    """把表單欄位轉成 `Prefilter`。空欄位一律當成「不收窄」。
+
+    **語意必須與 CLI 的旗標逐項相同** —— 兩邊都只是把值塞進同一個
+    `Prefilter`，判斷全在 pipeline 裡。這是本檔開頭那條反漂移原則
+    在輸入端的版本。
+    """
+    def num(name: str) -> float | None:
+        raw = (form.get(name) or [""])[0].strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            raise PrefilterError(f"{name} 要是數字，收到：{raw!r}") from None
+
+    def text(name: str) -> str:
+        return (form.get(name) or [""])[0].strip()
+
+    return Prefilter(
+        window=TimeWindow(num("since"), num("until")),
+        subscriber=text("subscriber") or None,
+        display_filter=text("filter"),
+    )
+
+
 def _home_page() -> str:
     body = f"""{_tshark_banner()}
 <div class="drop" id="drop">
@@ -670,6 +739,23 @@ def _home_page() -> str:
   <button type="submit" formaction="/open" class="secondary" id="open-viewer">在檢視器開啟</button>
   <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
     流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）</label>
+  <fieldset class="narrow">
+    <legend>先收窄範圍（大檔會快很多，可全部留空）</legend>
+    <div class="row">
+      <label>起 <input type="number" step="any" min="0" name="since" placeholder="秒"></label>
+      <label>迄 <input type="number" step="any" min="0" name="until" placeholder="秒"></label>
+      <label class="grow">訂戶 <input type="text" name="subscriber" placeholder="IMSI / MSISDN，純數字"></label>
+    </div>
+    <label class="grow">tshark filter
+      <input type="text" name="filter" placeholder="ngap || http2　　ip.addr==10.1.2.3"></label>
+    <p class="fine">
+      時間範圍是相對第一格的秒數，會先用 <code>editcap</code> 切出那一段再分析 ——
+      <code>-Y</code> 只省解析，切片才省得掉讀取。<br>
+      <b>訂戶不是直接拿去過濾封包。</b>多數封包根本不帶識別碼（NAS 加密、UE 已註冊），
+      直接過濾會把整個 N2 介面丟掉。這裡先找出帶著它的封包，再擴展到那些封包所在的
+      TCP 串流與 SCTP association，並<b>列出哪些流量沒被納入</b>。
+    </p>
+  </fieldset>
 </form>
 <p class="hint">
   <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——

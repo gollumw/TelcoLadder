@@ -29,8 +29,77 @@ from telcolens.coverage import Coverage, measure
 from telcolens.extract import read_frames
 from telcolens.model import Flow, Message
 from telcolens.nf import apply_roles
+from telcolens.prefilter import Narrowing, TimeWindow, combine, narrow_to_identity
 from telcolens.probe import CaptureShape, inspect
+from telcolens.slicer import SliceError, discard, slice_capture
 from telcolens.wireview import collapse
+
+
+@dataclass(frozen=True, slots=True)
+class Prefilter:
+    """解析之前先把擷取檔收窄。全部留預設就是「整份檔都看」。
+
+    **這裡只准多收，不准少收** —— 完整理由見 `telcolens/prefilter.py` 開頭。
+    """
+
+    window: TimeWindow = TimeWindow()
+    """時間範圍（相對第一格的秒數）。唯一可以放心直接下推的條件。"""
+
+    subscriber: str | None = None
+    """訂戶識別碼（IMSI / MSISDN，純數字）。走兩段式擴展，不是直接下推 ——
+    直接下推會把不帶識別碼的封包全部丟掉，而那通常包含整個 N2 介面。"""
+
+    display_filter: str = ""
+    """使用者自己寫的 tshark display filter，原樣疊上去。
+
+    這一欄刻意不做任何檢查或包裝：目標讀者本來就在用 Wireshark，
+    給他一個原生欄位比任何我們設計的 UI 都準。寫錯了 tshark 會報錯。"""
+
+    slice_first: bool = True
+    """有時間範圍時先用 `editcap` 切出一份小檔再分析。
+
+    `-Y` 只省解析，tshark 仍要讀完整個檔；切片才省得掉讀取，而且管線的
+    每一趟（probe、抽取、必要時的重跑）都吃到好處。沒有 `editcap` 就
+    自動退回純 display filter —— 慢，但答案一樣。
+    """
+
+    def is_empty(self) -> bool:
+        return (
+            self.window.is_empty()
+            and not self.subscriber
+            and not self.display_filter
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PrefilterReport:
+    """實際套用了什麼。**每一項都要能呈現給使用者。**
+
+    收窄過的分析結果與全檔分析長得一模一樣 —— 少了這份說明，
+    使用者無從知道自己看的是不是完整的證據。
+    """
+
+    window: TimeWindow
+    display_filter: str
+    sliced: bool
+    narrowing: Narrowing | None = None
+    slice_note: str = ""
+    """切片沒做成時的原因。空字串代表沒有要切或切成功了。"""
+
+    def describe(self) -> list[str]:
+        lines: list[str] = []
+        if not self.window.is_empty():
+            since = "檔案開頭" if self.window.since is None else f"{self.window.since}s"
+            until = "檔案結尾" if self.window.until is None else f"{self.window.until}s"
+            how = "已先用 editcap 切出這一段再分析" if self.sliced else "以 display filter 過濾"
+            lines.append(f"時間範圍 {since} – {until}（{how}）。")
+        if self.slice_note:
+            lines.append(self.slice_note)
+        if self.display_filter:
+            lines.append(f"另外套用了你給的 filter：{self.display_filter}")
+        if self.narrowing is not None:
+            lines.extend(self.narrowing.describe())
+        return lines
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +184,14 @@ class Analysis:
     不會有結果。
     """
 
+    prefilter: "PrefilterReport | None" = None
+    """解析之前套用了哪些收窄條件。`None` 代表整份檔都看了。
+
+    **一定要呈現。** 收窄過的結果與全檔結果長得一模一樣，少了這份說明，
+    使用者無從判斷自己看的是不是完整的證據 —— 尤其是按訂戶收窄時，
+    整個 N2 介面可能已經被排除在外（見 `prefilter.Narrowing.excluded`）。
+    """
+
     auto_decode: AutoDecode | None = None
     """工具為了讀懂這份檔自己多做的事。`None` 代表預設解碼就夠了。
 
@@ -133,7 +210,11 @@ class Analysis:
 
 
 def _extract(
-    pcap: Path, rules: Sequence[str], *, relax_seq: bool
+    pcap: Path,
+    rules: Sequence[str],
+    *,
+    relax_seq: bool,
+    display_filter: str | None = None,
 ) -> tuple[list[Message], int, int]:
     """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數)。
 
@@ -143,7 +224,9 @@ def _extract(
     messages: list[Message] = []
     ciphered = 0
     protected_suci = 0
-    for frame in read_frames(pcap, decode_as=rules, relax_seq=relax_seq):
+    for frame in read_frames(
+        pcap, decode_as=rules, relax_seq=relax_seq, display_filter=display_filter
+    ):
         messages.extend(parse_frame(frame))
         ciphered += count_ciphered(frame)
         protected_suci += count_protected_suci(frame)
@@ -158,6 +241,7 @@ def analyse(
     wire: bool = True,
     with_coverage: bool = True,
     auto_decode: bool = True,
+    prefilter: Prefilter | None = None,
 ) -> Analysis:
     """跑完整條管線。
 
@@ -178,13 +262,85 @@ def analyse(
     網元 trace 則是三趟。**這個代價是刻意付的** —— 第一份真實封包上，
     不付的結果是 100% 的 SBI 連同 15 則 404 一起無聲消失。不想付就關掉。
 
+    `prefilter` 在解析之前先收窄擷取檔（時間範圍 / 訂戶 / 自寫 filter）。
+    它可能會用 `editcap` 產生一份暫時的切片 —— **那份切片在本函式的
+    `finally` 裡刪掉**，因為它可能是客戶封包（CLAUDE.md §2.1）。
+
     例外一律往上拋（`ExtractError` / `TsharkNotFound`）—— 這一層不知道
     呼叫端是 CLI 還是 HTTP，把錯誤翻譯成人話是呼叫端的責任。
     """
+    prefilter = prefilter or Prefilter()
+    sliced: Path | None = None
+    slice_note = ""
+    if prefilter.slice_first and not prefilter.window.is_empty():
+        try:
+            sliced = slice_capture(pcap, prefilter.window)
+            if sliced is None:
+                slice_note = (
+                    "找不到 editcap（Wireshark 隨附），改用 display filter 過濾 —— "
+                    "答案一樣，只是 tshark 仍要讀完整個檔。"
+                )
+        except SliceError as exc:
+            # 切片失敗**不能讓整個分析失敗** —— 它只是加速手段，
+            # 退回 display filter 得到的答案完全相同。
+            slice_note = f"切片沒成功（{exc}），改用 display filter 過濾。"
+
+    try:
+        return _analyse_within(
+            sliced or pcap, prefilter,
+            decode_as=decode_as, nas_from_ue=nas_from_ue, wire=wire,
+            with_coverage=with_coverage, auto_decode=auto_decode,
+            sliced=sliced is not None, slice_note=slice_note,
+        )
+    finally:
+        # 切片可能是客戶封包，一定要清。放 finally 而不是成功路徑末尾 ——
+        # web.py 為了同一件事紅過兩次 Windows CI（CLAUDE.md §4）。
+        discard(sliced)
+
+
+def _analyse_within(
+    pcap: Path,
+    prefilter: Prefilter,
+    *,
+    decode_as: Sequence[str],
+    nas_from_ue: bool,
+    wire: bool,
+    with_coverage: bool,
+    auto_decode: bool,
+    sliced: bool,
+    slice_note: str,
+) -> Analysis:
+    """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。"""
     if wire:
         nas_from_ue = False
+
     rules = (*default_decode_as(), *decode_as)
-    messages, ciphered, protected_suci = _extract(pcap, rules, relax_seq=False)
+    narrowing: Narrowing | None = None
+    if prefilter.subscriber:
+        # 盤點要跟真正的分析用同一組解碼參數，否則會漏報（見 prefilter）。
+        narrowing = narrow_to_identity(pcap, prefilter.subscriber, decode_as=rules)
+
+    from telcolens.adapters import display_filter as _claimed
+
+    # 時間範圍即使已經切過片也照樣套上去：editcap 的邊界語意跟 display
+    # filter 未必逐版一致，兩條路都走過才保證「切片跑」與「不切片跑」
+    # 給出同一個答案。成本可以忽略。
+    effective_filter = combine(
+        _claimed(),
+        prefilter.window.as_filter(),
+        narrowing.expanded_filter if narrowing else "",
+        prefilter.display_filter,
+    )
+    report = PrefilterReport(
+        window=prefilter.window,
+        display_filter=prefilter.display_filter,
+        sliced=sliced,
+        narrowing=narrowing,
+        slice_note=slice_note,
+    ) if not prefilter.is_empty() else None
+    messages, ciphered, protected_suci = _extract(
+        pcap, rules, relax_seq=False, display_filter=effective_filter
+    )
 
     adjustment: AutoDecode | None = None
     shape: CaptureShape | None = None
@@ -201,7 +357,8 @@ def analyse(
             # 使用者自己給的規則永遠排最後 —— tshark 同一個選擇器取最後一條。
             retry_rules = (*default_decode_as(), *extra, *decode_as)
             retried, retry_ciphered, retry_suci = _extract(
-                pcap, retry_rules, relax_seq=shape.synthetic_seq
+                pcap, retry_rules, relax_seq=shape.synthetic_seq,
+                display_filter=effective_filter,
             )
             # **採用條件只有一條：訊息數必須嚴格增加。** 猜錯的 decode-as
             # 解不出東西，關錯的序號分析也不會憑空生出訊息 —— 兩者都會在
@@ -245,4 +402,5 @@ def analyse(
         protected_suci=protected_suci,
         coverage=coverage,
         auto_decode=adjustment,
+        prefilter=report,
     )

@@ -603,6 +603,7 @@ def render_report(
     *,
     source_name: str,
     ciphered: int = 0,
+    prefilter: object | None = None,
     auto_decode: object | None = None,
     max_messages: int = 300,
 ) -> str:
@@ -616,6 +617,11 @@ def render_report(
     render 層反向依賴 pipeline）。**同樣一定要出現在報告裡**：這份圖是
     「調整過解碼方式」才有的，收到報告的人有權知道那個判斷存在，
     也才有辦法反駁它。只在 CLI 印、報告裡不印，就是把靜默調整換個介面重演。
+
+    `prefilter` 是 `pipeline.PrefilterReport`（同樣寫成 `object` 避免反向依賴）。
+    **理由比 `auto_decode` 更強**：收窄過的報告與全檔報告長得一模一樣，
+    而收到報告的人手上沒有原始擷取檔，除非報告自己講，否則他無從得知
+    自己看的是不是全部的證據。
     """
     total = sum(len(f.messages) for f in flows)
     failures = sum(1 for f in flows for m in f.messages if m.is_failure)
@@ -644,6 +650,15 @@ def render_report(
             "Security Mode Command 之後的 NAS 由網路加密，這是正常現象，不是解析失敗。"
             "但<strong>失敗有可能整個藏在裡面</strong> —— 若下面的流程看起來成功卻與現象不符，"
             "請對照核網日誌。</div>" % ciphered
+        )
+
+    if prefilter is not None:
+        told = "".join(
+            f"<li>{esc(line)}</li>" for line in prefilter.describe()  # type: ignore[attr-defined]
+        )
+        parts.append(
+            '<div class="notice"><b>ℹ 這份報告只涵蓋擷取檔的一部分</b>'
+            f"<ul>{told}</ul></div>"
         )
 
     if auto_decode is not None:
