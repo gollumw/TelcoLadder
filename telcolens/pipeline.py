@@ -23,6 +23,7 @@ from pathlib import Path
 
 from telcolens.adapters import default_decode_as, parse_frame
 from telcolens.adapters.nas5gs import count_ciphered, count_protected_suci
+from telcolens.adapters.sbi import undecoded_header_streams
 from telcolens.causes import annotate
 from telcolens.correlate import correlate
 from telcolens.coverage import Coverage, measure
@@ -184,6 +185,14 @@ class Analysis:
     不會有結果。
     """
 
+    sbi_undecoded: frozenset = frozenset()
+    """標頭解不出來的 HTTP/2 stream（HPACK 缺口）。
+
+    這些 stream 上**存在**我們讀不懂的 HEADERS —— 訊息層看不見它們，
+    但「看不見」不等於「沒有」。工作階段表的「未獲回應」判定要靠這份
+    清單避開誤報（flowtable 的說明）。與 `ciphered` 同族：都在回答
+    「我知道自己漏了什麼嗎」。"""
+
     prefilter: "PrefilterReport | None" = None
     """解析之前套用了哪些收窄條件。`None` 代表整份檔都看了。
 
@@ -215,7 +224,7 @@ def _extract(
     *,
     relax_seq: bool,
     display_filter: str | None = None,
-) -> tuple[list[Message], int, int]:
+) -> tuple[list[Message], int, int, set]:
     """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數)。
 
     抽成函式是因為 `analyse` 可能要跑第二趟 —— 兩趟必須**逐字一樣**，
@@ -224,13 +233,15 @@ def _extract(
     messages: list[Message] = []
     ciphered = 0
     protected_suci = 0
+    undecoded: set = set()
     for frame in read_frames(
         pcap, decode_as=rules, relax_seq=relax_seq, display_filter=display_filter
     ):
         messages.extend(parse_frame(frame))
         ciphered += count_ciphered(frame)
         protected_suci += count_protected_suci(frame)
-    return messages, ciphered, protected_suci
+        undecoded |= undecoded_header_streams(frame)
+    return messages, ciphered, protected_suci, undecoded
 
 
 def analyse(
@@ -338,7 +349,7 @@ def _analyse_within(
         narrowing=narrowing,
         slice_note=slice_note,
     ) if not prefilter.is_empty() else None
-    messages, ciphered, protected_suci = _extract(
+    messages, ciphered, protected_suci, sbi_undecoded = _extract(
         pcap, rules, relax_seq=False, display_filter=effective_filter
     )
 
@@ -356,7 +367,7 @@ def _analyse_within(
         if extra or shape.synthetic_seq:
             # 使用者自己給的規則永遠排最後 —— tshark 同一個選擇器取最後一條。
             retry_rules = (*default_decode_as(), *extra, *decode_as)
-            retried, retry_ciphered, retry_suci = _extract(
+            retried, retry_ciphered, retry_suci, retry_undecoded = _extract(
                 pcap, retry_rules, relax_seq=shape.synthetic_seq,
                 display_filter=effective_filter,
             )
@@ -372,7 +383,9 @@ def _analyse_within(
                     messages_before=len(messages),
                     messages_after=len(retried),
                 )
-                messages, ciphered, protected_suci = retried, retry_ciphered, retry_suci
+                messages, ciphered, protected_suci, sbi_undecoded = (
+                    retried, retry_ciphered, retry_suci, retry_undecoded
+                )
 
     apply_roles(messages, nas_from_ue=nas_from_ue)
     annotate(messages)
@@ -400,6 +413,7 @@ def _analyse_within(
         flows=flows,
         ciphered=ciphered,
         protected_suci=protected_suci,
+        sbi_undecoded=frozenset(sbi_undecoded),
         coverage=coverage,
         auto_decode=adjustment,
         prefilter=report,

@@ -228,6 +228,36 @@ def _service_from_path(path: str) -> str | None:
     return segment or None
 
 
+def undecoded_header_streams(frame: Frame) -> set[IdKey]:
+    """這一格裡「標頭解不出來」的 HTTP/2 stream。
+
+    HPACK 動態表一旦有缺口（擷取截頭、重傳、tshark 追不上），HEADERS
+    會解成 `<unknown>` —— `parse()` 對那種 block 誠實跳過、不產生訊息。
+    但**跳過不等於不存在**：實測 5gc-e2e 的 frame 276 是一則回應，
+    標頭欄位全是 `<unknown>`，於是它從訊息層消失，「未獲回應」的判定
+    把那條 stream 誤報成沒有回應 —— 8/8 全是誤報。
+
+    所以把「這條 stream 上有我讀不懂的 HEADERS」回報給 pipeline
+    （比照 `nas5gs.count_ciphered` 的模式），讓下游對這些 stream
+    **判不準就不判**。回傳的 key 與 `parse()` 給訊息的 SBI_STREAM key
+    同構，可直接比對。
+    """
+    scope = connection_scope(frame)
+    out: set[IdKey] = set()
+    for block in frame.layer("http2"):
+        if _to_int(block.get("http2_http2_type")) != _TYPE_HEADERS:
+            continue
+        method = first(block.get("http2_http2_headers_method"))
+        path = first(block.get("http2_http2_headers_path"))
+        status = _to_int(block.get("http2_http2_headers_status"))
+        stream_id = _to_int(block.get("http2_http2_streamid"))
+        if (method and path) or status is not None:
+            continue  # 解得出來，parse() 會處理
+        if stream_id is not None:
+            out.add(scoped(IdKind.SBI_STREAM, scope, stream_id))
+    return out
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
     scope = connection_scope(frame)

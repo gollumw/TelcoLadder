@@ -41,22 +41,30 @@ class SliceError(RuntimeError):
     """切片本身失敗了。訊息要能讓人知道下一步做什麼。"""
 
 
-def find_editcap(tshark: Tshark | None = None) -> Path | None:
-    """找 `editcap`。找不到回 `None` —— 這不是錯誤，是「這條路走不通」。
+def find_wireshark_tool(name: str, tshark: Tshark | None = None) -> Path | None:
+    """找 Wireshark 隨附的工具（editcap / mergecap / capinfos…）。
 
-    優先找 tshark 旁邊的：macOS 上 Wireshark.app 裡的那些工具不在 PATH，
-    但它們一定跟 tshark 同一個目錄。
+    找不到回 `None` —— 這不是錯誤，是「這條路走不通」。優先找 tshark
+    旁邊的：**macOS 的 Wireshark.app 與 Windows 的 Program Files 都不在
+    PATH**，但這些工具一定跟 tshark 同一個目錄。測試裡要用 mergecap /
+    editcap 產衍生擷取檔時一律走這裡，否則 Windows CI 會因 PATH 而紅。
     """
     try:
         tshark = tshark or find_tshark()
     except Exception:  # noqa: BLE001 - 找不到 tshark 時本模組也沒得用
         tshark = None
     if tshark is not None:
-        sibling = tshark.path.parent / ("editcap.exe" if tshark.path.suffix == ".exe" else "editcap")
+        suffix = ".exe" if tshark.path.suffix == ".exe" else ""
+        sibling = tshark.path.parent / f"{name}{suffix}"
         if sibling.is_file():
             return sibling
-    found = shutil.which("editcap")
+    found = shutil.which(name)
     return Path(found) if found else None
+
+
+def find_editcap(tshark: Tshark | None = None) -> Path | None:
+    """`find_wireshark_tool("editcap")` 的既有名字，呼叫端不必改。"""
+    return find_wireshark_tool("editcap", tshark)
 
 
 def _first_frame_epoch(pcap: Path, tshark: Tshark) -> float:
