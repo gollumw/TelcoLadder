@@ -61,6 +61,18 @@ def e2e_pcap() -> Path:
 
 
 @pytest.fixture(scope="session")
+def multi_imsi_pcap() -> Path:
+    """五個訂戶在**同一次** tcpdump 內依序註冊。
+
+    這是唯一一份多訂戶的擷取檔 —— 其他每一份都只有一個用戶，所以
+    「`scoped()` 的連線範圍前綴是否真的把兩個用戶分得開」這件事，
+    在它之前從來沒有被真實資料測過。
+    來源、產生方式與那個「分開跑 N 次會併成一條」的坑見
+    `tests/fixtures/multi-imsi/scenario.md`。"""
+    return require_capture("multi-imsi/capture.pcap")
+
+
+@pytest.fixture(scope="session")
 def multistream_http2_pcap() -> Path:
     """一格內含 4 個 HTTP/2 stream 的擷取，用來守住多訊息拆解。
 

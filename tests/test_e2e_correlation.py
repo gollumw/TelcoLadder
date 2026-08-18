@@ -241,3 +241,85 @@ def test_every_service_this_capture_emits_is_in_the_map(e2e_pcap):
     assert not missing, (
         f"這些服務名沒被收錄，提供它們的網元會靜默留成 IP：{missing}"
     )
+
+
+# ── 多訂戶：跨用戶污染 ─────────────────────────────────────────────────
+
+
+def test_five_subscribers_stay_five_flows(multi_imsi_pcap):
+    """五個訂戶必須是五條流程，SUPI 各不相同，且**沒有任何一格封包同時
+    屬於兩條**。
+
+    只斷言「有五條」不夠：五條流程也可能彼此偷了對方的訊息。所以第三個
+    斷言是訊息集合兩兩不相交 —— 一格封包只能屬於一個用戶。跨用戶污染
+    畫出來的圖**看起來完全合理**，數量對得上也可能內容錯了。
+
+    ⚠ **這條測不到 `scoped()` 的連線範圍前綴。** 原本是為那個目的寫的，
+    實測後發現不成立：這份擷取檔只有一條 NG 連線，`connection_scope()`
+    對五個用戶算出同一個字串，前綴等於常數。用 mutation 驗過 ——
+    把 NGAP ID 的前綴整個拿掉，這裡仍然是五條。真正撐開它們的是
+    「單一 gNB/AMF 在一條連線內配出不同的 NGAP ID」，那是協定本來就保證的。
+
+    要釘住前綴需要**一份含兩個 gNB 的擷取檔**（兩條連線各自從 1 配號）。
+    在那之前，前綴只有 `test_ngap_ids_are_scoped_to_their_association`
+    在守，而那條只斷言前綴存在，不斷言拿掉會壞。
+    """
+    result = analyse(multi_imsi_pcap)
+
+    subscriber_flows = []
+    for flow in result.flows:
+        supis = {v for m in flow.messages for kind, v in m.identity_keys if kind is IdKind.SUPI}
+        if supis:
+            subscriber_flows.append((supis, flow))
+
+    assert len(subscriber_flows) == 5, (
+        f"應有五條用戶流程，實得 {len(subscriber_flows)} 條。"
+        f"變少代表不同用戶被併在一起，變多代表同一個用戶被切開。"
+    )
+
+    # 每條流程只能屬於一個用戶。
+    for supis, _ in subscriber_flows:
+        assert len(supis) == 1, f"一條流程裡出現多個 SUPI：{sorted(supis)}"
+
+    all_supis = {next(iter(supis)) for supis, _ in subscriber_flows}
+    assert len(all_supis) == 5, f"SUPI 重複了：{sorted(all_supis)}"
+
+    # 訊息集合兩兩不相交 —— 一格封包只能屬於一個用戶。
+    seen: dict[int, str] = {}
+    for supis, flow in subscriber_flows:
+        supi = next(iter(supis))
+        for message in flow.messages:
+            owner = seen.get(message.frame)
+            assert owner is None, (
+                f"frame {message.frame} 同時出現在 {owner} 與 {supi} 的流程裡 —— "
+                f"跨用戶污染"
+            )
+            seen[message.frame] = supi
+
+
+def test_core_network_log_agrees_on_who_registered(multi_imsi_pcap):
+    """TelcoLens 找到的五個用戶，必須跟核網自己記錄的一致。
+
+    AMF 的日誌是**獨立於 tshark 與 TelcoLens 的第二個 oracle** ——
+    前兩者共用同一個 dissector，AMF 不共用。數量對得上但身分對不上
+    （例如漏了一個、多算一個重試），只有這條抓得到。
+    """
+    import re
+
+    log = multi_imsi_pcap.parent / "logs" / "amf.log"
+    if not log.is_file():
+        pytest.skip(f"沒有核網日誌可對照：{log}")
+
+    logged = set(re.findall(r"imsi-(\d{15})", log.read_text(encoding="utf-8", errors="replace")))
+
+    result = analyse(multi_imsi_pcap)
+    found = {
+        v
+        for f in result.flows for m in f.messages
+        for kind, v in m.identity_keys
+        if kind is IdKind.SUPI
+    }
+
+    assert found == logged, (
+        f"TelcoLens 找到 {sorted(found)}，AMF 日誌記的是 {sorted(logged)}"
+    )
