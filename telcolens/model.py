@@ -161,6 +161,15 @@ class Message:
     label: str
     """畫在箭頭上的字，如 "Registration request"。"""
 
+    abs_ts: float = 0.0
+    """絕對時間（Unix epoch 秒）。**`ts` 推不回來的東西** —— 減掉基準之後，
+    「這發生在幾點幾分」就丟了，而工作階段表的絕對時間過濾、對照核網日誌、
+    以及跨檔合併排序（兩份檔的 ts=0 是不同的牆鐘時刻）都需要它。
+
+    `0.0` 代表來源沒有時間戳（比照 `Frame.abs_ts` 的哨兵慣例）。消費端
+    判讀時必須偵測「整批都是 0.0」並明講「此檔沒有絕對時間」，
+    不得拿 0.0 當 1970 年去過濾 —— 那會靜默濾光所有東西。"""
+
     identity_keys: frozenset[IdKey] = field(default_factory=frozenset)
     """這則訊息暴露出來的身分別名，供 `correlate` 併流用。"""
 

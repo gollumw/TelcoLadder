@@ -298,6 +298,7 @@ def parse(frame: Frame) -> list[Message]:
             Message(
                 frame=frame.number,
                 ts=frame.ts,
+                abs_ts=frame.abs_ts,
                 protocol=NAME,
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),

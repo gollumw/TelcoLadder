@@ -78,6 +78,10 @@ def _merge(group: list[Message]) -> Message:
     return Message(
         frame=head.frame,
         ts=head.ts,
+        # 漏掉這一行的症狀：wire 視圖（預設視圖）的訊息全部 abs_ts=0，
+        # 絕對時間過濾把所有流程靜默濾光 —— 本函式重建 Message，
+        # 每個要往下游走的欄位都得在這裡明確接過去。
+        abs_ts=head.abs_ts,
         protocol=head.protocol,
         src=head.src,
         dst=head.dst,
