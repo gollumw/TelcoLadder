@@ -66,6 +66,9 @@ from telcolens.viewer import (
     progress_json,
     static_body,
     viewer_page,
+    flow_json,
+    flows_json,
+    subscriber_json,
 )
 
 DEFAULT_PORT = 3005
@@ -256,6 +259,24 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(decode_json(session, frame))
             except DecodeError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif not post and action == "flows":
+            def _float(name: str) -> float | None:
+                raw = (query.get(name) or [""])[0]
+                try:
+                    return float(raw) if raw else None
+                except ValueError:
+                    return None
+            self._send_json(flows_json(
+                session, since=_float("since"), until=_float("until"),
+            ))
+        elif not post and action == "flow":
+            payload = flow_json(session, self._int_param(query, "id", -1))
+            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+            self._send_json(payload, status)
+        elif not post and action == "subscriber":
+            payload = subscriber_json(session, self._int_param(query, "i", -1))
+            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+            self._send_json(payload, status)
         elif not post and action == "identities":
             self._send_json(identities_json(session, q=(query.get("q") or [""])[0]))
         elif post and action == "select":

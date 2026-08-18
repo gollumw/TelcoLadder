@@ -30,8 +30,9 @@ from telcolens.identities import (
     no_result_explanation,
 )
 from telcolens.packets import COLUMN_TITLES
-from telcolens.render_html import PAGE_CSS, esc
-from telcolens.model import IdKind
+from telcolens.flowtable import FlowTable, SubscriberRow, build_table
+from telcolens.render_html import PAGE_CSS, esc, render_flow_svg
+from telcolens.model import Flow, IdKind
 from telcolens.session import Session
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -202,6 +203,198 @@ def select_identity(session: Session, kind_value: str, raw: str) -> dict:
         session.keep_frames = set(frames)
         session.selected_identity = f"{kind_value}:{raw}"
     return {"matched": len(frames), "identity": f"{kind_value}:{raw}"}
+
+
+# ── 工作階段表（NetScout 式 session 分析）─────────────────────────────
+
+
+def _table_for(session: Session) -> "FlowTable | None":
+    """session 的工作階段表，首次要求時算、之後用快取。
+
+    analysis 在 session 生命週期內不可變，表算一次就定案 ——
+    每次請求重算是純浪費（真實檔案上是 O(訊息數) 的聚合）。
+    """
+    with session.lock:
+        analysis = session.analysis
+        cached = session.flowtable
+    if analysis is None:
+        return None
+    if cached is not None:
+        return cached
+    table = build_table(analysis)
+    with session.lock:
+        session.flowtable = table
+    return table
+
+
+def _event_json(event, message_by_frame: dict) -> dict:
+    payload = {
+        "kind": event.kind,
+        "certainty": event.certainty,
+        "frames": list(event.frames),
+        "label": event.label,
+        "basis": event.basis,
+    }
+    if event.kind == "failure":
+        # 失敗事件補上 cause 說明 —— 結構化 JSON，前端用 createElement 建。
+        # 刻意不重用 _cause_cards()：它回 HTML 字串，前端插入就得用 innerHTML。
+        msg = message_by_frame.get(event.frames[0])
+        if msg is not None:
+            for key in ("cause_note", "cause_plain", "cause_common"):
+                value = msg.detail.get(key)
+                if value:
+                    payload[key] = value
+    return payload
+
+
+def _row_json(row) -> dict:
+    return {
+        "id": row.flow_id,
+        "title": row.title,
+        "kinds": row.kinds,
+        "start": row.start,
+        "end": row.end,
+        "start_rel": row.start_rel,
+        "end_rel": row.end_rel,
+        "duration": row.duration,
+        "protocols": row.protocols,
+        "messages": row.messages,
+        "failures": row.failures,
+        "retrans": row.retrans,
+        "unanswered": row.unanswered,
+        "light": row.light,
+        "light_reason": row.light_reason,
+    }
+
+
+def flows_json(
+    session: Session, *, since: float | None = None, until: float | None = None
+) -> dict:
+    """工作階段表。`analysis` 沒好時回 `ready: false` —— 不假裝已有答案。
+
+    時間過濾語意：**流程內任一訊息的 abs_ts 落在 [since, until]（含兩端）
+    即收錄** —— 工程師問的是「這段時間發生了什麼」，不是「完整包含於
+    這段時間的流程」。`matched` / `total` 分開回：被濾掉的數量必須看得見。
+
+    `abs_time_available: false` 時忽略 since/until 並回全部列＋明講原因，
+    **絕不回靜默的空表** —— 0.0 的哨兵值當成 1970 年去過濾，就是把
+    整份檔濾光而使用者不知道為什麼。
+    """
+    table = _table_for(session)
+    if table is None:
+        return {"ready": False, "subscribers": []}
+
+    with session.lock:
+        analysis = session.analysis
+
+    def in_window(row) -> bool:
+        if since is None and until is None:
+            return True
+        for msg in analysis.flows[row.flow_id].messages:
+            if (since is None or msg.abs_ts >= since) and (
+                until is None or msg.abs_ts <= until
+            ):
+                return True
+        return False
+
+    filtering = table.abs_time_available and (since is not None or until is not None)
+    subscribers = []
+    matched = 0
+    for sub in table.subscribers:
+        rows = [r for r in sub.sessions if (not filtering or in_window(r))]
+        matched += len(rows)
+        if not rows:
+            continue
+        subscribers.append({
+            "title": sub.title,
+            "grouped": sub.grouped,
+            "start": min(r.start for r in rows),
+            "end": max(r.end for r in rows),
+            "messages": sum(r.messages for r in rows),
+            "failures": sum(r.failures for r in rows),
+            "retrans": sum(r.retrans for r in rows),
+            "unanswered": sum(r.unanswered for r in rows),
+            "light": max((r.light for r in rows),
+                         key=lambda l: {"green": 0, "amber": 1, "red": 2}[l]),
+            "sessions": [_row_json(r) for r in rows],
+        })
+
+    payload = {
+        "ready": True,
+        "abs_time_available": table.abs_time_available,
+        "capture_start": table.capture_start,
+        "capture_end": table.capture_end,
+        "subscribers": subscribers,
+        "matched": matched,
+        "total": table.session_count,
+    }
+    if not table.abs_time_available and (since is not None or until is not None):
+        payload["note"] = (
+            "這份擷取檔沒有絕對時間戳，時間過濾不可用 —— 已忽略範圍、顯示全部。"
+        )
+    return payload
+
+
+def flow_json(session: Session, flow_id: int) -> dict:
+    """單一 session 子列的 ladder（SVG）與事件清單。"""
+    table = _table_for(session)
+    if table is None:
+        return {"error": "完整解剖還沒跑完，工作階段表尚未可用。"}
+    with session.lock:
+        analysis = session.analysis
+    if not 0 <= flow_id < len(analysis.flows):
+        return {"error": f"沒有這個工作階段：{flow_id}"}
+
+    flow = analysis.flows[flow_id]
+    row = next(
+        r for sub in table.subscribers for r in sub.sessions if r.flow_id == flow_id
+    )
+    by_frame = {m.frame: m for m in flow.messages}
+    return {
+        "id": flow_id,
+        "title": row.title,
+        "svg": render_flow_svg(flow),
+        "truncated": max(0, len(flow.messages) - 300),
+        "events": [_event_json(e, by_frame) for e in row.events],
+        "frames": sorted(by_frame),
+    }
+
+
+def subscriber_json(session: Session, index: int) -> dict:
+    """訂戶父列的**合併時序 ladder**：該訂戶全部訊息按 abs_ts 合排成
+    一個合成 Flow，餵同一個 renderer。這正是參考介面「勾選多個 session
+    → 合成一張時序圖」的行為 —— 少了它，「這個用戶發生了什麼」還是要
+    人腦自己拼幾十張圖。
+    """
+    table = _table_for(session)
+    if table is None:
+        return {"error": "完整解剖還沒跑完，工作階段表尚未可用。"}
+    if not 0 <= index < len(table.subscribers):
+        return {"error": f"沒有這個訂戶列：{index}"}
+    with session.lock:
+        analysis = session.analysis
+
+    sub: SubscriberRow = table.subscribers[index]
+    flows = [analysis.flows[r.flow_id] for r in sub.sessions]
+    merged = [m for f in flows for m in f.messages]
+    # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
+    # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現。
+    merged.sort(key=lambda m: (m.abs_ts, m.ts, m.frame))
+    synthetic = Flow(
+        messages=merged,
+        identity_keys=frozenset().union(*(f.identity_keys for f in flows)),
+    )
+    by_frame = {m.frame: m for m in merged}
+    events = [e for r in sub.sessions for e in r.events]
+    events.sort(key=lambda e: e.frames[0])
+    return {
+        "title": sub.title,
+        "svg": render_flow_svg(synthetic),
+        "truncated": max(0, len(merged) - 300),
+        "sessions": len(sub.sessions),
+        "events": [_event_json(e, by_frame) for e in events],
+        "frames": sorted(by_frame),
+    }
 
 
 def viewer_page(session: Session, *, idle_ttl: float) -> str:

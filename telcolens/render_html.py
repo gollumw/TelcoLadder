@@ -598,6 +598,16 @@ footer code {
 """
 
 
+def render_flow_svg(flow: Flow, *, max_messages: int = 300) -> str:
+    """單一 Flow 的自包含 SVG 片段 —— 檢視器的梯形圖走這裡。
+
+    只是 `_diagram_svg` 的公開薄包裝：檢視器與報告用**同一個** renderer，
+    兩邊的圖不可能漂移（pipeline.py 檔頭「只能有一份」的同一個理由）。
+    超過 `max_messages` 則訊息時截斷 —— 呼叫端要自己把「已截斷」講出來。
+    """
+    return _diagram_svg(flow, flow.messages[:max_messages])
+
+
 def render_report(
     flows: list[Flow],
     *,

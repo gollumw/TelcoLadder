@@ -157,6 +157,11 @@ class Session:
 
     decode_as: tuple[str, ...] = ()
 
+    flowtable: object | None = field(default=None, repr=False)
+    """工作階段表（`flowtable.FlowTable`）的快取。首次要求時算、
+    與 `analysis` 同生命週期 —— analysis 不可變，表也不會變。
+    型別寫 object 避免 session ↔ flowtable 的 import 循環。"""
+
     tshark: object | None = field(default=None, repr=False)
     """已定位好的 tshark，在建立工作階段時解析一次。
 
