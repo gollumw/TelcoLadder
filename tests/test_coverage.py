@@ -6,6 +6,9 @@
    實測 `5gc-e2e` 因此回報 626 格而不是未認領的 459 格，於是 http2/json/pfcp
    這些「已經被認領過」的協定全部混進「未解讀」清單。
 
+3. **把隨 tshark 版本浮動的格數寫死**（第一版 `== 212`）—— Linux CI 立刻紅，
+   因為 4.2.2 是 352 格。修法是錨版本無關的不變量，不是放寬數字。
+
 2. **建議一條沒有作用的指令** —— 212 格 `data` 在埠 7777 上，而 7777 本來就在
    預設 `DECODE_AS` 裡。早期版本會叫使用者去加一個已經生效的參數，把人送進死路。
    一個工具給出無效的修復建議，比不給建議更糟。
@@ -48,17 +51,25 @@ def _coverage_for(name: str) -> Coverage:
 
 
 def test_detects_the_undecoded_payload_in_our_own_flagship_fixture():
-    """`5gc-e2e` 裡有 212 格 tshark 認不出來的 TCP 載荷。
+    """`5gc-e2e` 裡有大量 tshark 認不出來的 TCP 載荷。
 
-    那份擷取檔被驗過幾十次、當成旗艦範例，而它 72% 的內容從未進入行程 ——
-    因為 display filter 在 tshark 那層就濾掉了，於是零訊息、零警告。
+    那份擷取檔被驗過幾十次、當成旗艦範例，而它七成以上的內容從未進入行程
+    —— 因為 display filter 在 tshark 那層就濾掉了，於是零訊息、零警告。
     這條測試是那件事的墓碑。
+
+    **不斷言確切格數。** 那個數字隨 tshark 版本浮動：macOS 4.4.9 是 212 格、
+    Ubuntu 4.2.2 是 352 格（啟發式解出的 HTTP/2 較少，於是落進 `data` 的較多）。
+    第一版寫死 212，Linux CI 立刻紅 —— 而那正是本檔開頭列的、這個模組要防的
+    同一類錯誤，只是換我犯。錨的是版本無關的不變量：**有大量、在同一個埠上、
+    而且已經試過解碼**。
     """
     cov = _coverage_for("5gc-e2e")
-    assert cov.scanned, "命中率 28%，應該觸發第二趟掃描"
-    assert cov.total == 626
+    assert cov.scanned, "命中率遠低於門檻，應該觸發第二趟掃描"
+    assert cov.total == 626, "總封包數與 tshark 版本無關，這個可以釘死"
     data = [c for c in cov.unclaimed if c.protocol == "data"]
-    assert data and data[0].frames == 212
+    assert data, "沒偵測到未解碼的 TCP 載荷"
+    assert data[0].frames > 100, f"未解碼載荷只有 {data[0].frames} 格，少得可疑"
+    assert data[0].port == 7777
 
 
 def test_phs_must_be_filtered_inside_the_z_argument_not_by_dash_y():
