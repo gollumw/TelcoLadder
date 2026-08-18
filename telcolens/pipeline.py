@@ -23,6 +23,7 @@ from telcolens.adapters import default_decode_as, parse_frame
 from telcolens.adapters.nas5gs import count_ciphered, count_protected_suci
 from telcolens.causes import annotate
 from telcolens.correlate import correlate
+from telcolens.coverage import Coverage, measure
 from telcolens.extract import read_frames
 from telcolens.model import Flow
 from telcolens.nf import apply_roles
@@ -41,6 +42,15 @@ class Analysis:
     **這個數字一定要一路傳到最終呈現**，不能在中間被丟掉：它可能整個藏著
     一次失敗，而圖上會看起來一切正常（Rule 12）。`tests/fixtures/unknown-dnn`
     就是那個情況。
+    """
+
+    coverage: Coverage | None = None
+    """這份擷取檔有多少東西**根本沒進到行程裡**。`None` 代表沒量。
+
+    它跟 `ciphered` / `protected_suci` 是同一族：三者都在回答「我知道自己
+    漏了什麼嗎」，差別在層次 —— ciphered 是看得到協定讀不到內容、
+    protected_suci 是原理上取不到、coverage 是 display filter 在 tshark 那層
+    就濾掉了、從未被這個行程看見。
     """
 
     protected_suci: int = 0
@@ -70,6 +80,7 @@ def analyse(
     decode_as: Sequence[str] = (),
     nas_from_ue: bool = True,
     wire: bool = True,
+    with_coverage: bool = True,
 ) -> Analysis:
     """跑完整條管線。
 
@@ -101,4 +112,17 @@ def analyse(
     flows = correlate(messages)
     if wire:
         flows = collapse(flows)
-    return Analysis(flows=flows, ciphered=ciphered, protected_suci=protected_suci)
+
+    coverage = None
+    if with_coverage:
+        # 便宜的那一半永遠跑、貴的那一半條件觸發 —— 見 coverage.py。
+        coverage = measure(
+            pcap,
+            parsed_frames=len({m.frame for m in messages}),
+            roles_found={e.role for m in messages for e in (m.src, m.dst) if e.role},
+            decode_as=tuple(decode_as),
+        )
+
+    return Analysis(
+        flows=flows, ciphered=ciphered, protected_suci=protected_suci, coverage=coverage
+    )

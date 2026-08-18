@@ -8,6 +8,7 @@ from pathlib import Path
 
 from telcolens import __version__
 from telcolens.adapters import required_dissectors
+from telcolens.coverage import describe as describe_coverage
 from telcolens.extract import ExtractError
 from telcolens.pipeline import analyse
 from telcolens.render_html import render_report
@@ -125,6 +126,12 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         + (f"、{failures} 則失敗" if failures else ""),
         file=sys.stderr,
     )
+    # 覆蓋率排在加密警告之前：「我根本沒看到那些封包」比「我看到但讀不懂」
+    # 更根本，使用者要先知道自己屬於哪一種。
+    if result.coverage is not None:
+        for line in describe_coverage(result.coverage):
+            print(line, file=sys.stderr)
+
     if ciphered:
         # Rule 12：看不到就要說。加密的 NAS 可能整個藏著一次失敗，
         # 而圖上會看起來一切正常。
