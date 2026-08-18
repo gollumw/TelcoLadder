@@ -213,10 +213,19 @@ def _arrow_svg(row: _Row, x_src: float, x_dst: float, kind: str) -> list[str]:
     return parts
 
 
-def _hover_text(msg: Message) -> str:
+def _hover_text(msg: Message, *, wall_clock: bool = False) -> str:
     """滑鼠停留時的原生 tooltip。用 SVG `<title>` —— 零 JS。"""
     lines = [
         f"frame #{msg.frame} · {msg.ts:.6f}s · {msg.protocol}",
+    ]
+    if wall_clock and msg.abs_ts:
+        import datetime as _dt
+
+        stamp = _dt.datetime.fromtimestamp(msg.abs_ts)
+        lines.append(
+            stamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + "（本機時區）"
+        )
+    lines += [
         f"{msg.src.label()} ({msg.src.ip}) → {msg.dst.label()} ({msg.dst.ip})",
     ]
     for key, value in msg.detail.items():
@@ -226,16 +235,34 @@ def _hover_text(msg: Message) -> str:
     return "\n".join(lines)
 
 
-def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
+def _fmt_wall(epoch: float) -> str:
+    """abs_ts → 本機時區的 HH:MM:SS.mmm。
+
+    只給檢視器用（wall_clock=True 的路徑）。報告刻意不用它：
+    本機時區會讓同一份 pcap 在不同機器產出不同位元組，golden 就死了。
+    檢視器是活的、跑在使用者自己的機器上 —— 用他的鐘才對得上核網日誌。
+    """
+    import datetime as _dt
+
+    t = _dt.datetime.fromtimestamp(epoch)
+    return t.strftime("%H:%M:%S.") + f"{t.microsecond // 1000:03d}"
+
+
+def _diagram_svg(
+    flow: Flow, messages: list[Message], *, wall_clock: bool = False
+) -> str:
     lanes = _lanes(messages)
     index = {e.label(): i for i, e in enumerate(lanes)}
+    # wall_clock 的時間欄長 12 字（HH:MM:SS.mmm），比相對秒數寬 —— 加寬
+    # 時間欄。預設路徑 gutter == GUTTER，輸出位元組與從前完全相同。
+    gutter = GUTTER + 14 if wall_clock else GUTTER
     lane_w = _lane_width(messages, lanes, index)
-    lane_w = max(lane_w, (MIN_CANVAS - GUTTER - PAD_X * 2) / len(lanes))
+    lane_w = max(lane_w, (MIN_CANVAS - gutter - PAD_X * 2) / len(lanes))
     rows, height = _rows(messages, index)
-    width = GUTTER + PAD_X * 2 + lane_w * len(lanes)
+    width = gutter + PAD_X * 2 + lane_w * len(lanes)
 
     def lane_x(i: int) -> float:
-        return GUTTER + PAD_X + lane_w * i + lane_w / 2
+        return gutter + PAD_X + lane_w * i + lane_w / 2
 
     out: list[str] = [
         f'<svg class="flow-svg" viewBox="0 0 {width:.0f} {height:.0f}" '
@@ -280,24 +307,30 @@ def _diagram_svg(flow: Flow, messages: list[Message]) -> str:
 
         out.append(
             f'<g class="row {kind} {stripe} p-{proto}">'
-            f"<title>{esc(_hover_text(msg))}</title>"
+            f"<title>{esc(_hover_text(msg, wall_clock=wall_clock))}</title>"
         )
         # 整列的 hover 感應區 + 失敗底色。放最前面，才不會蓋住線與字。
         out.append(
             f'<rect class="row-band" x="0" y="{row.y:.1f}" '
             f'width="{width:.0f}" height="{row.height:.1f}"/>'
         )
-        # 時間欄：絕對秒數（定位用，回 Wireshark 對照）＋ 列間隔 Δ（診斷用）。
-        # 兩個都要 —— 只有絕對時間看不出 timer 在等，只有間隔回不了 pcap。
+        # 時間欄：定位用的時間（回 Wireshark / 核網日誌對照）＋ 列間隔 Δ
+        # （診斷用）。兩個都要 —— 只有時間看不出 timer 在等，只有間隔
+        # 回不了 pcap。報告顯示相對秒數（可重現）；檢視器（wall_clock）
+        # 顯示本機時區的牆鐘時刻，abs_ts 缺失時誠實退回相對秒數。
+        if wall_clock and msg.abs_ts:
+            stamp = _fmt_wall(msg.abs_ts)
+        else:
+            stamp = f"{msg.ts:.3f}s"
         out.append(
-            f'<text class="gutter" x="{GUTTER - 12:.1f}" y="{row.y + ROW_H * 0.62 + 3.5:.1f}" '
-            f'text-anchor="end">{msg.ts:.3f}s</text>'
+            f'<text class="gutter" x="{gutter - 12:.1f}" y="{row.y + ROW_H * 0.62 + 3.5:.1f}" '
+            f'text-anchor="end">{stamp}</text>'
         )
         if index > 0:
             gap = msg.ts - rows[index - 1].msg.ts
             slow = " slow" if gap >= SLOW_GAP else ""
             out.append(
-                f'<text class="delta{slow}" x="{GUTTER - 12:.1f}" '
+                f'<text class="delta{slow}" x="{gutter - 12:.1f}" '
                 f'y="{row.y + ROW_H * 0.62 + 16:.1f}" text-anchor="end">{_fmt_delta(gap)}</text>'
             )
         out.extend(_arrow_svg(row, x_src, x_dst, kind))
@@ -604,8 +637,12 @@ def render_flow_svg(flow: Flow, *, max_messages: int = 300) -> str:
     只是 `_diagram_svg` 的公開薄包裝：檢視器與報告用**同一個** renderer，
     兩邊的圖不可能漂移（pipeline.py 檔頭「只能有一份」的同一個理由）。
     超過 `max_messages` 則訊息時截斷 —— 呼叫端要自己把「已截斷」講出來。
+
+    差異只有一個旋鈕：檢視器開 `wall_clock` —— 時間欄顯示本機時區的
+    牆鐘時刻（對核網日誌用），Δ 間隔照舊。報告**刻意不開**：本機時區
+    會讓同一份 pcap 在不同機器產出不同位元組，golden 測試就沒有意義了。
     """
-    return _diagram_svg(flow, flow.messages[:max_messages])
+    return _diagram_svg(flow, flow.messages[:max_messages], wall_clock=True)
 
 
 def render_report(

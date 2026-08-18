@@ -759,6 +759,23 @@
       .catch(function (e) { fl.ladderTitle.textContent = "載入失敗：" + e; });
   }
 
+  // ladder 上點任一列 → 跳回封包分頁並解碼那一格。
+  // frame 編號不另外塞屬性 —— SVG 是報告同一個 renderer 產的、屬性受
+  // 白名單管制，而每列的 .frame-no 文字本來就是「#<frame>」，直接讀它。
+  fl.ladderSvg.addEventListener("click", function (e) {
+    var g = e.target.closest ? e.target.closest("g.row") : null;
+    if (!g) return;
+    var no = g.querySelector(".frame-no");
+    if (!no) return;
+    var m = /^#(\d+)$/.exec(no.textContent.trim());
+    if (!m) return;
+    var frameNo = parseInt(m[1], 10);
+    switchTab("packets");
+    state.selectedFrame = frameNo;
+    draw();
+    showDecode(frameNo);
+  });
+
   function renderEvents(events) {
     if (!events || !events.length) return;
     var head = document.createElement("div");

@@ -108,7 +108,14 @@ def _open_path_session(server, pcap: Path) -> str:
 
 
 def _open_upload_session(server, pcap: Path) -> tuple[str, Path]:
-    """上傳開一個工作階段，回傳 (sid, 暫存檔路徑)。"""
+    """上傳開一個工作階段，回傳 (sid, 暫存檔路徑)。
+
+    **斷言是差集，不是絕對值。** 暫存目錄是全域的：使用者只要在真的
+    檢視器裡開著一個上傳的工作階段，那個檔就在那裡 —— 拿「整台機器剛好
+    一個」當斷言，會讓測試在正常使用工具的時候變紅，而紅的原因看起來
+    像程式壞了。要守的不變式是「**這次上傳**建了剛好一個暫存檔」。
+    """
+    before = set(_session_files())
     status, body, _ = _request(
         server, "/open-upload", method="POST", body=pcap.read_bytes(),
         headers={"Content-Type": "application/octet-stream",
@@ -116,9 +123,9 @@ def _open_upload_session(server, pcap: Path) -> tuple[str, Path]:
     )
     assert status == 200, body
     sid = json.loads(body)["sid"]
-    files = _session_files()
-    assert len(files) == 1, f"預期剛好一個暫存檔，找到 {files}"
-    return sid, files[0]
+    created = sorted(set(_session_files()) - before)
+    assert len(created) == 1, f"預期這次上傳建一個暫存檔，實際新增 {created}"
+    return sid, created[0]
 
 
 def _session_files() -> list[Path]:
@@ -259,7 +266,12 @@ def test_idle_session_is_swept_and_its_file_deleted() -> None:
 
 
 def test_close_all_deletes_every_session_file(server) -> None:
-    """行程結束時一個都不能留。"""
+    """行程結束時**這個 store 開出來的**一個都不能留。
+
+    比對用差集：暫存目錄是全域的，別的行程（使用者真的開著的檢視器）
+    的檔案不歸這個 store 管，也不該讓這條測試變紅。
+    """
+    outsiders = set(_session_files())
     _, first = _open_upload_session(server, FIXTURE)
     _, _, srv = server
     # 第二個工作階段：確認清理是全部而不是只清最後一個。
@@ -269,9 +281,10 @@ def test_close_all_deletes_every_session_file(server) -> None:
                  "X-TelcoLens-Filename": "second.pcap"},
     )
     assert status == 200, body
-    assert len(_session_files()) == 2
+    assert len(set(_session_files()) - outsiders) == 2
     srv.store.close_all()
-    assert _session_files() == [], "close_all 之後還有暫存檔留著"
+    leftover = set(_session_files()) - outsiders
+    assert not leftover, f"close_all 之後還有暫存檔留著：{sorted(leftover)}"
     assert not first.exists()
 
 

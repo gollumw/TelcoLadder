@@ -96,3 +96,41 @@ def test_hostile_text_never_becomes_markup() -> None:
     texts = "".join(t for node in root.iter() for t in (node.text or "",))
     assert "<script>" not in svg.replace("&lt;script&gt;", "")
     assert "alert(1)" in texts, "敵意字串該以純文字存在（被跳脫，不是被吞掉）"
+
+
+def test_viewer_ladder_shows_wall_clock_and_keeps_delta() -> None:
+    """檢視器 ladder 的時間欄是**本機時區的牆鐘時刻**，Δ 間隔照舊保留。
+
+    報告（wall_clock=False 的預設路徑）刻意不變 —— 本機時區會讓同一份
+    pcap 在不同機器產出不同位元組，golden 就沒有意義；那條路由既有的
+    golden 測試守著，這裡只驗檢視器那一側。
+    """
+    import datetime as dt
+
+    base = 1_700_000_000.0
+    src = Endpoint("10.0.0.1", port=1, role="gNB")
+    dst = Endpoint("10.0.0.2", port=2, role="AMF")
+    flow = Flow(
+        messages=[
+            Message(frame=1, ts=0.0, abs_ts=base, protocol="ngap",
+                    src=src, dst=dst, label="a"),
+            Message(frame=2, ts=2.5, abs_ts=base + 2.5, protocol="ngap",
+                    src=dst, dst=src, label="b"),
+        ],
+        identity_keys=frozenset({(IdKind.SUPI, "001010000000001")}),
+    )
+    svg = render_flow_svg(flow)
+
+    expected_first = dt.datetime.fromtimestamp(base).strftime("%H:%M:%S.000")
+    assert expected_first in svg, "時間欄該是牆鐘時刻（本機時區）"
+    assert "0.000s" not in svg, "牆鐘模式下不該再顯示相對秒數"
+    assert "+2.50s" in svg, "Δ 間隔必須保留 —— 它是診斷本體"
+    # hover 裡有完整日期，回核網日誌對照用
+    assert dt.datetime.fromtimestamp(base).strftime("%Y-%m-%d") in svg
+
+
+def test_wall_clock_falls_back_when_abs_time_is_missing() -> None:
+    """abs_ts 缺失（哨兵 0.0）→ 誠實退回相對秒數，不顯示 1970 年。"""
+    svg = render_flow_svg(_hostile_flow())  # 它的 abs_ts 全是 0.0
+    assert "0.000000s" in svg or "0.000s" in svg
+    assert "1970" not in svg

@@ -377,3 +377,11 @@ td.sesstitle { padding-left: 34px; }
 .evbasis { color: var(--dim); line-height: 1.6; }
 .evcause { margin-top: 4px; padding: 6px 8px; background: var(--surface); border-radius: 6px;
   color: var(--text); line-height: 1.6; white-space: pre-wrap; }
+
+.newfile {
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 7px;
+  margin-right: 8px;
+}
+.newfile:hover { background: var(--surface); }
+.laddersvg g.row { cursor: pointer; }

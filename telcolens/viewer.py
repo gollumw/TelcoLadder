@@ -429,6 +429,7 @@ def viewer_page(session: Session, *, idle_ttl: float) -> str:
   <div class="brand"><span class="dot"></span><h1>TelcoLens</h1></div>
   <span class="source" id="source">{esc(session.display_name)}</span>
   <span class="spacer"></span>
+  <a class="newfile" href="/">＋ 開新檔案</a>
   <span class="held {badge_class}">{badge}</span>
   <form class="release" method="post" action="/release">
     <input type="hidden" name="sid" value="{esc(session.sid)}">
