@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mockData } from "@/lib/mock-data";
+import type { Dataset } from "@/data/source";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 
@@ -11,8 +11,12 @@ const TIME_RANGES = ["最近 5 分鐘", "最近 1 小時", "最近 24 小時", "
 
 type Mode = "mining" | "session";
 
-export default function SessionAnalyzer() {
-  const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = mockData;
+// **這裡是 GUI 與資料之間唯一的接縫（Phase 2 起）。**
+// 移植進來時是 `const { … } = mockData`（靜態 import）。改成 prop 之後這個
+// 元件「吃資料、不取資料」—— 底下 6 個 View 仍然是對四個陣列的純函式運算，
+// Phase 3 換後端不會碰到它們。取資料與載入／失敗狀態由 `App.tsx` 負責。
+export default function SessionAnalyzer({ data }: { data: Dataset }) {
+  const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   // Data Mining is home (資料母體); Session Analysis is a drill-down (Projection View).
   const [mode, setMode] = useState<Mode>("mining");

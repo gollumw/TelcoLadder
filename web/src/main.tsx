@@ -5,7 +5,7 @@
 // 因此逐位元組搬過來（見 web/PORTED.json）。
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import SessionAnalyzer from "@/components/SessionAnalyzer";
+import App from "@/App";
 import "./globals.css";
 
 const root = document.getElementById("root");
@@ -13,6 +13,6 @@ if (!root) throw new Error("找不到 #root —— 外殼 HTML 與這支腳本�
 
 createRoot(root).render(
   <StrictMode>
-    <SessionAnalyzer />
+    <App />
   </StrictMode>,
 );

@@ -8,8 +8,11 @@ app「看起來一樣」是主觀的、慢的、而且沒有回歸保護；比�
 參照點**凍結在那個 commit** —— TelcoShark 之後會繼續當設計實驗場改動，
 比對活的 3006 是追移動靶。
 
-> Phase 2（抽出資料來源介面）開始時，`test_ported_sources_*` **刻意退休** ——
-> 那時開始分岔是有意的。退休要在 CHANGELOG 留紀錄，不是默默刪掉。
+> **Phase 2 起分岔了一個檔，但這條測試沒有退休。** 原本的計畫是整條退休，
+> 實際做下來範圍比預期精確得多：抽出 DataSource 介面只動到
+> `SessionAnalyzer.tsx` 那一行接縫，其餘 8 檔仍然逐位元組相同。整組退休會讓
+> 「那 8 個有沒有被動過」變成無人看管 —— **不變量在哪裡失效要講精確，
+> 不是整組放棄**。分岔的那個檔改由 `diverged` 記錄，並且照樣有雜湊釘著。
 
 **② Tailwind 的 class 沒有在建置時靜默消失。** Tailwind 只產出它在 `content`
 glob 掃到的 class。glob 寫錯（例如沿用 Next 的 `./app/**` 而目錄已經是 `./src/**`）
@@ -56,22 +59,51 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
     )
 
 
-def test_every_ported_file_is_registered_in_the_manifest() -> None:
-    """`web/src/` 底下不得有沒被雜湊涵蓋的移植檔。
+#: 我們自己寫的檔，不在移植範圍 —— 入口、外層殼、資料來源層。
+_OURS = {
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/data/source.ts",
+    "src/data/mockSource.ts",
+    "src/data/apiSource.ts",
+}
+
+
+def test_every_web_source_file_is_accounted_for() -> None:
+    """`web/src/` 底下的每個檔都要有身分：移植的、已分岔的、或我們寫的。
 
     少了這條，新增一個元件而忘記登記時，同一性測試會**通過** —— 它只檢查
     列出來的那些，沒列的它看不見。
     """
-    registered = set(_manifest()["files"])
+    manifest = _manifest()
+    known = set(manifest["files"]) | set(manifest.get("diverged", {})) | _OURS
     on_disk = {
         str(p.relative_to(_WEB)).replace("\\", "/")
         for p in (_WEB / "src").rglob("*")
         if p.is_file() and p.suffix in {".ts", ".tsx"}
     }
-    # main.tsx 是我們自己寫的入口（取代 Next 的 layout/page），不在移植範圍。
-    ours = {"src/main.tsx"}
-    assert on_disk - registered - ours == set(), (
-        f"這些檔在 web/src/ 裡但沒進 PORTED.json：{sorted(on_disk - registered - ours)}"
+    unaccounted = on_disk - known
+    assert not unaccounted, (
+        f"這些檔在 web/src/ 裡但沒有身分：{sorted(unaccounted)}。"
+        "移植進來的請加進 PORTED.json 的 files；自己寫的請加進本測試的 _OURS。"
+    )
+
+
+def test_diverged_files_are_pinned_too() -> None:
+    """**已分岔不等於不管了。**
+
+    `SessionAnalyzer.tsx` 從 Phase 2 起刻意偏離來源（見 PORTED.json 的
+    `diverged`），但它仍然要有雜湊釘著 —— 否則「有意的分岔」會變成
+    「之後任何人隨便改都沒人知道」。改它請一併更新 `current_sha256`，
+    那個動作本身就是在說「我知道我在改什麼」。
+    """
+    drifted = []
+    for rel, record in _manifest().get("diverged", {}).items():
+        actual = hashlib.sha256((_WEB / rel).read_bytes()).hexdigest()
+        if actual != record["current_sha256"]:
+            drifted.append(rel)
+    assert not drifted, (
+        f"這些已分岔的檔又被改了但沒更新 PORTED.json：{drifted}"
     )
 
 
@@ -174,3 +206,33 @@ def test_unregistered_names_are_refused(name: str) -> None:
     from telcoshark.viewer import static_body
 
     assert static_body(name) is None
+
+
+def test_api_source_fails_loudly_instead_of_returning_empty() -> None:
+    """**Phase 3 沒接上時要用拋的，不能回一包空資料。**
+
+    回空的話畫面看起來完全正常運作，只是「這份擷取什麼都沒有」——
+    那是 CLAUDE.md §4 那張表裡最難除錯的一類。這條用原始碼斷言守住，
+    因為它是這一層唯一真正重要的行為。
+    """
+    src = (_WEB / "src" / "data" / "apiSource.ts").read_text(encoding="utf-8")
+    assert "throw new NotConnectedError" in src, "apiSource 必須拋錯"
+    # 不得出現「回一包空的」那種寫法
+    for empty in ("return { sessionIdentities: []", "return {sessionIdentities:[]"):
+        assert empty not in src, "apiSource 不得靜默回空資料"
+
+
+def test_the_only_data_seam_is_the_source_layer() -> None:
+    """元件不得自己 import mock-data —— 那條接縫只能有一個。
+
+    Phase 2 的整個重點是把「取資料」從元件裡拿走。任何一個 View 偷偷
+    import 回去，Phase 3 換後端時它就會靜默地繼續吃假資料。
+    """
+    offenders = []
+    for path in (_WEB / "src" / "components").rglob("*.tsx"):
+        if "mock-data" in path.read_text(encoding="utf-8"):
+            offenders.append(path.name)
+    assert not offenders, (
+        f"這些元件直接 import 了 mock-data：{offenders}。"
+        "資料一律經 App.tsx 由 DataSource 注入。"
+    )

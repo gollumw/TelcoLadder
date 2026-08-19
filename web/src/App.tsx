@@ -1,0 +1,73 @@
+/**
+ * 外層殼：負責「把資料拿到手」，拿到之前與拿不到時要說什麼。
+ *
+ * `SessionAnalyzer` 保持「吃資料、不取資料」—— 它與底下 6 個元件仍然是
+ * 對四個陣列的純函式運算，可以用假資料單獨測試。Phase 3 換後端時
+ * 不會碰到任何一個 View。
+ */
+
+import { useEffect, useState } from "react";
+import { AlertTriangle, Loader2 } from "lucide-react";
+
+import SessionAnalyzer from "@/components/SessionAnalyzer";
+import { apiSource } from "@/data/apiSource";
+import { mockSource } from "@/data/mockSource";
+import { currentSid, wantsApiSource, type DataSource, type Dataset } from "@/data/source";
+
+function pickSource(): DataSource {
+  return wantsApiSource() ? apiSource(currentSid()) : mockSource;
+}
+
+export default function App() {
+  const [source] = useState<DataSource>(pickSource);
+  const [data, setData] = useState<Dataset | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    source
+      .load()
+      .then((loaded) => {
+        if (!cancelled) setData(loaded);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source]);
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6">
+        <div className="max-w-xl rounded-lg border border-rose-500/30 bg-rose-500/5 p-5">
+          <div className="flex items-center gap-2 text-rose-300">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-sm font-semibold">讀不到資料</span>
+          </div>
+          {/* 講出實際原因，不要縮成「發生錯誤」—— 使用者要能據此判斷
+              是自己弄錯了，還是工具還沒做到。 */}
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">{error.message}</p>
+          <p className="mt-3 text-xs text-slate-500">
+            來源：{source.label}
+            {wantsApiSource() && "　·　拿掉網址的 ?source=api 可以看內建範例資料"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          載入{source.label}……
+        </div>
+      </div>
+    );
+  }
+
+  return <SessionAnalyzer data={data} />;
+}
