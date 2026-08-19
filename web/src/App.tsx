@@ -13,6 +13,7 @@ import SessionAnalyzer from "@/components/SessionAnalyzer";
 import { apiSource } from "@/data/apiSource";
 import { mockSource } from "@/data/mockSource";
 import { currentSid, wantsApiSource, type DataSource, type Dataset } from "@/data/source";
+import type { ProtocolNode } from "@/lib/types";
 
 function pickSource(): DataSource {
   return wantsApiSource() ? apiSource(currentSid()) : mockSource;
@@ -25,6 +26,7 @@ export default function App() {
   // 已取到的原始位元組。放在這裡而不是元件裡，是為了讓元件維持
   // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
   const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
+  const [treeByFrame, setTreeByFrame] = useState<Record<number, ProtocolNode[] | null>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +53,21 @@ export default function App() {
           .loadFrameBytes!(frame)
           .then((hex) => setBytesByFrame((c) => ({ ...c, [frame]: hex })))
           .catch(() => setBytesByFrame((c) => ({ ...c, [frame]: null })));
+        return { ...current, [frame]: null };
+      });
+    },
+    [source],
+  );
+
+  const requestTree = useCallback(
+    (frame: number) => {
+      if (!source.loadDecodeTree) return;
+      setTreeByFrame((current) => {
+        if (frame in current) return current;
+        void source
+          .loadDecodeTree!(frame)
+          .then((tree) => setTreeByFrame((c) => ({ ...c, [frame]: tree })))
+          .catch(() => setTreeByFrame((c) => ({ ...c, [frame]: null })));
         return { ...current, [frame]: null };
       });
     },
@@ -101,6 +118,8 @@ export default function App() {
         data={data}
         bytesByFrame={bytesByFrame}
         onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
+        treeByFrame={treeByFrame}
+        onRequestTree={source.loadDecodeTree ? requestTree : undefined}
       />
     </>
   );

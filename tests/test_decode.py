@@ -240,3 +240,48 @@ def test_window_around_stays_in_range() -> None:
     assert window_around(1, span=3, highest=5) == [1, 2, 3, 4]
     assert window_around(5, span=2, highest=5) == [3, 4, 5]
     assert window_around(10, span=1) == [9, 10, 11]
+
+
+def test_nodes_carry_their_byte_range(e2e_pcap) -> None:
+    """每個欄位要帶 `pos` / `size` —— 那是解碼樹與 hex viewer 連動的唯一依據。
+
+    少了它，點一個欄位不會高亮對應的位元組，而 hex 面板就只是一片與樹無關的
+    數字。**這件事不會報錯**，只會讓那個功能安靜地不存在。
+    """
+    trees = decode_frames(e2e_pcap, [1])
+    assert trees, "frame 1 應該解得出來"
+
+    def walk(nodes):
+        for node in nodes:
+            yield node
+            yield from walk(node.children)
+
+    nodes = list(walk(trees[1]))
+    with_range = [n for n in nodes if n.pos is not None and n.size is not None]
+    assert with_range, "整棵樹沒有任何一個節點帶區間 —— PDML 的 pos/size 沒讀到"
+
+    frame_len = max(n.pos + n.size for n in with_range)
+    for node in with_range:
+        assert node.pos >= 0, f"{node.name} 的 pos 是負的"
+        assert node.size >= 0, f"{node.name} 的 size 是負的"
+        assert node.pos + node.size <= frame_len, (
+            f"{node.name} 的區間 [{node.pos}, {node.pos + node.size}) 超出封包長度"
+        )
+
+
+def test_missing_byte_range_is_none_not_zero(e2e_pcap) -> None:
+    """PDML 沒給 `pos` 時要是 None，**不是 0**。
+
+    退成 0 會讓 UI 把整格的開頭當成那個欄位的位置 —— 高亮錯的位元組
+    比不高亮更糟，而且看起來完全正常。
+    """
+    import xml.etree.ElementTree as ET
+
+    from telcoshark.decode import _node
+
+    bare = ET.fromstring('<field name="synthetic" showname="沒有位置的節點"/>')
+    node = _node(bare)
+    assert node.pos is None
+    assert node.size is None
+    assert "pos" not in node.to_json()
+    assert "size" not in node.to_json()

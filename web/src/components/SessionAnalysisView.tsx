@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, ExternalLink, ArrowLeft, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
-import type { CallFlowEvent, CorrelationEntry, NetworkNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
+import type { CallFlowEvent, CorrelationEntry, NetworkNode, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
 
 const LANES: Array<{ id: NetworkNode; label: string; icon: LucideIcon; hex: string; text: string }> = [
   { id: "UE", label: "UE", icon: Smartphone, hex: "#38bdf8", text: "text-sky-400" },
@@ -55,6 +55,8 @@ export function SessionAnalysisView({
   identities,
   selectedFrame,
   onSelectFrame,
+  treeByFrame,
+  onRequestTree,
   onBackToDataMining,
   onViewInDataMining,
 }: {
@@ -64,6 +66,8 @@ export function SessionAnalysisView({
   rawPackets: RawPacket[];
   identities: SessionIdentity[];
   selectedFrame: number | null;
+  treeByFrame?: Record<number, ProtocolNode[] | null>;
+  onRequestTree?: (frame: number) => void;
   onSelectFrame: (frame: number) => void;
   onBackToDataMining: () => void;
   onViewInDataMining: (frame: number) => void;
@@ -94,6 +98,15 @@ export function SessionAnalysisView({
 
   const selectedEvent = filteredEvents.find((e) => e.frameNumber === selectedFrame) ?? filteredEvents[0] ?? null;
   const selectedPacket = selectedEvent ? rawPackets.find((p) => p.frameNumber === selectedEvent.frameNumber) ?? null : null;
+
+  // 解碼樹優先用資料自帶的（mock 有），沒有才看懶載入結果。
+  const selectedTree =
+    selectedPacket?.decodeTree ??
+    (selectedPacket ? (treeByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+
+  useEffect(() => {
+    if (selectedPacket && !selectedPacket.decodeTree) onRequestTree?.(selectedPacket.frameNumber);
+  }, [selectedPacket, onRequestTree]);
   const hoveredPacket = hover ? rawPackets.find((p) => p.frameNumber === hover.frame) ?? null : null;
 
   const rowOffset = isMidStream ? 1 : 0;
@@ -319,8 +332,8 @@ export function SessionAnalysisView({
                   <span className="text-slate-600">· {selectedEvent.interfaceName}</span>
                   {selectedEvent.causeText && <span className="text-rose-400">· {selectedEvent.causeText}</span>}
                 </div>
-                {selectedPacket.decodeTree ? (
-                  <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
+                {selectedTree ? (
+                  <ProtocolTree nodes={selectedTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
                 ) : (
                   <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>
                 )}

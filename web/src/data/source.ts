@@ -68,6 +68,12 @@ export interface DataSource {
    * 有的）；取不到就回 null，UI 說「此來源尚未提供」而不是畫一片空白。
    */
   loadFrameBytes?(frame: number): Promise<string | null>;
+
+  /**
+   * 一格的解碼樹。同樣是**懶載入**，理由與 `loadFrameBytes` 相同。
+   * 取不到就回 null，UI 說「尚未載入」而不是畫一棵空樹。
+   */
+  loadDecodeTree?(frame: number): Promise<import("@/lib/types").ProtocolNode[] | null>;
 }
 
 /**

@@ -58,6 +58,8 @@ export function DataMiningView({
   onSelectFrame,
   bytesByFrame,
   onRequestBytes,
+  treeByFrame,
+  onRequestTree,
   onCorrelateSession,
 }: {
   packets: RawPacket[];
@@ -72,6 +74,8 @@ export function DataMiningView({
   selectedFrame: number | null;
   bytesByFrame?: Record<number, string | null>;
   onRequestBytes?: (frame: number) => void;
+  treeByFrame?: Record<number, ProtocolNode[] | null>;
+  onRequestTree?: (frame: number) => void;
   onSelectFrame: (frame: number) => void;
   onCorrelateSession: (supi: string, frame: number) => void;
 }) {
@@ -106,18 +110,25 @@ export function DataMiningView({
   const selectedPacket = packets.find((p) => p.frameNumber === selectedFrame) ?? filtered[0] ?? null;
   // hex 優先用資料自帶的（mock 是編譯期就有的），沒有才看懶載入的結果。
   // `bytesByFrame` 裡有這個鍵但值是 null＝問過了、那格真的沒有。
+  // 解碼樹同樣：優先用資料自帶的（mock 有），沒有才看懶載入結果。
+  const treeForSelected =
+    selectedPacket?.decodeTree ??
+    (selectedPacket ? (treeByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+
   const hexForSelected =
     selectedPacket?.hexDump ??
     (selectedPacket ? (bytesByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
 
   // 選到一格才去要它的位元組 —— 一份擷取幾十萬格，不可能預先全取。
   useEffect(() => {
-    if (selectedPacket && !selectedPacket.hexDump) onRequestBytes?.(selectedPacket.frameNumber);
-  }, [selectedPacket, onRequestBytes]);
+    if (!selectedPacket) return;
+    if (!selectedPacket.hexDump) onRequestBytes?.(selectedPacket.frameNumber);
+    if (!selectedPacket.decodeTree) onRequestTree?.(selectedPacket.frameNumber);
+  }, [selectedPacket, onRequestBytes, onRequestTree]);
 
   const selectedNode =
-    selectedPacket?.decodeTree && selectedNodeId
-      ? findNodeById(selectedPacket.decodeTree, selectedNodeId)
+    treeForSelected && selectedNodeId
+      ? findNodeById(treeForSelected, selectedNodeId)
       : null;
 
   function handleTargetSearch() {
@@ -349,8 +360,8 @@ export function DataMiningView({
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet Details</p>
           {selectedPacket ? (
-            selectedPacket.decodeTree ? (
-              <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+            treeForSelected ? (
+              <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
             ) : (
               // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
               <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>

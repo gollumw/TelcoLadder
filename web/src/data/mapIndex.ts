@@ -123,3 +123,54 @@ export function attachFlowFacts(packets: RawPacket[], subscribers: FlowSubscribe
     else if (supi) packet.status = "SUCCESS";
   }
 }
+
+// ── 解碼樹 ──────────────────────────────────────────────────
+
+/** `/decode` 回的節點。欄位名由後端 `DecodeNode.to_json()` 決定。 */
+export interface DecodeNodeJson {
+  name: string;
+  label: string;
+  value: string;
+  /** 這個節點在整格封包裡的位元組區間。PDML 沒給時這兩個鍵不存在。 */
+  pos?: number;
+  size?: number;
+  children: DecodeNodeJson[];
+}
+
+/**
+ * 後端的解碼樹 → `ProtocolNode`。
+ *
+ * 兩個要對上的東西：
+ *
+ * **`id` 必須在整棵樹裡唯一且穩定。** 後端的 `name` 是 filter 名稱
+ * （`nas-5gs.mm.message_type`），同一棵樹裡會重複出現 —— 拿它當 id，
+ * `ProtocolTree` 的「選中節點自動展開祖先鏈」就會展錯枝，而且看起來很合理。
+ * 所以用路徑（`f12-0.3.1`）：唯一、穩定、而且看得出位置。
+ *
+ * **`byteRange` 是 `[start, end)`。** 後端給的是 `pos` + `size`。
+ * 少了任一個就不給區間 —— UI 不高亮，**不猜**：高亮錯的位元組比不高亮更糟。
+ */
+export function toProtocolNodes(
+  nodes: DecodeNodeJson[],
+  frame: number,
+  path = "",
+): import("@/lib/types").ProtocolNode[] {
+  return nodes.map((node, index) => {
+    const here = path ? `${path}.${index}` : String(index);
+    return {
+      id: `f${frame}-${here}`,
+      label: node.label,
+      // `value` 是這個欄位的原始 hex。當 detail 顯示是有用的（Wireshark 也這樣），
+      // 但空字串代表「這個節點沒有對應的位元組」—— 那時不給 detail，
+      // 免得樹上出現一排空白的冒號。
+      detail: node.value || undefined,
+      byteRange:
+        node.pos !== undefined && node.size !== undefined
+          ? ([node.pos, node.pos + node.size] as [number, number])
+          : undefined,
+      children: node.children.length
+        ? toProtocolNodes(node.children, frame, here)
+        : undefined,
+    };
+  });
+}

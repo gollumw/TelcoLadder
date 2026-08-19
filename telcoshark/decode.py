@@ -66,15 +66,45 @@ class DecodeNode:
     value: str
     """原始位元組的 hex。空字串代表這個節點沒有對應的位元組。"""
 
+    pos: int | None = None
+    size: int | None = None
+    """這個節點在整格封包裡的位元組區間 `[pos, pos + size)`（PDML 的
+    `pos` / `size`）。
+
+    **這是解碼樹與 hex viewer 連動的唯一依據** —— 點一個欄位要能高亮它對應
+    的那幾個 byte。少了它 hex 面板只是一片與樹無關的位元組。
+
+    `None` 代表 PDML 沒給（少數合成節點會這樣），那時 UI 不高亮，
+    **不要猜一個區間** —— 高亮錯的位元組比不高亮更糟。"""
+
     children: tuple[DecodeNode, ...] = field(default_factory=tuple)
 
     def to_json(self) -> dict:
-        return {
+        payload = {
             "name": self.name,
             "label": self.label,
             "value": self.value,
             "children": [c.to_json() for c in self.children],
         }
+        # 只在有值時才放進去 —— null 與「這個欄位不存在」在前端是同一件事，
+        # 但少送兩個 key 讓回應小一些（一棵樹幾百個節點）。
+        if self.pos is not None:
+            payload["pos"] = self.pos
+        if self.size is not None:
+            payload["size"] = self.size
+        return payload
+
+
+def _int_attr(el: ET.Element, name: str) -> int | None:
+    """PDML 的數字屬性。缺或不是數字就回 None —— **不要退成 0**，
+    那會讓 UI 把整格的開頭當成這個欄位的位置。"""
+    raw = el.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _node(el: ET.Element) -> DecodeNode:
@@ -84,6 +114,8 @@ def _node(el: ET.Element) -> DecodeNode:
         # showname 是給人看的那行；沒有的話退回 filter 名稱，不要留空。
         label=el.get("showname") or el.get("show") or name,
         value=el.get("value") or "",
+        pos=_int_attr(el, "pos"),
+        size=_int_attr(el, "size"),
         children=tuple(
             _node(child) for child in el
             if child.tag in ("proto", "field") and child.get("name") not in _DROP_PROTOS

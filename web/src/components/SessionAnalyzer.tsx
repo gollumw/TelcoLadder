@@ -19,12 +19,17 @@ export default function SessionAnalyzer({
   data,
   bytesByFrame,
   onRequestBytes,
+  treeByFrame,
+  onRequestTree,
 }: {
   data: Dataset;
   /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
   bytesByFrame?: Record<number, string | null>;
   /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
   onRequestBytes?: (frame: number) => void;
+  /** 已取到的解碼樹（懶載入）。沒有這一格的鍵＝還沒問過。 */
+  treeByFrame?: Record<number, import("@/lib/types").ProtocolNode[] | null>;
+  onRequestTree?: (frame: number) => void;
 }) {
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
@@ -144,6 +149,8 @@ export default function SessionAnalyzer({
             onSelectFrame={setSelectedFrame}
             bytesByFrame={bytesByFrame}
             onRequestBytes={onRequestBytes}
+            treeByFrame={treeByFrame}
+            onRequestTree={onRequestTree}
             onCorrelateSession={handleCorrelateSession}
           />
         ) : (
@@ -155,6 +162,8 @@ export default function SessionAnalyzer({
             identities={sessionIdentities}
             selectedFrame={selectedFrame}
             onSelectFrame={setSelectedFrame}
+            treeByFrame={treeByFrame}
+            onRequestTree={onRequestTree}
             onBackToDataMining={handleBackToDataMining}
             onViewInDataMining={handleViewInDataMining}
           />
