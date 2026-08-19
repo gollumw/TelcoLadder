@@ -164,8 +164,13 @@ class _Handler(BaseHTTPRequestHandler):
         if self._rejected_by_origin_checks():
             return
         route = urlsplit(self.path).path
-        # `/analyze` 與 `/upload` 是既有的靜態報告路徑 —— 逐位元組等於 `--html`，
+        # `/analyze` 與 `/upload` 是靜態報告路徑 —— 逐位元組等於 `--html`，
         # 由 test_web_output_is_identical_to_the_html_export 守著。**不要動它們。**
+        #
+        # **2026-08-20 起首頁不再連到這兩條**（使用者拖檔進來會直接開互動
+        # 介面）。它們仍然存在、仍然被測試守著，只是不再是網頁的入口 ——
+        # 靜態報告改由 CLI 的 `--html` 提供，那本來就是那條路的正主。
+        # 路由留著是因為它們是 `--html` 那份輸出的迴歸基準。
         if route == "/analyze":
             self._handle_path_form()
         elif route == "/upload":
@@ -788,44 +793,24 @@ def _home_page() -> str:
   <h2>把 pcap 拖進來</h2>
   <p>或點下面的按鈕選檔。上限 {MAX_UPLOAD_BYTES >> 20} MB。</p>
   <label class="pick">選擇檔案<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
-  <label class="opt"><input type="checkbox" id="to-viewer" value="1">
-    在互動檢視器開啟（可篩選、逐封包看解碼）—— 上傳的複本會<b>保留</b>到你按釋放或閒置逾時</label>
+  <p class="fine">上傳的複本會<b>保留</b>到你按釋放或閒置逾時 —— 逐封包解碼要跨請求讀同一份檔。</p>
 </div>
 
 <div class="or">或</div>
 
-<form class="path" method="post" action="/analyze">
+<form class="path" method="post" action="/open">
   <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="擷取檔路徑">
-  <button type="submit">分析</button>
-  <button type="submit" formaction="/open" class="secondary" id="open-viewer">在檢視器開啟</button>
+  <button type="submit">開啟</button>
   <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
     流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）</label>
-  <fieldset class="narrow">
-    <legend>先收窄範圍（大檔會快很多，可全部留空）</legend>
-    <div class="row">
-      <label>起 <input type="number" step="any" min="0" name="since" placeholder="秒"></label>
-      <label>迄 <input type="number" step="any" min="0" name="until" placeholder="秒"></label>
-      <label class="grow">訂戶 <input type="text" name="subscriber" placeholder="IMSI / MSISDN，純數字"></label>
-    </div>
-    <label class="grow">tshark filter
-      <input type="text" name="filter" placeholder="ngap || http2　　ip.addr==10.1.2.3"></label>
-    <p class="fine">
-      時間範圍是相對第一格的秒數，會先用 <code>editcap</code> 切出那一段再分析 ——
-      <code>-Y</code> 只省解析，切片才省得掉讀取。<br>
-      <b>訂戶不是直接拿去過濾封包。</b>多數封包根本不帶識別碼（NAS 加密、UE 已註冊），
-      直接過濾會把整個 N2 介面丟掉。這裡先找出帶著它的封包，再擴展到那些封包所在的
-      TCP 串流與 SCTP association，並<b>列出哪些流量沒被納入</b>。
-    </p>
-  </fieldset>
 </form>
 <p class="hint">
   <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——
   把幾百 MB 透過 HTTP 傳給同一台機器上的伺服器沒有意義。<br>
-  走「分析」時上傳的檔案只在分析期間存在於系統暫存目錄，<b>分析結束立即刪除</b>；
-  走「檢視器」時它必須<b>留到你釋放或閒置逾時</b>（逐封包解碼要跨請求讀同一份檔）。
-  貼路徑兩者都完全不複製你的檔案。<br>
-  分析是同步的，沒有中間進度可以回報 —— 超過約 100 MB 的擷取檔會看起來像卡住，
-  但它在跑。
+  兩條路都會開在互動介面裡（可過濾、逐封包看解碼與位元組、看梯形圖與關聯矩陣）。
+  封包清單邊索引邊出，第一頁很快就能看；<b>訂戶身分、梯形圖與關聯矩陣要等完整解剖跑完</b>。<br>
+  要靜態報告（零 JavaScript、可寄給別人）請用 CLI：<code>telcoshark analyze &lt;pcap&gt; --html</code>，
+  它同時支援時間範圍、訂戶收窄與 tshark filter。
 </p>
 
 <div class="spinner" id="spin">分析中……</div>
@@ -843,25 +828,20 @@ def _home_page() -> str:
     if (!f) return;
     spin.classList.add('on');
     var flow = document.getElementById('flow');
-    var viewer = document.getElementById('to-viewer');
     var q = flow && flow.checked ? '?flow=1' : '';
-    // 檢視器那條回 JSON（裡面是要跳去的 URL），報告那條回整頁 HTML。
-    // 兩條路徑刻意分開 —— /upload 的回應逐位元組等於 --html，不能動。
-    var toViewer = viewer && viewer.checked;
-    fetch((toViewer ? '/open-upload' : '/upload') + q, {{
+    // **一律走檢視器。** 這裡原本有個預設不勾的核取方塊決定要不要進互動
+    // 介面，不勾就悄悄送去舊的靜態報告 —— 那是個陷阱：使用者拖檔進來，
+    // 拿到的是他沒要的那個版本，而畫面上沒有任何地方說發生了什麼。
+    // 舊報告仍然存在，改由 CLI 的 `--html` 提供（它本來就是那條路的正主）。
+    fetch('/open-upload' + q, {{
       method: 'POST',
       headers: {{ 'X-TelcoShark-Filename': encodeURIComponent(f.name) }},
       body: f
     }})
       .then(function (r) {{
-        if (toViewer) {{
-          return r.json().then(function (j) {{
-            if (j.error) throw new Error(j.error);
-            location.href = j.url;
-          }});
-        }}
-        return r.text().then(function (html) {{
-          document.open(); document.write(html); document.close();
+        return r.json().then(function (j) {{
+          if (j.error) throw new Error(j.error);
+          location.href = j.url;
         }});
       }})
       .catch(function (e) {{

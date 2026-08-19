@@ -84,6 +84,26 @@ def test_the_route_table_above_covers_every_api_action() -> None:
     assert not missing, f"這些 API 沒有列進 VIEWER_ROUTES，安全測試對它們是空轉的：{missing}"
 
 
+def test_the_landing_page_only_leads_to_the_interactive_interface() -> None:
+    """首頁的兩條路都必須通往互動介面，**不能通往舊的靜態報告**。
+
+    原本拖放區有一個**預設不勾**的核取方塊決定要不要進互動介面；不勾就
+    悄悄送去 `/upload`（舊報告）。使用者拖檔進來，拿到的是他沒要的那個
+    版本，而畫面上沒有任何地方說發生了什麼 —— 而我自己每次驗證都是手打
+    `/app/<sid>` 的網址，所以從沒撞到。
+
+    這條測試守的是**入口指向哪裡**，那是 399 條測試裡原本沒有人守的東西。
+    """
+    from telcoshark.web import _home_page
+
+    page = _home_page()
+    assert 'action="/open"' in page, "貼路徑那條沒有指向互動介面"
+    assert "/open-upload" in page, "拖放那條沒有指向互動介面"
+    assert 'action="/analyze"' not in page, "首頁還連著舊的靜態報告"
+    assert "'/upload'" not in page, "拖放還會走到舊的靜態報告"
+    assert "to-viewer" not in page, "那個預設不勾的核取方塊還在"
+
+
 def _make(idle_ttl: float = 900.0, viewer: bool = True):
     srv = make_server("127.0.0.1", 0, idle_ttl=idle_ttl, viewer=viewer)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
