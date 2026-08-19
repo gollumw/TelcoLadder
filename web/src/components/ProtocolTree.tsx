@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProtocolNode } from "@/lib/types";
@@ -39,10 +39,19 @@ function ProtocolTreeNode({
   onSelect?: (node: ProtocolNode) => void;
   depth: number;
 }) {
-  // Default-open the first couple of levels, but always force-open any node whose
-  // subtree contains the focused/selected id (e.g. an ERROR event's Cause IE),
-  // regardless of how deep it is — the point of auto-focus is not to hide it.
-  const [open, setOpen] = useState(depth < 2 || (!!selectedId && nodeContainsId(node, selectedId)));
+  // **預設全部收合**，比照 Wireshark。真實封包的解碼樹動輒上百個節點，
+  // 展開兩層就會把整個面板灌滿，使用者得先捲過一堆 Frame/IP/TCP 的細節
+  // 才看得到他真正要的那一層。
+  //
+  // 唯一的例外是 `selectedId` 的祖先鏈 —— 那是「自動聚焦到 Cause IE」
+  // 那個功能，收合它等於把功能關掉。
+  const [open, setOpen] = useState(!!selectedId && nodeContainsId(node, selectedId));
+
+  // 選中的節點換了（例如點了另一則失敗事件），祖先鏈要重新展開。
+  // 少了這段，第二次點的那一格會停在收合狀態而看不出原因。
+  useEffect(() => {
+    if (selectedId && nodeContainsId(node, selectedId)) setOpen(true);
+  }, [selectedId, node]);
   const hasChildren = !!node.children?.length;
   const isSelected = node.id === selectedId;
 

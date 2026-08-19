@@ -10,7 +10,6 @@
     "app/page.tsx": "web/src/main.tsx"
   },
   "files": {
-    "src/components/ProtocolTree.tsx": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
     "src/components/HexDump.tsx": "95bfb27b125cfd7f4ce430c466ba26deee8b8819f3092590ac7e2bc0adbf8b55",
     "src/lib/utils.ts": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e"
   },
@@ -58,6 +57,11 @@
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
       "current_sha256": "f47193fe4ce12e916c7cae662524c07747ff9e68b993883cd9fb10b3a0c3ea42",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。"
+    },
+    "src/components/ProtocolTree.tsx": {
+      "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
+      "current_sha256": "a84776d5d5b5a5eb4dde89c3ee576e92cadc1358ebb6c0a4f3b77ed045f91f5d",
+      "reason": "預設全部收合（比照 Wireshark）。移植過來時預設展開兩層 —— 那在 mock 的小樹上剛好，真實封包的解碼樹動輒上百節點，兩層就把面板灌滿。`selectedId` 的祖先鏈仍然強制展開（自動聚焦 Cause IE 的功能），並補一個 effect 讓換選節點時重新展開。"
     }
   }
 }
