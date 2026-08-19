@@ -31,3 +31,10 @@ build/
 out/
 *.mmd
 !tests/fixtures/*.mmd
+
+# ── web/ 的建置產物 ─────────────────────────────────────────
+# app.js / app.css **刻意進版控** —— 它們在 pyproject 的 package-data 裡，
+# `pip install telcoshark` 的人不該需要 Node 才能看到介面。
+# index.html 則是 Vite 順帶吐出來的殘留物：外殼由 viewer.py 的 app_page()
+# 產生（要注入 sid），這份永遠不會被送出（不在 STATIC_TYPES 白名單裡）。
+telcoshark/static/index.html

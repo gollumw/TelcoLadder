@@ -37,10 +37,17 @@ from telcoshark.session import Session
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
 #: 想加檔案就加在這裡；不在這裡的名字一律 404。
+#:
+#: `app.js` / `app.css` 是 `web/` 的 Vite 產物（見 `web/vite.config.ts`）。
+#: 檔名**刻意固定不帶 hash**，因為這裡是字典查表 —— hash 檔名每次建置都不一樣，
+#: 白名單追不上。Vite 同時會吐一份 `index.html` 進 `static/`，但它不在這張表裡，
+#: 所以送不出去；外殼由 `app_page()` 產生（要注入 sid）。
 STATIC_TYPES = {
     "viewer.js": "application/javascript; charset=utf-8",
     "viewer.css": "text/css; charset=utf-8",
     "report.css": "text/css; charset=utf-8",
+    "app.js": "application/javascript; charset=utf-8",
+    "app.css": "text/css; charset=utf-8",
 }
 
 #: 讓「零外部請求」在互動表面上變成**瀏覽器強制**的，而不只是我們自律。
@@ -395,6 +402,37 @@ def subscriber_json(session: Session, index: int) -> dict:
         "events": [_event_json(e, by_frame) for e in events],
         "frames": sorted(by_frame),
     }
+
+
+def app_page(session: Session, *, idle_ttl: float) -> str:
+    """React 介面（`/app/<sid>`）的外殼。
+
+    **與 `/v/<sid>` 的舊檢視器並存是刻意的，不是過渡期的髒東西。** 移植期間
+    每一步都要拿舊介面當對照組確認新的沒少東西；等新介面達到對等，舊的才在
+    Phase 4 整批退場。
+
+    這份外殼必須與 `web/index.html`（開發用）的 `<html>` / `<body>` class 與
+    資產路徑一致 —— `class="dark"` 是 `darkMode: "class"` 的開關，掉了整個
+    配色會變成亮色而且不會報錯。由 `tests/test_web_assets.py` 釘住。
+
+    `idle_ttl` 目前用不到（生命週期的提示還在舊外殼上），但簽名與
+    `viewer_page` 對齊，讓 `_send_viewer` 能共用同一條送出路徑。
+    """
+    del idle_ttl
+    return f"""<!doctype html>
+<html lang="zh-Hant" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TelcoShark — {esc(session.display_name)}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="font-sans antialiased">
+<div id="root"></div>
+<script type="module" src="/static/app.js" data-sid="{esc(session.sid)}"></script>
+</body>
+</html>
+"""
 
 
 def viewer_page(session: Session, *, idle_ttl: float) -> str:

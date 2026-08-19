@@ -41,7 +41,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "ki-mismatch" / "capture.pcap"
 #: 把整張表跑一遍 —— 新增路由忘記加守衛時，那條測試會紅。
 VIEWER_ROUTES = [
     ("GET", "/v/whatever"),
+    ("GET", "/app/whatever"),
     ("GET", "/static/viewer.js"),
+    ("GET", "/static/app.js"),
     ("POST", "/open"),
     ("POST", "/open-upload"),
     ("POST", "/release"),

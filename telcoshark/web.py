@@ -59,6 +59,7 @@ from telcoshark.session import (
 from telcoshark.tshark import TsharkNotFound, find_tshark
 from telcoshark.viewer import (
     CSP,
+    app_page,
     decode_json,
     identities_json,
     select_identity,
@@ -147,6 +148,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_static(route[len("/static/"):])
         elif route.startswith("/v/") and self._viewer_enabled():
             self._send_viewer(route[len("/v/"):])
+        elif route.startswith("/app/") and self._viewer_enabled():
+            self._send_viewer(route[len("/app/"):], page=app_page)
         elif route.startswith("/api/") and self._viewer_enabled():
             self._route_api(route[len("/api/"):])
         else:
@@ -202,7 +205,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def _send_viewer(self, sid: str) -> None:
+    def _send_viewer(self, sid: str, *, page: Callable[..., str] = viewer_page) -> None:
+        """送出一份檢視器外殼。`page` 選 `/v/` 的舊介面或 `/app/` 的 React 介面。
+
+        兩條路由共用這裡，是為了讓「工作階段過期給人話」與那六個回應標頭
+        （特別是 CSP）**只有一份**。複製第二份的失敗方式是新路由少一個標頭，
+        而少了 CSP 不會有任何徵兆 —— 頁面照常運作，只是外部請求不再被瀏覽器擋。
+        """
         session = self._store.get(sid)
         if session is None:
             # 過期是正常的（閒置逾時就是這樣），所以給人話而不是 traceback。
@@ -214,7 +223,7 @@ class _Handler(BaseHTTPRequestHandler):
                 HTTPStatus.NOT_FOUND,
             )
             return
-        body = viewer_page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
+        body = page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

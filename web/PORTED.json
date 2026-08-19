@@ -1,0 +1,23 @@
+{
+  "source_repo": "gollumw/TelcoShark-Sandbox",
+  "source_repo_note": "移植當下它還叫 gollumw/TelcoShark。2026-08-19 產品接手了 TelcoShark 這個名字（本 repo，原 TelcoLens），設計實驗場讓位改名為 TelcoShark-Sandbox。source_commit 仍指向同一顆 commit。",
+  "source_commit": "b16d0d5b1ccff16e9c5065705d4a6c3f733eadc1",
+  "ported_on": "2026-08-19",
+  "note": "這 9 個檔是自設計實驗場（現 TelcoShark-Sandbox，port 3006）逐位元組複製的，不是重寫的。tests/test_web_assets.py 驗證雜湊仍相符，證明「搬過來的就是同一份程式碼」。參照點凍結在上面那個 commit —— 實驗場之後會繼續改動，比對活的 3006 是追移動靶。Phase 2（抽出資料來源介面）開始時這條測試**刻意退休**，因為那時分岔是有意的；退休要留紀錄，不是默默刪掉。",
+  "replaced": {
+    "app/layout.tsx": "web/index.html + web/src/main.tsx（唯一的 next 相依，type-only import）",
+    "app/globals.css": "web/src/globals.css（逐位元組相同，只是換位置）",
+    "app/page.tsx": "web/src/main.tsx"
+  },
+  "files": {
+    "src/components/SessionAnalyzer.tsx": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
+    "src/components/DataMiningView.tsx": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
+    "src/components/SessionAnalysisView.tsx": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
+    "src/components/DiscoveredSessionsPanel.tsx": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
+    "src/components/ProtocolTree.tsx": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
+    "src/components/HexDump.tsx": "95bfb27b125cfd7f4ce430c466ba26deee8b8819f3092590ac7e2bc0adbf8b55",
+    "src/lib/types.ts": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
+    "src/lib/utils.ts": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e",
+    "src/lib/mock-data.ts": "fbb7ab75556a3bc10a2cb8cb8ef38e53a06a0dec5830c848e574bedf7d26853e"
+  }
+}
