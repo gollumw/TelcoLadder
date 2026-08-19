@@ -130,8 +130,10 @@ def _open_path_session(server, pcap: Path) -> str:
     status, _, headers = _request(server, "/open", method="POST", body=body, redirect=False)
     assert status == 303, f"預期 303 轉址，拿到 {status}"
     location = headers["Location"]
-    assert location.startswith("/v/"), location
-    return location[len("/v/"):]
+    # **轉到 React 介面**，不是舊檢視器。在 2026-08-20 之前這裡是 `/v/`，
+    # 而 `/app/<sid>` 沒有任何一條路從畫面走得到 —— 只能手打網址。
+    assert location.startswith("/app/"), location
+    return location[len("/app/"):]
 
 
 def _open_upload_session(server, pcap: Path) -> tuple[str, Path]:

@@ -379,7 +379,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         session = self._store.create(pcap, pcap.name, owns_file=False, wire=wire)
         start_index(session)
-        self._send_redirect(f"/v/{session.sid}")
+        # **送去 React 介面，不是舊檢視器。** 兩個入口都改了 —— 在此之前
+        # `/app/<sid>` 沒有任何一條路從畫面走得到，只能手打網址。
+        # 舊的 `/v/<sid>` 仍然可用（對照組），由 app 頁面上的連結進入。
+        self._send_redirect(f"/app/{session.sid}")
 
     def _handle_open_upload(self) -> None:
         """上傳開檢視器。檔案會**留下來**直到釋放或閒置逾時。
@@ -426,7 +429,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         session = self._store.create(tmp, name, owns_file=True, wire=wire)
         start_index(session)
-        self._send_json({"sid": session.sid, "name": name, "url": f"/v/{session.sid}"})
+        self._send_json({"sid": session.sid, "name": name, "url": f"/app/{session.sid}"})
 
     def _handle_release(self) -> None:
         form = self._read_form()

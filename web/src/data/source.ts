@@ -179,8 +179,13 @@ export interface DataSource {
 /**
  * 這一頁該用哪個來源。
  *
- * 預設 mock —— Phase 2 的重點是把接縫抽出來，不是接上後端。`?source=api`
- * 明確選擇真實資料那條路，讓 Phase 3 可以逐項開發而不會讓現有的示範壞掉。
+ * **有工作階段就用真實資料。** Phase 2／3 期間預設是 mock、要加
+ * `?source=api` 才看得到真的 —— 那個預設在當時是對的（逐項開發時不想讓
+ * 示範壞掉），現在是錯的：使用者開了一份自己的擷取檔，畫面卻顯示三個
+ * 虛構訂戶，而且沒有任何徵兆說那是假的。
+ *
+ * 所以反過來：頁面上有 `data-sid` 就走 API，`?source=mock` 才明確要範例
+ * 資料（開發與 demo 用）。
  *
  * `data-sid` 由 `viewer.py:app_page()` 注入到 `<script>` 標籤上 —— sid 放在
  * 路徑與標籤裡而不是 cookie，是刻意的（localhost 的 cookie 不分 port，
@@ -192,5 +197,8 @@ export function currentSid(): string | null {
 }
 
 export function wantsApiSource(): boolean {
-  return new URLSearchParams(window.location.search).get("source") === "api";
+  const asked = new URLSearchParams(window.location.search).get("source");
+  if (asked === "mock") return false;
+  if (asked === "api") return true;
+  return currentSid() !== null;
 }
