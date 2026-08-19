@@ -88,6 +88,28 @@ export function mockSource(): DataSource {
     async focusIdentity(supi: string | null): Promise<void> {
       focusedSupi = supi;
     },
+
+    async loadCallFlow(supi: string) {
+      const events = mockData.callFlowEvents.filter((e) => e.supi === supi);
+      // mock 的參與者順序沿用 `lib/types.ts` 那個 6 值 union 的順序 ——
+      // 它就是設計實驗場當初想的那張圖，這裡不重排。
+      const order = ["UE", "gNB", "AMF", "AUSF", "SMF", "UPF"];
+      const seen = new Set<string>();
+      events.forEach((e) => {
+        seen.add(e.fromNode);
+        seen.add(e.toNode);
+      });
+      return {
+        events,
+        participants: order
+          .filter((id) => seen.has(id))
+          .map((id) => ({ id, known: true })),
+        // mock 的事件本來就是照協定語意畫的（NAS 在 UE↔AMF）。
+        wire: false,
+        // mock 的四種邊界情境是手寫的，沒有「有但接不上」這種狀態。
+        uncorrelatedDomains: [],
+      };
+    },
   };
 }
 

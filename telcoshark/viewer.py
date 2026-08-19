@@ -26,6 +26,7 @@ from telcoshark.decode import decode_frames, window_around
 from telcoshark.framebytes import frame_bytes
 from telcoshark.identities import (
     availability,
+    find_flows,
     session_frames,
     lookup,
     no_result_explanation,
@@ -33,7 +34,9 @@ from telcoshark.identities import (
 from telcoshark.packets import COLUMN_TITLES
 from telcoshark.flowtable import FlowTable, SubscriberRow, build_table
 from telcoshark.render_html import PAGE_CSS, esc, render_flow_svg
-from telcoshark.model import Flow, IdKind
+from telcoshark.interfaces import reference_point
+from telcoshark.model import Endpoint, Flow, IdKind
+from telcoshark.nf import participant_rank
 from telcoshark.session import Session
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -463,6 +466,120 @@ def subscriber_json(session: Session, index: int) -> dict:
         "sessions": len(sub.sessions),
         "events": [_event_json(e, by_frame) for e in events],
         "frames": sorted(by_frame),
+    }
+
+
+#: adapter 名稱 → 電信領域。前端的 `mapIndex.domainFromStack` 用 dissector
+#: 短名做同一件事；**兩張表都只認得出自己看得到的東西**，所以刻意分開放而
+#: 不共用一份 —— 這裡拿到的是 adapter 名（`sbi`），前端拿到的是 tshark 的
+#: 堆疊（`http2`），硬要合成一張表反而會讓兩邊都多背對方的詞彙。
+_DOMAIN_BY_PROTOCOL = {
+    "ngap": "ACCESS_N1_N2",
+    "nas-5gs": "ACCESS_N1_N2",
+    "sbi": "CORE_SBI",
+    "pfcp": "USER_PLANE_N4_N3",
+    "gtp": "USER_PLANE_N4_N3",
+}
+
+
+def callflow_json(session: Session, supi: str) -> dict:
+    """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
+
+    與既有的 `/flow` / `/subscriber` 不同：那兩個回的是**渲染好的 SVG**
+    加上語意事件（kind／certainty／basis）。SVG 把泳道順序與 y 座標都在
+    Python 算死了，於是「依過濾動態增減泳道」與「切換 Domain」在前端
+    做不到 —— 那兩件事是這個介面的重點。所以這裡把排版知識交出去，
+    只回事實。
+
+    **參與者一併回傳且已排好序。** 讓前端自己去湊泳道順序，等於在兩邊
+    各維護一份網元順序，一定漂移。順序來自 `nf.PARTICIPANT_ORDER`。
+
+    規模：以訊息數為界，而且**限縮在一個訂戶**。整份擷取檔的訊息可能有
+    幾十萬則，一個訂戶通常是幾十到幾百則。
+    """
+    table = _table_for(session)
+    if table is None:
+        return {"ready": False, "events": [], "participants": []}
+    with session.lock:
+        analysis = session.analysis
+
+    flows = find_flows(analysis, IdKind.SUPI, supi)
+    if not flows:
+        return {"error": f"這個訂戶沒有對應的流程：{supi}"}
+
+    messages = [m for f in flows for m in f.messages]
+    # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
+    # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現（比照 subscriber_json）。
+    messages.sort(key=lambda m: (m.abs_ts, m.ts, m.frame))
+
+    seen: dict[str, Endpoint] = {}
+    for msg in messages:
+        for endpoint in (msg.src, msg.dst):
+            seen.setdefault(endpoint.label(), endpoint)
+    participants = [
+        {
+            "id": label,
+            # 角色推不出來時 `label()` 回的是 IP。**要讓前端知道差別** ——
+            # 「這是 UPF」與「這是 10.0.0.7，我們不知道它是什麼」在圖上
+            # 該長得不一樣。
+            "known": endpoint.role is not None,
+        }
+        for label, endpoint in sorted(seen.items(), key=lambda kv: participant_rank(kv[1]))
+    ]
+
+    events = []
+    for index, msg in enumerate(messages):
+        event = {
+            # 一格封包可以帶多則訊息（NGAP 內嵌 NAS、一個 TCP frame 多個
+            # HTTP/2 stream），所以 id 不能只是 frame 編號。
+            "id": f"{msg.frame}-{index}",
+            "frame": msg.frame,
+            "ts": msg.ts,
+            "abs_ts": msg.abs_ts,
+            "from": msg.src.label(),
+            "to": msg.dst.label(),
+            "name": msg.label,
+            "protocol": msg.protocol,
+            "interface": reference_point(msg.protocol, msg.src.role, msg.dst.role),
+            "domain": _DOMAIN_BY_PROTOCOL.get(msg.protocol),
+            "status": "ERROR" if msg.is_failure else "SUCCESS",
+        }
+        if msg.is_failure:
+            # cause 的解釋一律來自 `data/causes/*.yaml` 的靜態查表
+            # （CLAUDE.md §2.3）。這裡只是把已經查好的字搬過來。
+            for key in ("cause_note", "cause_plain", "cause_common"):
+                value = msg.detail.get(key)
+                if value:
+                    event["cause_text"] = value
+                    break
+        events.append(event)
+
+    # **這份擷取檔裡有、但接不到這個人身上的領域。**
+    #
+    # 空的 Domain 分頁預設會顯示「此 Domain 目前沒有信令事件」，而那句話
+    # 常常是錯的：5gc-e2e 裡 PFCP 是獨立的流程（識別碼是 PFCP SEID，沒有
+    # 任何一則訊息同時帶著 SUPI），所以接不到訂戶身上 —— 不是沒有 N4，
+    # 是我們沒能證明那段 N4 屬於他（CLAUDE.md §5：跨協定關聯成不成立，
+    # 取決於有沒有訊息同時帶著兩邊的識別碼）。
+    mine = {event["domain"] for event in events}
+    elsewhere = {
+        _DOMAIN_BY_PROTOCOL.get(m.protocol)
+        for f in analysis.flows
+        for m in f.messages
+    }
+    uncorrelated = sorted(d for d in elsewhere - mine if d)
+
+    return {
+        "ready": True,
+        "supi": supi,
+        "domains_uncorrelated": uncorrelated,
+        # **這張圖是照封包路徑畫的還是照協定語意畫的。**
+        # wire=True（預設）時 NAS 畫在它實際走的那一段 —— SBI 夾帶的 NAS
+        # 會顯示成 AMF→SCP→SMF，而不是 UE→AMF。那是事實，但看到的人若
+        # 不知道模式，會以為工具把 NAS 解錯了。所以由畫面講出來。
+        "wire": session.wire,
+        "participants": participants,
+        "events": events,
     }
 
 

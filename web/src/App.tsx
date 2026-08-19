@@ -17,6 +17,7 @@ import {
   wantsApiSource,
   type DataSource,
   type Dataset,
+  type CallFlow,
   type PacketPage,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
@@ -45,6 +46,10 @@ export default function App() {
   // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
   const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
   const [treeByFrame, setTreeByFrame] = useState<Record<number, ProtocolNode[] | null>>({});
+  /** 已取到的梯形圖，一個訂戶一份。 */
+  const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
+  /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
+  const [flowSupi, setFlowSupi] = useState<string | null>(null);
   const [packets, setPackets] = useState<PacketStore | null>(null);
   /** display filter 的語法錯誤。**不是**整頁的錯誤 —— 打錯字不該把畫面清空。 */
   const [filterError, setFilterError] = useState<string | null>(null);
@@ -166,6 +171,21 @@ export default function App() {
     [source, reloadPackets],
   );
 
+  const requestCallFlow = useCallback(
+    (supi: string) => {
+      setFlowSupi(supi);
+      setFlowBySupi((current) => {
+        if (supi in current) return current;
+        void source
+          .loadCallFlow(supi)
+          .then((flow) => setFlowBySupi((c) => ({ ...c, [supi]: flow })))
+          .catch(() => setFlowBySupi((c) => ({ ...c, [supi]: null })));
+        return { ...current, [supi]: null };
+      });
+    },
+    [source],
+  );
+
   const requestBytes = useCallback(
     (frame: number) => {
       if (!source.loadFrameBytes) return;
@@ -245,6 +265,8 @@ export default function App() {
         onApplyDisplayFilter={applyDisplayFilter}
         onRestrictToSupi={restrictToSupi}
         filterError={filterError}
+        callFlow={flowSupi ? (flowBySupi[flowSupi] ?? null) : null}
+        onRequestCallFlow={requestCallFlow}
         bytesByFrame={bytesByFrame}
         onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
         treeByFrame={treeByFrame}

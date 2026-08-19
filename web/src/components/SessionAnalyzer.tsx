@@ -24,6 +24,8 @@ export default function SessionAnalyzer({
   onApplyDisplayFilter,
   onRestrictToSupi,
   filterError,
+  callFlow,
+  onRequestCallFlow,
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
@@ -37,6 +39,9 @@ export default function SessionAnalyzer({
   onApplyDisplayFilter: (expr: string) => void;
   onRestrictToSupi: (supi: string | null) => void;
   filterError: string | null;
+  /** 目前聚焦訂戶的梯形圖。null＝還沒取到。 */
+  callFlow: import("@/data/source").CallFlow | null;
+  onRequestCallFlow: (supi: string) => void;
   /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
   bytesByFrame?: Record<number, string | null>;
   /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
@@ -63,6 +68,11 @@ export default function SessionAnalyzer({
   useEffect(() => {
     onRestrictToSupi(restrictTo);
   }, [restrictTo, onRestrictToSupi]);
+
+  // 切到某個訂戶才去要他的梯形圖 —— 整份擷取檔的訊息可能有幾十萬則。
+  useEffect(() => {
+    if (mode === "session" && focusedSupi) onRequestCallFlow(focusedSupi);
+  }, [mode, focusedSupi, onRequestCallFlow]);
 
   function handleReassociate() {
     setReassociateState("loading");
@@ -192,7 +202,10 @@ export default function SessionAnalyzer({
         ) : (
           <SessionAnalysisView
             supi={focusedSupi}
-            callFlowEvents={callFlowEvents}
+            callFlowEvents={callFlow?.events ?? callFlowEvents}
+            participants={callFlow?.participants ?? []}
+            ladderIsWireView={callFlow?.wire ?? false}
+            uncorrelatedDomains={callFlow?.uncorrelatedDomains ?? []}
             correlationEntries={correlationEntries}
             rawPackets={rawPackets}
             identities={sessionIdentities}

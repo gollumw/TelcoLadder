@@ -9,7 +9,7 @@
  * 而在型別上假裝有資料是同一件事的另一種寫法。
  */
 
-import type { RawPacket, TelecomDomain } from "@/lib/types";
+import type { CallFlowEvent, RawPacket, TelecomDomain } from "@/lib/types";
 import type { DiscoveredSession } from "@/lib/utils";
 
 /** `/index` 回的一列。欄位名是後端 `viewer.index_json` 決定的。 */
@@ -190,6 +190,58 @@ export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, 
     }
   }
   return out;
+}
+
+// ── 梯形圖 ──────────────────────────────────────────────────
+
+/** `/callflow` 回的一則事件。欄位名由後端 `viewer.callflow_json` 決定。 */
+export interface CallFlowEventJson {
+  id: string;
+  frame: number;
+  ts: number;
+  abs_ts: number;
+  from: string;
+  to: string;
+  name: string;
+  protocol: string;
+  /** 參考點代號（N1／N2／N11…）。**推不出來時是 null** —— 後端刻意留空
+   *  而不是猜一個（`telcoshark/interfaces.py`）。 */
+  interface: string | null;
+  domain: TelecomDomain | null;
+  status: "SUCCESS" | "ERROR";
+  /** 只有失敗事件有。文字來自 `data/causes/*.yaml` 的靜態查表。 */
+  cause_text?: string;
+}
+
+/**
+ * 後端的一則事件 → `CallFlowEvent`。
+ *
+ * `interfaceName` 在推不出來時給空字串而不是編一個 —— 呈現層不畫標籤。
+ * 沒有標籤的箭頭仍然帶著協定與兩端角色，讀的人自己判斷得出來；一個錯的
+ * 代號則會讓他不再自己判斷。
+ *
+ * `causeNodeId` **刻意不給**。它要指到解碼樹裡那個 Cause IE 的節點 id，
+ * 而那些 id 是這一層依路徑產生的（`toProtocolNodes`）—— 後端要算出同一
+ * 條路徑得先知道哪個 PDML 節點是 Cause。還沒做，所以不給；少了它只是
+ * 解碼樹不會自動展開到 Cause，不會顯示錯的東西。
+ */
+export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlowEvent {
+  return {
+    id: event.id,
+    frameNumber: event.frame,
+    supi,
+    timestamp: isoFromEpoch(event.abs_ts),
+    fromNode: event.from,
+    toNode: event.to,
+    messageName: event.name,
+    interfaceName: event.interface ?? "",
+    domain: event.domain ?? undefined,
+    status: event.status,
+    // `summary` 在 mock 裡是一句人寫的說明。真實資料沒有那種東西，
+    // **不編一句** —— 失敗事件有 cause 解釋可放，其餘留空。
+    summary: event.cause_text ?? "",
+    ...(event.cause_text ? { causeText: event.cause_text } : {}),
+  };
 }
 
 // ── 解碼樹 ──────────────────────────────────────────────────

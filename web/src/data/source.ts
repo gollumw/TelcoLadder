@@ -30,6 +30,7 @@ import type {
   CorrelationEntry,
   RawPacket,
   SessionIdentity,
+  TelecomDomain,
 } from "@/lib/types";
 import type { DiscoveredSession } from "@/lib/utils";
 
@@ -98,6 +99,23 @@ export interface Dataset {
   firstFrameBySupi: Record<string, number>;
 }
 
+/** 梯形圖的一條泳道。順序由後端依 `nf.PARTICIPANT_ORDER` 排好。 */
+export interface CallFlowParticipant {
+  /** 網元角色（`AMF`）。**推不出角色時是 IP 位址** —— 那時 `known` 為 false。 */
+  id: string;
+  known: boolean;
+}
+
+/** 一個訂戶的梯形圖資料。 */
+export interface CallFlow {
+  events: CallFlowEvent[];
+  participants: CallFlowParticipant[];
+  /** true＝照封包路徑畫；false＝照協定語意畫（NAS 畫在 UE↔AMF）。 */
+  wire: boolean;
+  /** 這份擷取檔裡有、但接不到這位訂戶身上的領域。 */
+  uncorrelatedDomains: TelecomDomain[];
+}
+
 export interface DataSource {
   /** 給人看的名字，出現在載入中與錯誤訊息裡。 */
   readonly label: string;
@@ -137,6 +155,12 @@ export interface DataSource {
    * `keep_frames` 而後設的會靜默丟掉先設的，已於 `d03235a` 拆開。
    */
   focusIdentity(supi: string | null): Promise<void>;
+
+  /**
+   * 一個訂戶的梯形圖。**懶載入、而且限縮在一個人** —— 整份擷取檔的訊息
+   * 可能有幾十萬則，一個訂戶通常是幾十到幾百則。
+   */
+  loadCallFlow(supi: string): Promise<CallFlow>;
 
   /**
    * 一格的原始位元組（連續小寫 hex）。**懶載入** —— 一份擷取幾十萬格，

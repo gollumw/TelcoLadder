@@ -59,8 +59,12 @@ export interface CallFlowEvent {
   frameNumber: number; // anchors to RawPacket.frameNumber — every event is a real captured frame
   supi: string; // which user's call flow this event belongs to — lets Session Analysis filter a multi-user capture down to one user
   timestamp: string;
-  fromNode: NetworkNode;
-  toNode: NetworkNode;
+  /** 網元角色（`AMF`）。**接真實資料後不能是封閉列舉** —— 真實核網不只
+   *  六個網元（`nf.py` 的 PARTICIPANT_ORDER 有 16 個），而且角色推不出來
+   *  時這裡就是一個 IP 位址。原本的 `NetworkNode` union 是 mock 階段的
+   *  產物，與 `protocol` 那一欄同一個教訓。 */
+  fromNode: string;
+  toNode: string;
   messageName: string;
   interfaceName: string; // N1/N2/N4/N11/N12/N3 — kept for ladder labeling alongside domain
   /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——

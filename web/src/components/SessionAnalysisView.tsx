@@ -1,19 +1,61 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, ExternalLink, ArrowLeft, type LucideIcon } from "lucide-react";
+import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
-import type { CallFlowEvent, CorrelationEntry, NetworkNode, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
+import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
+import type { CallFlowParticipant } from "@/data/source";
 
-const LANES: Array<{ id: NetworkNode; label: string; icon: LucideIcon; hex: string; text: string }> = [
-  { id: "UE", label: "UE", icon: Smartphone, hex: "#38bdf8", text: "text-sky-400" },
-  { id: "gNB", label: "gNB", icon: RadioTower, hex: "#a78bfa", text: "text-violet-400" },
-  { id: "AMF", label: "AMF", icon: ShieldCheck, hex: "#34d399", text: "text-emerald-400" },
-  { id: "AUSF", label: "AUSF", icon: KeyRound, hex: "#2dd4bf", text: "text-teal-400" },
-  { id: "SMF", label: "SMF", icon: GitBranch, hex: "#fbbf24", text: "text-amber-400" },
-  { id: "UPF", label: "UPF", icon: Router, hex: "#fb7185", text: "text-rose-400" },
-];
+/**
+ * 泳道**樣式**表。注意這不是泳道清單 —— 清單由資料決定。
+ *
+ * 移植過來時這是一張封閉的 6 個網元的表，型別是 `NetworkNode` 這個
+ * union。真實的 5G 核網不只六個：`nf.py` 的 `PARTICIPANT_ORDER` 有 16 個
+ * （SCP／UDM／UDR／PCF／NRF／NSSF／CHF…），而且角色推不出來時參與者
+ * 就是一個 IP 位址。
+ *
+ * 這個落差原本會靜默出錯：`laneX` 對查不到的節點回 `Math.max(i, 0)`，
+ * 也就是 **0 號泳道**。於是一則送往 UDM 的訊息會被畫成送往 UE ——
+ * 箭頭畫得出來，圖看起來完全合理。
+ */
+const LANE_STYLE: Record<string, { icon: LucideIcon; hex: string; text: string }> = {
+  UE: { icon: Smartphone, hex: "#38bdf8", text: "text-sky-400" },
+  gNB: { icon: RadioTower, hex: "#a78bfa", text: "text-violet-400" },
+  AMF: { icon: ShieldCheck, hex: "#34d399", text: "text-emerald-400" },
+  AUSF: { icon: KeyRound, hex: "#2dd4bf", text: "text-teal-400" },
+  SMF: { icon: GitBranch, hex: "#fbbf24", text: "text-amber-400" },
+  UPF: { icon: Router, hex: "#fb7185", text: "text-rose-400" },
+};
+
+/** 認得出角色但沒配色的網元（SCP／UDM／PCF…）。 */
+const KNOWN_FALLBACK = { icon: Boxes, hex: "#818cf8", text: "text-indigo-400" };
+/** 連角色都推不出來 —— 泳道標題會是 IP。**長得不一樣是刻意的。** */
+const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "#94a3b8", text: "text-slate-400" };
+
+interface Lane {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  hex: string;
+  text: string;
+}
+
+/**
+ * 泳道 id → 可安全放進 `url(#…)` 的 SVG id。
+ *
+ * 角色推不出來時泳道 id 是 IP 位址（`10.0.0.7`）或 IPv6（含冒號）。
+ * 直接串進 `url(#arrow-10.0.0.7)` 在部分瀏覽器會解析失敗 —— 而失敗的
+ * 樣子是**箭頭尖端不見了**，線還在，看起來像設計如此。
+ */
+function markerId(laneId: string): string {
+  return `arrow-${laneId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+}
+
+function laneFor(id: string, known: boolean): Lane {
+  const style = LANE_STYLE[id] ?? (known ? KNOWN_FALLBACK : UNKNOWN_FALLBACK);
+  return { id, label: id, ...style };
+}
 
 const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "ALL", label: "All Domains" },
@@ -36,9 +78,16 @@ const LANE_MARGIN = 70;
 const ROW_HEIGHT = 50;
 const TOP_PAD = 60;
 
-function laneX(lanes: typeof LANES, id: NetworkNode): number {
+/**
+ * 泳道的 x 座標。**找不到回 null，不回 0 號泳道。**
+ *
+ * 原本是 `Math.max(i, 0)` —— 查不到就畫在第一條線上。那會讓一則送往
+ * 未知網元的訊息看起來是送給 UE 的，而且沒有任何徵兆。呼叫端拿到 null
+ * 就不畫那支箭，並在圖上把它算進「未顯示」。
+ */
+function laneX(lanes: Lane[], id: string): number | null {
   const i = lanes.findIndex((l) => l.id === id);
-  return LANE_MARGIN + Math.max(i, 0) * LANE_GAP;
+  return i < 0 ? null : LANE_MARGIN + i * LANE_GAP;
 }
 
 function formatUncaptured(value: string | undefined): string {
@@ -50,6 +99,9 @@ function formatUncaptured(value: string | undefined): string {
 export function SessionAnalysisView({
   supi,
   callFlowEvents,
+  participants,
+  ladderIsWireView,
+  uncorrelatedDomains,
   correlationEntries,
   rawPackets,
   identities,
@@ -62,6 +114,15 @@ export function SessionAnalysisView({
 }: {
   supi: string | null;
   callFlowEvents: CallFlowEvent[];
+  /** 這張圖有哪些參與者，**已依 `nf.PARTICIPANT_ORDER` 排好**。
+   *  由後端給是刻意的 —— 讓前端自己湊網元順序等於兩邊各維護一份，一定漂移。 */
+  participants: CallFlowParticipant[];
+  /** true＝照封包路徑畫（SBI 夾帶的 NAS 會顯示成 AMF→SCP→SMF）。
+   *  **必須讓使用者看得到**，否則他會以為工具把 NAS 解錯了。 */
+  ladderIsWireView: boolean;
+  /** 這份擷取檔裡有、但接不到這位訂戶身上的領域。空的 Domain 分頁靠它
+   *  分辨「這裡沒有」與「有，但我們接不上這個人」。 */
+  uncorrelatedDomains: TelecomDomain[];
   correlationEntries: CorrelationEntry[];
   rawPackets: RawPacket[];
   identities: SessionIdentity[];
@@ -86,15 +147,27 @@ export function SessionAnalysisView({
     [supiEvents, domain],
   );
 
+  // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
+  // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
+  const allLanes = useMemo(
+    () => participants.map((p) => laneFor(p.id, p.known)),
+    [participants],
+  );
   const activeLanes = useMemo(() => {
-    if (filteredEvents.length === 0) return LANES;
-    const ids = new Set<NetworkNode>();
+    if (filteredEvents.length === 0) return allLanes;
+    const ids = new Set<string>();
     filteredEvents.forEach((e) => {
       ids.add(e.fromNode);
       ids.add(e.toNode);
     });
-    return LANES.filter((l) => ids.has(l.id));
-  }, [filteredEvents]);
+    return allLanes.filter((l) => ids.has(l.id));
+  }, [filteredEvents, allLanes]);
+
+  // 兩端有一邊排不進泳道的事件。理論上不該發生（泳道就是從事件推出來的），
+  // 但**如果發生了要說出來**而不是把箭頭畫到第一條線上。
+  const undrawable = filteredEvents.filter(
+    (e) => laneX(activeLanes, e.fromNode) === null || laneX(activeLanes, e.toNode) === null,
+  ).length;
 
   const selectedEvent = filteredEvents.find((e) => e.frameNumber === selectedFrame) ?? filteredEvents[0] ?? null;
   const selectedPacket = selectedEvent ? rawPackets.find((p) => p.frameNumber === selectedEvent.frameNumber) ?? null : null;
@@ -151,7 +224,24 @@ export function SessionAnalysisView({
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 xl:col-span-3">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">信令時序梯形圖 · Call Flow Ladder Diagram</h2>
+          <h2 className="mb-1 text-sm font-semibold text-slate-200">信令時序梯形圖 · Call Flow Ladder Diagram</h2>
+
+          {/* **模式必須講出來。** wire 模式下 SBI 夾帶的 NAS 會畫成
+              AMF→SCP→SMF（那是它實際走的路），不知道模式的人會以為工具
+              把 NAS 解錯了。 */}
+          <p className="mb-3 text-[11px] text-slate-500">
+            {ladderIsWireView
+              ? "照封包實際路徑繪製 —— SBI 夾帶的 NAS 會畫在 AMF↔SCP↔SMF 之間，而不是 UE↔AMF。要看協定語意版請以 --flow 開啟。"
+              : "照協定語意繪製 —— NAS 畫在 UE↔AMF，gNB 視為透明轉送。"}
+          </p>
+
+          {undrawable > 0 && (
+            // 理論上不該發生（泳道就是從事件推出來的）。發生了要說，
+            // 不要讓那幾支箭默默不見。
+            <p className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
+              ⚠ 有 {undrawable} 則事件的端點排不進泳道，未繪出（不是這份擷取檔沒有它們）
+            </p>
+          )}
 
           {/* Domain Filter Toolbar */}
           <div className="mb-3 flex flex-wrap gap-1">
@@ -175,12 +265,24 @@ export function SessionAnalysisView({
 
           <div className="relative overflow-x-auto">
             {filteredEvents.length === 0 ? (
-              <p className="py-10 text-center text-xs text-slate-600">此 Domain 目前沒有信令事件</p>
+              // 「這裡沒有」與「有，但我們接不上這個人」是兩件完全不同的事。
+              // 前者讓人放心，後者是一條該去追的線索。
+              domain !== "ALL" && uncorrelatedDomains.includes(domain) ? (
+                <p className="py-10 text-center text-xs leading-relaxed text-amber-300/80">
+                  這份擷取檔裡有此 Domain 的訊息，但
+                  <strong className="font-semibold">沒有任何一則同時帶著它與這位訂戶的識別碼</strong>
+                  ，
+                  <br />
+                  所以無法證明那些訊息屬於他 —— 不是他沒有這段流程。
+                </p>
+              ) : (
+                <p className="py-10 text-center text-xs text-slate-600">此 Domain 目前沒有信令事件</p>
+              )
             ) : (
               <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="min-w-[640px]" role="img" aria-label="5G SA call flow ladder diagram">
                 <defs>
                   {activeLanes.map((lane) => (
-                    <marker key={lane.id} id={`arrow-${lane.id}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                    <marker key={lane.id} id={markerId(lane.id)} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                       <path d="M0,0 L8,4 L0,8 Z" fill={lane.hex} />
                     </marker>
                   ))}
@@ -230,10 +332,14 @@ export function SessionAnalysisView({
                   const y = TOP_PAD + (i + rowOffset) * ROW_HEIGHT;
                   const fromX = laneX(activeLanes, event.fromNode);
                   const toX = laneX(activeLanes, event.toNode);
+                  // 排不進泳道就**不畫**。畫在 0 號泳道會變成一支指向 UE 的
+                  // 假箭頭，而上面的 `undrawable` 會把它算進去並顯示出來。
+                  if (fromX === null || toX === null) return null;
                   const isSelected = event.frameNumber === selectedEvent?.frameNumber;
                   const isError = event.status === "ERROR";
-                  const targetLane = activeLanes.find((l) => l.id === event.toNode) ?? activeLanes[0];
-                  const lineColor = isError ? ERROR_HEX : targetLane.hex;
+                  const lineColor = isError
+                    ? ERROR_HEX
+                    : (activeLanes.find((l) => l.id === event.toNode)?.hex ?? UNKNOWN_FALLBACK.hex);
 
                   return (
                     <g
@@ -260,7 +366,7 @@ export function SessionAnalysisView({
                         y2={y}
                         stroke={lineColor}
                         strokeWidth={isError ? 3 : isSelected ? 2.5 : 1.5}
-                        markerEnd={isError ? "url(#arrow-error)" : `url(#arrow-${targetLane.id})`}
+                        markerEnd={isError ? "url(#arrow-error)" : `url(#${markerId(event.toNode)})`}
                       />
                       <text
                         x={(fromX + toX) / 2}

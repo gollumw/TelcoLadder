@@ -8,7 +8,7 @@
  *   ✅ `sessionIdentities` ← `/identities`
  *   ✅ `decodeTree`        ← `/decode?frame=N`，選一格時才去要
  *   ✅ `hexDump`           ← `/bytes?frame=N`，選一格時才去要
- *   ❌ `callFlowEvents`    需要結構化的 call flow API（目前只回 SVG 字串）
+ *   ✅ `callFlowEvents`    ← `/callflow?supi=`，切到某個訂戶時才去要
  *   ❌ `correlationEntries` 需要 PDU-session 級的關聯抽取（引擎還沒算）
  *
  * **沒接上的一律回空陣列，而且由 UI 明講「還沒接」** —— 空陣列會讓
@@ -27,11 +27,13 @@
  * （真 tshark），`focusIdentity` 走 `/select`，兩者在後端疊加。
  */
 
-import type { ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
+import type { ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
 
 import {
   attachFlowFacts,
   firstFrameBySupi,
+  toCallFlowEvent,
+  type CallFlowEventJson,
   rowToPacket,
   subscribersToSessions,
   toProtocolNodes,
@@ -39,7 +41,13 @@ import {
   type FlowSubscriber,
   type IndexRow,
 } from "./mapIndex";
-import type { DataSource, Dataset, PacketPage } from "./source";
+import type {
+  CallFlow,
+  CallFlowParticipant,
+  DataSource,
+  Dataset,
+  PacketPage,
+} from "./source";
 
 /** 後端 `/index` 的上限。要更多列得分頁，不是把這個數字調大。 */
 export const PAGE_LIMIT = 500;
@@ -149,7 +157,7 @@ export function apiSource(sid: string | null): DataSource {
     label: sid ? `工作階段 ${sid.slice(0, 8)}…` : "（無工作階段）",
 
     notice:
-      "封包清單、訂戶身分、解碼樹與原始位元組已接上真實資料。**Call Flow 與關聯矩陣尚未接** —— 它們需要結構化的 call flow API 與 PDU-session 級的關聯抽取，兩者都還沒做。那兩頁看到的「沒有事件」是「還沒去拿」，不是「這份擷取沒有」。",
+      "封包清單、訂戶身分、解碼樹、原始位元組與 Call Flow 已接上真實資料。關聯矩陣（PDU Session 的 IP／TEID／S-NSSAI）尚未接 —— 引擎還沒算過那一層。那一區看到的空白是「還沒去拿」，不是「這份擷取沒有」。",
 
     async load(): Promise<Dataset> {
       await waitForAnalysis(need());
@@ -210,6 +218,21 @@ export function apiSource(sid: string | null): DataSource {
       await postForm(`/api/${need()}/select`, {
         identity: supi ? `supi:${supi}` : "",
       });
+    },
+
+    async loadCallFlow(supi: string): Promise<CallFlow> {
+      const body = await getJson<{
+        wire: boolean;
+        domains_uncorrelated: TelecomDomain[];
+        participants: CallFlowParticipant[];
+        events: CallFlowEventJson[];
+      }>(`/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
+      return {
+        wire: body.wire,
+        uncorrelatedDomains: body.domains_uncorrelated ?? [],
+        participants: body.participants ?? [],
+        events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
+      };
     },
 
     async loadFrameBytes(frame: number): Promise<string | null> {

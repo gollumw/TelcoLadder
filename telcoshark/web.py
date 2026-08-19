@@ -62,6 +62,7 @@ from telcoshark.viewer import (
     CSP,
     app_page,
     bytes_json,
+    callflow_json,
     decode_json,
     identities_json,
     select_identity,
@@ -296,6 +297,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(payload, status)
         elif not post and action == "subscriber":
             payload = subscriber_json(session, self._int_param(query, "i", -1))
+            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+            self._send_json(payload, status)
+        elif not post and action == "callflow":
+            supi = (query.get("supi") or [""])[0]
+            if not supi:
+                self._send_json({"error": "缺少 supi 參數。"}, HTTPStatus.BAD_REQUEST)
+                return
+            payload = callflow_json(session, supi)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
         elif not post and action == "identities":

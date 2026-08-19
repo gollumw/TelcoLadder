@@ -52,12 +52,35 @@ VIEWER_ROUTES = [
     ("GET", "/api/whatever/decode"),
     ("GET", "/api/whatever/bytes"),
     ("GET", "/api/whatever/identities"),
+    ("GET", "/api/whatever/callflow"),
     ("GET", "/api/whatever/flows"),
     ("GET", "/api/whatever/flow"),
     ("GET", "/api/whatever/subscriber"),
     ("POST", "/api/whatever/select"),
     ("POST", "/api/whatever/refilter"),
 ]
+
+
+def test_the_route_table_above_covers_every_api_action() -> None:
+    """**這張表是手寫的，所以它自己也需要被守著。**
+
+    `test_every_viewer_route_enforces_host_and_origin` 只跑表裡列到的路由 ——
+    新增一條 API 卻忘記加進表裡，那條安全測試會**空轉通過**，而不是變紅。
+    註解說「新增路由忘記加守衛時會紅」只在有人記得更新表的前提下成立。
+
+    所以這裡拿 `web.py` 自己當來源：把 `_route_api` 裡每個 `action == "…"`
+    抓出來，逐一確認表裡有對應的一列。實測補上了漏掉的 `callflow`。
+    """
+    import re
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "telcoshark" / "web.py"
+    actions = set(re.findall(r'action == "([a-z_]+)"', source.read_text(encoding="utf-8")))
+    assert actions, "抓不到任何 action —— 這條測試的假設（web.py 的寫法）已經變了"
+
+    listed = {route.rsplit("/", 1)[1] for _, route in VIEWER_ROUTES if route.startswith("/api/")}
+    missing = sorted(actions - listed)
+    assert not missing, f"這些 API 沒有列進 VIEWER_ROUTES，安全測試對它們是空轉的：{missing}"
 
 
 def _make(idle_ttl: float = 900.0, viewer: bool = True):
