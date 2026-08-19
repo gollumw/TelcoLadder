@@ -25,8 +25,16 @@ from __future__ import annotations
 from typing import Any
 
 from telcoshark.extract import Frame, first
+from telcoshark.extract import to_int as _to_int
 from telcoshark.identity import globally_unique
-from telcoshark.model import CauseRef, Endpoint, IdKey, IdKind, Message
+from telcoshark.model import (
+    IDENTITY_SOURCE_KEY,
+    CauseRef,
+    Endpoint,
+    IdKey,
+    IdKind,
+    Message,
+)
 
 NAME = "nas-5gs"
 
@@ -106,17 +114,6 @@ _FAILURE_TYPES = {
     0xCD,  # PDU session modification command reject
     0xD2,  # PDU session release reject
 }
-
-
-def _to_int(value: Any) -> int | None:
-    value = first(value)
-    if value is None:
-        return None
-    text = str(value).strip()
-    try:
-        return int(text, 16) if text.lower().startswith("0x") else int(text)
-    except ValueError:
-        return None
 
 
 #: `_dig` 的遞迴層數上限。
@@ -338,10 +335,20 @@ def parse(frame: Frame) -> list[Message]:
             CauseRef(table=cause_table, value=cause_value) if cause_value is not None else None
         )
 
+        keys = _identity_keys(block, carrier, carrier_adapter, frame)
+
         detail: dict[str, str] = {}
         supi = _supi_from_suci(block)
         if supi:
             detail["SUPI"] = supi
+        elif carrier_adapter is not None and any(k[0] is IdKind.SUPI for k in keys):
+            # 這則 NAS 自己認不出是誰，身分是**跟載體借的**。使用者有權知道：
+            # 「這則訊息屬於某訂戶」與「我們是怎麼知道的」是兩回事，而後者
+            # 決定了他要不要相信前者。
+            #
+            # 一律記錄（那是資料），要不要顯示由呈現層決定（D4）——
+            # 見 `render_html.IDENTITY_SOURCE_KEY`。
+            detail[IDENTITY_SOURCE_KEY] = f"{carrier_adapter.NAME} 載體"
 
         messages.append(
             Message(
@@ -352,7 +359,7 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=_identity_keys(block, carrier, carrier_adapter, frame),
+                identity_keys=keys,
                 cause=cause,
                 is_failure=msg_type in _FAILURE_TYPES,
                 detail=detail,

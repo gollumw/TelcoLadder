@@ -21,6 +21,32 @@ TelcoShark 的協定支援是可插拔的。**加一個協定 = 裝一個套件*
 | cause 表 | `telcoshark.cause_tables` entry point | 每個 cause 都印「尚未收錄」 |
 | **display filter** | adapter 的 `DISPLAY_FILTER` 屬性 | **tshark 根本不吐那些封包** |
 | **decode-as** | adapter 的 `DECODE_AS` 屬性（選用） | **tshark 認不出那是什麼協定** |
+| **載送宣告** | adapter 的 `CARRIES` 屬性（選用） | 被它載送的協定一則都解不出來 |
+| **層名** | adapter 的 `CARRIER_LAYER` 屬性（選用，預設 `NAME`） | 同上，而且**更難查**：載體本身正常運作 |
+| **載體身分** | adapter 的 `carrier_keys()`（選用） | 載荷解得出來但歸不了戶，變成孤兒流程 |
+
+## 載體協定：`CARRIES` / `CARRIER_LAYER` / `carrier_keys`
+
+tshark 的 `-T ek` 把子解剖**巢狀在載體層內**，不是攤平在頂層。所以「協定 A
+載送協定 B」時，B 的 adapter 必須知道去 A 底下找 —— 而且光找到還不夠，
+B 通常認不出自己屬於誰（SBI 夾帶的下行 NAS 內容裡沒有任何識別碼），
+身分得跟載體借。
+
+```python
+CARRIES = ("nas-5gs",)        # 我載送這些協定
+CARRIER_LAYER = "http2"       # 我的區塊在 ek 輸出裡叫這個層（預設 = NAME）
+
+def carrier_keys(block, frame) -> frozenset[IdKey]:
+    """從我的區塊推出的身分鍵，給載荷歸戶用。"""
+```
+
+三者皆選用，用 `getattr` 取用 —— 沒宣告的 adapter 行為完全不變。
+
+**`CARRIER_LAYER` 最容易漏，而且症狀最難查。** `NAME` 是給人看的（會出現在
+`Message.protocol` 上），層名是 tshark 的鍵，兩者不一定相同 —— `sbi` 的層叫
+`http2`。宣告錯的話載體自己一切正常，只有被它載送的協定一則都收不到。
+NGAP 剛好兩者同名，所以這個缺口在只有一個載體的年代看不出來，是 2026-08-19
+實作 SBI 載送時才炸出來的。
 
 後兩個最容易漏，因為它們不是獨立的註冊動作，只是 adapter 上的屬性。
 

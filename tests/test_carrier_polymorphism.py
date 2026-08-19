@@ -313,3 +313,101 @@ def test_carrier_blocks_uses_the_layer_not_the_name() -> None:
         layers={"http2": {"http2_http2_streamid": "1"}},
     )
     assert carrier_blocks(sbi_adapter, frame) == [{"http2_http2_streamid": "1"}]
+
+
+# ── T1d：身分來源的顯示開關 ─────────────────────────────────
+
+
+def test_borrowed_identity_is_recorded(multi_imsi_pcap: Path) -> None:
+    """身分是跟載體借來的訊息，要在 `detail` 裡講出來。
+
+    「這則訊息屬於某訂戶」與「我們是怎麼知道的」是兩回事，而後者決定了
+    使用者要不要相信前者。這是資料，一律記錄。
+    """
+    from telcoshark.model import IDENTITY_SOURCE_KEY
+    from telcoshark.pipeline import analyse
+
+    analysis = analyse(multi_imsi_pcap)
+    tagged = [
+        m for f in analysis.flows for m in f.messages
+        if IDENTITY_SOURCE_KEY in m.detail
+    ]
+    assert tagged, "SBI 夾帶的 NAS 應該標出身分是跟載體借的"
+    assert all(m.detail[IDENTITY_SOURCE_KEY] == "sbi 載體" for m in tagged)
+
+
+def test_nas_with_its_own_supi_is_not_tagged(registration_pcap: Path) -> None:
+    """NAS 自己抽得出 SUPI 時不標 —— 那不是借來的，標了只是雜訊。"""
+    from telcoshark.model import IDENTITY_SOURCE_KEY
+    from telcoshark.pipeline import analyse
+
+    analysis = analyse(registration_pcap)
+    for flow in analysis.flows:
+        for msg in flow.messages:
+            if "SUPI" in msg.detail:
+                assert IDENTITY_SOURCE_KEY not in msg.detail
+
+
+def test_identity_source_toggle_only_changes_display(multi_imsi_pcap: Path) -> None:
+    """**關掉的只是顯示，不是判定。**
+
+    身分鍵照常參與 `correlate`，所以流程切分不受影響 —— 兩份報告的差別
+    只有那幾行 tooltip。這條同時守住「開關真的有效」與「開關沒有偷改結果」。
+    """
+    from telcoshark.model import IDENTITY_SOURCE_KEY
+    from telcoshark.pipeline import analyse
+    from telcoshark.render_html import render_report
+
+    analysis = analyse(multi_imsi_pcap)
+    shown = render_report(analysis.flows, source_name="x", show_identity_source=True)
+    hidden = render_report(analysis.flows, source_name="x", show_identity_source=False)
+
+    assert shown.count(IDENTITY_SOURCE_KEY) > 0
+    assert hidden.count(IDENTITY_SOURCE_KEY) == 0
+    # 流程數與訊息數不因顯示開關而改變
+    assert len(analysis.flows) == len(analyse(multi_imsi_pcap).flows)
+
+
+# ── T1f：_to_int 整併 ───────────────────────────────────────
+
+
+def test_to_int_is_defined_exactly_once() -> None:
+    """五份複本整併成一份。重複的風險不是醜，是**行為悄悄分岔**。"""
+    import telcoshark.adapters.nas5gs as nas
+    import telcoshark.adapters.ngap as ngap
+    import telcoshark.adapters.pfcp as pfcp
+    import telcoshark.adapters.sbi as sbi
+    from telcoshark.extract import to_int
+
+    for module in (ngap, nas, sbi, pfcp):
+        assert module._to_int is to_int, f"{module.NAME} 沒有用共用版本"
+
+
+def test_to_int_accepts_bool() -> None:
+    """**整併時唯一真正改變的行為，明確釘住。**
+
+    四個 adapter 的複本走 `str(True)` → `"True"` → `ValueError` → `None`；
+    `extract.py` 的版本有 `isinstance(value, int)` 短路，回 `1`。
+    `-T ek` 是 JSON，欄位可能是布林 —— 兩者會給出不同答案。
+
+    整併採用超集（`extract.py` 那份）。這條是那個決定的白紙黑字，
+    不是順手發生的。
+    """
+    from telcoshark.extract import to_int
+
+    assert to_int(True) == 1
+    assert to_int(False) == 0
+
+
+def test_to_int_behaviour_is_otherwise_unchanged() -> None:
+    """其餘輸入必須與整併前逐項相同 —— 這是回歸測試。"""
+    from telcoshark.extract import to_int
+
+    assert to_int(None) is None
+    assert to_int("42") == 42
+    assert to_int("0x2a") == 42
+    assert to_int("0X2A") == 42
+    assert to_int("  7  ") == 7
+    assert to_int("not a number") is None
+    assert to_int(["3", "4"]) == 3      # first() 取第一個
+    assert to_int([]) is None

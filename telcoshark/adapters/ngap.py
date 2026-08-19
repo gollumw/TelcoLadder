@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from telcoshark.extract import Frame, first
+from telcoshark.extract import to_int as _to_int
 from telcoshark.identity import connection_scope, scoped
 from telcoshark.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
@@ -107,17 +108,6 @@ _OUTCOME_SUFFIX = {
     "ngap_ngap_successfulOutcome_element": "Response",
     "ngap_ngap_unsuccessfulOutcome_element": "Failure",
 }
-
-
-def _to_int(value: Any) -> int | None:
-    value = first(value)
-    if value is None:
-        return None
-    text = str(value).strip()
-    try:
-        return int(text, 16) if text.lower().startswith("0x") else int(text)
-    except ValueError:
-        return None
 
 
 def _outcome(block: dict[str, Any]) -> str:

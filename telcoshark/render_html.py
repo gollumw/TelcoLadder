@@ -31,7 +31,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from telcoshark.model import Endpoint, Flow, Message
+from telcoshark.model import IDENTITY_SOURCE_KEY, Endpoint, Flow, Message
 from telcoshark.nf import participant_rank
 
 # ── 版面常數（單位 px）─────────────────────────────────────────────────
@@ -213,7 +213,9 @@ def _arrow_svg(row: _Row, x_src: float, x_dst: float, kind: str) -> list[str]:
     return parts
 
 
-def _hover_text(msg: Message, *, wall_clock: bool = False) -> str:
+def _hover_text(
+    msg: Message, *, wall_clock: bool = False, show_identity_source: bool = True
+) -> str:
     """滑鼠停留時的原生 tooltip。用 SVG `<title>` —— 零 JS。"""
     lines = [
         f"frame #{msg.frame} · {msg.ts:.6f}s · {msg.protocol}",
@@ -230,6 +232,11 @@ def _hover_text(msg: Message, *, wall_clock: bool = False) -> str:
     ]
     for key, value in msg.detail.items():
         if key.startswith("cause_"):
+            continue
+        # 「身分是跟載體借的」預設要說 —— 使用者有權知道歸戶的依據。
+        # 但它對已經熟悉這份擷取的人是雜訊，所以可以關（D4，`--no-identity-source`）。
+        # **關掉的只是顯示，不是判定** —— 身分鍵照常參與關聯，流程切分不受影響。
+        if key == IDENTITY_SOURCE_KEY and not show_identity_source:
             continue
         lines.append(f"{key}: {value}")
     return "\n".join(lines)
@@ -249,7 +256,11 @@ def _fmt_wall(epoch: float) -> str:
 
 
 def _diagram_svg(
-    flow: Flow, messages: list[Message], *, wall_clock: bool = False
+    flow: Flow,
+    messages: list[Message],
+    *,
+    wall_clock: bool = False,
+    show_identity_source: bool = True,
 ) -> str:
     lanes = _lanes(messages)
     index = {e.label(): i for i, e in enumerate(lanes)}
@@ -307,7 +318,7 @@ def _diagram_svg(
 
         out.append(
             f'<g class="row {kind} {stripe} p-{proto}">'
-            f"<title>{esc(_hover_text(msg, wall_clock=wall_clock))}</title>"
+            f"<title>{esc(_hover_text(msg, wall_clock=wall_clock, show_identity_source=show_identity_source))}</title>"
         )
         # 整列的 hover 感應區 + 失敗底色。放最前面，才不會蓋住線與字。
         out.append(
@@ -653,6 +664,7 @@ def render_report(
     prefilter: object | None = None,
     auto_decode: object | None = None,
     max_messages: int = 300,
+    show_identity_source: bool = True,
 ) -> str:
     """產生完整的一份 HTML 報告。回傳整份文件的字串。
 
@@ -737,7 +749,11 @@ def render_report(
             f'<span class="badge {state}">{badge}</span>'
             f'<span class="flow-count">{len(flow.messages)} 則訊息</span></div>'
         )
-        parts.append(f'<div class="flow-scroll">{_diagram_svg(flow, shown)}</div>')
+        parts.append(
+            f'<div class="flow-scroll">'
+            f'{_diagram_svg(flow, shown, show_identity_source=show_identity_source)}'
+            f'</div>'
+        )
         if dropped:
             # 截斷一定要在報告裡講（Rule 12）—— 靜默砍尾會讓讀報告的人
             # 以為自己看到了完整流程。

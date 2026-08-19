@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from telcoshark.extract import Frame, first
+from telcoshark.extract import to_int as _to_int
 from telcoshark.identity import connection_scope, globally_unique, scoped
 from telcoshark.model import Endpoint, IdKey, IdKind, Message
 
@@ -67,17 +68,6 @@ _TYPE_HEADERS = 1
 
 #: 4xx/5xx 視為失敗。SBI 的錯誤語意就靠 HTTP 狀態碼（TS 29.500 §5.2.7）。
 _FAILURE_STATUS_FLOOR = 400
-
-
-def _to_int(value: Any) -> int | None:
-    value = first(value)
-    if value is None:
-        return None
-    text = str(value).strip()
-    try:
-        return int(text, 16) if text.lower().startswith("0x") else int(text)
-    except ValueError:
-        return None
 
 
 def _supi_from_identifier(token: str) -> str | None:

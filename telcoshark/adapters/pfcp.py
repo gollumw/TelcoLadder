@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from telcoshark.extract import Frame, first
+from telcoshark.extract import to_int as _to_int
 from telcoshark.identity import connection_scope, scoped
 from telcoshark.model import Endpoint, IdKey, IdKind, Message
 
@@ -70,17 +71,6 @@ _CAUSE_ACCEPTED = 1
 #: 每一個 Session Establishment Request 都填 0，拿它建 key 會把所有
 #: 不相干用戶的 N4 工作階段併成同一條流程 —— 而圖看起來完全合理。
 _UNKNOWN_SEID = 0
-
-
-def _to_int(value: Any) -> int | None:
-    value = first(value)
-    if value is None:
-        return None
-    text = str(value).strip()
-    try:
-        return int(text, 16) if text.lower().startswith("0x") else int(text)
-    except ValueError:
-        return None
 
 
 def _seids(block: dict[str, Any]) -> set[int]:

@@ -113,6 +113,17 @@ def is_flow_worthy(kinds: "frozenset[IdKind] | set[IdKind]") -> bool:
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。
 IdKey = tuple[IdKind, str]
 
+#: `Message.detail` 裡記載「這則訊息的訂戶身分是跟誰借來的」的鍵。
+#:
+#: 有些訊息自己認不出是誰 —— 例如 SBI 夾帶的下行 NAS，內容裡沒有任何識別碼，
+#: 身分完全來自載體（HTTP/2 stream 與同層的 IMSI）。**「這則訊息屬於某訂戶」
+#: 與「我們是怎麼知道的」是兩回事**，而後者決定了使用者要不要相信前者。
+#:
+#: adapter 一律記錄它（那是資料）；要不要顯示由呈現層決定 ——
+#: `render_html.render_report(show_identity_source=…)`。常數放在這裡是因為
+#: 兩邊都要用，而 adapter 不該 import render 層。
+IDENTITY_SOURCE_KEY = "身分來源"
+
 
 @dataclass(frozen=True, slots=True)
 class Endpoint:

@@ -117,6 +117,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
                 prefilter=result.prefilter,
                 auto_decode=result.auto_decode,
                 max_messages=args.max_messages,
+                show_identity_source=not args.no_identity_source,
             ),
             encoding="utf-8",
         )
@@ -213,6 +214,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument(
         "--no-frames", action="store_true", help="不在箭頭上標封包編號"
+    )
+    analyze.add_argument(
+        "--no-identity-source", action="store_true",
+        help="hover 時不顯示「身分來源」。有些訊息（例如 SBI 夾帶的下行 NAS）"
+             "自己認不出是誰，訂戶身分是跟載體借的；預設會講出來。"
+             "**關掉的只是顯示** —— 身分照常參與關聯，流程切分不受影響。",
     )
     analyze.add_argument(
         "--flow", action="store_true",

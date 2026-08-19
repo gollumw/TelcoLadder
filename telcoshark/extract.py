@@ -95,8 +95,17 @@ def first(value: Any) -> Any:
     return value
 
 
-def _to_int(value: Any) -> int | None:
-    """tshark 的數值欄位一律是字串，且可能是 0x 開頭的十六進位。"""
+def to_int(value: Any) -> int | None:
+    """tshark 的數值欄位一律是字串，且可能是 0x 開頭的十六進位。
+
+    **全專案唯一的一份。** 2026-08-19 之前四個 adapter 各自複製了一份，
+    而它們與這一份**不完全相同**：少了下面那個 `isinstance(value, int)`
+    短路。對整數輸入兩者同值，但 `-T ek` 是 JSON，欄位可能是布林 ——
+    那時這一份回 `1`／`0`，複製版回 `None`（`str(True)` → `ValueError`）。
+
+    整併時採用這一份（超集），差異由 `test_to_int_accepts_bool` 明確釘住 ——
+    行為改變要是寫下來的，不是順手發生的。
+    """
     value = first(value)
     if value is None:
         return None
@@ -107,6 +116,10 @@ def _to_int(value: Any) -> int | None:
         return int(text, 16) if text.lower().startswith("0x") else int(text)
     except ValueError:
         return None
+
+
+#: 舊名保留給 extract.py 內部既有呼叫端，不對外。
+_to_int = to_int
 
 
 def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None]:
