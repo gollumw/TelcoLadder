@@ -285,7 +285,7 @@ export function SessionAnalysisView({
                   協定：<span className="text-violet-300">{hoveredPacket.protocol}</span> · {hoveredPacket.length} bytes
                 </p>
                 <p className="truncate text-slate-500">
-                  {hoveredPacket.srcIp}:{hoveredPacket.srcPort} → {hoveredPacket.dstIp}:{hoveredPacket.dstPort}
+                  {hoveredPacket.srcPort ? `${hoveredPacket.srcIp}:${hoveredPacket.srcPort}` : hoveredPacket.srcIp} → {hoveredPacket.dstPort ? `${hoveredPacket.dstIp}:${hoveredPacket.dstPort}` : hoveredPacket.dstIp}
                 </p>
               </div>
             )}
@@ -319,7 +319,11 @@ export function SessionAnalysisView({
                   <span className="text-slate-600">· {selectedEvent.interfaceName}</span>
                   {selectedEvent.causeText && <span className="text-rose-400">· {selectedEvent.causeText}</span>}
                 </div>
-                <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
+                {selectedPacket.decodeTree ? (
+                  <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
+                ) : (
+                  <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>
+                )}
               </>
             ) : (
               <p className="py-6 text-center text-xs text-slate-600">選一個信令事件以檢視解碼內容</p>

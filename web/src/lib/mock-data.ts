@@ -1105,7 +1105,7 @@ const packetSeeds: PacketSeed[] = [
 
 const rawPackets: RawPacket[] = packetSeeds.map((seed) => ({
   ...seed,
-  decodeTree: assignByteRanges(seed.decodeTree, 0, seed.length),
+  decodeTree: assignByteRanges(seed.decodeTree ?? [], 0, seed.length),  // decodeTree 在型別上已改為選用（真實資料是懶載入的）；手寫的 seed 一律有
   hexDump: generateHexDump(seed.frameNumber, seed.length),
 }));
 

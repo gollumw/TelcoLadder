@@ -259,9 +259,21 @@ def _event_json(event, message_by_frame: dict) -> dict:
     return payload
 
 
-def _row_json(row) -> dict:
+def _row_json(row, analysis) -> dict:
+    """一條 session 的摘要，**外加它涵蓋哪些 frame**。
+
+    `frames` / `failure_frames` 是給封包表用的：React 介面要在每一列標出
+    「這格屬於哪個訂戶」與「這格是不是失敗」，而那兩件事只有這裡知道。
+
+    放在這裡而不是讓前端逐 flow 再問一次 `/flow?id=N` —— 那是 N 個請求，
+    而這份資料本來就已經算好了。長度以**訊息數**為界（不是封包數），
+    所以不會隨擷取檔大小爆炸。
+    """
+    messages = analysis.flows[row.flow_id].messages
     return {
         "id": row.flow_id,
+        "frames": sorted({m.frame for m in messages}),
+        "failure_frames": sorted({m.frame for m in messages if m.is_failure}),
         "title": row.title,
         "kinds": row.kinds,
         "start": row.start,
@@ -328,7 +340,7 @@ def flows_json(
             "unanswered": sum(r.unanswered for r in rows),
             "light": max((r.light for r in rows),
                          key=lambda l: {"green": 0, "amber": 1, "red": 2}[l]),
-            "sessions": [_row_json(r) for r in rows],
+            "sessions": [_row_json(r, analysis) for r in rows],
         })
 
     payload = {

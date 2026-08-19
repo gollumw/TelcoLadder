@@ -174,3 +174,44 @@ def test_subscriber_merge_order_is_chronological(multi_session: Session) -> None
 
 def test_subscriber_index_out_of_range(multi_session: Session) -> None:
     assert "error" in subscriber_json(multi_session, 999)
+
+
+def test_session_rows_carry_their_frames(multi_session: Session) -> None:
+    """每條 session 要帶 frame 清單與失敗的 frame。
+
+    React 的封包表要在每一列標「這格屬於哪個訂戶」與「這格是不是失敗」，
+    而那兩件事只有工作階段表知道。放在這裡是為了讓前端**一次**就拿到，
+    不是逐 flow 再問 N 次 `/flow?id=N`。
+
+    長度以訊息數為界（不是封包數），所以不會隨擷取檔大小爆炸。
+    """
+    payload = flows_json(multi_session)
+    assert payload["ready"]
+
+    analysis = multi_session.analysis
+    for sub in payload["subscribers"]:
+        for row in sub["sessions"]:
+            messages = analysis.flows[row["id"]].messages
+            assert row["frames"] == sorted({m.frame for m in messages})
+            assert row["failure_frames"] == sorted(
+                {m.frame for m in messages if m.is_failure}
+            )
+            # 失敗的 frame 一定是這條 session 的 frame 之一 —— 不變量，
+            # 錯了代表兩個清單來自不同的來源。
+            assert set(row["failure_frames"]) <= set(row["frames"])
+
+
+def test_failure_frames_match_the_reported_failure_count(multi_session: Session) -> None:
+    """`failures` 這個數字與 `failure_frames` 必須說同一件事。
+
+    兩個數字對不上是最典型的「摘要與明細分家」—— 使用者看到「3 則失敗」
+    卻只找得到 2 格，而沒有任何一層會報錯。
+    """
+    payload = flows_json(multi_session)
+    for sub in payload["subscribers"]:
+        for row in sub["sessions"]:
+            analysis = multi_session.analysis
+            failing = [m for m in analysis.flows[row["id"]].messages if m.is_failure]
+            assert row["failures"] == len(failing)
+            # 一格封包可以帶多則訊息，所以去重後的格數 ≤ 失敗訊息數。
+            assert len(row["failure_frames"]) <= row["failures"]

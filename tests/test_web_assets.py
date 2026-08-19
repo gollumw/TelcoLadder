@@ -8,11 +8,12 @@ app「看起來一樣」是主觀的、慢的、而且沒有回歸保護；比�
 參照點**凍結在那個 commit** —— TelcoShark 之後會繼續當設計實驗場改動，
 比對活的 3006 是追移動靶。
 
-> **Phase 2 起分岔了一個檔，但這條測試沒有退休。** 原本的計畫是整條退休，
-> 實際做下來範圍比預期精確得多：抽出 DataSource 介面只動到
-> `SessionAnalyzer.tsx` 那一行接縫，其餘 8 檔仍然逐位元組相同。整組退休會讓
-> 「那 8 個有沒有被動過」變成無人看管 —— **不變量在哪裡失效要講精確，
-> 不是整組放棄**。分岔的那個檔改由 `diverged` 記錄，並且照樣有雜湊釘著。
+> **Phase 2–3 陸續分岔了 5 個檔，但這條測試沒有退休。** 原本的計畫是整條
+> 退休；實際做下來範圍精確得多，而且每一次分岔都有具體理由（接真實資料
+> 必須放寬型別，否則只能靠轉型或填佔位值說謊）。剩下 4 檔仍逐位元組相同，
+> 繼續由這條守著。整組退休會讓「那 4 個有沒有被動過」變成無人看管 ——
+> **不變量在哪裡失效要講精確，不是整組放棄**。分岔的檔改由 `diverged`
+> 記錄，**而且照樣釘雜湊**：有意的分岔不等於之後誰都能隨便改。
 
 **② Tailwind 的 class 沒有在建置時靜默消失。** Tailwind 只產出它在 `content`
 glob 掃到的 class。glob 寫錯（例如沿用 Next 的 `./app/**` 而目錄已經是 `./src/**`）
@@ -66,6 +67,7 @@ _OURS = {
     "src/data/source.ts",
     "src/data/mockSource.ts",
     "src/data/apiSource.ts",
+    "src/data/mapIndex.ts",
 }
 
 
@@ -208,18 +210,33 @@ def test_unregistered_names_are_refused(name: str) -> None:
     assert static_body(name) is None
 
 
-def test_api_source_fails_loudly_instead_of_returning_empty() -> None:
-    """**Phase 3 沒接上時要用拋的，不能回一包空資料。**
+def test_empty_data_is_always_paired_with_a_notice() -> None:
+    """**空陣列可以，但必須有人講出那是「還沒去拿」。**
 
-    回空的話畫面看起來完全正常運作，只是「這份擷取什麼都沒有」——
-    那是 CLAUDE.md §4 那張表裡最難除錯的一類。這條用原始碼斷言守住，
-    因為它是這一層唯一真正重要的行為。
+    Phase 3 只接了封包與身分；`callFlowEvents` / `correlationEntries` 仍回空。
+    空陣列在 UI 上長得跟「這份擷取真的沒有」一模一樣 —— Session Analysis 會
+    顯示「此 Domain 目前沒有信令事件」，而那句話是錯的。**錯的解釋比沒有解釋
+    更糟**，所以來源要自己宣告 `notice`，外層把它常駐顯示。
+
+    這條用原始碼斷言守住，因為它是這一層唯一真正重要的行為。等 Phase 3 全部
+    接完、不再有空陣列時，這條測試才該退休 —— 而且要留紀錄。
     """
     src = (_WEB / "src" / "data" / "apiSource.ts").read_text(encoding="utf-8")
-    assert "throw new NotConnectedError" in src, "apiSource 必須拋錯"
-    # 不得出現「回一包空的」那種寫法
-    for empty in ("return { sessionIdentities: []", "return {sessionIdentities:[]"):
-        assert empty not in src, "apiSource 不得靜默回空資料"
+    returns_empty = "callFlowEvents: []" in src or "correlationEntries: []" in src
+    if returns_empty:
+        assert "notice:" in src, (
+            "apiSource 回了空陣列卻沒有宣告 notice —— 使用者會以為那份擷取真的"
+            "沒有信令事件。"
+        )
+    # 完全拿不到資料時仍然要用拋的，不能回一包空的假裝正常。
+    assert "throw new NotConnectedError" in src
+
+
+def test_the_shell_renders_the_notice() -> None:
+    """`notice` 要真的被顯示，不是宣告了就算。"""
+    app = (_WEB / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert "source.notice" in app, "App.tsx 沒有顯示來源的 notice"
+
 
 
 def test_the_only_data_seam_is_the_source_layer() -> None:

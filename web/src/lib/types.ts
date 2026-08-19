@@ -30,17 +30,28 @@ export interface RawPacket {
   timestamp: string; // ISO-8601 with microseconds
   epochMicroseconds: number;
   srcIp: string;
-  srcPort: number;
+  /** 傳輸層的埠。**沒有傳輸層就是 undefined**（ARP／ICMP）——
+   *  用 0 當佔位會讓下游分不出「真的是 0」與「沒看到」。 */
+  srcPort?: number;
   dstIp: string;
-  dstPort: number;
-  protocol: "NGAP" | "NAS-5GS" | "HTTP2/JSON" | "PFCP" | "GTP-U" | "DNS" | "NTP" | "ARP";
+  dstPort?: number;
+  /** Wireshark 的 Protocol 顯示欄。**接真實資料後不能是封閉列舉** ——
+   *  實際值是 `NGAP/NAS-5GS`、`SCTP`、`TCP` 這類任意字串，由 tshark 的
+   *  呈現決定且會隨版本改寫。原本的 8 值 union 是 mock 階段的產物。 */
+  protocol: string;
   length: number;
   info: string;
-  domain: TelecomDomain;
+  /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——
+   *  背景雜訊（DNS／NTP／ARP）本來就不屬於任何一個領域。 */
+  domain?: TelecomDomain;
   correlatedSupi?: string;
   status: PacketStatus;
-  decodeTree: ProtocolNode[];
-  hexDump: string; // continuous lowercase hex string, 2 chars per byte
+  /** 解碼樹。**接真實資料後是懶載入的** —— 一份擷取幾十萬格，不可能
+   *  預先全解。還沒取到時是 undefined，UI 要說「載入中」而不是畫一棵空樹。 */
+  decodeTree?: ProtocolNode[];
+  /** 連續的小寫 hex，每 byte 兩個字元。同樣是懶載入；
+   *  **後端目前還沒有 hex 輸出**，所以真實資料上一律 undefined。 */
+  hexDump?: string;
 }
 
 export interface CallFlowEvent {
@@ -52,7 +63,9 @@ export interface CallFlowEvent {
   toNode: NetworkNode;
   messageName: string;
   interfaceName: string; // N1/N2/N4/N11/N12/N3 — kept for ladder labeling alongside domain
-  domain: TelecomDomain;
+  /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——
+   *  背景雜訊（DNS／NTP／ARP）本來就不屬於任何一個領域。 */
+  domain?: TelecomDomain;
   status: PacketStatus;
   summary: string;
   /** Only for status === "ERROR": human-readable cause, annotated next to the ladder arrow. */

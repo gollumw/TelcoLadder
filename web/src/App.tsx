@@ -69,5 +69,16 @@ export default function App() {
     );
   }
 
-  return <SessionAnalyzer data={data} />;
+  return (
+    <>
+      {source.notice && (
+        // 常駐橫幅，不是可關閉的提示 —— 使用者每一眼看到的畫面都少了東西，
+        // 那件事不該只在載入時說一次。
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+          {source.notice}
+        </div>
+      )}
+      <SessionAnalyzer data={data} />
+    </>
+  );
 }

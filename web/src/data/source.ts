@@ -52,6 +52,14 @@ export interface Dataset {
 export interface DataSource {
   /** 給人看的名字，出現在載入中與錯誤訊息裡。 */
   readonly label: string;
+  /**
+   * 這個來源**還給不出來**的東西，一句話說清楚。
+   *
+   * 沒接的欄位一律回空陣列，而空陣列在 UI 上長得跟「真的沒有」一模一樣 ——
+   * Session Analysis 會顯示「此 Domain 目前沒有信令事件」，而那句話是錯的。
+   * **錯的解釋比沒有解釋更糟**，所以這裡讓來源自己講。
+   */
+  readonly notice?: string;
   load(): Promise<Dataset>;
 }
 

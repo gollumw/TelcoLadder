@@ -100,7 +100,10 @@ export function DataMiningView({
   }, [selectedFrame]);
 
   const selectedPacket = packets.find((p) => p.frameNumber === selectedFrame) ?? filtered[0] ?? null;
-  const selectedNode = selectedPacket && selectedNodeId ? findNodeById(selectedPacket.decodeTree, selectedNodeId) : null;
+  const selectedNode =
+    selectedPacket?.decodeTree && selectedNodeId
+      ? findNodeById(selectedPacket.decodeTree, selectedNodeId)
+      : null;
 
   function handleTargetSearch() {
     const supi = findSupiByTarget(identities, correlationEntries, targetType, targetValue);
@@ -283,10 +286,10 @@ export function DataMiningView({
                     </td>
                     <td className="px-2 py-1 text-slate-400">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
                     <td className="px-2 py-1 text-slate-300">
-                      {p.srcIp}:{p.srcPort}
+                      {p.srcPort ? `${p.srcIp}:${p.srcPort}` : p.srcIp}
                     </td>
                     <td className="px-2 py-1 text-slate-300">
-                      {p.dstIp}:{p.dstPort}
+                      {p.dstPort ? `${p.dstIp}:${p.dstPort}` : p.dstIp}
                     </td>
                     <td className="px-2 py-1 text-violet-300">{p.protocol}</td>
                     <td className="px-2 py-1 text-slate-400">{p.length}</td>
@@ -331,7 +334,12 @@ export function DataMiningView({
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet Details</p>
           {selectedPacket ? (
-            <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+            selectedPacket.decodeTree ? (
+              <ProtocolTree nodes={selectedPacket.decodeTree} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+            ) : (
+              // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
+              <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>
+            )
           ) : (
             <p className="py-6 text-center text-xs text-slate-600">選一個封包以檢視解碼樹</p>
           )}
@@ -339,7 +347,13 @@ export function DataMiningView({
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bytes</p>
           {selectedPacket ? (
-            <HexDump hex={selectedPacket.hexDump} highlightRange={selectedNode?.byteRange ?? null} />
+            selectedPacket.hexDump ? (
+              <HexDump hex={selectedPacket.hexDump} highlightRange={selectedNode?.byteRange ?? null} />
+            ) : (
+              // 後端目前沒有 hex 輸出（GUI Phase 3 的待辦）。空白比假的好，
+              // 但要說出是「還沒做」而不是「這格沒有位元組」。
+              <div className="p-3 text-xs text-slate-500">此來源尚未提供原始位元組</div>
+            )
           ) : (
             <p className="py-6 text-center text-xs text-slate-600">選一個封包以檢視 Hex Dump</p>
           )}
