@@ -54,6 +54,8 @@ VIEWER_ROUTES = [
     ("GET", "/api/whatever/identities"),
     ("GET", "/api/whatever/callflow"),
     ("GET", "/api/whatever/correlation"),
+    ("GET", "/api/whatever/decode-as"),
+    ("POST", "/api/whatever/decode-as"),
     ("GET", "/api/whatever/flows"),
     ("GET", "/api/whatever/flow"),
     ("GET", "/api/whatever/subscriber"),
@@ -76,7 +78,10 @@ def test_the_route_table_above_covers_every_api_action() -> None:
     from pathlib import Path
 
     source = Path(__file__).resolve().parents[1] / "telcoshark" / "web.py"
-    actions = set(re.findall(r'action == "([a-z_]+)"', source.read_text(encoding="utf-8")))
+    # **字元類要含連字號。** 第一版寫成 `[a-z_]+`，於是 `decode-as` 這條
+    # 路由被整個跳過而測試綠燈 —— 一個守衛自己漏掉的東西，症狀跟它要防的
+    # 完全一樣：安全測試對那條路由空轉通過。
+    actions = set(re.findall(r'action == "([a-z_-]+)"', source.read_text(encoding="utf-8")))
     assert actions, "抓不到任何 action —— 這條測試的假設（web.py 的寫法）已經變了"
 
     listed = {route.rsplit("/", 1)[1] for _, route in VIEWER_ROUTES if route.startswith("/api/")}

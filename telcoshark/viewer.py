@@ -618,6 +618,28 @@ def correlation_json(session: Session, supi: str | None = None) -> dict:
     return {"ready": True, "supi": supi, "sessions": [s.to_json() for s in sessions]}
 
 
+def decode_as_json(session: Session) -> dict:
+    """目前生效中的 decode-as 規則，**每條都標明哪來的**。
+
+    分不出來源的後果是使用者看到一條錯的規則卻不知道能不能刪，或者以為
+    某條自動偵測的規則會一直存在（它只對這份擷取檔有效）。
+    """
+    from telcoshark.adapters import default_decode_as
+    from telcoshark.decodeas import config_path, effective
+
+    with session.lock:
+        auto = session.auto_decode_as
+        user = session.user_decode_as
+        ready = session.progress.stage in ("done", "error")
+    return {
+        "rules": [r.to_json() for r in effective(default_decode_as(), auto, user)],
+        "config_path": str(config_path()),
+        # 重跑期間不要讓使用者再按一次 —— 第二趟會與第一趟搶同一份檔。
+        "ready": ready,
+        "relax_seq": session.relax_seq,
+    }
+
+
 def app_page(session: Session, *, idle_ttl: float) -> str:
     """React 介面（`/app/<sid>`）的外殼。
 

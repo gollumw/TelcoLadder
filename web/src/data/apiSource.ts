@@ -48,6 +48,8 @@ import type {
   CallFlowParticipant,
   DataSource,
   Dataset,
+  DecodeAsRule,
+  DecodeAsState,
   PacketPage,
 } from "./source";
 
@@ -74,7 +76,10 @@ async function getJson<T>(path: string): Promise<T> {
  * 表單 POST。後端的 `/refilter` 與 `/select` 吃的是 `<form>` 編碼而不是 JSON
  * （它們在舊檢視器上要能在關掉 JS 的情況下運作）。
  */
-async function postForm<T>(path: string, fields: Record<string, string>): Promise<T> {
+async function postForm<T>(
+  path: string,
+  fields: Record<string, string> | URLSearchParams,
+): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -244,6 +249,20 @@ export function apiSource(sid: string | null): DataSource {
         participants: body.participants ?? [],
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
       };
+    },
+
+    async loadDecodeAs(): Promise<DecodeAsState> {
+      const body = await getJson<{ rules: DecodeAsRule[]; config_path: string }>(
+        `/api/${need()}/decode-as`,
+      );
+      return { rules: body.rules ?? [], configPath: body.config_path };
+    },
+
+    async applyDecodeAs(rules: string[]): Promise<void> {
+      // 重複的 `rule` 欄位 —— 後端用 `form.get("rule", [])` 收成 list。
+      const form = new URLSearchParams();
+      rules.forEach((r) => form.append("rule", r));
+      await postForm(`/api/${need()}/decode-as`, form);
     },
 
     async loadFrameBytes(frame: number): Promise<string | null> {

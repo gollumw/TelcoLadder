@@ -26,6 +26,10 @@ export default function SessionAnalyzer({
   filterError,
   callFlow,
   onRequestCallFlow,
+  decodeAs,
+  decodeAsError,
+  decodeAsBusy,
+  onApplyDecodeAs,
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
@@ -42,6 +46,10 @@ export default function SessionAnalyzer({
   /** 目前聚焦訂戶的梯形圖。null＝還沒取到。 */
   callFlow: import("@/data/source").CallFlow | null;
   onRequestCallFlow: (supi: string) => void;
+  decodeAs: import("@/data/source").DecodeAsState;
+  decodeAsError: string | null;
+  decodeAsBusy: boolean;
+  onApplyDecodeAs: (rules: string[]) => void;
   /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
   bytesByFrame?: Record<number, string | null>;
   /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
@@ -193,6 +201,10 @@ export default function SessionAnalyzer({
             onNeedRows={onNeedRows}
             onApplyDisplayFilter={onApplyDisplayFilter}
             filterError={filterError}
+            decodeAs={decodeAs}
+            decodeAsError={decodeAsError}
+            decodeAsBusy={decodeAsBusy}
+            onApplyDecodeAs={onApplyDecodeAs}
             bytesByFrame={bytesByFrame}
             onRequestBytes={onRequestBytes}
             treeByFrame={treeByFrame}

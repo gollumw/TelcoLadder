@@ -68,6 +68,9 @@ _OURS = {
     "src/data/mockSource.ts",
     "src/data/apiSource.ts",
     "src/data/mapIndex.ts",
+    # 不是移植的 —— 設計實驗場沒有這個元件。真實擷取檔才需要「這個埠上
+    # 跑的是什麼協定」這個問題，mock 資料永遠解得開。
+    "src/components/DecodeAsPanel.tsx",
 }
 
 

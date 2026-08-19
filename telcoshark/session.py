@@ -31,6 +31,7 @@ from pathlib import Path
 
 from telcoshark.adapters import default_decode_as
 from telcoshark.decode import DecodeCache
+from telcoshark.decodeas import load_user_rules
 from telcoshark.framebytes import FrameBytesCache
 from telcoshark.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
 
@@ -181,6 +182,19 @@ class Session:
     `probe` 判定要加規則（例如 SBI 跑在非標準埠上），這裡會被換成**解剖
     實際採用的那一組**並重建索引，見 `_index_into`。"""
 
+    user_decode_as: tuple[str, ...] = ()
+    """使用者自訂的 decode-as 規則（`telcoshark/decodeas.py`）。
+
+    **與 `decode_as` 分開存**：後者是「這次實際套給 tshark 的整組」，會被
+    自動偵測的結果覆寫；這裡是「使用者說的」，重跑之後仍然要在。混成一個
+    欄位的話，第二次自動調整會把使用者的規則洗掉。
+
+    順序上永遠排最後 —— tshark 同一個選擇器取最後一條，所以使用者自己說的
+    蓋得過工具猜的。"""
+
+    auto_decode_as: tuple[str, ...] = ()
+    """這次解剖自動偵測到的額外規則。只對這份擷取檔有效，不存檔。"""
+
     relax_seq: bool = False
     """關掉 tshark 的 TCP 序號分析。同樣由解剖的判定回寫。
 
@@ -263,7 +277,8 @@ class SessionStore:
                           # 於是連 adapter 自己宣告的 DECODE_AS（例如 SBI 的
                           # 7777 埠）都沒有生效 —— 那不是「還沒 probe」，
                           # 是純粹漏了。
-                          decode_as=default_decode_as())
+                          user_decode_as=load_user_rules(),
+                          decode_as=(*default_decode_as(), *load_user_rules()))
         with self._lock:
             self._sessions[session.sid] = session
         self._ensure_reaper()
@@ -424,7 +439,11 @@ def _index_into(session: Session) -> None:
     # 索引 50.9 秒、解剖 71.6 秒，併行不會比循序快多少卻會拖慢前者。
     from telcoshark.pipeline import analyse
 
-    result = analyse(session.pcap, wire=session.wire)
+    # 使用者的規則要參與解剖本身，不能只影響封包清單 —— 否則訊息數、
+    # 訂戶、梯形圖仍然是舊的，而清單看起來已經解開了。
+    result = analyse(
+        session.pcap, decode_as=session.user_decode_as, wire=session.wire
+    )
     with session.lock:
         session.analysis = result
 
@@ -441,10 +460,14 @@ def _index_into(session: Session) -> None:
     # 實測 `ue_trace`：356 格裡 169 格（47%）是這樣。
     adjusted = result.auto_decode
     if adjusted is not None:
-        rules = (*default_decode_as(), *adjusted.decode_as)
+        # 順序與 `pipeline._run` 的重跑逐字一致：default → auto → user。
+        # 兩處不一致的話，同一份檔會因為「有沒有觸發自動偵測」而得到不同
+        # 的解碼結果 —— 而兩個結果各自都看起來很正常。
+        rules = (*default_decode_as(), *adjusted.decode_as, *session.user_decode_as)
         if (rules, adjusted.relaxed_seq) != (session.decode_as, session.relax_seq):
             with session.lock:
                 session.decode_as = rules
+                session.auto_decode_as = tuple(adjusted.decode_as)
                 session.relax_seq = adjusted.relaxed_seq
                 session.progress.stage = "index"
                 # 解碼方式變了，快取裡那些是用舊參數解出來的。

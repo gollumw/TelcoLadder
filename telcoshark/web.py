@@ -47,13 +47,16 @@ from telcoshark.extract import ExtractError
 from telcoshark.pipeline import Prefilter, analyse
 from telcoshark.prefilter import PrefilterError, TimeWindow
 from telcoshark.render_html import PAGE_CSS, esc, render_report
-from telcoshark.decode import DecodeError
-from telcoshark.framebytes import FrameBytesError
+from telcoshark.adapters import default_decode_as
+from telcoshark.decode import DecodeCache, DecodeError
+from telcoshark.decodeas import DecodeAsError, save_user_rules, validate
+from telcoshark.framebytes import FrameBytesCache, FrameBytesError
 from telcoshark.packets import PacketColumnsUnavailable, matching_frames
 from telcoshark.session import (
     IDLE_TTL,
     SessionStore,
     make_session_file,
+    Progress,
     start_index,
     sweep_stray_files,
 )
@@ -64,6 +67,7 @@ from telcoshark.viewer import (
     bytes_json,
     callflow_json,
     correlation_json,
+    decode_as_json,
     decode_json,
     identities_json,
     select_identity,
@@ -318,6 +322,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(
                 correlation_json(session, (query.get("supi") or [""])[0] or None)
             )
+        elif not post and action == "decode-as":
+            self._send_json(decode_as_json(session))
+        elif post and action == "decode-as":
+            self._handle_decode_as(session)
         elif not post and action == "identities":
             self._send_json(identities_json(session, q=(query.get("q") or [""])[0]))
         elif post and action == "select":
@@ -343,6 +351,55 @@ class _Handler(BaseHTTPRequestHandler):
             return int((query.get(name) or [""])[0])
         except ValueError:
             return default
+
+    def _handle_decode_as(self, session) -> None:
+        """換掉使用者的 decode-as 規則，存檔，然後**整份重跑**。
+
+        重跑而不是只重建封包清單：規則會改變訊息邊界，訂戶、梯形圖、關聯
+        矩陣全都要跟著變。只重建清單的話，清單解開了而下面三個面板還是舊
+        的 —— 兩邊各自都很合理，合起來才看得出矛盾（這個 bug 這個專案已經
+        踩過一次，見 `session._index_into` 的註解）。
+
+        規則先逐條給 tshark 驗過才存 —— 存進去一條壞規則會讓**之後每一份**
+        擷取檔都開不起來，而使用者多半不知道那個設定檔在哪。
+        """
+        form = self._read_form()
+        rules = tuple(r.strip() for r in form.get("rule", []) if r.strip())
+        try:
+            for rule in rules:
+                validate(rule, session.pcap, tshark=session.tshark)
+        except DecodeAsError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        except TsharkNotFound as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            save_user_rules(rules)
+        except OSError as exc:
+            # 這個要擋 —— 使用者以為存好了，下次開檔卻沒有那條規則。
+            self._send_json(
+                {"error": f"規則存檔失敗：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            return
+
+        with session.lock:
+            session.user_decode_as = rules
+            session.decode_as = (*default_decode_as(), *rules)
+            session.auto_decode_as = ()
+            session.relax_seq = False
+            session.analysis = None
+            session.flowtable = None
+            session.decode = DecodeCache()
+            session.frame_bytes = FrameBytesCache()
+            session.filter_frames = None
+            session.identity_frames = None
+            session.selected_identity = None
+            session.display_filter = ""
+            session.progress = Progress()
+        start_index(session)
+        self._send_json({"rules": list(rules), "rerunning": True})
 
     def _handle_refilter(self, session) -> None:
         """套用 tshark display filter，重新掃描一次只取 frame 編號。

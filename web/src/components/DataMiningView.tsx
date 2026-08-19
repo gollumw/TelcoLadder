@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Filter, Link2, Search } from "lucide-react";
 import { cn, findSupiByTarget, formatTimeOffset, type DiscoveredSession } from "@/lib/utils";
-import type { PacketPage } from "@/data/source";
+import type { DecodeAsState, PacketPage } from "@/data/source";
+import { DecodeAsPanel } from "./DecodeAsPanel";
 import { ProtocolTree } from "./ProtocolTree";
 import { HexDump } from "./HexDump";
 import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
@@ -66,6 +67,10 @@ export function DataMiningView({
   onDisplayFilterChange,
   onApplyDisplayFilter,
   filterError,
+  decodeAs,
+  decodeAsError,
+  decodeAsBusy,
+  onApplyDecodeAs,
   focusedSupi,
   onFocusSupi,
   onlySessionFilter,
@@ -92,6 +97,10 @@ export function DataMiningView({
    *  每敲一個鍵就掃一次整份擷取檔是不可行的。 */
   onApplyDisplayFilter: (expr: string) => void;
   filterError: string | null;
+  decodeAs: DecodeAsState;
+  decodeAsError: string | null;
+  decodeAsBusy: boolean;
+  onApplyDecodeAs: (rules: string[]) => void;
   focusedSupi: string | null;
   onFocusSupi: (supi: string | null) => void;
   onlySessionFilter: boolean;
@@ -337,6 +346,16 @@ export function DataMiningView({
           )}
         </div>
       </div>
+
+      {/* 解碼方式。放在過濾列與封包清單之間 —— 使用者發現「整片 TCP」
+          的地方就在下面那張表，修它的工具應該就在旁邊。 */}
+      <DecodeAsPanel
+        rules={decodeAs.rules}
+        configPath={decodeAs.configPath}
+        busy={decodeAsBusy}
+        error={decodeAsError}
+        onApply={onApplyDecodeAs}
+      />
 
       {/* Packet List */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60">

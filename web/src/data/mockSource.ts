@@ -91,6 +91,16 @@ export function mockSource(): DataSource {
       focusedSupi = supi;
     },
 
+    async loadDecodeAs() {
+      // mock 是編譯期常數，沒有解碼這回事 —— 但介面要有，不然元件得
+      // 為了 mock 多長一條分支（那條分支永遠沒人在真實資料上走過）。
+      return { rules: [], configPath: "（範例資料沒有設定檔）" };
+    },
+
+    async applyDecodeAs() {
+      throw new Error("範例資料不能改解碼方式 —— 它沒有擷取檔可以重跑。");
+    },
+
     async loadCallFlow(supi: string) {
       const events = mockData.callFlowEvents.filter((e) => e.supi === supi);
       // mock 的參與者順序沿用 `lib/types.ts` 那個 6 值 union 的順序 ——

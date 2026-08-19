@@ -123,6 +123,21 @@ export interface CallFlow {
   uncorrelatedDomains: TelecomDomain[];
 }
 
+/** 一條生效中的 decode-as 規則。`origin` 決定畫面上怎麼標、能不能刪。 */
+export interface DecodeAsRule {
+  rule: string;
+  /** `default`＝adapter 宣告的；`auto`＝這次自動偵測的；`user`＝你設定的。 */
+  origin: string;
+  selector: string;
+  protocol: string;
+}
+
+export interface DecodeAsState {
+  rules: DecodeAsRule[];
+  /** 使用者規則存在哪 —— 畫面要講出來，否則他不知道去哪改或刪。 */
+  configPath: string;
+}
+
 export interface DataSource {
   /** 給人看的名字，出現在載入中與錯誤訊息裡。 */
   readonly label: string;
@@ -168,6 +183,17 @@ export interface DataSource {
    * 可能有幾十萬則，一個訂戶通常是幾十到幾百則。
    */
   loadCallFlow(supi: string): Promise<CallFlow>;
+
+  /** 目前生效中的 decode-as 規則。 */
+  loadDecodeAs(): Promise<DecodeAsState>;
+
+  /**
+   * 換掉使用者的 decode-as 規則並**整份重跑**。
+   *
+   * 規則不合法時丟例外，訊息是 tshark 自己說的 —— 與 display filter
+   * 同一條原則：不自己寫語法檢查。
+   */
+  applyDecodeAs(rules: string[]): Promise<void>;
 
   /**
    * 一格的原始位元組（連續小寫 hex）。**懶載入** —— 一份擷取幾十萬格，

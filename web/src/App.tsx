@@ -18,6 +18,7 @@ import {
   type DataSource,
   type Dataset,
   type CallFlow,
+  type DecodeAsState,
   type PacketPage,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
@@ -53,6 +54,10 @@ export default function App() {
   const [packets, setPackets] = useState<PacketStore | null>(null);
   /** display filter 的語法錯誤。**不是**整頁的錯誤 —— 打錯字不該把畫面清空。 */
   const [filterError, setFilterError] = useState<string | null>(null);
+  const [decodeAs, setDecodeAs] = useState<DecodeAsState>({ rules: [], configPath: "" });
+  const [decodeAsError, setDecodeAsError] = useState<string | null>(null);
+  /** 套用規則後整份重跑中。期間不接受第二次套用 —— 兩趟會搶同一份檔。 */
+  const [rerunning, setRerunning] = useState(false);
   /** 正在取的頁（以 offset 為鍵）。防止同一頁被重複請求。 */
   const inFlight = useRef<Set<number>>(new Set());
   /**
@@ -76,6 +81,9 @@ export default function App() {
         setPackets({
           rows: Object.fromEntries(rows.map((row, i) => [offset + i, row])),
           totals,
+        });
+        void source.loadDecodeAs().then((state) => {
+          if (!cancelled) setDecodeAs(state);
         });
       })
       .catch((err: unknown) => {
@@ -169,6 +177,41 @@ export default function App() {
       void source.focusIdentity(supi).then(reloadPackets).catch(() => {});
     },
     [source, reloadPackets],
+  );
+
+  /**
+   * 換掉解碼規則並整份重跑。
+   *
+   * 重跑之後**所有東西都作廢** —— 封包清單、解碼樹、位元組、梯形圖、
+   * 矩陣全是用舊規則算的。所以這裡不是「更新一部分」，是把整個資料層
+   * 重新載入一次；少清哪一塊，那一塊就會用舊規則的內容繼續顯示。
+   */
+  const applyDecodeAs = useCallback(
+    (rules: string[]) => {
+      setDecodeAsError(null);
+      setRerunning(true);
+      void source
+        .applyDecodeAs(rules)
+        .then(() => source.load())
+        .then((loaded) => {
+          setData(loaded);
+          const { rows, offset, ...totals } = loaded.page;
+          setPackets({
+            rows: Object.fromEntries(rows.map((row, i) => [offset + i, row])),
+            totals,
+          });
+          setBytesByFrame({});
+          setTreeByFrame({});
+          setFlowBySupi({});
+          setFilterError(null);
+          return source.loadDecodeAs().then(setDecodeAs);
+        })
+        .catch((err: unknown) => {
+          setDecodeAsError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => setRerunning(false));
+    },
+    [source],
   );
 
   const requestCallFlow = useCallback(
@@ -290,6 +333,10 @@ export default function App() {
         filterError={filterError}
         callFlow={flowSupi ? (flowBySupi[flowSupi] ?? null) : null}
         onRequestCallFlow={requestCallFlow}
+        decodeAs={decodeAs}
+        decodeAsError={decodeAsError}
+        decodeAsBusy={rerunning}
+        onApplyDecodeAs={applyDecodeAs}
         bytesByFrame={bytesByFrame}
         onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
         treeByFrame={treeByFrame}
