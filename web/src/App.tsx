@@ -6,7 +6,7 @@
  * 不會碰到任何一個 View。
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 import SessionAnalyzer from "@/components/SessionAnalyzer";
@@ -22,6 +22,9 @@ export default function App() {
   const [source] = useState<DataSource>(pickSource);
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  // 已取到的原始位元組。放在這裡而不是元件裡，是為了讓元件維持
+  // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
+  const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +40,22 @@ export default function App() {
       cancelled = true;
     };
   }, [source]);
+
+  const requestBytes = useCallback(
+    (frame: number) => {
+      if (!source.loadFrameBytes) return;
+      // 已經問過就不再問 —— 包含問到 null（那格真的沒有）的情況。
+      setBytesByFrame((current) => {
+        if (frame in current) return current;
+        void source
+          .loadFrameBytes!(frame)
+          .then((hex) => setBytesByFrame((c) => ({ ...c, [frame]: hex })))
+          .catch(() => setBytesByFrame((c) => ({ ...c, [frame]: null })));
+        return { ...current, [frame]: null };
+      });
+    },
+    [source],
+  );
 
   if (error) {
     return (
@@ -78,7 +97,11 @@ export default function App() {
           {source.notice}
         </div>
       )}
-      <SessionAnalyzer data={data} />
+      <SessionAnalyzer
+        data={data}
+        bytesByFrame={bytesByFrame}
+        onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
+      />
     </>
   );
 }

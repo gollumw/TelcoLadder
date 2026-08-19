@@ -48,6 +48,7 @@ from telcoshark.pipeline import Prefilter, analyse
 from telcoshark.prefilter import PrefilterError, TimeWindow
 from telcoshark.render_html import PAGE_CSS, esc, render_report
 from telcoshark.decode import DecodeError
+from telcoshark.framebytes import FrameBytesError
 from telcoshark.packets import PacketColumnsUnavailable, matching_frames
 from telcoshark.session import (
     IDLE_TTL,
@@ -60,6 +61,7 @@ from telcoshark.tshark import TsharkNotFound, find_tshark
 from telcoshark.viewer import (
     CSP,
     app_page,
+    bytes_json,
     decode_json,
     identities_json,
     select_identity,
@@ -267,6 +269,15 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 self._send_json(decode_json(session, frame))
             except DecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif not post and action == "bytes":
+            frame = self._int_param(query, "frame", 0)
+            if frame <= 0:
+                self._send_json({"error": "frame 參數不正確。"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json(bytes_json(session, frame))
+            except FrameBytesError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         elif not post and action == "flows":
             def _float(name: str) -> float | None:

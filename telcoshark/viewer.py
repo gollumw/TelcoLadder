@@ -23,6 +23,7 @@ from __future__ import annotations
 from importlib import resources
 
 from telcoshark.decode import decode_frames, window_around
+from telcoshark.framebytes import frame_bytes
 from telcoshark.identities import (
     availability,
     frames_for,
@@ -166,6 +167,34 @@ def decode_json(session: Session, frame: int) -> dict:
     if cached is None:
         return {"frame": frame, "tree": [], "error": f"擷取檔裡沒有 frame {frame}。"}
     return {"frame": frame, "tree": [n.to_json() for n in cached]}
+
+
+def bytes_json(session: Session, frame: int) -> dict:
+    """一格的原始位元組（連續小寫 hex，每 byte 兩字元）。
+
+    與 `decode_json` 分開是刻意的：解碼樹走 PDML，原始位元組走 `-T json -x`
+    的 `frame_raw`。從 PDML 的欄位值拼回整格位元組要處理偏移、重疊與填充，
+    **拼錯了不會報錯**，只會讓 hex viewer 顯示一份看起來很像封包的東西。
+
+    回應只含 frame 編號與 hex —— tshark 那包 JSON 裡還有整棵解碼樹，
+    不往上傳（比照 `decode_json` 不洩漏擷取檔路徑的同一條紅線）。
+    """
+    cached = session.frame_bytes.get(frame)
+    if cached is None:
+        with session.lock:
+            highest = session.index.rows[-1].number if session.index.rows else None
+            decode_as = session.decode_as
+        found = frame_bytes(
+            session.pcap,
+            window_around(frame, highest=highest),
+            decode_as=decode_as,
+            tshark=session.tshark,
+        )
+        session.frame_bytes.put(found)
+        cached = session.frame_bytes.get(frame)
+    if cached is None:
+        return {"frame": frame, "hex": "", "error": f"擷取檔裡沒有 frame {frame}。"}
+    return {"frame": frame, "hex": cached}
 
 
 def identities_json(session: Session, *, q: str = "") -> dict:

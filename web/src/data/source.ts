@@ -61,6 +61,13 @@ export interface DataSource {
    */
   readonly notice?: string;
   load(): Promise<Dataset>;
+
+  /**
+   * 一格的原始位元組（連續小寫 hex）。**懶載入** —— 一份擷取幾十萬格，
+   * 不可能預先全取。沒有這個能力的來源不用實作（mock 的 hex 是編譯期就
+   * 有的）；取不到就回 null，UI 說「此來源尚未提供」而不是畫一片空白。
+   */
+  loadFrameBytes?(frame: number): Promise<string | null>;
 }
 
 /**

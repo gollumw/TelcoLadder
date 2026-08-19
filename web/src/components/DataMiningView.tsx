@@ -56,6 +56,8 @@ export function DataMiningView({
   onOnlySessionFilterChange,
   selectedFrame,
   onSelectFrame,
+  bytesByFrame,
+  onRequestBytes,
   onCorrelateSession,
 }: {
   packets: RawPacket[];
@@ -68,6 +70,8 @@ export function DataMiningView({
   onlySessionFilter: boolean;
   onOnlySessionFilterChange: (value: boolean) => void;
   selectedFrame: number | null;
+  bytesByFrame?: Record<number, string | null>;
+  onRequestBytes?: (frame: number) => void;
   onSelectFrame: (frame: number) => void;
   onCorrelateSession: (supi: string, frame: number) => void;
 }) {
@@ -100,6 +104,17 @@ export function DataMiningView({
   }, [selectedFrame]);
 
   const selectedPacket = packets.find((p) => p.frameNumber === selectedFrame) ?? filtered[0] ?? null;
+  // hex 優先用資料自帶的（mock 是編譯期就有的），沒有才看懶載入的結果。
+  // `bytesByFrame` 裡有這個鍵但值是 null＝問過了、那格真的沒有。
+  const hexForSelected =
+    selectedPacket?.hexDump ??
+    (selectedPacket ? (bytesByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+
+  // 選到一格才去要它的位元組 —— 一份擷取幾十萬格，不可能預先全取。
+  useEffect(() => {
+    if (selectedPacket && !selectedPacket.hexDump) onRequestBytes?.(selectedPacket.frameNumber);
+  }, [selectedPacket, onRequestBytes]);
+
   const selectedNode =
     selectedPacket?.decodeTree && selectedNodeId
       ? findNodeById(selectedPacket.decodeTree, selectedNodeId)
@@ -347,8 +362,8 @@ export function DataMiningView({
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bytes</p>
           {selectedPacket ? (
-            selectedPacket.hexDump ? (
-              <HexDump hex={selectedPacket.hexDump} highlightRange={selectedNode?.byteRange ?? null} />
+            hexForSelected ? (
+              <HexDump hex={hexForSelected} highlightRange={selectedNode?.byteRange ?? null} />
             ) : (
               // 後端目前沒有 hex 輸出（GUI Phase 3 的待辦）。空白比假的好，
               // 但要說出是「還沒做」而不是「這格沒有位元組」。

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from telcoshark.decode import DecodeCache
+from telcoshark.framebytes import FrameBytesCache
 from telcoshark.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
 
 #: 閒置多久就釋放。15 分鐘是「泡杯咖啡回來還在」與「不要把客戶封包留一整天」
@@ -142,6 +143,9 @@ class Session:
     index: PacketIndex = field(default_factory=PacketIndex)
     progress: Progress = field(default_factory=Progress)
     decode: DecodeCache = field(default_factory=DecodeCache, repr=False)
+    #: 原始位元組的快取。與 `decode` 分開是因為兩者走不同的 tshark 輸出模式
+    #: （PDML vs `-T json -x`），窗口與淘汰各自獨立。
+    frame_bytes: FrameBytesCache = field(default_factory=FrameBytesCache, repr=False)
 
     analysis: object | None = field(default=None, repr=False)
     """完整解剖的結果（`pipeline.Analysis`）。索引跑完後才開始跑，所以會有一段

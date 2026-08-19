@@ -7,7 +7,7 @@
  *   ✅ `correlatedSupi`／`status` ← `/flows` 的 session frame 清單
  *   ✅ `sessionIdentities` ← `/identities`
  *   ⏳ `decodeTree`        懶載入，尚未接（選一格時才該去要）
- *   ❌ `hexDump`           後端還沒有 hex 輸出
+ *   ✅ `hexDump`           ← `/bytes?frame=N`，選一格時才去要
  *   ❌ `callFlowEvents`    需要結構化的 call flow API（目前只回 SVG 字串）
  *   ❌ `correlationEntries` 需要 PDU-session 級的關聯抽取（引擎還沒算）
  *
@@ -71,7 +71,7 @@ export function apiSource(sid: string | null): DataSource {
     label: sid ? `工作階段 ${sid.slice(0, 8)}…` : "（無工作階段）",
 
     notice:
-      "封包清單與訂戶身分已接上真實資料。**Call Flow 與關聯矩陣尚未接** —— 它們需要結構化的 call flow API 與 PDU-session 級的關聯抽取，兩者都還沒做。那兩頁看到的「沒有事件」是「還沒去拿」，不是「這份擷取沒有」。",
+      "封包清單、訂戶身分與原始位元組已接上真實資料。**Call Flow 與關聯矩陣尚未接** —— 它們需要結構化的 call flow API 與 PDU-session 級的關聯抽取，兩者都還沒做。那兩頁看到的「沒有事件」是「還沒去拿」，不是「這份擷取沒有」。",
 
     async load(): Promise<Dataset> {
       if (!sid) {
@@ -115,6 +115,16 @@ export function apiSource(sid: string | null): DataSource {
         callFlowEvents: [],
         correlationEntries: [],
       };
+    },
+
+    async loadFrameBytes(frame: number): Promise<string | null> {
+      if (!sid) return null;
+      const body = await getJson<{ hex: string; error?: string }>(
+        `/api/${sid}/bytes?frame=${frame}`,
+      );
+      // 後端對「擷取檔裡沒有這一格」回空字串加 error。空字串在 hex viewer
+      // 上長得像「這格沒有內容」，所以這裡轉成 null 讓 UI 說得出差別。
+      return body.hex || null;
     },
   };
 }

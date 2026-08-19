@@ -15,7 +15,17 @@ type Mode = "mining" | "session";
 // 移植進來時是 `const { … } = mockData`（靜態 import）。改成 prop 之後這個
 // 元件「吃資料、不取資料」—— 底下 6 個 View 仍然是對四個陣列的純函式運算，
 // Phase 3 換後端不會碰到它們。取資料與載入／失敗狀態由 `App.tsx` 負責。
-export default function SessionAnalyzer({ data }: { data: Dataset }) {
+export default function SessionAnalyzer({
+  data,
+  bytesByFrame,
+  onRequestBytes,
+}: {
+  data: Dataset;
+  /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
+  bytesByFrame?: Record<number, string | null>;
+  /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
+  onRequestBytes?: (frame: number) => void;
+}) {
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   // Data Mining is home (資料母體); Session Analysis is a drill-down (Projection View).
@@ -132,6 +142,8 @@ export default function SessionAnalyzer({ data }: { data: Dataset }) {
             onOnlySessionFilterChange={setOnlySessionFilter}
             selectedFrame={selectedFrame}
             onSelectFrame={setSelectedFrame}
+            bytesByFrame={bytesByFrame}
+            onRequestBytes={onRequestBytes}
             onCorrelateSession={handleCorrelateSession}
           />
         ) : (
