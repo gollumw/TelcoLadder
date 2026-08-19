@@ -65,6 +65,7 @@ from telcoshark.viewer import (
     decode_json,
     identities_json,
     select_identity,
+    effective_matched,
     index_json,
     progress_json,
     static_body,
@@ -304,9 +305,10 @@ class _Handler(BaseHTTPRequestHandler):
             ident = (form.get("identity") or [""])[0]
             if ident == "":
                 with session.lock:
-                    session.keep_frames = None
+                    session.identity_frames = None
                     session.selected_identity = None
-                self._send_json({"matched": len(session.index.rows), "identity": None})
+                # 取消身分不等於取消 display filter —— 後者還在。
+                self._send_json({"matched": effective_matched(session), "identity": None})
                 return
             kind, _, raw = ident.partition(":")
             self._send_json(select_identity(session, kind, raw))
@@ -336,19 +338,19 @@ class _Handler(BaseHTTPRequestHandler):
         if not expr:
             with session.lock:
                 session.display_filter = ""
-                session.keep_frames = None
-            self._send_json({"matched": len(session.index.rows), "display_filter": ""})
+                session.filter_frames = None
+            # 清掉 filter 不等於清掉身分選取 —— 後者還在。
+            self._send_json({"matched": effective_matched(session), "display_filter": ""})
             return
         try:
             frames = matching_frames(session.pcap, expr, decode_as=session.decode_as)
         except PacketColumnsUnavailable as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
-        keep = set(frames)
         with session.lock:
             session.display_filter = expr
-            session.keep_frames = keep
-        self._send_json({"matched": len(keep), "display_filter": expr})
+            session.filter_frames = set(frames)
+        self._send_json({"matched": effective_matched(session), "display_filter": expr})
 
     def _handle_open(self) -> None:
         """貼路徑開檢視器。**零複製** —— 那是使用者自己的檔案。

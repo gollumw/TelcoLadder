@@ -156,8 +156,21 @@ class Session:
     display_filter: str = ""
     """目前套用的 tshark display filter（空字串 = 全部封包）。"""
 
-    keep_frames: set[int] | None = field(default=None, repr=False)
+    filter_frames: set[int] | None = field(default=None, repr=False)
     """display filter 篩出來的 frame 編號。None 代表沒有套 filter。"""
+
+    identity_frames: set[int] | None = field(default=None, repr=False)
+    """選定身分碰過的 frame 編號。None 代表沒有選身分。
+
+    **與 `filter_frames` 分開存，是因為它們是兩件事。** 一個是「找封包」
+    （協定語法），一個是「找人」（身分）——使用者會同時要兩個：
+    鎖定一個用戶，然後只看他的 NGAP。
+
+    這兩個原本共用一個 `keep_frames` 欄位，後寫的覆蓋先寫的。實測
+    5gc-e2e：套 `sctp` 得 22 格，**再加**一個身分條件變成 38 格 ——
+    多一個條件結果反而變多。而且 `/index` 仍回報 `display_filter: 'sctp'`，
+    所以畫面上輸入框寫著過濾式、過濾卻已經不在了。沒有任何一層會說話。
+    """
 
     decode_as: tuple[str, ...] = ()
 
@@ -177,6 +190,24 @@ class Session:
     靠 monkeypatch 環境變數來模擬「找不到 tshark」，全域快取會讓那條測試
     看不到變更。綁在工作階段上剛好 —— 一份擷取檔的生命週期內 tshark 不會變。
     """
+
+    @property
+    def keep_frames(self) -> set[int] | None:
+        """兩個條件都套上之後真正留下來的 frame。**唯讀。**
+
+        None 代表兩個條件都沒設 —— 不篩，不是「篩到零格」。這個差別在
+        `PacketIndex.page` 裡是 `keep is not None`，混掉會讓沒設過濾的
+        工作階段回空清單。
+
+        刻意不給 setter：兩個來源要分開寫進 `filter_frames` /
+        `identity_frames`。寫錯地方會當場 AttributeError，而不是靜默地
+        把另一個條件蓋掉（那正是這個 property 存在的原因）。
+        """
+        if self.filter_frames is None:
+            return self.identity_frames
+        if self.identity_frames is None:
+            return self.filter_frames
+        return self.filter_frames & self.identity_frames
 
     def touch(self) -> None:
         self.last_touch = time.monotonic()

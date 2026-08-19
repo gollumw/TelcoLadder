@@ -223,6 +223,20 @@ def identities_json(session: Session, *, q: str = "") -> dict:
     return payload
 
 
+def effective_matched(session: Session) -> int:
+    """兩個條件都套上之後，封包清單真正會顯示幾列。
+
+    `/refilter` 與 `/select` 都必須回報**這個**數字，而不是自己那一半 ——
+    「符合 sctp 的有 22 格」在同時鎖定了某個用戶時是錯的，而畫面上就
+    只有這一個數字，沒有第二處可以對照。
+    """
+    with session.lock:
+        keep = session.keep_frames
+        return len(session.index.rows) if keep is None else sum(
+            1 for r in session.index.rows if r.number in keep
+        )
+
+
 def select_identity(session: Session, kind_value: str, raw: str) -> dict:
     """選一個身分：把封包清單縮到那個人碰過的 frame。
 
@@ -241,9 +255,10 @@ def select_identity(session: Session, kind_value: str, raw: str) -> dict:
     if not frames:
         return {"error": f"這個身分沒有對應的封包：{raw}"}
     with session.lock:
-        session.keep_frames = set(frames)
+        session.identity_frames = set(frames)
         session.selected_identity = f"{kind_value}:{raw}"
-    return {"matched": len(frames), "identity": f"{kind_value}:{raw}"}
+    # 回報的是**兩個條件疊加後**的筆數，不是這個身分自己的 len(frames)。
+    return {"matched": effective_matched(session), "identity": f"{kind_value}:{raw}"}
 
 
 # ── 工作階段表（NetScout 式 session 分析）─────────────────────────────
