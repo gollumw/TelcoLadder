@@ -363,7 +363,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"matched": effective_matched(session), "display_filter": ""})
             return
         try:
-            frames = matching_frames(session.pcap, expr, decode_as=session.decode_as)
+            frames = matching_frames(
+                session.pcap, expr,
+                decode_as=session.decode_as, relax_seq=session.relax_seq,
+            )
         except PacketColumnsUnavailable as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return

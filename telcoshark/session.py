@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcoshark.adapters import default_decode_as
 from telcoshark.decode import DecodeCache
 from telcoshark.framebytes import FrameBytesCache
 from telcoshark.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
@@ -173,6 +174,19 @@ class Session:
     """
 
     decode_as: tuple[str, ...] = ()
+    """套給 tshark 的 `-d` 規則。**索引、解碼、原始位元組、display filter
+    四條路徑都吃它** —— 四條用不同參數就是同一份檔的四個答案。
+
+    建立工作階段時是各 adapter 宣告的靜態預設；完整解剖跑完後，若
+    `probe` 判定要加規則（例如 SBI 跑在非標準埠上），這裡會被換成**解剖
+    實際採用的那一組**並重建索引，見 `_index_into`。"""
+
+    relax_seq: bool = False
+    """關掉 tshark 的 TCP 序號分析。同樣由解剖的判定回寫。
+
+    網元匯出的 trace 序號是合成的（恆為 0），不關掉的話 tshark 會把整段
+    SBI 當成重傳而略過。實測 `ue_trace`：356 格裡有 169 格（47%）在關掉
+    之前顯示為未解碼的 TCP，而它們全部都是 HTTP/2 SBI。"""
 
     flowtable: object | None = field(default=None, repr=False)
     """工作階段表（`flowtable.FlowTable`）的快取。首次要求時算、
@@ -244,7 +258,12 @@ class SessionStore:
         except Exception:  # noqa: BLE001 —— TsharkNotFound 以外也不該擋建立
             resolved = None
         session = Session(sid=new_sid(), pcap=pcap, display_name=display_name,
-                          owns_file=owns_file, wire=wire, tshark=resolved)
+                          owns_file=owns_file, wire=wire, tshark=resolved,
+                          # **靜態預設一開始就要套上。** 在此之前這裡是空的，
+                          # 於是連 adapter 自己宣告的 DECODE_AS（例如 SBI 的
+                          # 7777 埠）都沒有生效 —— 那不是「還沒 probe」，
+                          # 是純粹漏了。
+                          decode_as=default_decode_as())
         with self._lock:
             self._sessions[session.sid] = session
         self._ensure_reaper()
@@ -378,6 +397,7 @@ def _index_into(session: Session) -> None:
         session.pcap,
         display_filter=session.display_filter,
         decode_as=session.decode_as,
+        relax_seq=session.relax_seq,
         tshark=session.tshark,
     ):
         rows.append(row)
@@ -404,11 +424,69 @@ def _index_into(session: Session) -> None:
     # 索引 50.9 秒、解剖 71.6 秒，併行不會比循序快多少卻會拖慢前者。
     from telcoshark.pipeline import analyse
 
-    result = analyse(session.pcap, decode_as=session.decode_as, wire=session.wire)
+    result = analyse(session.pcap, wire=session.wire)
     with session.lock:
         session.analysis = result
+
+    # **把解剖實際用的參數收回來。**
+    #
+    # `analyse()` 內部會跑 `probe.inspect()`，需要時用調整過的參數重跑
+    # （只在訊息數真的增加時採用）。在此之前那組參數只活在解剖裡面 ——
+    # 於是封包清單、解碼樹、原始位元組與 display filter 全都用著另一組
+    # 參數，而畫面上沒有任何地方說得出這件事。
+    #
+    # 症狀：SBI 跑在非標準埠（或來源是網元 trace）時，封包清單整片顯示
+    # 「TCP」，使用者以為工具解不動；同時抽屜與梯形圖卻好好地列著訂戶與
+    # NAS 訊息。兩個畫面各自都很合理，合起來才看得出矛盾 ——
+    # 實測 `ue_trace`：356 格裡 169 格（47%）是這樣。
+    adjusted = result.auto_decode
+    if adjusted is not None:
+        rules = (*default_decode_as(), *adjusted.decode_as)
+        if (rules, adjusted.relaxed_seq) != (session.decode_as, session.relax_seq):
+            with session.lock:
+                session.decode_as = rules
+                session.relax_seq = adjusted.relaxed_seq
+                session.progress.stage = "index"
+                # 解碼方式變了，快取裡那些是用舊參數解出來的。
+                session.decode = DecodeCache()
+                session.frame_bytes = FrameBytesCache()
+            _rebuild_index(session)
+
+    with session.lock:
         session.progress.stage = "done"
         session.progress.finished = time.monotonic()
+
+
+def _rebuild_index(session: Session) -> None:
+    """用新參數重建封包清單。
+
+    **重建而不是就地修補**：解碼方式一變，欄位、協定堆疊、甚至訊息邊界
+    都可能不同，逐列修改等於自己再實作一次 tshark。
+
+    代價是多跑一趟 tshark。只在 `probe` 真的調整過參數時才會發生（乾淨的
+    擷取檔一次都不會多跑），而不重建的代價是使用者看著一片 TCP。
+    """
+    rows: list[PacketRow] = []
+    truncated = False
+    for row in read_packet_rows(
+        session.pcap,
+        display_filter=session.display_filter,
+        decode_as=session.decode_as,
+        relax_seq=session.relax_seq,
+        tshark=session.tshark,
+    ):
+        rows.append(row)
+        if len(rows) >= MAX_INDEX_ROWS:
+            truncated = True
+            break
+    with session.lock:
+        session.index.rows = rows
+        session.index.truncated = truncated
+        session.progress.indexed = len(rows)
+        session.progress.truncated = truncated
+        # display filter 篩出來的 frame 編號是用舊參數算的，作廢。
+        session.filter_frames = None
+        session.display_filter = ""
 
 
 # ── 刪檔 ──────────────────────────────────────────────────────────────

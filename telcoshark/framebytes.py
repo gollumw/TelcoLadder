@@ -43,6 +43,7 @@ def frame_bytes(
     numbers: Sequence[int],
     *,
     decode_as: Sequence[str] = (),
+    relax_seq: bool = False,
     tshark: Tshark | None = None,
 ) -> dict[int, str]:
     """取指定幾格的原始位元組，回傳 `{frame 編號: 小寫 hex 字串}`。
@@ -64,6 +65,10 @@ def frame_bytes(
         "-T", "json",
         "-x",
     ]
+    # 與索引、抽取吃同一組參數。**四條路徑用不同參數就是同一份檔的四個
+    # 答案** —— 而使用者只會看到其中一個。
+    if relax_seq:
+        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
     for rule in decode_as:
         args += ["-d", rule]
 

@@ -106,16 +106,21 @@ interface IndexResponse {
  * 封包索引很快就好（實測 436 MB 約 50 秒），但關聯分析要更久（再 71 秒）。
  * `/flows` 在那之前回 `ready: false` —— **不假裝已有答案**，所以這裡等它。
  */
-async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<void> {
+async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<string[]> {
   for (;;) {
     if (signal?.aborted) throw new NotConnectedError("已取消");
-    const progress = await getJson<{ stage: string; error: string | null }>(
-      `/api/${sid}/progress`,
-    );
+    const progress = await getJson<{
+      stage: string;
+      error: string | null;
+      auto_decode?: string[];
+    }>(`/api/${sid}/progress`);
     if (progress.stage === "error") {
       throw new NotConnectedError(progress.error ?? "解剖失敗，原因不明");
     }
-    if (progress.stage === "done") return;
+    // **等到 done 為止。** 解剖跑完後若 probe 調整過解碼方式，後端會用新
+    // 參數重建封包清單並把 stage 退回 `index` —— 在那之前就去取，拿到的
+    // 是舊參數解出來的列（整片 TCP），而畫面上看不出差別。
+    if (progress.stage === "done") return progress.auto_decode ?? [];
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
@@ -162,7 +167,7 @@ export function apiSource(sid: string | null): DataSource {
       "整個介面已接上真實資料。矩陣裡標成「Uncaptured / N/A」的欄位是這份擷取檔裡真的沒觀測到，不是還沒接 —— 每一格看得到的值都附有出處（哪一則訊息、第幾格）。",
 
     async load(): Promise<Dataset> {
-      await waitForAnalysis(need());
+      const autoDecode = await waitForAnalysis(need());
 
       const [flows, identities, correlation] = await Promise.all([
         getJson<{ subscribers: FlowSubscriber[]; abs_time_available: boolean }>(
@@ -194,6 +199,7 @@ export function apiSource(sid: string | null): DataSource {
         );
 
       return {
+        autoDecode,
         rawPackets: page.rows,
         page,
         // 全母體的訂戶清單來自 `/flows`（伺服器端算的），**不是**由上面那

@@ -97,6 +97,13 @@ export interface Dataset {
    * 封包清單視窗化之後那個 find 只掃得到當前視窗，跳不到的人就靜默沒反應。
    */
   firstFrameBySupi: Record<string, number>;
+  /**
+   * 工具為了讀懂這份擷取檔自己多做的事，一行一則、每則都講依據。
+   *
+   * **一定要呈現。** 自動調整解碼方式而不告訴使用者，等於讓他無法反駁
+   * 工具的判斷 —— 而工具的判斷會錯。空陣列代表預設解碼就夠了。
+   */
+  autoDecode: string[];
 }
 
 /** 梯形圖的一條泳道。順序由後端依 `nf.PARTICIPANT_ORDER` 排好。 */

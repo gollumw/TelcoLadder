@@ -261,6 +261,18 @@ export default function App() {
           </a>
         </div>
       )}
+      {data.autoDecode.length > 0 && (
+        // 與 coverage 是一組的：一個說「我沒看到什麼」，這個說「我為了
+        // 看到它做了什麼」。只印前者，使用者不知道結果已經被調整過。
+        <div className="border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs text-sky-200">
+          <p className="font-semibold">這份擷取檔的解碼方式經過自動調整</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
+            {data.autoDecode.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {source.notice && (
         // 常駐橫幅，不是可關閉的提示 —— 使用者每一眼看到的畫面都少了東西，
         // 那件事不該只在載入時說一次。

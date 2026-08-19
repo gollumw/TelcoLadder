@@ -63,6 +63,8 @@ export function mockSource(): DataSource {
         ...mockData,
         rawPackets: page.rows,
         page,
+        // mock 是編譯期常數，沒有解碼這回事。
+        autoDecode: [],
         // mock 的封包陣列**就是**全母體，所以就地聚合在這裡是對的 ——
         // 真實資料那邊不行（視窗只有幾百格），改由 `/flows` 供應。
         discoveredSessions: computeDiscoveredSessions(mockData.rawPackets),

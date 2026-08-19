@@ -200,6 +200,7 @@ def _ek_lines(
     *,
     display_filter: str = "",
     decode_as: Sequence[str] = (),
+    relax_seq: bool = False,
     tshark: Tshark | None = None,
     limit: int | None = None,
 ) -> Iterator[dict[str, Any]]:
@@ -213,6 +214,12 @@ def _ek_lines(
     """
     tshark = tshark or find_tshark()
     args = ["-r", str(pcap), "-T", "ek"]
+    # 與 `extract._ek_lines` 同一個開關，理由也相同 —— 網元 trace 的序號是
+    # 合成的，不關掉的話 tshark 會把整段 SBI 當成重傳而略過。**兩條路徑
+    # 必須吃同一組參數**：封包清單說 TCP、分析說 HTTP/2，是同一份檔的兩個
+    # 答案（CLAUDE.md §4「盤點時用了跟分析不同的參數」）。
+    if relax_seq:
+        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
     if display_filter:
         args += ["-Y", display_filter]
     for field in fields:
@@ -270,6 +277,7 @@ def read_packet_rows(
     *,
     display_filter: str = "",
     decode_as: Sequence[str] = (),
+    relax_seq: bool = False,
     tshark: Tshark | None = None,
     limit: int | None = None,
 ) -> Iterator[PacketRow]:
@@ -280,7 +288,7 @@ def read_packet_rows(
     """
     for layers in _ek_lines(
         pcap, COLUMN_FIELDS, display_filter=display_filter,
-        decode_as=decode_as, tshark=tshark, limit=limit,
+        decode_as=decode_as, relax_seq=relax_seq, tshark=tshark, limit=limit,
     ):
         row = _row_from_layers(layers)
         if row is not None:
@@ -292,6 +300,7 @@ def matching_frames(
     display_filter: str,
     *,
     decode_as: Sequence[str] = (),
+    relax_seq: bool = False,
     tshark: Tshark | None = None,
 ) -> list[int]:
     """套用 display filter，只回傳符合的 frame 編號。
@@ -307,7 +316,7 @@ def matching_frames(
         _to_int(_first(layers.get("frame_number")))
         for layers in _ek_lines(
             pcap, ("frame.number",), display_filter=display_filter,
-            decode_as=decode_as, tshark=tshark,
+            decode_as=decode_as, relax_seq=relax_seq, tshark=tshark,
         )
     ]
 

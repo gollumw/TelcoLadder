@@ -96,6 +96,15 @@ def progress_json(session: Session) -> dict:
             "truncated": p.truncated,
             "error": p.error,
             "elapsed": round(p.elapsed, 2),
+            # **工具為了讀懂這份檔自己多做了什麼，一定要說出來。**
+            # `AutoDecode` 這個物件存在的唯一理由就是這個（pipeline.py）——
+            # 自動調整解碼方式而不告訴使用者，等於讓他無法反駁工具的判斷。
+            "auto_decode": (
+                analysis.auto_decode.describe()
+                if (analysis := session.analysis) is not None
+                and getattr(analysis, "auto_decode", None) is not None
+                else []
+            ),
         }
 
 
@@ -159,10 +168,12 @@ def decode_json(session: Session, frame: int) -> dict:
         with session.lock:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
+            relax_seq = session.relax_seq
         trees = decode_frames(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
+            relax_seq=relax_seq,
             tshark=session.tshark,
         )
         session.decode.put(trees)
@@ -187,10 +198,12 @@ def bytes_json(session: Session, frame: int) -> dict:
         with session.lock:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
+            relax_seq = session.relax_seq
         found = frame_bytes(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
+            relax_seq=relax_seq,
             tshark=session.tshark,
         )
         session.frame_bytes.put(found)
