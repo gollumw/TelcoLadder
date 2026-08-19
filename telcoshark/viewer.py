@@ -119,6 +119,11 @@ def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
                 "proto": r.protocol,
                 "len": r.length,
                 "info": r.info,
+                # 埠可能是 null（ARP／ICMP 這類沒有傳輸層的）。**不要在這裡
+                # 填 0** —— 0 是合法的埠號，下游會分不出「真的是 0」與
+                # 「我們沒看到」。前端顯示成 `IP` 而不是 `IP:0`。
+                "sport": r.src_port,
+                "dport": r.dst_port,
                 "stack": r.protocols,
             }
             for r in rows

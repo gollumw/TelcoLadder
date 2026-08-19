@@ -56,6 +56,15 @@ COLUMN_FIELDS: tuple[str, ...] = (
     "frame.time_epoch",
     "_ws.col.def_src",
     "_ws.col.def_dst",
+    # 埠不在 `_ws.col.def_src/dst` 裡 —— 那兩欄只有位址。三種傳輸層各問一次，
+    # 一格封包只會命中其中一種，其餘回空。多問六個欄位比讓下游看到
+    # `IP:undefined`（或編一個 0）便宜得多。
+    "tcp.srcport",
+    "tcp.dstport",
+    "udp.srcport",
+    "udp.dstport",
+    "sctp.srcport",
+    "sctp.dstport",
     "_ws.col.protocol",
     "frame.len",
     "_ws.col.info",
@@ -95,7 +104,13 @@ class PacketRow:
     protocol: str
     length: int
     info: str
-    protocols: str
+    src_port: int | None = None
+    dst_port: int | None = None
+    """傳輸層的埠。**沒有就是 None，不填 0** —— 0 是合法的埠號，
+    拿它當「不知道」會讓下游分不出「真的是 0」與「我們沒看到」。
+    ICMP、ARP 這類本來就沒有埠。"""
+
+    protocols: str = ""
     """真實的協定堆疊，如 `sll:ethertype:ip:sctp:ngap:ngap:nas-5gs`。
 
     與 `protocol`（Wireshark 顯示用的 `NGAP/NAS-5GS`）不同 —— 前者給篩選用，
@@ -157,8 +172,26 @@ def _row_from_layers(layers: dict[str, Any]) -> PacketRow | None:
         protocol=_first(layers.get("_ws_col_protocol")),
         length=_to_int(_first(layers.get("frame_len"))),
         info=_first(layers.get("_ws_col_info")),
+        src_port=_port(layers, "srcport"),
+        dst_port=_port(layers, "dstport"),
         protocols=_first(layers.get("frame_protocols")),
     )
+
+
+def _port(layers: dict, side: str) -> int | None:
+    """TCP / UDP / SCTP 三個問一遍，取第一個有值的。
+
+    一格封包只會有一種傳輸層，所以「第一個有值的」就是答案；三個都空
+    （ARP、ICMP…）就回 None，**不填 0**。
+    """
+    for transport in ("tcp", "udp", "sctp"):
+        raw = _first(layers.get(f"{transport}_{side}"))
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                return None
+    return None
 
 
 def _ek_lines(

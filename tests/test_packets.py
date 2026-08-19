@@ -55,7 +55,7 @@ def _require_tshark() -> None:
         pytest.skip(str(exc))
 
 
-def _oracle_columns(pcap) -> list[list[str]]:
+def _oracle_columns(pcap) -> list[dict[str, str]]:
     """用 `-T fields` 獨立問一次同樣的欄位。
 
     **`-T fields` 在整個專案裡只有這裡是正當的。** CLAUDE.md §3.1 禁它是因為
@@ -72,7 +72,14 @@ def _oracle_columns(pcap) -> list[list[str]]:
         [str(tshark.path), *args], capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=True,
     ).stdout
-    return [line.split("\t") for line in out.splitlines() if line.strip()]
+    # 回 dict 而不是 list：欄位是會增加的（2026-08-19 加了六個埠欄位），
+    # 而位置解包在那時候會炸成 "too many values to unpack" —— 那是雜訊，
+    # 不是有意義的失敗訊號。用欄位名對齊就不會有這個問題。
+    return [
+        dict(zip(COLUMN_FIELDS, line.split("\t"), strict=True))
+        for line in out.splitlines()
+        if line.strip()
+    ]
 
 
 def _oracle_frame_count(pcap) -> int:
@@ -129,16 +136,26 @@ def test_packet_index_columns_match_tsharks_own_columns() -> None:
     assert len(rows) == len(oracle), "與 oracle 的列數就不一樣"
 
     for row, cols in zip(rows, oracle, strict=True):
-        number, time_rel, time_epoch, src, dst, proto, length, info, protocols = cols
+        number = cols["frame.number"]
         assert row.number == int(number)
-        assert abs(row.time_rel - float(time_rel)) < 1e-6
-        assert abs(row.time_epoch - float(time_epoch)) < 1e-6
-        assert row.src == src, f"frame {number} 的 Source 不符"
-        assert row.dst == dst, f"frame {number} 的 Destination 不符"
-        assert row.protocol == proto, f"frame {number} 的 Protocol 不符"
-        assert row.length == int(length)
-        assert row.info == info, f"frame {number} 的 Info 不符"
-        assert row.protocols == protocols
+        assert abs(row.time_rel - float(cols["frame.time_relative"])) < 1e-6
+        assert abs(row.time_epoch - float(cols["frame.time_epoch"])) < 1e-6
+        assert row.src == cols["_ws.col.def_src"], f"frame {number} 的 Source 不符"
+        assert row.dst == cols["_ws.col.def_dst"], f"frame {number} 的 Destination 不符"
+        assert row.protocol == cols["_ws.col.protocol"], f"frame {number} 的 Protocol 不符"
+        assert row.length == int(cols["frame.len"])
+        assert row.info == cols["_ws.col.info"], f"frame {number} 的 Info 不符"
+        assert row.protocols == cols["frame.protocols"]
+
+        # 埠：三種傳輸層取第一個有值的，都沒有就是 None（**不是 0**）。
+        for side, actual in (("srcport", row.src_port), ("dstport", row.dst_port)):
+            expected = next(
+                (cols[f"{tr}.{side}"] for tr in ("tcp", "udp", "sctp") if cols[f"{tr}.{side}"]),
+                "",
+            )
+            assert actual == (int(expected) if expected else None), (
+                f"frame {number} 的 {side} 不符：我們說 {actual}，tshark 說 {expected!r}"
+            )
 
 
 def test_info_column_is_populated_and_comes_from_tshark() -> None:
@@ -158,13 +175,17 @@ def test_info_column_is_populated_and_comes_from_tshark() -> None:
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
     rows = list(read_packet_rows(pcap))
-    oracle = {int(c[0]): c for c in _oracle_columns(pcap)}
+    oracle = {int(c["frame.number"]): c for c in _oracle_columns(pcap)}
 
     for row in rows:
         assert row.info, f"frame {row.number} 的 Info 是空的 —— ek 的欄位 key 可能讀錯了"
         assert row.protocol, f"frame {row.number} 的 Protocol 是空的"
-        assert row.info == oracle[row.number][7], f"frame {row.number} 的 Info 與 oracle 不符"
-        assert row.protocol == oracle[row.number][5], f"frame {row.number} 的 Protocol 與 oracle 不符"
+        assert row.info == oracle[row.number]["_ws.col.info"], (
+            f"frame {row.number} 的 Info 與 oracle 不符"
+        )
+        assert row.protocol == oracle[row.number]["_ws.col.protocol"], (
+            f"frame {row.number} 的 Protocol 與 oracle 不符"
+        )
 
     # 結構性斷言：frame 7 是 NGAP 內嵌 NAS，堆疊裡兩者都要在。
     # dissector 短名比顯示欄穩定得多 —— 顯示欄是 `NGAP/NAS-5GS` 還是別的寫法
@@ -294,20 +315,48 @@ def test_ek_field_keys_this_version_of_tshark_emits() -> None:
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
     tshark = find_tshark()
-    args = ["-r", str(pcap), "-T", "ek", "-Y", "frame.number==7"]
-    for field in COLUMN_FIELDS:
-        args += ["-e", field]
-    out = subprocess.run(
-        [str(tshark.path), *args], capture_output=True, text=True,
-        encoding="utf-8", errors="replace", check=True,
-    ).stdout
-    for field in COLUMN_FIELDS:
+
+    def keys_for(display_filter: str) -> str:
+        args = ["-r", str(pcap), "-T", "ek", "-Y", display_filter]
+        for field in COLUMN_FIELDS:
+            args += ["-e", field]
+        return subprocess.run(
+            [str(tshark.path), *args], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=True,
+        ).stdout
+
+    def require(field: str, out: str, where: str) -> None:
         key = field.replace(".", "_")
         assert f'"{key}"' in out, (
-            f"tshark {tshark.version_string} 沒有吐出 {key!r}（來自 -e {field}）。"
+            f"tshark {tshark.version_string} 沒有吐出 {key!r}（來自 -e {field}，{where}）。"
             " ek 的欄位名轉換規則可能在這個版本不同 —— 需要逐版本對應表，"
             "不要改成寬鬆比對，那會把漂移藏起來。"
         )
+
+    # **一定會出現的欄位**：frame 層與 _ws.col.*，每一格都有。
+    always = [f for f in COLUMN_FIELDS if not f.split(".")[0] in ("tcp", "udp", "sctp")]
+    out = keys_for("frame.number==7")
+    for field in always:
+        require(field, out, "frame 7")
+
+    # **看傳輸層的欄位**：一格封包只會有一種傳輸層，所以要各自找一格真的
+    # 用到它的來問。這裡刻意不放寬成「有出現就好」—— 那會讓「埠的 key 名
+    # 在新版 tshark 變了」這種漂移躲過去，而症狀是埠整欄變成 None。
+    #
+    # 換一份擷取來驗：`ki-mismatch` 只有 SCTP，另外兩種會 skip，而 skip 等於
+    # 沒驗。`5gc-e2e` 三種都有（SCTP/NGAP、TCP/SBI、UDP/PFCP），三個都驗得到。
+    e2e = require_capture("5gc-e2e/capture.pcap")
+    for transport in ("tcp", "udp", "sctp"):
+        args = ["-r", str(e2e), "-T", "ek", "-Y", f"{transport}.srcport", "-c", "200"]
+        for field in COLUMN_FIELDS:
+            args += ["-e", field]
+        out = subprocess.run(
+            [str(tshark.path), *args], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=True,
+        ).stdout
+        assert out.strip(), f"5gc-e2e 前 200 格裡沒有 {transport} —— 換一份或放寬 -c"
+        for side in ("srcport", "dstport"):
+            require(f"{transport}.{side}", out, f"5gc-e2e 的 {transport}")
 
 
 def test_total_packets_returns_none_rather_than_guessing(tmp_path) -> None:
