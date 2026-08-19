@@ -9,7 +9,7 @@
  *   ✅ `decodeTree`        ← `/decode?frame=N`，選一格時才去要
  *   ✅ `hexDump`           ← `/bytes?frame=N`，選一格時才去要
  *   ✅ `callFlowEvents`    ← `/callflow?supi=`，切到某個訂戶時才去要
- *   ❌ `correlationEntries` 需要 PDU-session 級的關聯抽取（引擎還沒算）
+ *   ✅ `correlationEntries` ← `/correlation?supi=`，每一格都帶出處
  *
  * **沒接上的一律回空陣列，而且由 UI 明講「還沒接」** —— 空陣列會讓
  * Session Analysis 顯示「此 Domain 目前沒有信令事件」，那句話是錯的：
@@ -33,7 +33,9 @@ import {
   attachFlowFacts,
   firstFrameBySupi,
   toCallFlowEvent,
+  toCorrelationEntry,
   type CallFlowEventJson,
+  type PduSessionJson,
   rowToPacket,
   subscribersToSessions,
   toProtocolNodes,
@@ -157,18 +159,21 @@ export function apiSource(sid: string | null): DataSource {
     label: sid ? `工作階段 ${sid.slice(0, 8)}…` : "（無工作階段）",
 
     notice:
-      "封包清單、訂戶身分、解碼樹、原始位元組與 Call Flow 已接上真實資料。關聯矩陣（PDU Session 的 IP／TEID／S-NSSAI）尚未接 —— 引擎還沒算過那一層。那一區看到的空白是「還沒去拿」，不是「這份擷取沒有」。",
+      "整個介面已接上真實資料。矩陣裡標成「Uncaptured / N/A」的欄位是這份擷取檔裡真的沒觀測到，不是還沒接 —— 每一格看得到的值都附有出處（哪一則訊息、第幾格）。",
 
     async load(): Promise<Dataset> {
       await waitForAnalysis(need());
 
-      const [flows, identities] = await Promise.all([
+      const [flows, identities, correlation] = await Promise.all([
         getJson<{ subscribers: FlowSubscriber[]; abs_time_available: boolean }>(
           `/api/${need()}/flows`,
         ),
         getJson<{ groups: { kind: string; values: { value: string }[] }[] }>(
           `/api/${need()}/identities`,
         ),
+        // 整份擷取檔的矩陣，一次取完。量級是「訂戶數 × 每人幾條 session」，
+        // 不是訊息數 —— 而 Data Mining 的 UE IPv4 搜尋需要全母體。
+        getJson<{ sessions: PduSessionJson[] }>(`/api/${need()}/correlation`),
       ]);
       subscribers = flows.subscribers ?? [];
 
@@ -199,10 +204,10 @@ export function apiSource(sid: string | null): DataSource {
         ),
         firstFrameBySupi: firstFrameBySupi(subscribers),
         sessionIdentities,
-        // 這兩個還沒接。**空陣列不代表「沒有」**，代表「還沒去拿」——
-        // UI 必須把這個差別講出來，見 App.tsx 的橫幅。
+        correlationEntries: (correlation.sessions ?? []).map(toCorrelationEntry),
+        // 梯形圖是懶載入的（切到某個訂戶才取）—— 空陣列在這裡代表
+        // 「還沒去拿」，見 `loadCallFlow`。
         callFlowEvents: [],
-        correlationEntries: [],
       };
     },
 

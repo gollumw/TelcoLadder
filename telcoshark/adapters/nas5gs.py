@@ -26,6 +26,7 @@ from typing import Any
 
 from telcoshark.extract import Frame, first
 from telcoshark.extract import to_int as _to_int
+from telcoshark import pdusession as ps
 from telcoshark.identity import globally_unique
 from telcoshark.model import (
     IDENTITY_SOURCE_KEY,
@@ -349,6 +350,22 @@ def parse(frame: Frame) -> list[Message]:
             # 一律記錄（那是資料），要不要顯示由呈現層決定（D4）——
             # 見 `render_html.IDENTITY_SOURCE_KEY`。
             detail[IDENTITY_SOURCE_KEY] = f"{carrier_adapter.NAME} 載體"
+
+        # PDU Session 級的欄位。**有就記、沒有就不記** —— 這些只出現在
+        # 少數幾則訊息裡（establishment accept 帶 IP／DNN／5QI／QFI），
+        # 其餘訊息一格都不會有，那是正常的。
+        # 鍵名一律用 `pdusession` 的常數，不要在這裡寫字串字面。
+        for key, field in (
+            (ps.PDU_SESSION_ID, "nas-5gs_nas-5gs_pdu_session_id"),
+            (ps.UE_IPV4, "nas-5gs_nas-5gs_sm_pdu_addr_inf_ipv4"),
+            (ps.DNN, "nas-5gs_nas-5gs_cmn_dnn"),
+            (ps.SST, "nas-5gs_nas-5gs_mm_sst"),
+            (ps.FIVE_QI, "nas-5gs_nas-5gs_sm_5qi"),
+            (ps.QFI, "nas-5gs_nas-5gs_sm_qfi"),
+        ):
+            value = first(block.get(field))
+            if value is not None:
+                detail[key] = str(value)
 
         messages.append(
             Message(

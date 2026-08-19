@@ -90,25 +90,32 @@ export interface CallFlowEvent {
  */
 export interface CorrelationEntry {
   supi: string;
-  guti?: string;
   pduSessionId: number;
-  sNssai: { sst: number; sd?: string };
-  dnn: string;
-  ueIp: string;
-  upfN3Teid: string;
-  gnbN3Teid: string;
-  qosFlowId: number;
-  fiveQi: number;
+  /** 底下每一格都是選用的。**接真實資料後這不是「懶得填」，是「這份擷取檔
+   *  裡沒看到」** —— 一份只擷取到 N2 的檔案不會有 UE IP，一份沒擷取到
+   *  PDUSessionResourceSetup 的不會有 UPF TEID。`guti` 原本就是這樣處理的
+   *  （mid-stream 擷取沒看到 GUTI 指派），現在其餘欄位比照辦理：
+   *  **顯示「Uncaptured / N/A」，不編一個值。** */
+  guti?: string;
+  sNssai?: { sst: number; sd?: string };
+  dnn?: string;
+  ueIp?: string;
+  upfN3Teid?: string;
+  gnbN3Teid?: string;
+  qosFlowId?: number;
+  fiveQi?: number;
+  /** 每一格是從哪一則訊息看到的。**這是「平價版 NetScout」與「另一個猜測
+   *  工具」的分界** —— 少了出處，這張表跟一個猜出來的表在畫面上完全一樣。 */
   sourceInterfaces: {
-    supi: string;
+    supi?: string;
     guti?: string;
-    pduSessionId: string;
-    sNssai: string;
-    dnn: string;
-    ueIp: string;
-    upfN3Teid: string;
-    gnbN3Teid: string;
-    qosFlowId: string;
+    pduSessionId?: string;
+    sNssai?: string;
+    dnn?: string;
+    ueIp?: string;
+    upfN3Teid?: string;
+    gnbN3Teid?: string;
+    qosFlowId?: string;
   };
 }
 

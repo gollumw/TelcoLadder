@@ -10,6 +10,7 @@ from typing import Any
 
 from telcoshark.extract import Frame, first
 from telcoshark.extract import to_int as _to_int
+from telcoshark import pdusession as ps
 from telcoshark.identity import connection_scope, scoped
 from telcoshark.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
@@ -192,6 +193,27 @@ def parse(frame: Frame) -> list[Message]:
         establishment = _to_int(block.get("ngap_ngap_RRCEstablishmentCause"))
         if establishment is not None:
             detail["RRCEstablishmentCause"] = str(establishment)
+
+        # PDU Session 級的欄位（見 `telcoshark/pdusession.py`）。
+        # **`gTP_TEID` 在 Request 與 Response 裡是同一個欄位** —— 前者帶的是
+        # UPF 的、後者帶的是 gNB 的。這裡只照實記下來，由誰的由聚合層依
+        # 訊息名判斷；在這裡猜會把兩個八位十六進位數填錯而看起來完全正常。
+        for key, field in (
+            (ps.PDU_SESSION_ID, "ngap_ngap_pDUSessionID"),
+            (ps.GTP_TEID, "ngap_ngap_gTP_TEID"),
+            (ps.GTP_ADDRESS, "ngap_ngap_TransportLayerAddressIPv4"),
+            (ps.SST, "ngap_ngap_sST"),
+            (ps.FIVE_QI, "ngap_ngap_fiveQI"),
+            (ps.QFI, "ngap_ngap_qosFlowIdentifier"),
+        ):
+            value = first(block.get(field))
+            if value is not None:
+                detail[key] = str(value)
+        if ps.GTP_TEID in detail and "PDUSessionResourceSetup" in base:
+            # initiatingMessage（AMF→gNB）帶的是 UPF 的；successfulOutcome
+            # （gNB→AMF）帶的是 gNB 的。**用 outcome 判，不要看 label 的字**
+            # —— initiatingMessage 的 label 沒有 "Request" 後綴。
+            detail[ps.GTP_TEID_OWNER] = "upf" if outcome == "" else "gnb"
 
         messages.append(
             Message(

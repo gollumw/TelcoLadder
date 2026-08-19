@@ -9,7 +9,7 @@
  * 而在型別上假裝有資料是同一件事的另一種寫法。
  */
 
-import type { CallFlowEvent, RawPacket, TelecomDomain } from "@/lib/types";
+import type { CallFlowEvent, CorrelationEntry, RawPacket, TelecomDomain } from "@/lib/types";
 import type { DiscoveredSession } from "@/lib/utils";
 
 /** `/index` 回的一列。欄位名是後端 `viewer.index_json` 決定的。 */
@@ -241,6 +241,68 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     // **不編一句** —— 失敗事件有 cause 解釋可放，其餘留空。
     summary: event.cause_text ?? "",
     ...(event.cause_text ? { causeText: event.cause_text } : {}),
+  };
+}
+
+// ── PDU Session 關聯矩陣 ────────────────────────────────────
+
+/** 一個帶出處的值。**後端沒觀測到的欄位整個鍵不存在**，不是給 null。 */
+interface SourcedJson {
+  value: string;
+  frame: number;
+  source: string;
+}
+
+export interface PduSessionJson {
+  supi: string;
+  pduSessionId: number;
+  ueIp?: SourcedJson;
+  dnn?: SourcedJson;
+  sst?: SourcedJson;
+  fiveQi?: SourcedJson;
+  qosFlowId?: SourcedJson;
+  upfN3Teid?: SourcedJson;
+  gnbN3Teid?: SourcedJson;
+}
+
+function sourceLine(field: SourcedJson | undefined): string | undefined {
+  return field ? `${field.source}（frame ${field.frame}）` : undefined;
+}
+
+function asNumber(field: SourcedJson | undefined): number | undefined {
+  if (!field) return undefined;
+  const n = Number(field.value);
+  // **解不出數字就當成沒有**，不要退回 0 —— 0 是合法的 QFI 與 SST。
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * 後端的一條 PDU Session → `CorrelationEntry`。
+ *
+ * 沒觀測到的欄位一律留 undefined，讓呈現層顯示「Uncaptured / N/A」。
+ * **不要在這裡補預設值** —— 那是把「沒看到」翻譯成「看到了，是這個」。
+ */
+export function toCorrelationEntry(row: PduSessionJson): CorrelationEntry {
+  const sst = asNumber(row.sst);
+  return {
+    supi: row.supi,
+    pduSessionId: row.pduSessionId,
+    sNssai: sst === undefined ? undefined : { sst },
+    dnn: row.dnn?.value,
+    ueIp: row.ueIp?.value,
+    upfN3Teid: row.upfN3Teid?.value,
+    gnbN3Teid: row.gnbN3Teid?.value,
+    qosFlowId: asNumber(row.qosFlowId),
+    fiveQi: asNumber(row.fiveQi),
+    // GUTI 還沒抽 —— 留空，呈現層會顯示 Uncaptured / N/A。
+    sourceInterfaces: {
+      sNssai: sourceLine(row.sst),
+      dnn: sourceLine(row.dnn),
+      ueIp: sourceLine(row.ueIp),
+      upfN3Teid: sourceLine(row.upfN3Teid),
+      gnbN3Teid: sourceLine(row.gnbN3Teid),
+      qosFlowId: sourceLine(row.qosFlowId),
+    },
   };
 }
 

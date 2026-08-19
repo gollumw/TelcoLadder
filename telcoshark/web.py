@@ -63,6 +63,7 @@ from telcoshark.viewer import (
     app_page,
     bytes_json,
     callflow_json,
+    correlation_json,
     decode_json,
     identities_json,
     select_identity,
@@ -307,6 +308,11 @@ class _Handler(BaseHTTPRequestHandler):
             payload = callflow_json(session, supi)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
+        elif not post and action == "correlation":
+            # supi 是選用的 —— 不給就回整份擷取檔的矩陣（預設用法）。
+            self._send_json(
+                correlation_json(session, (query.get("supi") or [""])[0] or None)
+            )
         elif not post and action == "identities":
             self._send_json(identities_json(session, q=(query.get("q") or [""])[0]))
         elif post and action == "select":

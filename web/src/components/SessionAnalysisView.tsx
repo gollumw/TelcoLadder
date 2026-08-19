@@ -487,27 +487,61 @@ export function SessionAnalysisView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    <MatrixRow label="SUPI" value={activeSession.supi} source={activeSession.sourceInterfaces.supi} />
+                    <MatrixRow label="SUPI" value={activeSession.supi} source={activeSession.sourceInterfaces.supi ?? "—"} />
                     <MatrixRow
                       label="5G-GUTI"
                       value={formatUncaptured(activeSession.guti)}
                       source={activeSession.sourceInterfaces.guti ?? "—"}
                       uncaptured={!activeSession.guti}
                     />
-                    <MatrixRow label="PDU Session ID" value={String(activeSession.pduSessionId)} source={activeSession.sourceInterfaces.pduSessionId} />
+                    <MatrixRow label="PDU Session ID" value={String(activeSession.pduSessionId)} source={activeSession.sourceInterfaces.pduSessionId ?? "—"} />
+                    {/* 每一格都走同一個「沒觀測到就說沒觀測到」的處理。
+                        原本只有 GUTI 這樣做（mid-stream 擷取沒看到指派），
+                        其餘欄位在型別上是必填 —— 接真實資料後那個假設不成立：
+                        一份只擷取到 N2 的檔案本來就不會有 UE IP。 */}
                     <MatrixRow
                       label="S-NSSAI (SST/SD)"
-                      value={`SST ${activeSession.sNssai.sst}${activeSession.sNssai.sd ? ` / SD ${activeSession.sNssai.sd}` : ""}`}
-                      source={activeSession.sourceInterfaces.sNssai}
+                      value={
+                        activeSession.sNssai
+                          ? `SST ${activeSession.sNssai.sst}${activeSession.sNssai.sd ? ` / SD ${activeSession.sNssai.sd}` : ""}`
+                          : formatUncaptured(undefined)
+                      }
+                      source={activeSession.sourceInterfaces.sNssai ?? "—"}
+                      uncaptured={!activeSession.sNssai}
                     />
-                    <MatrixRow label="DNN" value={activeSession.dnn} source={activeSession.sourceInterfaces.dnn} />
-                    <MatrixRow label="UE IP" value={activeSession.ueIp} source={activeSession.sourceInterfaces.ueIp} />
-                    <MatrixRow label="UPF N3 TEID" value={activeSession.upfN3Teid} source={activeSession.sourceInterfaces.upfN3Teid} />
-                    <MatrixRow label="gNB N3 TEID" value={activeSession.gnbN3Teid} source={activeSession.sourceInterfaces.gnbN3Teid} />
+                    <MatrixRow
+                      label="DNN"
+                      value={formatUncaptured(activeSession.dnn)}
+                      source={activeSession.sourceInterfaces.dnn ?? "—"}
+                      uncaptured={!activeSession.dnn}
+                    />
+                    <MatrixRow
+                      label="UE IP"
+                      value={formatUncaptured(activeSession.ueIp)}
+                      source={activeSession.sourceInterfaces.ueIp ?? "—"}
+                      uncaptured={!activeSession.ueIp}
+                    />
+                    <MatrixRow
+                      label="UPF N3 TEID"
+                      value={formatUncaptured(activeSession.upfN3Teid)}
+                      source={activeSession.sourceInterfaces.upfN3Teid ?? "—"}
+                      uncaptured={!activeSession.upfN3Teid}
+                    />
+                    <MatrixRow
+                      label="gNB N3 TEID"
+                      value={formatUncaptured(activeSession.gnbN3Teid)}
+                      source={activeSession.sourceInterfaces.gnbN3Teid ?? "—"}
+                      uncaptured={!activeSession.gnbN3Teid}
+                    />
                     <MatrixRow
                       label="QFI / 5QI"
-                      value={`QFI ${activeSession.qosFlowId} / 5QI ${activeSession.fiveQi}`}
-                      source={activeSession.sourceInterfaces.qosFlowId}
+                      value={
+                        activeSession.qosFlowId === undefined && activeSession.fiveQi === undefined
+                          ? formatUncaptured(undefined)
+                          : `QFI ${activeSession.qosFlowId ?? "—"} / 5QI ${activeSession.fiveQi ?? "—"}`
+                      }
+                      source={activeSession.sourceInterfaces.qosFlowId ?? "—"}
+                      uncaptured={activeSession.qosFlowId === undefined && activeSession.fiveQi === undefined}
                     />
                   </tbody>
                 </table>

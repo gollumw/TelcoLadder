@@ -583,6 +583,28 @@ def callflow_json(session: Session, supi: str) -> dict:
     }
 
 
+def correlation_json(session: Session, supi: str | None = None) -> dict:
+    """PDU Session 關聯矩陣，**每一格都帶出處**。
+
+    不給 supi 就回整份擷取檔的。**這是預設用法** —— Data Mining 的
+    「UE IPv4 搜尋」需要全母體（UE IP 是 per-session 的，`SessionIdentity`
+    裝不下它），而輸出的量級是「訂戶數 × 每人幾條 session」，跟擷取檔
+    大小無關，整包回去沒有規模問題。
+
+    抽取邏輯在 `telcoshark/pdusession.py`；這裡只負責包成 JSON 與處理
+    「解剖還沒跑完」。
+    """
+    with session.lock:
+        analysis = session.analysis
+    if analysis is None:
+        return {"ready": False, "sessions": []}
+
+    from telcoshark.pdusession import extract, extract_all
+
+    sessions = extract(analysis, supi) if supi else extract_all(analysis)
+    return {"ready": True, "supi": supi, "sessions": [s.to_json() for s in sessions]}
+
+
 def app_page(session: Session, *, idle_ttl: float) -> str:
     """React 介面（`/app/<sid>`）的外殼。
 
