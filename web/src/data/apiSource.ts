@@ -17,22 +17,29 @@
  *
  * ## 規模
  *
- * `/index` 一次最多 500 列（後端上限）。目前只取第一頁 —— 真實 pcap 幾十萬
- * 封包，把全部拉進記憶體再做客戶端過濾會卡死。視窗化是這一層的下一步，
- * 不是元件的事。
+ * 封包清單是**視窗化**的：`/index?offset=&limit=` 一次最多 500 列（後端上限），
+ * 捲到哪裡才取哪裡。真實 pcap 幾十萬封包，把全部拉進記憶體再做客戶端過濾
+ * 會卡死 —— 而更糟的是，之前只取第一頁而不說，畫面寫著「500 / 500 個封包」，
+ * 看起來就像這份擷取檔只有 500 格。
+ *
+ * 過濾因此也必須在伺服器端：客戶端只看得到視窗裡那幾百格，對它做過濾
+ * 得到的結果會**隨捲動位置改變**。`applyDisplayFilter` 走 `/refilter`
+ * （真 tshark），`focusIdentity` 走 `/select`，兩者在後端疊加。
  */
 
 import type { ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
 
 import {
   attachFlowFacts,
+  firstFrameBySupi,
   rowToPacket,
+  subscribersToSessions,
   toProtocolNodes,
   type DecodeNodeJson,
   type FlowSubscriber,
   type IndexRow,
 } from "./mapIndex";
-import type { DataSource, Dataset } from "./source";
+import type { DataSource, Dataset, PacketPage } from "./source";
 
 /** 後端 `/index` 的上限。要更多列得分頁，不是把這個數字調大。 */
 export const PAGE_LIMIT = 500;
@@ -51,6 +58,36 @@ async function getJson<T>(path: string): Promise<T> {
     throw new NotConnectedError(body.error ?? `${path} 回了 HTTP ${response.status}`);
   }
   return body;
+}
+
+/**
+ * 表單 POST。後端的 `/refilter` 與 `/select` 吃的是 `<form>` 編碼而不是 JSON
+ * （它們在舊檢視器上要能在關掉 JS 的情況下運作）。
+ */
+async function postForm<T>(path: string, fields: Record<string, string>): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(fields).toString(),
+  });
+  const body = (await response.json()) as T & { error?: string };
+  if (!response.ok || body.error) {
+    // display filter 的語法錯誤走這條路，訊息是 tshark 自己的輸出（含 caret）。
+    // **原樣往上丟** —— 我們不改寫也不簡化，那是使用者要據以修正的東西。
+    throw new NotConnectedError(body.error ?? `${path} 回了 HTTP ${response.status}`);
+  }
+  return body;
+}
+
+/** `/index` 的回應。欄位名由後端 `viewer.index_json` 決定。 */
+interface IndexResponse {
+  rows: IndexRow[];
+  offset: number;
+  matched: number;
+  indexed: number;
+  total: number | null;
+  truncated: boolean;
+  info_unavailable: boolean;
 }
 
 /**
@@ -74,6 +111,40 @@ async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<void>
 }
 
 export function apiSource(sid: string | null): DataSource {
+  /**
+   * 關聯分析的結果，`load()` 時取一次。
+   *
+   * **必須留著**，因為封包是一頁一頁來的：「這格屬於誰、這格是不是失敗」
+   * 要在每一頁到手時貼上去，不能只在第一頁做。
+   */
+  let subscribers: FlowSubscriber[] = [];
+
+  function need(): string {
+    if (!sid) {
+      throw new NotConnectedError(
+        "沒有工作階段 —— 網址裡缺 sid，或這一頁不是由 telcoshark serve 送出的。",
+      );
+    }
+    return sid;
+  }
+
+  async function fetchPage(offset: number, limit: number): Promise<PacketPage> {
+    const body = await getJson<IndexResponse>(
+      `/api/${need()}/index?offset=${offset}&limit=${Math.min(limit, PAGE_LIMIT)}`,
+    );
+    const rows = body.rows.map(rowToPacket);
+    attachFlowFacts(rows, subscribers);
+    return {
+      offset: body.offset,
+      rows,
+      matched: body.matched,
+      indexed: body.indexed,
+      total: body.total,
+      truncated: body.truncated,
+      infoUnavailable: body.info_unavailable,
+    };
+  }
+
   return {
     label: sid ? `工作階段 ${sid.slice(0, 8)}…` : "（無工作階段）",
 
@@ -81,26 +152,21 @@ export function apiSource(sid: string | null): DataSource {
       "封包清單、訂戶身分、解碼樹與原始位元組已接上真實資料。**Call Flow 與關聯矩陣尚未接** —— 它們需要結構化的 call flow API 與 PDU-session 級的關聯抽取，兩者都還沒做。那兩頁看到的「沒有事件」是「還沒去拿」，不是「這份擷取沒有」。",
 
     async load(): Promise<Dataset> {
-      if (!sid) {
-        throw new NotConnectedError(
-          "沒有工作階段 —— 網址裡缺 sid，或這一頁不是由 telcoshark serve 送出的。",
-        );
-      }
+      await waitForAnalysis(need());
 
-      await waitForAnalysis(sid);
-
-      const [index, flows, identities] = await Promise.all([
-        getJson<{ rows: IndexRow[]; matched: number; total: number | null }>(
-          `/api/${sid}/index?offset=0&limit=${PAGE_LIMIT}`,
+      const [flows, identities] = await Promise.all([
+        getJson<{ subscribers: FlowSubscriber[]; abs_time_available: boolean }>(
+          `/api/${need()}/flows`,
         ),
-        getJson<{ subscribers: FlowSubscriber[] }>(`/api/${sid}/flows`),
         getJson<{ groups: { kind: string; values: { value: string }[] }[] }>(
-          `/api/${sid}/identities`,
+          `/api/${need()}/identities`,
         ),
       ]);
+      subscribers = flows.subscribers ?? [];
 
-      const rawPackets: RawPacket[] = index.rows.map(rowToPacket);
-      attachFlowFacts(rawPackets, flows.subscribers);
+      // 封包清單刻意在關聯結果之後才取 —— `attachFlowFacts` 要用到它，
+      // 順序反過來的話第一頁會少了 correlatedSupi 與 ERROR 標記。
+      const page = await fetchPage(0, PAGE_LIMIT);
 
       // 身分清單：目前只取 SUPI。MSISDN／IMEI／GUTI 在 5G 核網的擷取裡
       // 多半根本不出現（它們在 UDM 側），有就有、沒有就留空 ——
@@ -115,13 +181,35 @@ export function apiSource(sid: string | null): DataSource {
         );
 
       return {
-        rawPackets,
+        rawPackets: page.rows,
+        page,
+        // 全母體的訂戶清單來自 `/flows`（伺服器端算的），**不是**由上面那
+        // 一頁封包聚合出來的 —— 那只有 500 格。
+        discoveredSessions: subscribersToSessions(
+          subscribers,
+          flows.abs_time_available,
+        ),
+        firstFrameBySupi: firstFrameBySupi(subscribers),
         sessionIdentities,
         // 這兩個還沒接。**空陣列不代表「沒有」**，代表「還沒去拿」——
         // UI 必須把這個差別講出來，見 App.tsx 的橫幅。
         callFlowEvents: [],
         correlationEntries: [],
       };
+    },
+
+    loadPacketPage: fetchPage,
+
+    async applyDisplayFilter(expr: string): Promise<void> {
+      await postForm(`/api/${need()}/refilter`, { filter: expr });
+    },
+
+    async focusIdentity(supi: string | null): Promise<void> {
+      // 空字串是後端約定的「取消」。`supi:` 前綴是身分類別，
+      // 對應後端的 `IdKind`。
+      await postForm(`/api/${need()}/select`, {
+        identity: supi ? `supi:${supi}` : "",
+      });
     },
 
     async loadFrameBytes(frame: number): Promise<string | null> {

@@ -5,17 +5,91 @@
  * （多 PDU Session／Registration Reject／mid-stream／背景雜訊）是一份
  * **邊界情境清單**，接了真實資料之後仍然要拿它驗介面 —— 真實 pcap 很難
  * 剛好同時湊齊那四種。
+ *
+ * ## 為什麼它也要分頁
+ *
+ * 30 幾格封包當然一次放得下。但元件裡若留「全記憶體」與「視窗化」兩套
+ * 分支，其中一套永遠沒人在真實資料上走過 —— 而這個專案的失敗模式全部
+ * 是靜默的，走不到的路徑等於沒寫。所以 mock 也走同一條路，代價是這裡
+ * 多二十行。
+ *
+ * ## `matchesDisplayFilter` 只活在這裡
+ *
+ * 它是 mock 階段發明的**子字串比對**，不是 tshark 的 filter 語法
+ * （`DataMiningView` 的 placeholder 承諾了它沒實作的東西 —— 照打會靜默
+ * 得零結果）。真實資料那條路走 `/refilter`，是真的 tshark。把假的那個
+ * 關在這個檔裡，它就不會再冒充成真的。
  */
 
 import { mockData } from "@/lib/mock-data";
+import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { DataSource, Dataset } from "./source";
+import type { DataSource, Dataset, PacketPage } from "./source";
 
-export const mockSource: DataSource = {
-  label: "內建範例資料",
-  async load(): Promise<Dataset> {
-    // 同步資料包成 Promise：介面統一成 async 是為了 apiSource，
-    // 這裡沒有延遲，也刻意不假造延遲（假的載入動畫會讓人以為在等真的東西）。
-    return mockData;
-  },
-};
+export function mockSource(): DataSource {
+  // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
+  // 它們會疊加，不是互相取代。
+  let displayFilter = "";
+  let focusedSupi: string | null = null;
+
+  function matching() {
+    return mockData.rawPackets.filter((packet) => {
+      if (focusedSupi && packet.correlatedSupi !== focusedSupi) return false;
+      return matchesDisplayFilter(packet, displayFilter);
+    });
+  }
+
+  async function loadPacketPage(offset: number, limit: number): Promise<PacketPage> {
+    const rows = matching();
+    return {
+      offset,
+      rows: rows.slice(offset, offset + limit),
+      matched: rows.length,
+      indexed: mockData.rawPackets.length,
+      total: mockData.rawPackets.length,
+      truncated: false,
+      infoUnavailable: false,
+    };
+  }
+
+  return {
+    label: "內建範例資料",
+
+    async load(): Promise<Dataset> {
+      // 同步資料包成 Promise：介面統一成 async 是為了 apiSource，
+      // 這裡沒有延遲，也刻意不假造延遲（假的載入動畫會讓人以為在等真的東西）。
+      const page = await loadPacketPage(0, PAGE);
+      return {
+        ...mockData,
+        rawPackets: page.rows,
+        page,
+        // mock 的封包陣列**就是**全母體，所以就地聚合在這裡是對的 ——
+        // 真實資料那邊不行（視窗只有幾百格），改由 `/flows` 供應。
+        discoveredSessions: computeDiscoveredSessions(mockData.rawPackets),
+        firstFrameBySupi: mockData.rawPackets.reduce<Record<string, number>>(
+          (acc, packet) => {
+            const supi = packet.correlatedSupi;
+            if (supi && (acc[supi] === undefined || packet.frameNumber < acc[supi])) {
+              acc[supi] = packet.frameNumber;
+            }
+            return acc;
+          },
+          {},
+        ),
+      };
+    },
+
+    loadPacketPage,
+
+    async applyDisplayFilter(expr: string): Promise<void> {
+      displayFilter = expr;
+    },
+
+    async focusIdentity(supi: string | null): Promise<void> {
+      focusedSupi = supi;
+    },
+  };
+}
+
+/** 與 `apiSource` 的 `PAGE_LIMIT` 同一個數字，理由也相同：一頁的大小。 */
+const PAGE = 500;

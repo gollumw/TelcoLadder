@@ -173,10 +173,33 @@ def find_flows(analysis: Analysis, kind: IdKind, raw: str) -> list[Flow]:
 
 
 def frames_for(analysis: Analysis, kind: IdKind, raw: str) -> set[int]:
-    """這個身分別名碰過的 frame 編號 —— 用來把封包清單縮到這個人。"""
+    """**訊息本身帶著**這個身分別名的 frame 編號。
+
+    注意這比「這個人的封包」窄 —— 加密之後的 NAS 訊息不帶 SUPI，卻仍然
+    屬於同一個人。要「只看這個人」請用 `session_frames`。
+
+    這個函式的用途是反向的：一格封包上寫著哪些身分（`frame_owners`
+    的跨訂戶提示）。
+    """
     target = (kind, raw)
     return {m.frame for f in analysis.flows for m in f.messages
             if target in m.identity_keys}
+
+
+def session_frames(analysis: Analysis, kind: IdKind, raw: str) -> set[int]:
+    """**這個人的封包** —— 帶著這個身分的流程，其全部 frame。
+
+    與 `frames_for` 的差別是這個工具存在的理由本身：關聯分析
+    （union-find）就是為了讓**不帶識別碼的訊息也能歸戶**。5G 的
+    Registration request 之後訊息就加密了，SUPI 只在最前面出現一次；
+    拿「訊息裡有沒有寫這個號碼」去篩，會把之後整段流程篩掉。
+
+    實測 `local/perf/multi-imsi.pcap`（不進版控）：同一個 SUPI
+    `frames_for` 給 42 格、流程層級給 101 格。而工作階段表（抽屜）
+    一直用的是後者 —— 於是抽屜寫「101 個封包」，點下去只剩 42，
+    **同一個畫面上兩個數字互相矛盾**，兩邊各自都看起來很合理。
+    """
+    return {m.frame for f in find_flows(analysis, kind, raw) for m in f.messages}
 
 
 def frame_owners(analysis: Analysis) -> dict[int, list[IdKey]]:
@@ -287,6 +310,7 @@ __all__ = [
     "find_flows",
     "frame_owners",
     "frames_for",
+    "session_frames",
     "lookup",
     "no_result_explanation",
 ]

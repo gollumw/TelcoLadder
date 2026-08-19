@@ -10,6 +10,7 @@
  */
 
 import type { RawPacket, TelecomDomain } from "@/lib/types";
+import type { DiscoveredSession } from "@/lib/utils";
 
 /** `/index` 回的一列。欄位名是後端 `viewer.index_json` 決定的。 */
 export interface IndexRow {
@@ -90,6 +91,9 @@ export interface FlowSession {
 export interface FlowSubscriber {
   title: string;
   grouped: boolean;
+  /** 這個訂戶最早那則訊息的絕對時間（epoch 秒）。
+   *  **0.0 是哨兵值，代表沒有絕對時間** —— 不是 1970 年。 */
+  start: number;
   sessions: FlowSession[];
 }
 
@@ -122,6 +126,70 @@ export function attachFlowFacts(packets: RawPacket[], subscribers: FlowSubscribe
     if (failed.has(packet.frameNumber)) packet.status = "ERROR";
     else if (supi) packet.status = "SUCCESS";
   }
+}
+
+/**
+ * `/flows` 的訂戶列 → 抽屜要的 `DiscoveredSession`。
+ *
+ * **為什麼不沿用 `computeDiscoveredSessions(packets)`。** 那個函式是對
+ * 傳進去的封包陣列做聚合，在 mock 階段成立（陣列就是全部），接了真實
+ * 資料之後不成立 —— 封包清單是視窗化的，一次只有幾百格。拿視窗聚合會
+ * 少報訂戶，而且少得毫無徵兆：抽屜寫著「偵測到 2 個活躍會話」，看起來
+ * 就像這份擷取檔只有兩個人。
+ *
+ * `/flows` 是伺服器端對**全母體**算出來的，本來就有這個數字。
+ *
+ * `packetCount` 用的是**不重複的 frame 數**而不是 `messages` —— 一格封包
+ * 可以帶多則訊息（NGAP 內嵌 NAS、一個 TCP frame 多個 HTTP/2 stream），
+ * 而抽屜那一欄的標題是「封包數」。拿訊息數填會比實際格數多，看起來完全合理。
+ *
+ * `absTimeAvailable` 為 false 時 `start` 是 0.0 的哨兵值。這時回 NaN 而不是
+ * 0 —— 0 會被格式化成「距離擷取開始 0 秒」，是個看起來很合理的謊；NaN 讓
+ * 呈現層有機會說「無絕對時間」。
+ */
+export function subscribersToSessions(
+  subscribers: FlowSubscriber[],
+  absTimeAvailable: boolean,
+): DiscoveredSession[] {
+  const out: DiscoveredSession[] = [];
+  for (const sub of subscribers) {
+    // 只有 `SUPI ` 開頭的才是真的訂戶 —— 其餘是「有流程但認不出是誰」，
+    // 把內部識別碼冒充成訂戶號碼比不顯示更糟（`attachFlowFacts` 同理）。
+    if (!sub.title.startsWith("SUPI ")) continue;
+    const frames = new Set<number>();
+    let hasError = false;
+    for (const session of sub.sessions) {
+      for (const frame of session.frames) frames.add(frame);
+      if (session.failure_frames.length) hasError = true;
+    }
+    out.push({
+      supi: sub.title.slice(5).trim(),
+      packetCount: frames.size,
+      hasError,
+      firstSeenEpoch: absTimeAvailable ? Math.round(sub.start * 1_000_000) : NaN,
+    });
+  }
+  return out;
+}
+
+/**
+ * 每個訂戶最早出現在哪一格。
+ *
+ * 這件事必須由 `/flows`（全母體）回答，不能由當前的封包視窗回答 ——
+ * 要跳過去的那一格，多半正好不在你現在看的那幾百格裡。
+ */
+export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const sub of subscribers) {
+    if (!sub.title.startsWith("SUPI ")) continue;
+    const supi = sub.title.slice(5).trim();
+    for (const session of sub.sessions) {
+      for (const frame of session.frames) {
+        if (out[supi] === undefined || frame < out[supi]) out[supi] = frame;
+      }
+    }
+  }
+  return out;
 }
 
 // ── 解碼樹 ──────────────────────────────────────────────────

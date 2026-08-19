@@ -3,14 +3,13 @@
   "source_repo_note": "移植當下它還叫 gollumw/TelcoShark。2026-08-19 產品接手了 TelcoShark 這個名字（本 repo，原 TelcoLens），設計實驗場讓位改名為 TelcoShark-Sandbox。source_commit 仍指向同一顆 commit。",
   "source_commit": "b16d0d5b1ccff16e9c5065705d4a6c3f733eadc1",
   "ported_on": "2026-08-19",
-  "note": "這 9 個檔是自設計實驗場（現 TelcoShark-Sandbox，port 3006）逐位元組複製的，不是重寫的。tests/test_web_assets.py 驗證雜湊仍相符，證明「搬過來的就是同一份程式碼」。參照點凍結在上面那個 commit —— 實驗場之後會繼續改動，比對活的 3006 是追移動靶。Phase 2 起 `SessionAnalyzer.tsx` 已刻意分岔（見 `diverged`），其餘 8 檔仍受此測試保護。",
+  "note": "這 9 個檔是自設計實驗場（現 TelcoShark-Sandbox，port 3006）逐位元組複製的，不是重寫的。參照點凍結在上面那個 commit —— 實驗場之後會繼續改動，比對活的 3006 是追移動靶。Phase 2 起陸續有檔案刻意分岔（見 `diverged`，每一筆都寫明理由並釘住現在的雜湊）；`files` 裡剩下的是至今仍逐位元組相同的那些。",
   "replaced": {
     "app/layout.tsx": "web/index.html + web/src/main.tsx（唯一的 next 相依，type-only import）",
     "app/globals.css": "web/src/globals.css（逐位元組相同，只是換位置）",
     "app/page.tsx": "web/src/main.tsx"
   },
   "files": {
-    "src/components/DiscoveredSessionsPanel.tsx": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
     "src/components/ProtocolTree.tsx": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
     "src/components/HexDump.tsx": "95bfb27b125cfd7f4ce430c466ba26deee8b8819f3092590ac7e2bc0adbf8b55",
     "src/lib/utils.ts": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e"
@@ -18,11 +17,11 @@
   "diverged": {
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "211038f9b247ded4e0577bacd55fa4a179650fd1f133d38593bb2ecc0935d42a",
+      "current_sha256": "b2614307d297ebb65362261172a7bbef93f434c993bed8e068ecbb72e42102d1",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
-      "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳 bytesByFrame / treeByFrame 與兩個取資料的 callback"
+      "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
@@ -40,11 +39,11 @@
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "f0c4f7604f5d63f37d7892dd535992c5203e9e1d5e8d0d34727aaada95667ec7",
+      "current_sha256": "fbc252ef199f1637f9970b42062acfad8be4b3cd92ca67787e3ca26a37741032",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
-      "reason": "Phase 3：hex 與解碼樹改成懶載入 —— 選到哪一格才去要哪一格"
+      "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。"
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
@@ -53,6 +52,11 @@
       "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
       "reason": "Phase 3：Decode Inspector 同樣改懶載入解碼樹"
+    },
+    "src/components/DiscoveredSessionsPanel.tsx": {
+      "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
+      "current_sha256": "f47193fe4ce12e916c7cae662524c07747ff9e68b993883cd9fb10b3a0c3ea42",
+      "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。"
     }
   }
 }

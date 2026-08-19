@@ -6,17 +6,35 @@
  * 不會碰到任何一個 View。
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 import SessionAnalyzer from "@/components/SessionAnalyzer";
 import { apiSource } from "@/data/apiSource";
 import { mockSource } from "@/data/mockSource";
-import { currentSid, wantsApiSource, type DataSource, type Dataset } from "@/data/source";
-import type { ProtocolNode } from "@/lib/types";
+import {
+  currentSid,
+  wantsApiSource,
+  type DataSource,
+  type Dataset,
+  type PacketPage,
+} from "@/data/source";
+import type { ProtocolNode, RawPacket } from "@/lib/types";
 
 function pickSource(): DataSource {
-  return wantsApiSource() ? apiSource(currentSid()) : mockSource;
+  return wantsApiSource() ? apiSource(currentSid()) : mockSource();
+}
+
+/**
+ * 一次抓幾列。與舊檢視器 `viewer.js` 的 `PAGE` 同一個值 —— 那套虛擬滾動
+ * 在這個 codebase 的真實擷取檔上驗過（436 MB / 250 萬封包）。
+ */
+const ROW_PAGE = 200;
+
+/** 封包清單的狀態：稀疏的列 ＋ 總數。列的鍵是**篩選後的序位**，不是 frame 編號。 */
+interface PacketStore {
+  rows: Record<number, RawPacket>;
+  totals: Omit<PacketPage, "rows" | "offset">;
 }
 
 export default function App() {
@@ -27,13 +45,33 @@ export default function App() {
   // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
   const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
   const [treeByFrame, setTreeByFrame] = useState<Record<number, ProtocolNode[] | null>>({});
+  const [packets, setPackets] = useState<PacketStore | null>(null);
+  /** display filter 的語法錯誤。**不是**整頁的錯誤 —— 打錯字不該把畫面清空。 */
+  const [filterError, setFilterError] = useState<string | null>(null);
+  /** 正在取的頁（以 offset 為鍵）。防止同一頁被重複請求。 */
+  const inFlight = useRef<Set<number>>(new Set());
+  /**
+   * 過濾條件的版次。每次條件變動就 +1；回應帶著發出時的版次回來，
+   * 對不上就丟掉。
+   *
+   * 沒有這個守衛時：使用者連續改兩次過濾，兩個請求誰先回來不保證，
+   * 慢的那個後到就會把畫面蓋回舊條件的結果 —— 而畫面上的過濾框寫的是
+   * 新條件。舊檢視器用的是同一招（`viewer.js` 的 `railSeq`）。
+   */
+  const generation = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     source
       .load()
       .then((loaded) => {
-        if (!cancelled) setData(loaded);
+        if (cancelled) return;
+        setData(loaded);
+        const { rows, offset, ...totals } = loaded.page;
+        setPackets({
+          rows: Object.fromEntries(rows.map((row, i) => [offset + i, row])),
+          totals,
+        });
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
@@ -42,6 +80,91 @@ export default function App() {
       cancelled = true;
     };
   }, [source]);
+
+  /**
+   * 補齊 [first, first+count) 這段裡缺的列。
+   *
+   * **一次只補第一個缺口那一頁**，比照 `viewer.js:145`：快速捲動會掃過
+   * 上百頁，每一格都發請求會打爆後端，而使用者最後只會停在一個位置。
+   * 停下來時 `draw` 會再叫一次，缺的那頁自然補上。
+   */
+  const requestRows = useCallback(
+    (first: number, count: number) => {
+      setPackets((current) => {
+        if (!current) return current;
+        for (let i = first; i < first + count && i < current.totals.matched; i++) {
+          if (i in current.rows) continue;
+          const offset = Math.floor(i / ROW_PAGE) * ROW_PAGE;
+          if (inFlight.current.has(offset)) break;
+          inFlight.current.add(offset);
+          const mine = generation.current;
+          void source
+            .loadPacketPage(offset, ROW_PAGE)
+            .then((page) => {
+              inFlight.current.delete(offset);
+              // 條件已經換過了 —— 這頁是舊條件下的序位，貼上去會錯位。
+              if (mine !== generation.current) return;
+              setPackets((c) =>
+                c === null
+                  ? c
+                  : {
+                      rows: {
+                        ...c.rows,
+                        ...Object.fromEntries(
+                          page.rows.map((row, k) => [page.offset + k, row]),
+                        ),
+                      },
+                      // 索引還在跑時 matched 會長，順手更新。
+                      totals: { ...c.totals, matched: page.matched, indexed: page.indexed },
+                    },
+              );
+            })
+            .catch(() => {
+              inFlight.current.delete(offset);
+            });
+          break;
+        }
+        return current;
+      });
+    },
+    [source],
+  );
+
+  /** 條件變動後重取第一頁。已載入的列全部作廢 —— 它們的序位是舊條件下的。 */
+  const reloadPackets = useCallback(async () => {
+    generation.current += 1;
+    const mine = generation.current;
+    inFlight.current.clear();
+    const page = await source.loadPacketPage(0, ROW_PAGE);
+    if (mine !== generation.current) return;
+    const { rows, offset, ...totals } = page;
+    setPackets({
+      rows: Object.fromEntries(rows.map((row, i) => [offset + i, row])),
+      totals,
+    });
+  }, [source]);
+
+  const applyDisplayFilter = useCallback(
+    (expr: string) => {
+      setFilterError(null);
+      void source
+        .applyDisplayFilter(expr)
+        .then(reloadPackets)
+        .catch((err: unknown) => {
+          // 語法錯誤原樣顯示（含 tshark 指到出錯位置的 caret）。**不清空
+          // 封包清單** —— 打錯一個字就把畫面清掉，會讓人以為是過濾結果為零。
+          setFilterError(err instanceof Error ? err.message : String(err));
+        });
+    },
+    [source, reloadPackets],
+  );
+
+  const restrictToSupi = useCallback(
+    (supi: string | null) => {
+      void source.focusIdentity(supi).then(reloadPackets).catch(() => {});
+    },
+    [source, reloadPackets],
+  );
 
   const requestBytes = useCallback(
     (frame: number) => {
@@ -94,7 +217,7 @@ export default function App() {
     );
   }
 
-  if (!data) {
+  if (!data || !packets) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -116,6 +239,12 @@ export default function App() {
       )}
       <SessionAnalyzer
         data={data}
+        packetRows={packets.rows}
+        packetTotals={packets.totals}
+        onNeedRows={requestRows}
+        onApplyDisplayFilter={applyDisplayFilter}
+        onRestrictToSupi={restrictToSupi}
+        filterError={filterError}
         bytesByFrame={bytesByFrame}
         onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
         treeByFrame={treeByFrame}

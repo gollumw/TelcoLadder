@@ -31,6 +31,31 @@ import type {
   RawPacket,
   SessionIdentity,
 } from "@/lib/types";
+import type { DiscoveredSession } from "@/lib/utils";
+
+/**
+ * 封包清單的一頁。
+ *
+ * `offset` / `matched` 都是**篩選後**的序位與總數 —— 不是檔案裡的 frame 編號，
+ * 也不是索引到的總格數。三個是不同的東西（後端 `index_json` 的註解講的是
+ * 同一件事），混用的症狀是捲軸長度與內容對不上。
+ */
+export interface PacketPage {
+  offset: number;
+  rows: RawPacket[];
+  /** 符合目前條件的總列數。捲軸的高度由它決定。 */
+  matched: number;
+  /** 已索引的格數。索引還在跑時它會一直長。 */
+  indexed: number;
+  /** 檔案裡真正的封包數。**可以是 null** —— capinfos 取不到時就是，
+   *  這時不要在任何一側編一個分母出來。 */
+  total: number | null;
+  /** 索引撞到後端上限而截斷。撞到就要講，不能只顯示前面那些。 */
+  truncated: boolean;
+  /** 這個 tshark 沒給 Info 欄。整欄空白時要說出是這個原因，
+   *  而不是讓人以為這份擷取檔沒有資料。 */
+  infoUnavailable: boolean;
+}
 
 /**
  * 一次分析的完整結果。
@@ -46,7 +71,31 @@ export interface Dataset {
   sessionIdentities: SessionIdentity[];
   callFlowEvents: CallFlowEvent[];
   correlationEntries: CorrelationEntry[];
+  /**
+   * 第一頁封包。**這不是全部** —— 其餘由 `loadPacketPage` 依捲動位置補。
+   *
+   * 名字沿用 mock 階段的 `rawPackets` 是刻意的：`lib/types.ts` 那份契約
+   * 沒有改，改的是「誰負責把它填滿」。
+   */
   rawPackets: RawPacket[];
+  /** 第一頁連帶回來的總數與狀態。 */
+  page: PacketPage;
+  /**
+   * 全母體的訂戶清單。
+   *
+   * **不可以由 `rawPackets` 就地聚合** —— 那只有一個視窗（幾百格），
+   * 聚合出來會少報用戶，而且少得毫無徵兆：抽屜寫著「偵測到 2 個活躍會話」，
+   * 看起來就像這份擷取檔只有兩個人。
+   */
+  discoveredSessions: DiscoveredSession[];
+  /**
+   * 每個訂戶最早出現在哪一格。
+   *
+   * 抽屜的「直達 Call Flow」與身分搜尋的「前往 Session Analysis」都要跳到
+   * 某一格。原本的做法是 `packets.find(p => p.correlatedSupi === supi)` ——
+   * 封包清單視窗化之後那個 find 只掃得到當前視窗，跳不到的人就靜默沒反應。
+   */
+  firstFrameBySupi: Record<string, number>;
 }
 
 export interface DataSource {
@@ -61,6 +110,33 @@ export interface DataSource {
    */
   readonly notice?: string;
   load(): Promise<Dataset>;
+
+  /**
+   * 取封包清單的一段。**每個來源都要實作** —— 包含 mock。
+   *
+   * 讓 mock 也走視窗化這條路是刻意的：元件裡若留「全記憶體」與「視窗化」
+   * 兩套分支，其中一套永遠沒人在真實資料上走過。代價是 mock 多幾行分頁
+   * 程式碼，換到的是**只有一條路徑會被實際執行**。
+   */
+  loadPacketPage(offset: number, limit: number): Promise<PacketPage>;
+
+  /**
+   * 套用 display filter。之後的 `loadPacketPage` 都只會回符合的列。
+   *
+   * 語法錯誤**丟例外**，訊息是後端原樣轉述的 tshark 輸出（含指到出錯
+   * 位置的 caret）。我們不自己寫 filter 驗證器 —— 那等於維護第二套語法
+   * 知識，一定漂移（後端 `_handle_refilter` 的註解講的是同一件事）。
+   */
+  applyDisplayFilter(expr: string): Promise<void>;
+
+  /**
+   * 只看某個訂戶的封包；null = 取消。
+   *
+   * 與 `applyDisplayFilter` 是**兩個獨立條件、會疊加**，不是互相取代 ——
+   * 「鎖定一個人但看他的某一種協定」是實際的用法。後端原本共用一個
+   * `keep_frames` 而後設的會靜默丟掉先設的，已於 `d03235a` 拆開。
+   */
+  focusIdentity(supi: string | null): Promise<void>;
 
   /**
    * 一格的原始位元組（連續小寫 hex）。**懶載入** —— 一份擷取幾十萬格，

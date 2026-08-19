@@ -26,7 +26,7 @@ from telcoshark.decode import decode_frames, window_around
 from telcoshark.framebytes import frame_bytes
 from telcoshark.identities import (
     availability,
-    frames_for,
+    session_frames,
     lookup,
     no_result_explanation,
 )
@@ -251,7 +251,8 @@ def select_identity(session: Session, kind_value: str, raw: str) -> dict:
     except ValueError:
         return {"error": f"未知的身分類別：{kind_value}"}
 
-    frames = frames_for(analysis, kind, raw)
+    # 流程層級，不是「訊息裡有寫這個號碼」—— 見 `session_frames` 的說明。
+    frames = session_frames(analysis, kind, raw)
     if not frames:
         return {"error": f"這個身分沒有對應的封包：{raw}"}
     with session.lock:

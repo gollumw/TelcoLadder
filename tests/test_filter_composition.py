@@ -163,3 +163,37 @@ def test_keep_frames_refuses_to_be_written_to(analysed: Session) -> None:
     """
     with pytest.raises(AttributeError):
         analysed.keep_frames = {1, 2, 3}
+
+
+def test_selecting_a_subscriber_matches_what_the_drawer_promised(
+    analysed: Session,
+) -> None:
+    """抽屜說「N 個封包」，點下去就要看到 N 列。
+
+    這兩個數字原本出自**兩套不同的定義**：抽屜（工作階段表）算的是
+    「帶著這個身分的流程，其全部訊息」，而 `/select` 算的是「訊息裡
+    literally 寫著這個號碼」。5G 的 SUPI 只在加密前出現一次，於是後者
+    遠小於前者 —— 實測同一個訂戶 101 vs 42。
+
+    兩個數字都在同一個畫面上，而且各自看起來都很合理。
+    """
+    from telcoshark.flowtable import build_table
+
+    table = build_table(analysed.analysis)
+    subscriber = next(
+        sub for sub in table.subscribers if sub.title.startswith("SUPI ")
+    )
+    supi = subscriber.title[len("SUPI "):].strip()
+
+    # 抽屜那一欄的來源：這個訂戶所有 session 的 frame 聯集。
+    promised = {
+        frame
+        for row in subscriber.sessions
+        for frame in (m.frame for m in analysed.analysis.flows[row.flow_id].messages)
+    }
+
+    select_identity(analysed, "supi", supi)
+    assert analysed.identity_frames == promised, (
+        "抽屜承諾的封包集合與『只看此 Session』篩出來的不一致 —— "
+        "使用者會看到抽屜寫一個數字、點進去是另一個"
+    )

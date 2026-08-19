@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Filter, Link2, Search } from "lucide-react";
-import { cn, computeDiscoveredSessions, findSupiByTarget, formatTimeOffset, matchesDisplayFilter } from "@/lib/utils";
+import { cn, findSupiByTarget, formatTimeOffset, type DiscoveredSession } from "@/lib/utils";
+import type { PacketPage } from "@/data/source";
 import { ProtocolTree } from "./ProtocolTree";
 import { HexDump } from "./HexDump";
 import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
@@ -29,6 +30,18 @@ const STATUS_DOT: Record<RawPacket["status"], string> = {
   INFO: "bg-slate-400",
 };
 
+/**
+ * 虛擬滾動的三個常數，與舊檢視器 `viewer.js:37-39` 相同 —— 那套在真實
+ * 擷取檔上驗過（436 MB / 250 萬封包）。
+ *
+ * `ROW_H` 是**固定**列高，不能是 auto：捲軸長度、可見範圍、以及「該補哪
+ * 一頁」全部由它反推。列高一旦隨內容變動，算出來的位置就會漂，而症狀是
+ * 捲動時內容跳動 —— 看起來像效能問題，其實是算術錯了。
+ */
+const ROW_H = 22;
+const OVERSCAN = 10;
+const VIEWPORT_H = 288; // = Tailwind 的 max-h-72
+
 function findNodeById(nodes: ProtocolNode[], id: string): ProtocolNode | undefined {
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -45,38 +58,54 @@ function findNodeById(nodes: ProtocolNode[], id: string): ProtocolNode | undefin
 // identity search (left) separate from protocol-syntax filtering (right),
 // and a per-row "Correlate Session" action that drills into Session Analysis.
 export function DataMiningView({
-  packets,
+  discoveredSessions,
+  firstFrameBySupi,
   identities,
   correlationEntries,
   displayFilter,
   onDisplayFilterChange,
+  onApplyDisplayFilter,
+  filterError,
   focusedSupi,
   onFocusSupi,
   onlySessionFilter,
   onOnlySessionFilterChange,
   selectedFrame,
   onSelectFrame,
+  packetRows,
+  packetTotals,
+  onNeedRows,
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
   onRequestTree,
   onCorrelateSession,
 }: {
-  packets: RawPacket[];
+  /** 全母體的訂戶清單。**不是**由封包視窗聚合來的 —— 見 `source.ts`。 */
+  discoveredSessions: DiscoveredSession[];
+  firstFrameBySupi: Record<string, number>;
   identities: SessionIdentity[];
   correlationEntries: CorrelationEntry[];
   displayFilter: string;
   onDisplayFilterChange: (value: string) => void;
+  /** 真的送出去跑 tshark。與 `onDisplayFilterChange`（只改輸入框）分開 ——
+   *  每敲一個鍵就掃一次整份擷取檔是不可行的。 */
+  onApplyDisplayFilter: (expr: string) => void;
+  filterError: string | null;
   focusedSupi: string | null;
   onFocusSupi: (supi: string | null) => void;
   onlySessionFilter: boolean;
   onOnlySessionFilterChange: (value: boolean) => void;
   selectedFrame: number | null;
+  onSelectFrame: (frame: number) => void;
+  /** 已取到的列，鍵是**篩選後的序位**。缺的鍵＝還沒取到，畫成佔位列。 */
+  packetRows: Record<number, RawPacket>;
+  packetTotals: Omit<PacketPage, "rows" | "offset">;
+  onNeedRows: (first: number, count: number) => void;
   bytesByFrame?: Record<number, string | null>;
   onRequestBytes?: (frame: number) => void;
   treeByFrame?: Record<number, ProtocolNode[] | null>;
   onRequestTree?: (frame: number) => void;
-  onSelectFrame: (frame: number) => void;
   onCorrelateSession: (supi: string, frame: number) => void;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -84,52 +113,68 @@ export function DataMiningView({
   const [targetValue, setTargetValue] = useState("");
   const [searchResult, setSearchResult] = useState<{ supi: string } | "not-found" | null>(null);
 
-  const baseEpoch = packets[0]?.epochMicroseconds ?? 0;
-  const discoveredSessions = useMemo(() => computeDiscoveredSessions(packets), [packets]);
+  // 捲動位置決定畫哪幾列。這是虛擬滾動的全部狀態 —— 其餘都由它算出來。
+  const [scrollTop, setScrollTop] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const filtered = useMemo(
-    () =>
-      packets.filter((p) => {
-        if (onlySessionFilter && focusedSupi && p.correlatedSupi !== focusedSupi) return false;
-        return matchesDisplayFilter(p, displayFilter);
-      }),
-    [packets, displayFilter, focusedSupi, onlySessionFilter],
-  );
+  const matched = packetTotals.matched;
+  const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const last = Math.min(matched, first + Math.ceil(VIEWPORT_H / ROW_H) + OVERSCAN * 2);
 
-  // If a jump lands on a frame the active filter hides, clear filters so it stays visible.
+  // 缺的列去補。**放在 effect 而不是 render 裡** —— render 期間呼叫父層的
+  // setState 是 React 的錯誤，而且會讓「補資料」跟「畫面」互相觸發成迴圈。
   useEffect(() => {
-    if (selectedFrame == null) return;
-    if (!filtered.some((p) => p.frameNumber === selectedFrame)) {
-      onDisplayFilterChange("");
-      onOnlySessionFilterChange(false);
-    }
+    if (last > first) onNeedRows(first, last - first);
+  }, [first, last, onNeedRows]);
+
+  // 條件變了就回到頂端。留在原捲動位置沒有意義 —— 那個序位在新條件下
+  // 是另一批封包，看起來像「過濾之後跳到不相干的地方」。
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setScrollTop(0);
+  }, [matched]);
+
+  const loadedRows = Object.values(packetRows);
+  const baseEpoch = packetRows[0]?.epochMicroseconds ?? 0;
+
+  useEffect(() => {
     setSelectedNodeId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFrame]);
 
-  const selectedPacket = packets.find((p) => p.frameNumber === selectedFrame) ?? filtered[0] ?? null;
+  // 選中的那一格不一定在已載入的視窗裡（例如從梯形圖跳過來）。找不到時
+  // **不退回第一列** —— 那會顯示一格使用者沒選的封包，而且看起來很合理。
+  const selectedPacket =
+    loadedRows.find((p) => p.frameNumber === selectedFrame) ??
+    (selectedFrame === null ? (packetRows[0] ?? null) : null);
+  const detailFrame = selectedFrame ?? selectedPacket?.frameNumber ?? null;
+
   // hex 優先用資料自帶的（mock 是編譯期就有的），沒有才看懶載入的結果。
   // `bytesByFrame` 裡有這個鍵但值是 null＝問過了、那格真的沒有。
   // 解碼樹同樣：優先用資料自帶的（mock 有），沒有才看懶載入結果。
   const treeForSelected =
     selectedPacket?.decodeTree ??
-    (selectedPacket ? (treeByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+    (detailFrame !== null ? (treeByFrame?.[detailFrame] ?? undefined) : undefined);
 
   const hexForSelected =
     selectedPacket?.hexDump ??
-    (selectedPacket ? (bytesByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+    (detailFrame !== null ? (bytesByFrame?.[detailFrame] ?? undefined) : undefined);
 
   // 選到一格才去要它的位元組 —— 一份擷取幾十萬格，不可能預先全取。
   useEffect(() => {
-    if (!selectedPacket) return;
-    if (!selectedPacket.hexDump) onRequestBytes?.(selectedPacket.frameNumber);
-    if (!selectedPacket.decodeTree) onRequestTree?.(selectedPacket.frameNumber);
-  }, [selectedPacket, onRequestBytes, onRequestTree]);
+    if (detailFrame === null) return;
+    if (!selectedPacket?.hexDump) onRequestBytes?.(detailFrame);
+    if (!selectedPacket?.decodeTree) onRequestTree?.(detailFrame);
+  }, [detailFrame, selectedPacket, onRequestBytes, onRequestTree]);
 
   const selectedNode =
     treeForSelected && selectedNodeId
       ? findNodeById(treeForSelected, selectedNodeId)
       : null;
+
+  function jumpTo(supi: string) {
+    const frame = firstFrameBySupi[supi];
+    if (frame !== undefined) onCorrelateSession(supi, frame);
+  }
 
   function handleTargetSearch() {
     const supi = findSupiByTarget(identities, correlationEntries, targetType, targetValue);
@@ -153,10 +198,7 @@ export function DataMiningView({
           onFocusSupi(supi);
           onOnlySessionFilterChange(supi != null);
         }}
-        onJumpToSession={(supi) => {
-          const firstPacket = packets.find((p) => p.correlatedSupi === supi);
-          if (firstPacket) onCorrelateSession(supi, firstPacket.frameNumber);
-        }}
+        onJumpToSession={jumpTo}
       />
 
       {/* Dual-track filter bar */}
@@ -201,7 +243,7 @@ export function DataMiningView({
           {searchResult !== null && searchResult !== "not-found" && (
             <button
               type="button"
-              onClick={() => onCorrelateSession(searchResult.supi, packets.find((p) => p.correlatedSupi === searchResult.supi)?.frameNumber ?? 0)}
+              onClick={() => jumpTo(searchResult.supi)}
               className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-sky-400 hover:text-sky-300"
             >
               前往 Session Analysis（此用戶）
@@ -218,16 +260,27 @@ export function DataMiningView({
             <input
               value={displayFilter}
               onChange={(e) => onDisplayFilterChange(e.target.value)}
-              placeholder="例如 ngap.procedureCode == 14、pfcp.cause != 1、http2"
+              onKeyDown={(e) => e.key === "Enter" && onApplyDisplayFilter(displayFilter)}
+              placeholder="Wireshark display filter，按 Enter 套用（例如 ngap.procedureCode == 14）"
               className="w-full rounded border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
             />
           </div>
+          {/* tshark 自己的錯誤訊息，含指到出錯位置的 caret。**原樣顯示** ——
+              我們不改寫也不簡化，那是使用者要據以修正的東西。 */}
+          {filterError && (
+            <pre className="mt-1.5 whitespace-pre-wrap break-all rounded border border-rose-500/30 bg-rose-500/5 p-2 font-mono text-[11px] text-rose-300">
+              {filterError}
+            </pre>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {QUICK_FILTERS.map((qf) => (
               <button
                 key={qf.label}
                 type="button"
-                onClick={() => onDisplayFilterChange(qf.expr)}
+                onClick={() => {
+                  onDisplayFilterChange(qf.expr);
+                  onApplyDisplayFilter(qf.expr);
+                }}
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-[11px]",
                   displayFilter === qf.expr
@@ -254,6 +307,7 @@ export function DataMiningView({
                 type="button"
                 onClick={() => {
                   onDisplayFilterChange("");
+                  onApplyDisplayFilter("");
                   onFocusSupi(null);
                   onOnlySessionFilterChange(false);
                 }}
@@ -263,15 +317,38 @@ export function DataMiningView({
               </button>
             )}
           </div>
+          {/* 三個數字是三件不同的事，**不可以混用**：`matched` 是符合條件
+              的列數、`indexed` 是已索引的格數、`total` 是檔案裡真正有幾格。
+              以前這裡寫「500 / 500 個封包」—— 兩個都是視窗大小，看起來就像
+              這份擷取檔只有 500 格。 */}
           <p className="mt-1.5 text-[11px] text-slate-600">
-            {filtered.length} / {packets.length} 個封包
+            符合 {matched.toLocaleString()} 列 · 已索引 {packetTotals.indexed.toLocaleString()}
+            {packetTotals.total !== null && ` / 檔案共 ${packetTotals.total.toLocaleString()}`} 格
           </p>
+          {packetTotals.truncated && (
+            <p className="mt-1 text-[11px] text-amber-400">
+              ⚠ 已達索引上限，後面的封包沒有被索引 —— 請用 display filter 縮小範圍再重新開啟
+            </p>
+          )}
+          {packetTotals.infoUnavailable && (
+            <p className="mt-1 text-[11px] text-amber-400">
+              ⚠ 這個 tshark 沒有提供 Info 欄，該欄會是空的（不是這份擷取檔沒有資料）
+            </p>
+          )}
         </div>
       </div>
 
       {/* Packet List */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60">
-        <div className="max-h-72 overflow-y-auto">
+        {/* 虛擬滾動：只畫可見的那幾十列，上下用空白列把捲軸撐到正確高度。
+            25 萬列全部塞進 DOM 會讓瀏覽器直接躺平 —— 而症狀是「開一份大檔
+            分頁就沒反應」，看起來像後端慢。 */}
+        <div
+          ref={scrollRef}
+          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          className="max-h-72 overflow-y-auto"
+          style={{ height: VIEWPORT_H }}
+        >
           <table className="w-full text-left text-[11px]">
             <thead className="sticky top-0 bg-slate-900">
               <tr className="text-slate-500">
@@ -286,13 +363,28 @@ export function DataMiningView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
-              {filtered.map((p) => {
+              {first > 0 && <tr style={{ height: first * ROW_H }} />}
+              {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
+                const index = first + k;
+                const p = packetRows[index];
+                if (!p) {
+                  // 還沒取到。**畫一列佔位而不是跳過** —— 跳過會讓後面的列
+                  // 往上補，捲動時整份清單看起來在亂跳。
+                  return (
+                    <tr key={`gap-${index}`} style={{ height: ROW_H }}>
+                      <td colSpan={8} className="px-2 text-slate-700">
+                        載入中……
+                      </td>
+                    </tr>
+                  );
+                }
                 const isFocusedSession = focusedSupi != null && p.correlatedSupi === focusedSupi;
                 const isKnownOtherSession = !isFocusedSession && !!p.correlatedSupi;
-                const isSelected = p.frameNumber === selectedPacket?.frameNumber;
+                const isSelected = p.frameNumber === detailFrame;
                 return (
                   <tr
                     key={p.frameNumber}
+                    style={{ height: ROW_H }}
                     onClick={() => onSelectFrame(p.frameNumber)}
                     className={cn(
                       "cursor-pointer",
@@ -343,7 +435,8 @@ export function DataMiningView({
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {last < matched && <tr style={{ height: (matched - last) * ROW_H }} />}
+              {matched === 0 && (
                 <tr>
                   <td colSpan={8} className="px-2 py-6 text-center text-slate-600">
                     沒有符合過濾條件的封包

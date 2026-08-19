@@ -126,7 +126,13 @@ export function DiscoveredSessionsPanel({
                           5G-GUTI：<span className="font-mono text-slate-400">{identity?.guti ?? "Uncaptured / N/A"}</span>
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {s.packetCount} 個封包 · 首見於 T+{formatTimeOffset(s.firstSeenEpoch, baseEpoch)}s
+                          {s.packetCount} 個封包 ·{" "}
+                          {/* 有些擷取檔沒有絕對時間戳（網元 trace 常見）。那時
+                              `firstSeenEpoch` 是 NaN —— 照算會印出「T+0.000000s」，
+                              一個看起來完全合理的謊。說出沒有比編一個好。 */}
+                          {Number.isFinite(s.firstSeenEpoch)
+                            ? `首見於 T+${formatTimeOffset(s.firstSeenEpoch, baseEpoch)}s`
+                            : "這份擷取檔沒有絕對時間戳"}
                         </p>
                       </div>
                       <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", meta.className)}>{meta.label}</span>

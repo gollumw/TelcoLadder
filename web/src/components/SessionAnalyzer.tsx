@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Dataset } from "@/data/source";
+import type { Dataset, PacketPage } from "@/data/source";
+import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 
@@ -17,12 +18,25 @@ type Mode = "mining" | "session";
 // Phase 3 換後端不會碰到它們。取資料與載入／失敗狀態由 `App.tsx` 負責。
 export default function SessionAnalyzer({
   data,
+  packetRows,
+  packetTotals,
+  onNeedRows,
+  onApplyDisplayFilter,
+  onRestrictToSupi,
+  filterError,
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
   onRequestTree,
 }: {
   data: Dataset;
+  /** 已取到的封包，鍵是**篩選後的序位**（不是 frame 編號）。缺的鍵＝還沒取。 */
+  packetRows: Record<number, RawPacket>;
+  packetTotals: Omit<PacketPage, "rows" | "offset">;
+  onNeedRows: (first: number, count: number) => void;
+  onApplyDisplayFilter: (expr: string) => void;
+  onRestrictToSupi: (supi: string | null) => void;
+  filterError: string | null;
   /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
   bytesByFrame?: Record<number, string | null>;
   /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
@@ -42,6 +56,14 @@ export default function SessionAnalyzer({
   const [selectedFrame, setSelectedFrame] = useState<number | null>(null);
   const [reassociateState, setReassociateState] = useState<"idle" | "loading" | "done">("idle");
 
+  // 「聚焦某人」與「只看此 Session」是**兩個**變數：前者只是高亮，後者才
+  // 真的縮小封包母體。所以送到後端的是兩者的合成 —— 只高亮時不縮母體，
+  // 使用者才能「鎖定一個人但看周邊雜訊」（驗收清單的雙軌過濾那條）。
+  const restrictTo = onlySessionFilter ? focusedSupi : null;
+  useEffect(() => {
+    onRestrictToSupi(restrictTo);
+  }, [restrictTo, onRestrictToSupi]);
+
   function handleReassociate() {
     setReassociateState("loading");
     setTimeout(() => setReassociateState("done"), 900);
@@ -59,6 +81,12 @@ export default function SessionAnalyzer({
   }
 
   function handleViewInDataMining(frame: number) {
+    // **過濾自癒。** 從梯形圖跳回來的那一格，很可能被目前的過濾條件藏著，
+    // 少了這段回程會像沒反應。原本的做法是掃封包陣列判斷「這格還在嗎」，
+    // 封包清單視窗化之後掃不到 —— 改成在跳的時候就把條件清掉，不用猜。
+    setDisplayFilter("");
+    onApplyDisplayFilter("");
+    setOnlySessionFilter(false);
     setSelectedFrame(frame);
     setMode("mining");
   }
@@ -129,14 +157,17 @@ export default function SessionAnalyzer({
               ) : (
                 <Upload className="h-3.5 w-3.5" />
               )}
-              {reassociateState === "done" ? `已重新關聯 ${rawPackets.length} 個封包` : "上傳 PCAP / 重新關聯"}
+              {reassociateState === "done"
+                ? `已重新關聯 ${packetTotals.indexed.toLocaleString()} 個封包`
+                : "上傳 PCAP / 重新關聯"}
             </button>
           </div>
         </header>
 
         {mode === "mining" ? (
           <DataMiningView
-            packets={rawPackets}
+            discoveredSessions={data.discoveredSessions}
+            firstFrameBySupi={data.firstFrameBySupi}
             identities={sessionIdentities}
             correlationEntries={correlationEntries}
             displayFilter={displayFilter}
@@ -147,6 +178,11 @@ export default function SessionAnalyzer({
             onOnlySessionFilterChange={setOnlySessionFilter}
             selectedFrame={selectedFrame}
             onSelectFrame={setSelectedFrame}
+            packetRows={packetRows}
+            packetTotals={packetTotals}
+            onNeedRows={onNeedRows}
+            onApplyDisplayFilter={onApplyDisplayFilter}
+            filterError={filterError}
             bytesByFrame={bytesByFrame}
             onRequestBytes={onRequestBytes}
             treeByFrame={treeByFrame}
