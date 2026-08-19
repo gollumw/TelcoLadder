@@ -30,9 +30,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from telcolens.model import CauseRef, Endpoint, Flow, IdKind, Message
-from telcolens.pipeline import AutoDecode
-from telcolens.render_html import render_report
+from telcoshark.model import CauseRef, Endpoint, Flow, IdKind, Message
+from telcoshark.pipeline import AutoDecode
+from telcoshark.render_html import render_report
 
 GOLDEN = Path(__file__).parent / "golden" / "report-synthetic.html"
 

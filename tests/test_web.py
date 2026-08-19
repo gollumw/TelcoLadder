@@ -25,11 +25,11 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.pipeline import analyse
-from telcolens.render_html import render_report
-from telcolens.tshark import ENV_OVERRIDE, TsharkNotFound, find_tshark
-import telcolens.web as web
-from telcolens.web import _TMP_PREFIX, make_server
+from telcoshark.pipeline import analyse
+from telcoshark.render_html import render_report
+from telcoshark.tshark import ENV_OVERRIDE, TsharkNotFound, find_tshark
+import telcoshark.web as web
+from telcoshark.web import _TMP_PREFIX, make_server
 
 FIXTURES = Path(__file__).parent / "fixtures"
 KI_MISMATCH = FIXTURES / "ki-mismatch" / "capture.pcap"
@@ -179,7 +179,7 @@ def test_upload_takes_the_same_path_as_a_local_file(server):
     """上傳與貼路徑必須得到同一份報告 —— 兩個入口，一條管線。"""
     status, uploaded = _post(server, "/upload", KI_MISMATCH.read_bytes(), headers={
         "Content-Type": "application/octet-stream",
-        "X-TelcoLens-Filename": "capture.pcap",
+        "X-TelcoShark-Filename": "capture.pcap",
     })
     assert status == 200
     _, via_path = _post(server, "/analyze", f"path={KI_MISMATCH}".encode())
@@ -194,7 +194,7 @@ def test_upload_leaves_no_temp_file_behind(server):
     before = _temp_uploads()
     _post(server, "/upload", KI_MISMATCH.read_bytes(), headers={
         "Content-Type": "application/octet-stream",
-        "X-TelcoLens-Filename": "capture.pcap",
+        "X-TelcoShark-Filename": "capture.pcap",
     })
     assert _temp_uploads() - before == set()
 
@@ -210,7 +210,7 @@ def test_temp_file_is_removed_even_when_analysis_fails(server):
     before = _temp_uploads()
     status, _ = _post(server, "/upload", b"this is definitely not a pcap", headers={
         "Content-Type": "application/octet-stream",
-        "X-TelcoLens-Filename": "junk.pcap",
+        "X-TelcoShark-Filename": "junk.pcap",
     })
     assert status == 400
     assert _temp_uploads() - before == set()
@@ -250,7 +250,7 @@ def test_upload_is_deleted_before_any_response_is_written(server, monkeypatch, b
     monkeypatch.setattr(web._Handler, "_send_html", spy)
     status, _ = _post(server, "/upload", payload, headers={
         "Content-Type": "application/octet-stream",
-        "X-TelcoLens-Filename": "capture.pcap",
+        "X-TelcoShark-Filename": "capture.pcap",
     })
 
     assert status == expected

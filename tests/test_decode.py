@@ -19,14 +19,14 @@ import subprocess
 
 import pytest
 
-from telcolens.decode import (
+from telcoshark.decode import (
     DecodeError,
     DecodeNode,
     _frame_filter,
     decode_frames,
     window_around,
 )
-from telcolens.tshark import TsharkNotFound, find_tshark
+from telcoshark.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 
@@ -82,7 +82,7 @@ def test_reassembly_context_is_preserved() -> None:
     上下文有被讀進去。
     """
     pcap = require_capture("5gc-e2e/capture.pcap")
-    from telcolens.packets import read_packet_rows
+    from telcoshark.packets import read_packet_rows
 
     http2 = [r.number for r in read_packet_rows(pcap) if "http2" in r.protocols]
     if not http2:

@@ -25,8 +25,8 @@ The AMF never gets as far as authentication — the UDM lookup fails first.
 [suci-0-001-01-0000-0-0-9999999999] Unknown UE by SUCI
 ```
 
-TelcoLens reports `5GS services not allowed (#7) — 3GPP TS 24.501 §9.11.3.2`.
-Agreement across TelcoLens, the AMF log, and tshark.
+TelcoShark reports `5GS services not allowed (#7) — 3GPP TS 24.501 §9.11.3.2`.
+Agreement across TelcoShark, the AMF log, and tshark.
 
 ## What this taught the cause table
 

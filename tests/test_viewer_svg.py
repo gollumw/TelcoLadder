@@ -22,11 +22,11 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.model import Endpoint, Flow, IdKind, Message
-from telcolens.render_html import render_flow_svg
+from telcoshark.model import Endpoint, Flow, IdKind, Message
+from telcoshark.render_html import render_flow_svg
 
 VIEWER_JS = (
-    Path(__file__).parent.parent / "telcolens" / "static" / "viewer.js"
+    Path(__file__).parent.parent / "telcoshark" / "static" / "viewer.js"
 ).read_text(encoding="utf-8")
 
 #: 前端白名單（viewer.js 的 SVG_ALLOWED）。這裡是**第二份**，刻意的：

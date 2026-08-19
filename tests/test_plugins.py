@@ -24,10 +24,10 @@ from pathlib import Path
 
 import pytest
 
-import telcolens.adapters as adapters_mod
-import telcolens.causes as causes_mod
-from telcolens.model import CauseRef
-from telcolens.plugins import PluginError
+import telcoshark.adapters as adapters_mod
+import telcoshark.causes as causes_mod
+from telcoshark.model import CauseRef
+from telcoshark.plugins import PluginError
 
 _ADAPTER_SOURCE = textwrap.dedent(
     '''
@@ -98,9 +98,9 @@ def install_plugin(tmp_path, monkeypatch) -> Iterator:
         (dist / "METADATA").write_text(
             f"Metadata-Version: 2.1\nName: {module}\nVersion: 1.0\n", encoding="utf-8"
         )
-        lines = ["[telcolens.adapters]", f"faketel = {adapter_target or module}", ""]
+        lines = ["[telcoshark.adapters]", f"faketel = {adapter_target or module}", ""]
         if cause_table:
-            lines += ["[telcolens.cause_tables]",
+            lines += ["[telcoshark.cause_tables]",
                       f"faketel = {cause_target or f'{module}:CAUSE_DIR'}", ""]
         (dist / "entry_points.txt").write_text("\n".join(lines), encoding="utf-8")
 
@@ -144,9 +144,9 @@ def test_plugin_adapter_lands_in_its_declared_position(install_plugin):
 def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
     """列不出套件清單時，內建協定必須照常運作 —— 只警告，不罷工。
 
-    這是「兩種失敗」的另一半（見 telcolens/plugins.py）：某個外掛壞掉是
+    這是「兩種失敗」的另一半（見 telcoshark/plugins.py）：某個外掛壞掉是
     使用者修得掉的問題，該擋在他面前；而 metadata 損壞跟他手上的擷取檔
-    無關，沒有任何外掛的 TelcoLens 仍是完整的 5GC 分析工具。
+    無關，沒有任何外掛的 TelcoShark 仍是完整的 5GC 分析工具。
 
     這條同時是 `adapters/__init__.py` 那句「內建的刻意不走 entry point」
     的驗證 —— 那個承諾不能只寫在註解裡。
@@ -154,7 +154,7 @@ def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
     def boom(*_a, **_k):
         raise RuntimeError("metadata 壞了")
 
-    monkeypatch.setattr("telcolens.plugins.entry_points", boom)
+    monkeypatch.setattr("telcoshark.plugins.entry_points", boom)
     _clear_caches()
     try:
         with pytest.warns(RuntimeWarning, match="entry point"):
@@ -185,7 +185,7 @@ def test_plugin_display_filter_is_unioned_and_parenthesised(install_plugin):
 
 
 def test_plugin_dissectors_reach_the_environment_check(install_plugin):
-    """外掛宣告的 dissector 要進到 `telcolens check` 的必要清單。
+    """外掛宣告的 dissector 要進到 `telcoshark check` 的必要清單。
 
     否則使用者裝了 IMS 模組、環境檢查說一切正常，然後每一份擷取檔都
     抓不到 SIP —— 因為那台機器的 Wireshark 沒編進 SIP dissector。

@@ -1,5 +1,5 @@
 [project]
-name = "telcolens"
+name = "telcoshark"
 version = "0.1.0"
 description = "Turn telecom signalling captures into Mermaid sequence diagrams — 5G core today, IMS/VoLTE next."
 readme = "README.md"
@@ -18,17 +18,17 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-telcolens = "telcolens.cli:main"
+telcoshark = "telcoshark.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["telcolens*"]
+include = ["telcoshark*"]
 
 [tool.setuptools.package-data]
-telcolens = ["data/causes/*.yaml", "static/*.js", "static/*.css"]
+telcoshark = ["data/causes/*.yaml", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

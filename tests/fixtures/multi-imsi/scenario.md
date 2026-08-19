@@ -53,9 +53,9 @@ subscribers, five flows, and no packet shared between any two of them.
 
 ## Why the logs are here
 
-`logs/` is a second oracle, independent of both tshark and TelcoLens. The AMF log
+`logs/` is a second oracle, independent of both tshark and TelcoShark. The AMF log
 names all five IMSIs and records five `Registration complete` events — so a test
-can assert TelcoLens found the same five subscribers the core network thinks it
+can assert TelcoShark found the same five subscribers the core network thinks it
 served. ANSI colour codes were stripped; nothing else was altered.
 
 ## How to regenerate
@@ -71,7 +71,7 @@ Environment at capture time: Open5GS via `ghcr.io/herlesupreeth/docker_open5gs:m
 UERANSIM v3.2.6, tshark 4.4.9 for the merge and all measurements. Captured
 2026-08-18.
 
-## Expected TelcoLens output
+## Expected TelcoShark output
 
 Fourteen flows, 1011 messages. **Exactly five carry a SUPI**, the five SUPIs are
 distinct, each flow holds 91–93 messages, and every one spans

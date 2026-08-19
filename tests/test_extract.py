@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.extract import ExtractError, read_frames
-from telcolens.tshark import TsharkNotFound, find_tshark
+from telcoshark.extract import ExtractError, read_frames
+from telcoshark.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.pipeline import analyse
-from telcolens.render_html import render_flow_svg
-from telcolens.session import Session
-from telcolens.tshark import TsharkNotFound, find_tshark
-from telcolens.viewer import flow_json, flows_json, subscriber_json
+from telcoshark.pipeline import analyse
+from telcoshark.render_html import render_flow_svg
+from telcoshark.session import Session
+from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoshark.viewer import flow_json, flows_json, subscriber_json
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -158,7 +158,7 @@ def test_subscriber_merge_order_is_chronological(multi_session: Session) -> None
     """合併後的訊息順序必須按 abs_ts 非遞減 —— 亂序的乒乓圖看起來
     完全合理，但因果方向是錯的。直接驗 renderer 的輸入不可行
     （SVG 已定案），改驗合成邏輯本身：同一組訊息重新合排。"""
-    from telcolens.viewer import _table_for
+    from telcoshark.viewer import _table_for
 
     table = _table_for(multi_session)
     sub = table.subscribers[0]

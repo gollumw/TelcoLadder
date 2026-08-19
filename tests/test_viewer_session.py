@@ -29,11 +29,11 @@ from pathlib import Path
 
 import pytest
 
-from telcolens import session as session_mod
-from telcolens import viewer as viewer_mod
-from telcolens.render_html import PAGE_CSS
-from telcolens.session import SESSION_PREFIX, Session, SessionStore
-from telcolens.web import make_server
+from telcoshark import session as session_mod
+from telcoshark import viewer as viewer_mod
+from telcoshark.render_html import PAGE_CSS
+from telcoshark.session import SESSION_PREFIX, Session, SessionStore
+from telcoshark.web import make_server
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ki-mismatch" / "capture.pcap"
 
@@ -119,7 +119,7 @@ def _open_upload_session(server, pcap: Path) -> tuple[str, Path]:
     status, body, _ = _request(
         server, "/open-upload", method="POST", body=pcap.read_bytes(),
         headers={"Content-Type": "application/octet-stream",
-                 "X-TelcoLens-Filename": urllib.parse.quote(pcap.name)},
+                 "X-TelcoShark-Filename": urllib.parse.quote(pcap.name)},
     )
     assert status == 200, body
     sid = json.loads(body)["sid"]
@@ -189,7 +189,7 @@ def test_delete_refuses_a_file_without_the_session_prefix() -> None:
 def test_delete_guard_is_a_prefix_check_not_a_substring_check() -> None:
     """使用者的檔案名字裡**含有**前綴時不能通過。
 
-    `my-telcolens-session-notes.pcap` 用子字串比對會過關 —— 而使用者從殘檔
+    `my-telcoshark-session-notes.pcap` 用子字串比對會過關 —— 而使用者從殘檔
     訊息複製檔名再改名，很容易產生這種名字。
     """
     victim = Path(tempfile.gettempdir()) / f"my-{SESSION_PREFIX}notes.pcap"
@@ -215,7 +215,7 @@ def test_delete_guard_survives_python_dash_O() -> None:
     probe = textwrap.dedent(f"""
         import tempfile
         from pathlib import Path
-        import telcolens.session as sm
+        import telcoshark.session as sm
         victim = Path(tempfile.gettempdir()) / "dash-O-probe-{SESSION_PREFIX}not.pcap"
         victim.write_bytes(b"x")
         bogus = sm.Session(sid="x", pcap=victim, display_name="x", owns_file=True)
@@ -278,7 +278,7 @@ def test_close_all_deletes_every_session_file(server) -> None:
     status, body, _ = _request(
         server, "/open-upload", method="POST", body=FIXTURE.read_bytes(),
         headers={"Content-Type": "application/octet-stream",
-                 "X-TelcoLens-Filename": "second.pcap"},
+                 "X-TelcoShark-Filename": "second.pcap"},
     )
     assert status == 200, body
     assert len(set(_session_files()) - outsiders) == 2
@@ -345,7 +345,7 @@ def test_missing_path_on_open_is_a_readable_error(server) -> None:
     "..%2f..%2fetc%2fpasswd",
     "",
     "viewer.js/../viewer.js",
-    "../telcolens/web.py",
+    "../telcoshark/web.py",
     "nope.js",
 ])
 def test_static_route_serves_only_the_allowlist(server, bad) -> None:

@@ -1,6 +1,6 @@
 """解析前的收窄：時間範圍、自寫 filter、訂戶識別碼。
 
-這一組守的是**兩條強度不同的保證**（見 `telcolens/prefilter.py` 開頭）：
+這一組守的是**兩條強度不同的保證**（見 `telcoshark/prefilter.py` 開頭）：
 
 * 時間範圍與自寫 filter —— 就是使用者要的那樣，沒有驚喜。
 * 訂戶識別碼 —— 做不到「一格不漏」（多數封包根本不帶識別碼），
@@ -17,17 +17,17 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.adapters import default_decode_as
-from telcolens.adapters import display_filter as claimed_filter
-from telcolens.extract import read_frames
-from telcolens.pipeline import Prefilter, analyse
-from telcolens.prefilter import (
+from telcoshark.adapters import default_decode_as
+from telcoshark.adapters import display_filter as claimed_filter
+from telcoshark.extract import read_frames
+from telcoshark.pipeline import Prefilter, analyse
+from telcoshark.prefilter import (
     PrefilterError,
     TimeWindow,
     combine,
     narrow_to_identity,
 )
-from telcolens.tshark import TsharkNotFound, find_tshark
+from telcoshark.tshark import TsharkNotFound, find_tshark
 
 #: `multi-imsi` 裡的五個訂戶之一。挑第一個沒有特別理由 ——
 #: 五個在這份擷取檔裡的結構相同。
@@ -94,11 +94,11 @@ def test_the_slice_does_not_survive(e2e_pcap: Path):
     """切片是暫存檔，而它可能是客戶封包（CLAUDE.md §2.1）—— 跑完必須消失。"""
     import tempfile
 
-    before = set(Path(tempfile.gettempdir()).glob("telcolens-slice-*"))
+    before = set(Path(tempfile.gettempdir()).glob("telcoshark-slice-*"))
     analyse(
         e2e_pcap, prefilter=Prefilter(window=TimeWindow(None, 1.0)), with_coverage=False
     )
-    assert not (set(Path(tempfile.gettempdir()).glob("telcolens-slice-*")) - before)
+    assert not (set(Path(tempfile.gettempdir()).glob("telcoshark-slice-*")) - before)
 
 
 # ── 自寫 filter：原樣疊上去 ────────────────────────────────────────

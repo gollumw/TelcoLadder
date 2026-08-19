@@ -1,11 +1,11 @@
 # 外掛契約
 
-TelcoLens 的協定支援是可插拔的。**加一個協定 = 裝一個套件**，不是改核心
+TelcoShark 的協定支援是可插拔的。**加一個協定 = 裝一個套件**，不是改核心
 程式碼 —— 這是為了讓 IMS（商業模組）與 5GC（Apache-2.0）能各自演進而不分家。
 
-實作依據見 [`telcolens/plugins.py`](../telcolens/plugins.py)、
-[`telcolens/adapters/__init__.py`](../telcolens/adapters/__init__.py)、
-[`telcolens/identity.py`](../telcolens/identity.py)。
+實作依據見 [`telcoshark/plugins.py`](../telcoshark/plugins.py)、
+[`telcoshark/adapters/__init__.py`](../telcoshark/adapters/__init__.py)、
+[`telcoshark/identity.py`](../telcoshark/identity.py)。
 行為由 [`tests/test_plugins.py`](../tests/test_plugins.py) 釘住。
 
 ---
@@ -17,8 +17,8 @@ TelcoLens 的協定支援是可插拔的。**加一個協定 = 裝一個套件**
 
 | 軸線 | 怎麼提供 | 漏掉的症狀 |
 |---|---|---|
-| adapter | `telcolens.adapters` entry point | 沒有人解析那個協定 |
-| cause 表 | `telcolens.cause_tables` entry point | 每個 cause 都印「尚未收錄」 |
+| adapter | `telcoshark.adapters` entry point | 沒有人解析那個協定 |
+| cause 表 | `telcoshark.cause_tables` entry point | 每個 cause 都印「尚未收錄」 |
 | **display filter** | adapter 的 `DISPLAY_FILTER` 屬性 | **tshark 根本不吐那些封包** |
 | **decode-as** | adapter 的 `DECODE_AS` 屬性（選用） | **tshark 認不出那是什麼協定** |
 
@@ -37,7 +37,7 @@ TelcoLens 的協定支援是可插拔的。**加一個協定 = 裝一個套件**
 NAME = "sip"                              # 出現在 Message.protocol 上
 ORDER = 40                                # 排列順序，小的先跑
 DISPLAY_FILTER = "sip || sdp"             # 丟給 tshark 的 filter 片段
-DISSECTORS = ("sip", "sdp")               # telcolens check 要驗證的 dissector
+DISSECTORS = ("sip", "sdp")               # telcoshark check 要驗證的 dissector
 DECODE_AS = ("tcp.port==5062,sip",)       # 選用，見下
 
 def parse(frame: Frame) -> list[Message]:
@@ -45,8 +45,8 @@ def parse(frame: Frame) -> list[Message]:
 ```
 
 ```toml
-[project.entry-points."telcolens.adapters"]
-sip = "telcolens_ims.adapters.sip"
+[project.entry-points."telcoshark.adapters"]
+sip = "telcoshark_ims.adapters.sip"
 ```
 
 ### ORDER 有語意
@@ -153,11 +153,11 @@ IMS 的 SIP proxy —— 症狀完全一樣：**所有訊息的線路對端都�
 entry point 的值要解析成一個**含 `*.yaml` 的目錄 `Path`**：
 
 ```toml
-[project.entry-points."telcolens.cause_tables"]
-ims = "telcolens_ims:CAUSE_DIR"
+[project.entry-points."telcoshark.cause_tables"]
+ims = "telcoshark_ims:CAUSE_DIR"
 ```
 
-YAML 格式見 [`telcolens/data/causes/`](../telcolens/data/causes/)。三條規則：
+YAML 格式見 [`telcoshark/data/causes/`](../telcoshark/data/causes/)。三條規則：
 
 1. **`spec` / `clause` 必須人工核對。** 目標使用者是電信工程師，他們會去查
    你引的條號。一個幻覺出來的 `§5.5.1.3.5` 會讓整個工具的信任瞬間歸零 ——
@@ -176,7 +176,7 @@ YAML 格式見 [`telcolens/data/causes/`](../telcolens/data/causes/)。三條規
 唯一要回答的問題是：**這個識別碼在多大的範圍內唯一？**
 
 ```python
-from telcolens.identity import connection_scope, globally_unique, scoped
+from telcoshark.identity import connection_scope, globally_unique, scoped
 
 scope = connection_scope(frame)
 
@@ -196,7 +196,7 @@ globally_unique(IdKind.IMPU, impu)
 對全網唯一的識別碼硬加範圍，則會讓同一個人在不同介面上被拆成幾條流程 ——
 而那正好毀掉跨協定關聯，也就是這個工具的整個賣點。
 
-需要新的 `IdKind` 就加到 `telcolens/model.py` 的 enum 裡（Phase 2 的
+需要新的 `IdKind` 就加到 `telcoshark/model.py` 的 enum 裡（Phase 2 的
 IMS 識別碼已經預留好了）。
 
 ---
@@ -212,5 +212,5 @@ IMS 識別碼已經預留好了）。
 | **列不出套件清單** | 只發 `RuntimeWarning`，內建協定照常運作 |
 
 最後一列是刻意的例外：「你裝的外掛壞了」是使用者修得掉的問題，該擋在他
-面前；而 metadata 損壞跟他手上的擷取檔無關 —— 沒有任何外掛的 TelcoLens
+面前；而 metadata 損壞跟他手上的擷取檔無關 —— 沒有任何外掛的 TelcoShark
 仍然是一個完整的 5GC 分析工具，不該因為列不出安裝清單就整個罷工。

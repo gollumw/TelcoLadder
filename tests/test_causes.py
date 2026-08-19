@@ -10,10 +10,10 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from telcolens.causes import DATA_DIR, annotate, describe, lookup, table_names
-from telcolens.model import CauseRef, Endpoint, Message
-from telcolens.render_mermaid import render
-from telcolens.model import Flow
+from telcoshark.causes import DATA_DIR, annotate, describe, lookup, table_names
+from telcoshark.model import CauseRef, Endpoint, Message
+from telcoshark.render_mermaid import render
+from telcoshark.model import Flow
 
 
 # ── 查得到的情況 ───────────────────────────────────────────────────────

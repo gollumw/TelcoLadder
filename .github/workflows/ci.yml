@@ -5,9 +5,9 @@
 # 守得住：
 #   - 三個 Python 版本的相容性。3.13 拿掉了 EntryPoint 的 tuple 介面，
 #     而外掛註冊表（見 TODOS 的 E1）正要用 entry point，這個矩陣是它的安全網。
-#   - 三個平台的 tshark 定位。telcolens/tshark.py 的後備路徑清單每個平台
+#   - 三個平台的 tshark 定位。telcoshark/tshark.py 的後備路徑清單每個平台
 #     長得都不一樣（Wireshark.app / Program Files / /usr/bin），
-#     `telcolens check` 這一步就是它們各自的真實測試。
+#     `telcoshark check` 這一步就是它們各自的真實測試。
 #   - **Windows 的輸出編碼。** 這是這份矩陣裡唯一「只有真的在那個 OS 上跑
 #     才驗得到」的東西之外的補充：編碼測試本身用 PYTHONIOENCODING 在所有
 #     平台重現，但 Program Files 路徑組合與 core.autocrlf 只有 windows job 驗得到。
@@ -94,7 +94,7 @@ jobs:
       - name: Install tshark (Windows)
         if: runner.os == 'Windows'
         # 裝進 C:\Program Files\Wireshark —— 也就是 _fallback_paths() 找的位置。
-        # 刻意不設 TELCOLENS_TSHARK：讓自動定位邏輯真的被測到。
+        # 刻意不設 TELCOSHARK_TSHARK：讓自動定位邏輯真的被測到。
         run: choco install wireshark --no-progress -y
 
       - name: Install package
@@ -102,9 +102,9 @@ jobs:
 
       - name: Environment check
         # 這一步本身就是測試：驗證 tshark 定位邏輯在這個作業系統上找得到，
-        # 且四個必要 dissector 都在。失敗代表 telcolens/tshark.py 的
+        # 且四個必要 dissector 都在。失敗代表 telcoshark/tshark.py 的
         # 後備路徑清單漏了這個平台。
-        run: telcolens check
+        run: telcoshark check
 
       - name: Run tests
         # fixture 已進版控，所以這裡不該有任何 skip。

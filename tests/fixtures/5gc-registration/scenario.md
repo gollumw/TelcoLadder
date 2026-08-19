@@ -28,21 +28,21 @@ network resynchronised, and the second attempt succeeded. This is exactly the
 behaviour `data/causes/nas_5gmm.yaml` documents for cause 21.
 
 **Frame 23 carries two NGAP messages in one packet.** That is the case that makes
-`-T fields` unusable (see the `telcolens/extract.py` module docstring) — keep this
+`-T fields` unusable (see the `telcoshark/extract.py` module docstring) — keep this
 fixture whenever that decision is revisited.
 
 ## Why the logs are here
 
 `logs/` holds what the core network itself said, captured over the same window.
-It is a **second oracle**, independent of both tshark and TelcoLens: a test can
-assert that the AMF logged cause 21 and that TelcoLens reports the same thing.
-tshark and TelcoLens share a dissector; the AMF does not.
+It is a **second oracle**, independent of both tshark and TelcoShark: a test can
+assert that the AMF logged cause 21 and that TelcoShark reports the same thing.
+tshark and TelcoShark share a dissector; the AMF does not.
 
 Three-way agreement at the time of capture:
 
 | Source | Says |
 |---|---|
-| TelcoLens | `Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2` |
+| TelcoShark | `Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2` |
 | `logs/amf.log` | `Authentication failure [21] (Synch failure[count=0])` |
 | tshark | `21` / `Authentication failure (Synch failure)` |
 
@@ -83,7 +83,7 @@ Environment at capture time: Open5GS via `ghcr.io/herlesupreeth/docker_open5gs:m
 (pulled 2026-08-17), UERANSIM v3.2.6, MCC 001 / MNC 01 (the ITU test PLMN — this
 capture contains no real subscriber).
 
-## Expected TelcoLens output
+## Expected TelcoShark output
 
 Two flows: the NGSetup exchange (no UE identity) and the subscriber's attach,
 identified as `SUPI 001011234567895`. One highlighted failure carrying

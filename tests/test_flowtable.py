@@ -26,10 +26,10 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.flowtable import build_table
-from telcolens.pipeline import analyse
-from telcolens.slicer import find_wireshark_tool
-from telcolens.tshark import TsharkNotFound, find_tshark
+from telcoshark.flowtable import build_table
+from telcoshark.pipeline import analyse
+from telcoshark.slicer import find_wireshark_tool
+from telcoshark.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)

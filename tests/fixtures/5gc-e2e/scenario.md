@@ -45,7 +45,7 @@ scp `.35`, smf `.7`, upf `.8`.
 ## Why the logs are here
 
 `logs/` holds what the core network itself said over the same window — a second
-oracle independent of both tshark and TelcoLens (they share a dissector; the AMF
+oracle independent of both tshark and TelcoShark (they share a dissector; the AMF
 does not). `smf`, `upf` and `scp` wrote nothing to stdout in this window, so only
 `amf`, `ausf` and the UE are present. ANSI colour codes were stripped; nothing
 else was altered.
@@ -62,7 +62,7 @@ Note the gNB must already be attached to the AMF before capturing. If the AMF wa
 down when the gNB started, UERANSIM gives up after one SCTP timeout and never
 retries — the capture then contains SBI and PFCP but no N2 at all.
 
-## Expected TelcoLens output
+## Expected TelcoShark output
 
 The subscriber's registration converges into **one flow** spanning gNB, AMF, the
 SCP, AUSF, UDM, UDR, PCF and SMF, identified as `SUPI 001011234567895`.

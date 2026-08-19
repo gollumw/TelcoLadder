@@ -18,15 +18,15 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.adapters import parse_frame
-from telcolens.adapters.nas5gs import count_ciphered
-from telcolens.causes import annotate
-from telcolens.correlate import correlate
-from telcolens.extract import read_frames
-from telcolens.model import CauseRef, Endpoint, Flow, Message
-from telcolens.nf import apply_roles
-from telcolens.render_html import render_report
-from telcolens.tshark import TsharkNotFound, find_tshark
+from telcoshark.adapters import parse_frame
+from telcoshark.adapters.nas5gs import count_ciphered
+from telcoshark.causes import annotate
+from telcoshark.correlate import correlate
+from telcoshark.extract import read_frames
+from telcoshark.model import CauseRef, Endpoint, Flow, Message
+from telcoshark.nf import apply_roles
+from telcoshark.render_html import render_report
+from telcoshark.tshark import TsharkNotFound, find_tshark
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

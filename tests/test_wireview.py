@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from telcolens.extract import read_frames
-from telcolens.model import CauseRef, Endpoint, Flow, Message
-from telcolens.pipeline import analyse
-from telcolens.render_html import render_report
-from telcolens.tshark import TsharkNotFound, find_tshark
-from telcolens.wireview import collapse
+from telcoshark.extract import read_frames
+from telcoshark.model import CauseRef, Endpoint, Flow, Message
+from telcoshark.pipeline import analyse
+from telcoshark.render_html import render_report
+from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoshark.wireview import collapse
 
 FIXTURES = Path(__file__).parent / "fixtures"
 KI_MISMATCH = FIXTURES / "ki-mismatch" / "capture.pcap"

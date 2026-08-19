@@ -1,12 +1,12 @@
-# TelcoLens
+# TelcoShark
 
-[![CI](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLens/actions/workflows/ci.yml)
+[![CI](https://github.com/gollumw/TelcoShark/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoShark/actions/workflows/ci.yml)
 
 Turn a telecom signalling capture into a Mermaid sequence diagram you can paste
 straight into GitHub — or anywhere else that renders Mermaid.
 
 ```bash
-telcolens analyze failed_attach.pcapng
+telcoshark analyze failed_attach.pcapng
 ```
 
 ```mermaid
@@ -35,7 +35,7 @@ then a bare `#111`. The cause table says so because we ran it, not because it
 sounded right.
 
 Reading a 5G call flow in the Wireshark GUI means scrolling packet by packet,
-and every unfamiliar cause code sends you back to the specs. TelcoLens turns the
+and every unfamiliar cause code sends you back to the specs. TelcoShark turns the
 capture into a diagram, names the network functions, and cites the clause the
 cause code comes from.
 
@@ -58,7 +58,7 @@ registration. What that capture does *not* contain is the long tail — see
   `PCF`, `SMF`, `UPF`.
 - **Understands relays.** A production core almost always has one — a 5G
   **SCP**, a Diameter **DRA**, a SIP proxy — and then every message's wire peer
-  is the middlebox, not the network function you care about. TelcoLens reads the
+  is the middlebox, not the network function you care about. TelcoShark reads the
   target the message *names* (`3gpp-Sbi-Target-apiRoot` for SBI) rather than the
   address it was sent to, labels the relay as what it is, and refuses to
   attribute the services behind it to it. The relay keeps its own lane, so a
@@ -95,36 +95,36 @@ brew install --cask wireshark                       # macOS
 sudo apt install tshark                             # Debian/Ubuntu
 winget install WiresharkFoundation.Wireshark        # Windows
 
-pip install telcolens
-telcolens check                  # verifies tshark and dissectors
+pip install telcoshark
+telcoshark check                  # verifies tshark and dissectors
 ```
 
 **Neither the macOS nor the Windows installer puts `tshark` on your `PATH`** —
 macOS hides it inside `Wireshark.app`, and the Windows installer leaves the
-"Add to PATH" box unchecked by default. TelcoLens looks in the standard install
+"Add to PATH" box unchecked by default. TelcoShark looks in the standard install
 directories, so it finds it anyway.
 
 If you installed somewhere else, or you need to pin a specific Wireshark
-version, point `TELCOLENS_TSHARK` at the binary:
+version, point `TELCOSHARK_TSHARK` at the binary:
 
 ```bash
-export TELCOLENS_TSHARK=/path/to/tshark                      # macOS/Linux
-setx TELCOLENS_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
+export TELCOSHARK_TSHARK=/path/to/tshark                      # macOS/Linux
+setx TELCOSHARK_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
 ```
 
 ## Usage
 
 ```bash
-telcolens analyze capture.pcapng                     # diagram to stdout
-telcolens analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
-telcolens analyze capture.pcapng --html report.html  # standalone HTML report
-telcolens analyze capture.pcapng --flow              # one row per message
-telcolens analyze capture.pcapng --max-messages 80
-telcolens analyze capture.pcapng --no-frames         # drop packet numbers
+telcoshark analyze capture.pcapng                     # diagram to stdout
+telcoshark analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
+telcoshark analyze capture.pcapng --html report.html  # standalone HTML report
+telcoshark analyze capture.pcapng --flow              # one row per message
+telcoshark analyze capture.pcapng --max-messages 80
+telcoshark analyze capture.pcapng --no-frames         # drop packet numbers
 ```
 
 The diagram goes to stdout and the summary to stderr, so
-`telcolens analyze x.pcapng > flow.mmd` gives you a clean file.
+`telcoshark analyze x.pcapng > flow.mmd` gives you a clean file.
 
 ### The HTML report
 
@@ -163,7 +163,7 @@ hole is almost always a timer waiting, and that is usually where the fault is.
 ### In the browser
 
 ```bash
-telcolens serve            # → http://localhost:3005
+telcoshark serve            # → http://localhost:3005
 ```
 
 Drop a capture onto the page, or paste a path. You get **exactly** the report
@@ -245,14 +245,14 @@ annotation over the extracted facts → optional web UI.
 
 ## Prior art, and why this exists anyway
 
-These tools came first and are worth your time. TelcoLens is not trying to
+These tools came first and are worth your time. TelcoShark is not trying to
 replace them.
 
-| Project | What it does | Why TelcoLens still exists |
+| Project | What it does | Why TelcoShark still exists |
 |---|---|---|
 | [telekom/5g-trace-visualizer](https://github.com/telekom/5g-trace-visualizer) | pcap → SVG sequence diagrams for 5GC (HTTP/2, NAS, PFCP). Deutsche Telekom, Apache-2.0. | Unmaintained since Aug 2023. PlantUML output needs `plantuml.jar`; driven from Jupyter notebooks with a large config surface aimed at k8s deployments. |
 | [irontec/sngrep](https://github.com/irontec/sngrep) | Excellent, actively maintained ncurses SIP flow viewer. | Terminal-only and SIP-only — you cannot paste its output into a document, and it does not touch 5G. |
-| [sipcapture/homer](https://github.com/sipcapture/homer) | Full capture platform: server, agents, database, web UI. | It is infrastructure you deploy and operate. TelcoLens is a command you run against one file. |
+| [sipcapture/homer](https://github.com/sipcapture/homer) | Full capture platform: server, agents, database, web UI. | It is infrastructure you deploy and operate. TelcoShark is a command you run against one file. |
 | [dgudtsov/pcap2uml](https://github.com/dgudtsov/pcap2uml) | IMS call flows across SIP/Diameter/MAP/CAMEL → PlantUML. | The closest in spirit. No 5G support (no NGAP/NAS-5GS), PlantUML output. |
 | [agranig/pcap2mermaid](https://github.com/agranig/pcap2mermaid) | SIP → Mermaid, in Perl. | Two days of commits in January 2019, then nothing. It proved people want this; nobody picked it up. |
 
