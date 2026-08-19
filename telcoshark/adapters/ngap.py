@@ -26,6 +26,10 @@ DISPLAY_FILTER = "ngap"
 #: `telcoshark check` 要驗證存在的 dissector。
 DISSECTORS = ('ngap',)
 
+#: 這個 adapter 載送的協定。NAS PDU 包在 NGAP 的 NAS-PDU IE 裡，
+#: 在 `-T ek` 輸出上就是 `ngap.nas-5gs`。見 adapters/__init__.py 的契約說明。
+CARRIES = ("nas-5gs",)
+
 #: TS 38.413 ProcedureCode。表本身是規範資產，
 #: `tests/test_adapters.py` 會拿 tshark 自己的 info 欄位交叉驗證，避免抄錯。
 PROCEDURE_CODES: dict[int, str] = {
@@ -159,6 +163,15 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     if amf_id is not None:
         keys.add(scoped(IdKind.AMF_UE_NGAP_ID, scope, amf_id))
     return frozenset(keys)
+
+
+def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
+    """契約入口（見 adapters/__init__.py）：載荷靠這個歸戶。
+
+    就是 `identity_keys` 加上這一格的連線範圍。分成兩個函式是因為
+    `parse()` 已經算好 scope 了，沒必要再算一次。
+    """
+    return identity_keys(block, association_scope(frame))
 
 
 def association_scope(frame: Frame) -> str:

@@ -1,10 +1,22 @@
 """NAS-5GS（UE ↔ AMF/SMF，經 gNB 透明轉送）—— TS 24.501。
 
-**NAS 不是獨立的一層** —— tshark 把它放在 `ngap` 層 dict 裡的 `nas-5gs` 鍵底下
-（因為 NAS PDU 是包在 NGAP 的 NAS-PDU IE 中）。這裡負責把它挖出來。
+**NAS 不是獨立的一層，而且不只掛在一個載體底下。** tshark 的 `-T ek` 把子解剖
+巢狀在載體層內，所以同一個 `nas-5gs` 會出現在兩個地方：
+
+    ngap.nas-5gs                      ← N2 介面（NAS PDU 在 NGAP 的 NAS-PDU IE 裡）
+    http2.mime_multipart.nas-5gs      ← SBI（multipart/related 把 NAS 夾在 JSON 旁）
+
+在 2026-08-19 之前這裡只認第一種，於是 SBI 夾帶的 NAS **完全看不到** ——
+實測 `multi-imsi` 上 20 則、真實電信商擷取檔上 34 則，其中包含一則
+`PDU session establishment reject`。少報失敗的除錯工具比沒有更糟，而且
+**沒有任何一層會說話**：filter 沒漏、adapter 沒錯、tshark 沒報錯。
+
+所以載體是**查表**來的（`carriers_of(NAME)`），身分鍵是**問載體要**的
+（`carrier_keys`）—— 契約見 `adapters/__init__.py`。Phase 2 接 SIP（載送 SDP）
+與 Diameter（載送 AVP）時，這個檔不用改。
 
 Security Mode Command 之後 NAS 會被加密，`message_type` 就抽不到了 —— 這是
-真實網路的正常現象，不是解析失敗。那些訊息仍會由 `ngap` adapter 記錄下來，
+真實網路的正常現象，不是解析失敗。那些訊息仍會由載體 adapter 記錄下來，
 只是看不到內層是什麼。**不要為此加「猜測」邏輯。**
 """
 
@@ -12,8 +24,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from telcoshark.adapters.ngap import association_scope
-from telcoshark.adapters.ngap import identity_keys as ngap_identity_keys
 from telcoshark.extract import Frame, first
 from telcoshark.identity import globally_unique
 from telcoshark.model import CauseRef, Endpoint, IdKey, IdKind, Message
@@ -109,24 +119,85 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-def _nas_blocks(frame: Frame) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
-    """把巢狀在 ngap 底下的 nas-5gs 挖出來，**連同它的載體一起回傳**。
+#: `_dig` 的遞迴層數上限。
+#:
+#: **數的是中間層的數量，不是路徑段數。** 實測：SBI 那條路徑是
+#: `http2 → mime_multipart → nas-5gs`（兩段），但中間層只有 `mime_multipart`
+#: 一個，所以只需要 **1**；NGAP 那條是 **0**（`nas-5gs` 是直接子鍵）。
+#:
+#: 這裡設 3 是留餘裕給 tshark 未來多包一兩層，但**餘裕不是守衛** —— 它只會
+#: 讓結構改變時默默吐出不同的結果。真正的守衛是
+#: `test_dig_needs_exactly_one_intermediate_layer`：結構一變它就紅。
+#: 不夠再放寬，並同時更新那條測試。
+_MAX_DIG_DEPTH = 3
 
-    載體不能丟：NAS PDU 是包在 NGAP 的 NAS-PDU IE 裡送的，兩者講的是同一個
-    UE context。少了這層連結，只帶 SUPI 的 Registration request 會跟其他
-    只有 NGAP ID 的訊息分成兩條流程 —— 而且分完各自看起來都很合理。
 
-    也支援 nas-5gs 直接是頂層的情況（NAS 走其他載體時 tshark 會這樣給），
-    那時沒有 NGAP 載體，回 None。
+def _dig(node: Any, target: str, depth: int = 0) -> list[dict[str, Any]]:
+    """在載體區塊底下有界地找出 `target` 層。
+
+    **不寫死路徑**：NGAP 是 `ngap.nas-5gs` 直接一層，SBI 是隔著
+    `mime_multipart`。寫死的話 tshark 換版本改了中間層名字就靜默失效 ——
+    而「靜默失效」正是 T1 要修的這個 bug 本身。
     """
-    blocks: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
-    for parent in frame.layer("ngap"):
-        nested = parent.get("nas-5gs")
-        if isinstance(nested, dict):
-            blocks.append((nested, parent))
-        elif isinstance(nested, list):
-            blocks.extend((item, parent) for item in nested if isinstance(item, dict))
-    blocks.extend((block, None) for block in frame.layer(NAME))
+    if depth > _MAX_DIG_DEPTH:
+        return []
+    if isinstance(node, list):
+        found: list[dict[str, Any]] = []
+        for item in node:
+            found.extend(_dig(item, target, depth))
+        return found
+    if not isinstance(node, dict):
+        return []
+    hit = node.get(target)
+    if isinstance(hit, dict):
+        return [hit]
+    if isinstance(hit, list):
+        return [item for item in hit if isinstance(item, dict)]
+    found = []
+    for value in node.values():
+        if isinstance(value, (dict, list)):
+            found.extend(_dig(value, target, depth + 1))
+    return found
+
+
+def _nas_blocks(frame: Frame) -> list[tuple[dict[str, Any], dict[str, Any] | None, Any]]:
+    """挖出這一格裡的每一則 NAS，**連同它的載體與載體 adapter 一起回傳**。
+
+    載體不能丟：NAS PDU 自己的欄位通常不足以歸戶。NGAP 載送時 UE 的身分在
+    NGAP 的 UE ID 上，SBI 載送時在 HTTP/2 stream id 與同層的 IMSI 上。少了
+    這層連結，只帶 SUPI 的 Registration request 會跟其後只有 NGAP ID 的訊息
+    分成兩條流程 —— 而且分完各自看起來都很合理。
+
+    載體是**查表**來的（`carriers_of`）而不是寫死的 —— 見
+    `adapters/__init__.py` 的契約說明。
+
+    **去重**：同一個區塊有可能既被某個載體挖到、又出現在頂層。多算一則訊息
+    不會報錯，圖上只是多一條看起來合理的箭頭，所以這裡用物件識別擋掉。
+    `id()` 只在同一格的解析期間有意義，而這正是它的作用域。
+    """
+    # 延後 import：避免與註冊表循環
+    from telcoshark.adapters import carrier_blocks, carriers_of
+
+    blocks: list[tuple[dict[str, Any], dict[str, Any] | None, Any]] = []
+    seen: set[int] = set()
+
+    for carrier_adapter in carriers_of(NAME):
+        for parent in carrier_blocks(carrier_adapter, frame):
+            for nested in _dig(parent, NAME):
+                if id(nested) in seen:
+                    continue
+                seen.add(id(nested))
+                blocks.append((nested, parent, carrier_adapter))
+
+    # NAS 直接出現在頂層（未知載體，或 tshark 就這樣給）。目前六份 fixture
+    # 都是 0，但保留它 —— 刪掉是拿「現在沒有」當「永遠不會有」，而那正是
+    # 這個 bug 的成因。沒有載體就沒有載體的鑰匙，訊息仍然看得到。
+    for block in frame.layer(NAME):
+        if id(block) in seen:
+            continue
+        seen.add(id(block))
+        blocks.append((block, None, None))
+
     return blocks
 
 
@@ -145,22 +216,33 @@ def _supi_from_suci(block: dict[str, Any]) -> str | None:
 
 
 def _identity_keys(
-    block: dict[str, Any], carrier: dict[str, Any] | None, scope: str
+    block: dict[str, Any],
+    carrier: dict[str, Any] | None,
+    carrier_adapter: Any,
+    frame: Frame,
 ) -> frozenset[IdKey]:
-    """SUPI 加上載體 NGAP 的 UE ID。
+    """NAS 自己的 SUPI，加上**問載體要來的**鑰匙。
 
-    SUPI 是全域唯一的，**不需要**像 NGAP ID 那樣加連線範圍前綴。
-    但一定要把載體的 NGAP ID 一併帶上，這是把「明文帶 SUPI 的第一則訊息」
-    與「其後只剩 NGAP ID 的加密訊息」串成同一條流程的唯一連結。
+    SUPI 是全域唯一的，**不需要**加連線範圍前綴。但 NAS 大多數時候根本
+    抽不出 SUPI（加密之後，或下行訊息本來就沒有），所以載體的鑰匙才是
+    把整條流程串起來的東西：
+
+    - NGAP 載送 → NGAP UE ID（帶連線範圍前綴）
+    - SBI 載送 → HTTP/2 stream id ＋ 同層的 IMSI
+
+    **這裡刻意不認得任何一種載體。** 問誰要鑰匙由 `carriers_of()` 決定，
+    怎麼給由載體自己實作 —— Phase 2 接 SIP / Diameter 時這個函式不用改。
     """
+    from telcoshark.adapters import carrier_keys_from  # 延後 import：避免循環
+
     keys: set[IdKey] = set()
     supi = _supi_from_suci(block)
     if supi:
         # SUPI 跨連線、跨網元都指同一個人，不加範圍前綴 ——
         # 那正是它能把 5GC 與 IMS 串起來的原因。
         keys.add(globally_unique(IdKind.SUPI, supi))
-    if carrier is not None:
-        keys |= ngap_identity_keys(carrier, scope)
+    if carrier is not None and carrier_adapter is not None:
+        keys |= carrier_keys_from(carrier_adapter, carrier, frame)
     return frozenset(keys)
 
 
@@ -180,7 +262,7 @@ def count_ciphered(frame: Frame) -> int:
     認識特定 adapter。現在先用最小的方式解決。
     """
     ciphered = 0
-    for block, _carrier in _nas_blocks(frame):
+    for block, _carrier, _carrier_adapter in _nas_blocks(frame):
         has_type = (
             block.get("nas-5gs_nas-5gs_mm_message_type") is not None
             or block.get("nas-5gs_nas-5gs_sm_message_type") is not None
@@ -213,7 +295,7 @@ def count_protected_suci(frame: Frame) -> int:
     計數與實際能不能搜到不一致。
     """
     protected = 0
-    for block, _carrier in _nas_blocks(frame):
+    for block, _carrier, _carrier_adapter in _nas_blocks(frame):
         # SUCI 存在的痕跡。scheme_id 是 0 也算「有 SUCI」——
         # 它是不是 null-scheme 由 `_supi_from_suci` 判斷，不在這裡重複一次。
         has_suci = (
@@ -227,9 +309,8 @@ def count_protected_suci(frame: Frame) -> int:
 
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
-    scope = association_scope(frame)
 
-    for block, carrier in _nas_blocks(frame):
+    for block, carrier, carrier_adapter in _nas_blocks(frame):
         mm_type = _to_int(block.get("nas-5gs_nas-5gs_mm_message_type"))
         sm_type = _to_int(block.get("nas-5gs_nas-5gs_sm_message_type"))
 
@@ -271,7 +352,7 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=_identity_keys(block, carrier, scope),
+                identity_keys=_identity_keys(block, carrier, carrier_adapter, frame),
                 cause=cause,
                 is_failure=msg_type in _FAILURE_TYPES,
                 detail=detail,

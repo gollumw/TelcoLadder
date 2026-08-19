@@ -20,8 +20,14 @@ from telcoshark.model import Endpoint, IdKey, IdKind, Message
 NAME = "sbi"
 
 #: adapter 之間的排列順序（小的先跑）。**這個數字有語意**：
-#: 與 5GC 的 N2 介面無關，排最後即可。
-ORDER = 30
+#: SBI 用 multipart 載送 NAS（`http2.mime_multipart.nas-5gs`），所以它是載體，
+#: 依契約必須排在 `nas-5gs`（ORDER 20）之前 —— 同一格裡要先畫
+#: `POST /nsmf-pdusession/v1/sm-contexts` 再畫它包著的 NAS 才讀得通。
+#:
+#: 原本是 30。改動當下實測三份 fixture（5gc-e2e / multi-imsi / 5gc-registration）
+#: **零格**會同時產出 SBI 與 NAS 訊息，所以這是零 diff 的改動。等真實擷取檔出現
+#: 混合格再改就要重產 golden 了。
+ORDER = 15
 
 #: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
 #: 而且完全不會報錯** —— 見 telcoshark/plugins.py 的軸線說明。
@@ -44,6 +50,16 @@ DECODE_AS = ("tcp.port==7777,http2",)
 
 #: `telcoshark check` 要驗證存在的 dissector。
 DISSECTORS = ('http2',)
+
+#: 這個 adapter 載送的協定。N1N2MessageTransfer 與 CreateSMContext 都用
+#: `multipart/related` 把 NAS PDU 夾在 JSON 旁邊送，在 `-T ek` 輸出上是
+#: `http2.mime_multipart.nas-5gs`。見 adapters/__init__.py 的契約說明。
+CARRIES = ("nas-5gs",)
+
+#: **`NAME` 是 "sbi"，但 tshark 的層叫 "http2"。** 兩者是不同的東西：
+#: 前者出現在 `Message.protocol` 上給人看，後者是 `-T ek` 輸出裡的鍵。
+#: 不宣告的話載荷會去找一個不存在的 `sbi` 層 —— 一格都收不到，而且不報錯。
+CARRIER_LAYER = "http2"
 
 #: HTTP/2 frame type。只有 HEADERS(1) 帶得到 method/path/status，
 #: DATA(0)、SETTINGS(4)、WINDOW_UPDATE(8) 等不產生時序圖上的箭頭。
@@ -256,6 +272,57 @@ def undecoded_header_streams(frame: Frame) -> set[IdKey]:
         if stream_id is not None:
             out.add(scoped(IdKind.SBI_STREAM, scope, stream_id))
     return out
+
+
+def _assoc_imsi(block: dict[str, Any]) -> str | None:
+    """multipart 的 JSON part 裡的 IMSI，**tshark 已經幫我們抽好了**。
+
+    `POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 在 JSON body 而不在路徑上，
+    所以 `_supis_in_path()` 抓不到它。但 tshark 解了 multipart 的 JSON part，
+    並把 IMSI 抽成 `e212.assoc_imsi` —— **就掛在 `nas-5gs` 的兄弟位置**。
+    不需要解 JSON，讀一個欄位就好。
+
+    實測（`5gc-e2e` / `multi-imsi`）：帶 NAS 的 multipart 有 50% 同時帶著它，
+    而且與「SUPI 在路徑上」那條路**互補** —— 前者接得到 CreateSMContext，
+    後者接得到 `/namf-comm/…/imsi-…/n1-n2-messages`。兩條都給之後，SBI 夾帶的
+    NAS 訊息**零孤兒**，且流程數反而下降（歸不了戶的 SBI 流程被併回訂戶名下）。
+
+    舊版 tshark 若不產這個欄位就回 None —— 那時只剩 `SBI_STREAM`，
+    結果是歸戶率下降，不是壞掉。
+    """
+    for part in _as_list(block.get("mime_multipart")):
+        for js in _as_list(part.get("json")):
+            imsi = first(js.get("e212_e212_assoc_imsi"))
+            if imsi:
+                return str(imsi)
+    return None
+
+
+def _as_list(value: Any) -> list[dict[str, Any]]:
+    """tshark 對單則給 dict、多則給 list —— 呼叫端不該關心這個差別。"""
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    return []
+
+
+def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
+    """契約入口（見 adapters/__init__.py）：SBI 夾帶的載荷靠這個歸戶。
+
+    `SBI_STREAM` **必須與 `parse()` 對同一條 stream 產的鍵逐字相同** ——
+    載荷（NAS，在 DATA 格）與帶著 SUPI 的 HEADERS 往往在不同格封包裡，
+    兩者是靠 `correlate` 的聯集查找接起來的，鍵不一樣就接不起來，而且不報錯。
+    """
+    keys: set[IdKey] = set()
+    stream_id = _to_int(block.get("http2_http2_streamid"))
+    if stream_id is not None:
+        keys.add(scoped(IdKind.SBI_STREAM, connection_scope(frame), stream_id))
+    imsi = _assoc_imsi(block)
+    if imsi:
+        # SUPI 全網唯一，不加範圍前綴（同 parse() 的理由）。
+        keys.add(globally_unique(IdKind.SUPI, imsi))
+    return frozenset(keys)
 
 
 def parse(frame: Frame) -> list[Message]:

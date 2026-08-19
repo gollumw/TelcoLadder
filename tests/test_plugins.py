@@ -130,15 +130,19 @@ def test_plugin_adapter_is_discovered(install_plugin):
 def test_plugin_adapter_lands_in_its_declared_position(install_plugin):
     """ORDER 必須真的決定順序 —— 它不是裝飾品。
 
-    這條守的是「載體協定要排在載荷之前」那條語意。ORDER=15 宣告的意思是
-    「排在 ngap(10) 之後、nas-5gs(20) 之前」，而同一格內的訊息順序會直接
+    這條守的是「載體協定要排在載荷之前」那條語意。ORDER=12 宣告的意思是
+    「排在 ngap(10) 之後、sbi(15) 之前」，而同一格內的訊息順序會直接
     出現在時序圖上。
+
+    用 12 而不是 15 是刻意的：sbi 自己就是 15（2026-08-19 起，因為它成為
+    NAS 的載體），撞號會讓這條測試順便測到 `(ORDER, NAME)` 的同分排序，
+    而那是另一件事，混在一起兩件都測不清楚。
     """
-    install_plugin("fakeplug_order", order=15)
+    install_plugin("fakeplug_order", order=12)
     importlib.invalidate_caches()
     _clear_caches()
     names = [a.NAME for a in adapters_mod.adapters()]
-    assert names == ["ngap", "faketel", "nas-5gs", "sbi", "pfcp"]
+    assert names == ["ngap", "faketel", "sbi", "nas-5gs", "pfcp"]
 
 
 def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
@@ -159,7 +163,9 @@ def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
     try:
         with pytest.warns(RuntimeWarning, match="entry point"):
             names = [a.NAME for a in adapters_mod.adapters()]
-        assert names == ["ngap", "nas-5gs", "sbi", "pfcp"]
+        # sbi(15) 排在 nas-5gs(20) 之前 —— 它用 multipart 載送 NAS，
+        # 而契約要求載體排在載荷之前。2026-08-19 從 30 改過來。
+        assert names == ["ngap", "sbi", "nas-5gs", "pfcp"]
         # filter 也要還在，否則 read_frames 會拿到空字串而撈不到任何封包。
         assert "(ngap)" in adapters_mod.display_filter()
     finally:

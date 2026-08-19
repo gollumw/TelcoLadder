@@ -12,11 +12,35 @@
 | `DISSECTORS` | `telcoshark check` 要驗證存在的 dissector 名稱 |
 | `parse(frame)` | `Frame` → `list[Message]` |
 
-外加一個**選用**的：
+外加三個**選用**的：
 
 | 屬性 | 用途 |
 |---|---|
 | `DECODE_AS` | tshark `-d` 規則，如 `("tcp.port==7777,http2",)` |
+| `CARRIES` | 這個 adapter 會載送哪些協定，如 `("nas-5gs",)` |
+| `CARRIER_LAYER` | 它的區塊在 tshark 輸出裡叫什麼層；**預設等於 `NAME`** |
+| `carrier_keys(block, frame)` | 從**載體區塊**推出的身分鍵，回 `frozenset[IdKey]` |
+
+`CARRIER_LAYER` 存在是因為 **adapter 的名字與 tshark 的層名是兩回事**：
+`sbi.NAME` 是 `"sbi"`（會出現在 `Message.protocol` 上），但它的區塊在 `-T ek`
+輸出裡叫 `http2`。NGAP 剛好兩者同名，所以在只有一個載體的年代看不出來 ——
+實作 T1 時 SBI 那條路一格都收不到，而且**不報錯**，才把這個缺口逼出來。
+
+## CARRIES / carrier_keys：為什麼身分推導要進契約
+
+`-T ek` 的子解剖是**巢狀在載體層內**的，所以載荷 adapter 必須知道去誰底下找 ——
+`nas-5gs` 掛在 `ngap` 底下，也掛在 `http2.mime_multipart` 底下。
+
+光知道去哪找還不夠。載荷自己的欄位通常**不足以歸戶**：NGAP 載送時 UE 的身分在
+NGAP 的 UE ID 上，SBI 載送時在 HTTP/2 的 stream id 與同層的 IMSI 上。所以載荷
+必須**問載體要鑰匙**，而不是自己猜。
+
+在這之前 `nas5gs.py` 是直接 `from telcoshark.adapters.ngap import identity_keys` ——
+一條硬編碼。多一個載體就多一條，Phase 2 接 SIP（載送 SDP）與 Diameter（載送 AVP）
+之後會變成四條。改成契約屬性之後，載荷只要問 `carriers_of()`。
+
+兩者皆選用、且比照 `DECODE_AS` 用 `getattr` 取用 —— 既有外掛不必改版。
+沒宣告 `CARRIES` 的 adapter 就不是任何東西的載體，行為完全不變。
 
 `DISPLAY_FILTER` 是最容易漏的一個：adapter 寫得再完美，只要它的協定不在
 filter 裡，tshark 根本不會把那些封包吐出來 —— 而症狀是「圖比較短」，
@@ -58,8 +82,10 @@ from __future__ import annotations
 from functools import cache
 from typing import Protocol
 
+from typing import Any
+
 from telcoshark.extract import Frame
-from telcoshark.model import Message
+from telcoshark.model import IdKey, Message
 from telcoshark.plugins import ADAPTER_GROUP, PluginError, load_group
 
 
@@ -70,8 +96,17 @@ class Adapter(Protocol):
     DISSECTORS: tuple[str, ...]
     #: 選用。沒宣告的 adapter 一律當空的，見 `default_decode_as()`。
     DECODE_AS: tuple[str, ...]
+    #: 選用。這個 adapter 會載送哪些協定的 `NAME`，見 `carriers_of()`。
+    CARRIES: tuple[str, ...]
+    #: 選用。這個 adapter 的區塊在 tshark 輸出裡的層名。預設等於 `NAME`
+    #: —— 只有兩者不同的 adapter 需要宣告（例如 sbi 的層是 `http2`）。
+    CARRIER_LAYER: str
 
     def parse(self, frame: Frame) -> list[Message]: ...
+
+    #: 選用。從載體區塊推出的身分鍵。載荷 adapter 靠它歸戶，
+    #: 因為載荷自己的欄位通常不足以識別是誰。
+    def carrier_keys(self, block: dict[str, Any], frame: Frame) -> frozenset[IdKey]: ...
 
 
 from telcoshark.adapters import nas5gs, ngap, pfcp, sbi  # noqa: E402
@@ -105,6 +140,41 @@ def adapters() -> tuple[Adapter, ...]:
     for name, obj in load_group(ADAPTER_GROUP):
         found.append(_validate(name, obj))
     return tuple(sorted(found, key=lambda a: (a.ORDER, a.NAME)))
+
+
+@cache
+def carriers_of(payload: str) -> tuple[Adapter, ...]:
+    """宣告會載送 `payload` 的 adapter，依 `adapters()` 的順序。
+
+    `@cache` 與 `adapters()` 同一個理由：這在每一格封包上都會被問到，
+    而答案在行程生命週期內不變。
+
+    宣告了 `CARRIES` 卻沒有 `carrier_keys` 是允許的 —— 那代表「我載送它，
+    但我身上沒有可以歸戶的東西」。載荷 adapter 會拿到空的鍵集合，訊息仍然
+    看得到，只是歸不了戶。這比整個消失好，也比編一個假的身分好。
+    """
+    return tuple(
+        adapter
+        for adapter in adapters()
+        if payload in getattr(adapter, "CARRIES", ())
+    )
+
+
+def carrier_blocks(adapter: Adapter, frame: Frame) -> list[dict[str, Any]]:
+    """這一格裡屬於該載體的區塊。
+
+    走 `CARRIER_LAYER` 而不是 `NAME` —— 兩者不一定相同（`sbi` 的層叫 `http2`）。
+    用錯的症狀是**一格都收不到而且不報錯**，所以這個查詢只有這一份。
+    """
+    return frame.layer(getattr(adapter, "CARRIER_LAYER", adapter.NAME))
+
+
+def carrier_keys_from(adapter: Adapter, block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
+    """問載體要身分鍵。沒實作 `carrier_keys` 的載體回空集合。"""
+    fn = getattr(adapter, "carrier_keys", None)
+    if fn is None:
+        return frozenset()
+    return fn(block, frame)
 
 
 def display_filter() -> str:
