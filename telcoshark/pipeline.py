@@ -8,11 +8,15 @@
 這個檔刻意很薄：它只是把既有的六個步驟依正確順序串起來，不做任何判斷。
 順序本身有意義，不能重排：
 
-    read_frames → parse_frame → apply_roles → annotate → correlate
-         ↑                           ↑            ↑
-    probe 看形狀，          角色要在畫圖前定案   查表要在關聯前做完
-    必要時帶調整過的
+    read_frames → parse_frame → apply_roles → annotate → lifecycle → correlate
+         ↑                           ↑            ↑           ↑
+    probe 看形狀，          角色要在畫圖前定案   查表要在   識別碼會被回收再配發,
+    必要時帶調整過的                          關聯前做完   跨過釋放邊界的要先分家
     參數再跑一次
+
+`lifecycle` **一定要在 `correlate` 之前** —— 併完流再想切開已經來不及了
+（union-find 沒有 un-union）。而它**不能放進 `correlate`**:那個檔對協定
+一無所知,那正是它接得住 Phase 2 的 SIP 與 Diameter 的原因。
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from telcoshark.adapters.nas5gs import count_ciphered, count_protected_suci
 from telcoshark.adapters.sbi import undecoded_header_streams
 from telcoshark.causes import annotate
 from telcoshark.correlate import correlate
+from telcoshark.lifecycle import apply as apply_lifecycle
 from telcoshark.coverage import Coverage, measure
 from telcoshark.extract import read_frames
 from telcoshark.model import Flow, Message
@@ -423,6 +428,9 @@ def _analyse_within(
 
     apply_roles(messages, nas_from_ue=nas_from_ue)
     annotate(messages)
+    # 沒有觀測到釋放時這是恆等函式（`lifecycle.apply` 第一行就回頭），
+    # 所以不含 release 的擷取檔行為逐位元組不變。
+    apply_lifecycle(messages)
     flows = correlate(messages)
     if wire:
         flows = collapse(flows)

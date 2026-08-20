@@ -111,6 +111,22 @@ _OUTCOME_SUFFIX = {
 }
 
 
+#: UE context 真的被放掉的那一則。
+#:
+#: 41 = `UEContextRelease`（TS 38.413）。**要的是 successfulOutcome（Complete）**,
+#: 不是 initiatingMessage（Command）—— Command 只是 AMF 下令,context 要等
+#: gNB 回 Complete 才真的沒了。依 Command 就切分,等於在 context 還在的時候
+#: 把一個人的流程切成兩半（`telcoshark/lifecycle.py` 的「切過頭」方向）。
+#:
+#: 42（`UEContextReleaseRequest`,gNB→AMF 的請求）刻意不列 —— 它只是請求,
+#: AMF 可以不理。
+_UE_CONTEXT_RELEASE = 41
+
+#: 隨 UE context 一起被放掉的識別碼。**SUPI 不在裡面** —— 那是 SIM 卡上的
+#: 東西,不會因為一次 context 釋放就換人。
+_RELEASABLE = frozenset({IdKind.RAN_UE_NGAP_ID, IdKind.AMF_UE_NGAP_ID})
+
+
 def _outcome(block: dict[str, Any]) -> str:
     for key, suffix in _OUTCOME_SUFFIX.items():
         if key in block:
@@ -228,6 +244,16 @@ def parse(frame: Frame) -> list[Message]:
             # —— initiatingMessage 的 label 沒有 "Request" 後綴。
             detail[ps.GTP_TEID_OWNER] = "upf" if outcome == "" else "gnb"
 
+        keys = identity_keys(block, scope)
+        # **這則訊息結束了哪些識別碼。** gNB 與 AMF 都會把放掉的 UE NGAP ID
+        # 配給下一個 UE;少了這個宣告,同一對號碼的前後兩位訂戶會被
+        # `correlate` 併成一條流程,而圖看起來完全合理。
+        releases = (
+            frozenset(k for k in keys if k[0] in _RELEASABLE)
+            if code == _UE_CONTEXT_RELEASE and outcome == "Response"
+            else frozenset()
+        )
+
         messages.append(
             Message(
                 frame=frame.number,
@@ -237,7 +263,8 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=identity_keys(block, scope),
+                identity_keys=keys,
+                releases=releases,
                 cause=cause,
                 # 只有 unsuccessfulOutcome 才算失敗。帶 cause 的 successfulOutcome
                 # 是正常的（例如 UEContextRelease 會帶原因），不該被標紅。

@@ -7,14 +7,12 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from telcoshark.adapters import parse_frame
 from telcoshark.correlate import correlate
 from telcoshark.identity import connection_scope, globally_unique, scoped
-from telcoshark.extract import read_frames
+from telcoshark.extract import Frame, read_frames
 from telcoshark.model import ID_CLASSES, Endpoint, Flow, IdKind, Message, is_flow_worthy
 from telcoshark.nf import UE_ROLE, apply_roles, resolve_roles
 from telcoshark.tshark import TsharkNotFound, find_tshark
@@ -157,6 +155,22 @@ def test_two_ues_do_not_bleed_into_each_other():
     assert len(correlate(msgs)) == 2
 
 
+def _sctp_frame(src_ip: str, dst_ip: str) -> Frame:
+    """一格 NGAP（SCTP）封包。
+
+    **用真的 `Frame` 而不是 `SimpleNamespace`。** 鴨子型別的替身會跟真型別
+    漂移 —— 2026-08-21 給 `Frame` 加 `stream` 欄位時，這兩條測試就是因為
+    替身少一個屬性而紅的（不是行為退步，是替身過期了）。
+
+    SCTP 沒有 `tcp.stream`，所以 `stream` 留空 —— 那正是這裡要驗的情境:
+    NGAP 的範圍就是 IP 對。
+    """
+    return Frame(
+        number=1, ts=0.0, src_ip=src_ip, dst_ip=dst_ip,
+        src_port=38412, dst_port=38412, layers={},
+    )
+
+
 def test_same_ngap_id_on_two_associations_does_not_merge_subscribers():
     """**同一個號碼、不同連線，絕對不能併成一條流程。**
 
@@ -170,8 +184,8 @@ def test_same_ngap_id_on_two_associations_does_not_merge_subscribers():
     而不是手寫字串 —— 如果哪天有人把 `scoped()` 改成不加前綴，這條會紅。
     """
     ep_a, ep_b, ep_c = Endpoint("10.0.0.1"), Endpoint("10.0.0.2"), Endpoint("10.0.0.9")
-    gnb_1 = connection_scope(SimpleNamespace(src_ip="10.0.0.1", dst_ip="10.0.0.2"))
-    gnb_2 = connection_scope(SimpleNamespace(src_ip="10.0.0.9", dst_ip="10.0.0.2"))
+    gnb_1 = connection_scope(_sctp_frame("10.0.0.1", "10.0.0.2"))
+    gnb_2 = connection_scope(_sctp_frame("10.0.0.9", "10.0.0.2"))
     assert gnb_1 != gnb_2, "兩條連線的範圍字串本身就該不同"
 
     msgs = [
@@ -189,8 +203,8 @@ def test_connection_scope_is_direction_independent():
     不然請求與回應會被拆成兩條流程 —— 圖上會出現兩個半截的程序，
     而每一半看起來都像「訊息不完整」。
     """
-    up = connection_scope(SimpleNamespace(src_ip="10.0.0.1", dst_ip="10.0.0.2"))
-    down = connection_scope(SimpleNamespace(src_ip="10.0.0.2", dst_ip="10.0.0.1"))
+    up = connection_scope(_sctp_frame("10.0.0.1", "10.0.0.2"))
+    down = connection_scope(_sctp_frame("10.0.0.2", "10.0.0.1"))
     assert up == down
 
 

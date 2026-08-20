@@ -59,6 +59,19 @@ class Frame:
     dst_port: int | None
     layers: dict[str, Any]
 
+    stream: str = ""
+    """傳輸層連線的識別（目前只有 TCP 有 —— tshark 的 `tcp.stream`）。
+
+    **IP 對不等於一條連線。** 同一對 IP 之間可以先後有很多條 TCP 連線，而
+    HTTP/2 的 stream id 在**每條連線內**各自從 1 開始數。少了這個欄位，
+    `identity.connection_scope()` 會把不同連線上的同一個 stream id 算成
+    同一把 key —— 兩個不相干的訂戶因此被併成一條流程，而圖看起來完全合理
+    （由 `tests/test_identifier_reuse.py` 釘住）。
+
+    SCTP 與 UDP 沒有這個概念，留空字串。**不要為它們編一個** ——
+    NGAP 的 NG 連線與 PFCP 的關聯本來就是長命的，IP 對足以識別。
+    """
+
     abs_ts: float = 0.0
     """擷取當下的 epoch 秒數（牆鐘時間）。
 
@@ -120,6 +133,22 @@ def to_int(value: Any) -> int | None:
 
 #: 舊名保留給 extract.py 內部既有呼叫端，不對外。
 _to_int = to_int
+
+
+def _transport_stream(layers: dict[str, Any]) -> str:
+    """TCP 連線的識別（tshark 的 `tcp.stream`）。沒有就回空字串。
+
+    **只認 TCP。** SCTP 有 association、UDP 什麼都沒有,而那兩者在本專案的
+    用途（NGAP 的 NG 連線、PFCP 的關聯）本來就是長命的,IP 對足以識別。
+    替它們編一個識別只會多一個沒有依據的維度。
+
+    tshark 同一層裡還有 `tcp.stream.pnum` 等衍生欄位,**要取的是
+    `tcp_tcp_stream` 本身** —— 前綴比對會抓到別的。
+    """
+    tcp = _as_dict_list(layers.get("tcp"))
+    if not tcp:
+        return ""
+    return str(first(tcp[0].get("tcp_tcp_stream")) or "")
 
 
 def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None]:
@@ -300,6 +329,7 @@ def read_frames(
                 src_port=src_port,
                 dst_port=dst_port,
                 layers=layers,
+                stream=_transport_stream(layers),
                 abs_ts=abs_ts,
             )
         consumed_fully = True

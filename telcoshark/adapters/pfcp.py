@@ -126,6 +126,14 @@ def _seids(block: dict[str, Any]) -> set[int]:
     return found
 
 
+#: 確認 session 真的被刪掉的訊息型別。
+#:
+#: **只有 Response。** Request 是「請你刪」,UPF 可以拒絕（帶非 Accepted 的
+#: cause）—— 依 Request 就切分,等於在 session 還活著的時候把它切成兩半。
+#: `Session Set Deletion Response`(15) 一次刪一整組,同樣算數。
+_DELETION_CONFIRMED = frozenset({15, 55})
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
     scope = connection_scope(frame)
@@ -158,6 +166,22 @@ def parse(frame: Frame) -> list[Message]:
 
         cause = _to_int(block.get("pfcp_pfcp_cause"))
 
+        # **這則訊息結束了哪些識別碼**（`Message.releases`）。
+        #
+        # SEID 與它擁有的 F-TEID 都會被 UPF 回收再配給下一個 UE。少了這個
+        # 宣告，同一個值的前後兩位訂戶會被 `correlate` 併成一條流程 ——
+        # 而圖看起來完全合理（`telcoshark/lifecycle.py`）。
+        #
+        # **只認 Response，不認 Request。** Request 只是「請你刪」，可能被
+        # 拒絕；那時把還活著的 session 切開,是「切過頭」那個方向的錯。
+        # 抓不到 Response（擷取不全）就漏一次切分 —— 那是安全的方向。
+        #
+        # **只宣告 SEID,不宣告 F-TEID。** 線路上的 Deletion 本來就只帶 SEID;
+        # 它釋放掉的 TEID 由 `lifecycle` 從稍早「兩者同時在場」的那一則推出來。
+        releases: set[IdKey] = set()
+        if msg_type in _DELETION_CONFIRMED and cause == _CAUSE_ACCEPTED:
+            releases = {k for k in identity if k[0] is IdKind.PFCP_SEID}
+
         detail: dict[str, str] = {}
         seqno = _to_int(block.get("pfcp_pfcp_seqno"))
         if seqno is not None:
@@ -175,6 +199,7 @@ def parse(frame: Frame) -> list[Message]:
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
                 identity_keys=frozenset(identity),
+                releases=frozenset(releases),
                 cause=None,  # 見本檔開頭：cause 表建起來之前不給出處
                 is_failure=cause is not None and cause != _CAUSE_ACCEPTED,
                 detail=detail,

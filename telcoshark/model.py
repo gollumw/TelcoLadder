@@ -189,6 +189,22 @@ class Message:
     identity_keys: frozenset[IdKey] = field(default_factory=frozenset)
     """這則訊息暴露出來的身分別名，供 `correlate` 併流用。"""
 
+    releases: frozenset[IdKey] = field(default_factory=frozenset)
+    """這則訊息**結束**了哪些身分別名 —— 與 `identity_keys` 對稱的另一半。
+
+    `scoped()` 的識別碼（NGAP UE ID、PFCP SEID、GTP TEID、HTTP/2 stream）
+    全都是**會被回收再配發**的。網路釋放它之後，同一個值屬於另一個人；
+    少了這個欄位，`correlate` 的聯集查找會把前後兩個訂戶併成一條流程，
+    而**圖看起來完全合理**（§4 那一類）。
+
+    **只放線路上看得到的釋放**，不要放推測。沒有觀測到就不填 ——
+    憑時間間隔猜「大概釋放了」會把一條真的流程切成兩半，那是另一個方向的
+    錯，而症狀同樣是「看起來很合理」。
+
+    誰消費它:`telcoshark/lifecycle.py`（在 adapters 與 `correlate` 之間）。
+    adapter 只負責宣告「這則訊息釋放了什麼」,不必知道 episode 怎麼算。
+    """
+
     cause: CauseRef | None = None
     """若訊息帶 cause code。"""
 

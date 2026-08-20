@@ -6,10 +6,18 @@
 
 危險全部集中在一個問題上：**這個識別碼在多大的範圍內唯一？**
 
-| 範圍 | 例子 | 怎麼建 |
-|---|---|---|
-| 全網唯一 | SUPI/IMSI、IMPU、MSISDN、SIP Call-ID、Diameter Session-Id | `globally_unique()` |
-| **只在一條連線內唯一** | RAN/AMF UE NGAP ID、HTTP/2 stream ID、GTP TEID | **`scoped()`** |
+而「範圍」有**三個維度**，不是兩個：
+
+| 維度 | 問題 | 例子 | 怎麼建 |
+|---|---|---|---|
+| 無 | 全網唯一 | SUPI/IMSI、IMPU、MSISDN、SIP Call-ID、Diameter Session-Id | `globally_unique()` |
+| **空間** | 在哪條連線／哪台機器上唯一？ | RAN/AMF UE NGAP ID、HTTP/2 stream ID、GTP TEID | `scoped()` |
+| **時間** | 這是這個值的第幾次配發？ | 上列全部 —— 它們都會被回收再配發 | `episodic()` |
+
+**第三個維度是 2026-08-21 補的,補之前它是一個現行的錯誤**:UE-A 的 PDU
+session 釋放後 UPF 把同一個 TEID 配給 UE-B,兩邊算出同一把 key,union-find
+把兩個不相干的訂戶併成一條流程 —— 而圖看起來完全合理。
+由 `tests/test_identifier_reuse.py` 釘住。
 
 RAN_UE_NGAP_ID 就是典型：每個 gNB 都從 1 開始配號。兩個基地台底下各有一個
 用戶拿到 1，不加範圍前綴就會被判定成同一個人。
@@ -30,8 +38,18 @@ def connection_scope(frame: Frame) -> str:
 
     把兩端 IP 排序後串起來 —— 同一條連線的上行與下行封包必須算出同一個
     範圍字串，否則請求與回應會被拆成兩條流程。
+
+    **TCP 另外帶上 `tcp.stream`。** 一對 IP 之間可以先後有很多條 TCP 連線，
+    所以 IP 對識別的是「這兩台機器之間」，不是「一條連線」。差別在 HTTP/2
+    上會咬人：stream id 在**每條連線內**各自從 1 開始數，於是連線重建之後
+    第一個 stream 又叫 1 —— 而它屬於另一個人。少了這一段，那兩個訂戶會被
+    併成一條流程，圖看起來完全合理（`tests/test_identifier_reuse.py`）。
+
+    SCTP 與 UDP 不加 —— 它們沒有這個概念，而 NGAP 的 NG 連線與 PFCP 的關聯
+    本來就是長命的，IP 對足以識別。替它們編一個維度只會多一個沒有依據的前綴。
     """
-    return "|".join(sorted((frame.src_ip, frame.dst_ip)))
+    pair = "|".join(sorted((frame.src_ip, frame.dst_ip)))
+    return f"{pair}#{frame.stream}" if frame.stream else pair
 
 
 def scoped(kind: IdKind, scope: str, value: object) -> IdKey:
@@ -41,6 +59,25 @@ def scoped(kind: IdKind, scope: str, value: object) -> IdKey:
     避免 `1` 與 `"1"` 併不起來。
     """
     return (kind, f"{scope}/{value}")
+
+
+def episodic(kind: IdKind, scope: str, value: object, episode: int) -> IdKey:
+    """給**會被回收再配發**的識別碼建 key —— 空間範圍之外再加時間範圍。
+
+    `episode` 是這個值在這個 scope 內的**第幾次配發**,0 是第一次。
+
+    **episode 0 產生的 key 與 `scoped()` 逐字元相同。** 這不是巧合,是刻意的:
+    絕大多數擷取檔裡每個識別碼只配發一次,那些檔案的行為必須完全不變。
+    只有真的觀測到釋放並重配之後,第二次起才帶後綴 —— 於是「這份檔的結果變了」
+    永遠對應到「這份檔裡真的有重配」,而不是「我們換了一套算法」。
+
+    誰來算 `episode` 不在這裡 —— adapter 是逐訊息的,不知道未來。
+    見 `telcoshark/lifecycle.py`。
+    """
+    key = scoped(kind, scope, value)
+    if episode <= 0:
+        return key
+    return (kind, f"{key[1]}@{episode}")
 
 
 def gtp_tunnel(address: str, teid: object) -> IdKey | None:

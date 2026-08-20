@@ -10,7 +10,7 @@ TelcoShark 的協定支援是可插拔的。**加一個協定 = 裝一個套件*
 
 ---
 
-## 四個軸線，不是一個
+## 五個軸線，不是一個
 
 一個協定要真的接上來，得同時提供這些東西。少任何一樣，症狀都是**完全不報錯，
 但一則訊息都沒解析出來**：
@@ -24,6 +24,39 @@ TelcoShark 的協定支援是可插拔的。**加一個協定 = 裝一個套件*
 | **載送宣告** | adapter 的 `CARRIES` 屬性（選用） | 被它載送的協定一則都解不出來 |
 | **層名** | adapter 的 `CARRIER_LAYER` 屬性（選用，預設 `NAME`） | 同上，而且**更難查**：載體本身正常運作 |
 | **載體身分** | adapter 的 `carrier_keys()`（選用） | 載荷解得出來但歸不了戶，變成孤兒流程 |
+| **釋放宣告** | `Message.releases`（選用，見下） | **兩個不相干的訂戶被併成一條流程** |
+
+## 釋放宣告：`Message.releases`
+
+**網元配出去的識別碼會被回收再配給下一個 UE。** NGAP UE ID、PFCP SEID、
+GTP TEID、HTTP/2 stream id 全都是這樣。而 `correlate` 只認「共用 key ＝ 同一個人」——
+所以重用之後，前後兩位訂戶會被併成一條流程，**圖看起來完全合理**。
+
+adapter 的責任只有一件：在**確認釋放**的那一則訊息上填 `Message.releases`。
+「那讓誰變成第幾次配發」由 `telcoshark/lifecycle.py` 算，adapter 不必知道。
+
+```python
+# adapters/pfcp.py —— 只宣告 SEID，不宣告它擁有的 F-TEID
+releases: set[IdKey] = set()
+if msg_type in _DELETION_CONFIRMED and cause == _CAUSE_ACCEPTED:
+    releases = {k for k in identity if k[0] is IdKind.PFCP_SEID}
+```
+
+三條規則：
+
+1. **只認確認，不認發起。** PFCP 的 `Deletion Request` 可能被拒絕；NGAP 的
+   `UEContextRelease`**Command** 只是 AMF 下令，context 要等 gNB 回 Complete
+   才真的沒了。依發起端切分＝在還活著的時候把一個人的流程切成兩半，
+   而那**比不切更糟**（兩半各自看起來都像「訊息不完整」）。
+2. **只宣告訊息自己帶得出來的。** PFCP 的 Deletion 只帶 SEID，不帶它釋放掉的
+   F-TEID —— 那個對應由 `lifecycle` 從稍早「兩者同時在場」的訊息推出來。
+   在 adapter 裡憑記憶補上等於在逐訊息的地方做跨訊息的事。
+3. **沒有觀測到就不填。** 憑時間間隔猜「大概釋放了」是另一個方向的錯。
+
+Phase 2 的對照：SIP 的 `BYE`（200 OK 之後）釋放 Call-ID、Diameter 的
+`Session-Termination-Answer` 釋放 Session-Id。**但兩者的規範都要求全域唯一
+且不重用**（RFC 3261 §8.1.1.4、RFC 6733 §8.8），所以它們預設不在
+`lifecycle.REUSABLE` 裡 —— 遇到違反規範的實作再加，不要先猜。
 
 ## 載體協定：`CARRIES` / `CARRIER_LAYER` / `carrier_keys`
 
