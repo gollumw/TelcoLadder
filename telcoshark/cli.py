@@ -12,7 +12,6 @@ from telcoshark.coverage import describe as describe_coverage
 from telcoshark.extract import ExtractError
 from telcoshark.pipeline import Prefilter, analyse
 from telcoshark.prefilter import PrefilterError, TimeWindow
-from telcoshark.render_html import render_report
 from telcoshark.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
 from telcoshark.session import IDLE_TTL
 from telcoshark.web import DEFAULT_HOST, DEFAULT_PORT, serve
@@ -108,27 +107,11 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         flows, max_messages=args.max_messages, show_frames=not args.no_frames
     )
 
-    if args.html:
-        args.html.write_text(
-            render_report(
-                flows,
-                source_name=args.pcap.name,
-                ciphered=ciphered,
-                prefilter=result.prefilter,
-                auto_decode=result.auto_decode,
-                max_messages=args.max_messages,
-                show_identity_source=not args.no_identity_source,
-            ),
-            encoding="utf-8",
-        )
-        print(f"已寫入 {args.html}", file=sys.stderr)
-
     output = "\n".join(r.text for r in results)
     if args.output:
         args.output.write_text(output, encoding="utf-8")
         print(f"已寫入 {args.output}", file=sys.stderr)
-    elif not args.html:
-        # 只要了 HTML 就不要再把圖倒進 stdout —— 那是雜訊，不是輸出。
+    else:
         print(output, end="")
 
     # 摘要走 stderr，這樣 `telcoshark analyze x.pcap > flow.mmd` 拿到的是乾淨的圖。
@@ -198,11 +181,6 @@ def build_parser() -> argparse.ArgumentParser:
         "-o", "--output", type=Path, help="寫入檔案（預設印到 stdout）"
     )
     analyze.add_argument(
-        "--html", type=Path, metavar="檔案",
-        help="另外產生一份自包含的 HTML 報告（零外部請求、可離線開啟、可直接寄出）。"
-             "指定後不再把 Mermaid 倒進 stdout，除非同時給了 -o。",
-    )
-    analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,
         help=f"每條流程最多畫幾則訊息，超過會截斷並在圖上註明（預設 {DEFAULT_MAX_MESSAGES}）",
     )
@@ -214,12 +192,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument(
         "--no-frames", action="store_true", help="不在箭頭上標封包編號"
-    )
-    analyze.add_argument(
-        "--no-identity-source", action="store_true",
-        help="hover 時不顯示「身分來源」。有些訊息（例如 SBI 夾帶的下行 NAS）"
-             "自己認不出是誰，訂戶身分是跟載體借的；預設會講出來。"
-             "**關掉的只是顯示** —— 身分照常參與關聯，流程切分不受影響。",
     )
     analyze.add_argument(
         "--flow", action="store_true",

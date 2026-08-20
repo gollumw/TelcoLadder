@@ -256,3 +256,66 @@ def test_the_only_data_seam_is_the_source_layer() -> None:
         f"這些元件直接 import 了 mock-data：{offenders}。"
         "資料一律經 App.tsx 由 DataSource 注入。"
     )
+
+
+# ── 伺服器端產的那兩頁（首頁 / 錯誤頁）────────────────────────────────
+#
+# 它們**不吃 Tailwind** —— 樣式來自 `chrome.CHROME_CSS` ＋ `web._EXTRA_CSS`，
+# 內嵌在 `<style>` 裡。Phase 4（2026-08-21）把 `render_html.PAGE_CSS` 的 234 行
+# 收窄成 47 行時，這一節就是唯一能機械驗到「有沒有砍過頭」的地方。
+
+
+def _served_pages() -> dict[str, str]:
+    """伺服器自己產的每一頁 HTML。新增頁面時加進來。"""
+    from telcoshark.web import _error_page, _home_page
+
+    return {
+        "首頁": _home_page(),
+        "錯誤頁": _error_page("測試用訊息", hint="提示", detail="細節"),
+    }
+
+
+def test_every_css_variable_used_is_actually_defined() -> None:
+    """用到的每一個 `var(--x)` 都要在同一份樣式裡定義得到。
+
+    **這是 CSS 收窄唯一驗得到的地方。** 砍掉一個還有人在用的變數，瀏覽器
+    只是把那個屬性當作無效值丟掉 —— 頁面照樣渲染、console 零訊息，只是
+    邊框不見了或字變成黑色。與 `CLAUDE.md §5.5` 記的 Tailwind glob 事故
+    同一類:build 成功、頁面渲染、版面塌了。
+
+    只驗「有定義」不驗「有沒有多餘的」—— 多留一個沒人用的變數是無害的
+    死重量，少一個是看不見的破洞，兩者不對稱。
+    """
+    for name, html in _served_pages().items():
+        styles = "\n".join(re.findall(r"<style>(.*?)</style>", html, re.S))
+        assert styles.strip(), f"{name} 沒有內嵌樣式"
+        used = set(re.findall(r"var\((--[a-z0-9-]+)\)", styles))
+        defined = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", styles, re.M))
+        assert used, f"{name} 一個 CSS 變數都沒用到 —— 這條測試沒在驗東西"
+        assert used <= defined, (
+            f"{name} 用了沒有定義的 CSS 變數：{sorted(used - defined)}"
+        )
+
+
+def test_every_class_used_is_actually_styled() -> None:
+    """頁面上出現的每一個 class 都要有對應的規則。
+
+    收窄 CSS 時最容易犯的錯是「照著變數清單砍，忘了 class」。少一條規則的
+    症狀同樣是靜默的 —— 那個元素只是沒有樣式，不會有任何錯誤。
+
+    `.over` 是例外:它由拖放的 JS 動態加上去，不會出現在初始 HTML 裡。
+    """
+    dynamic_only = {"over"}
+    for name, html in _served_pages().items():
+        styles = "\n".join(re.findall(r"<style>(.*?)</style>", html, re.S))
+        body = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        used = {
+            cls
+            for attr in re.findall(r"class=['\"]([^'\"]+)['\"]", body)
+            for cls in attr.split()
+        }
+        styled = set(re.findall(r"\.([a-z][a-z0-9-]*)", styles)) | dynamic_only
+        assert used, f"{name} 沒有任何 class —— 這條測試沒在驗東西"
+        assert used <= styled, (
+            f"{name} 用了沒有樣式的 class：{sorted(used - styled)}"
+        )

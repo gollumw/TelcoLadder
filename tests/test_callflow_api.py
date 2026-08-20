@@ -199,3 +199,32 @@ def test_unknown_subscriber_is_an_error_not_an_empty_ladder(wire_flow, e2e_pcap)
     payload = callflow_json(session, "000000000000000")
     assert "error" in payload
     assert not payload.get("events")
+
+
+# ── 自 `/subscriber` 接手的不變量（Phase 4，2026-08-21）──────────────
+
+
+def test_events_are_ordered_by_absolute_time(wire_flow) -> None:
+    """一個訂戶的多條 flow 合併之後，順序必須按絕對時間非遞減。
+
+    **亂序的乒乓圖看起來完全合理，但因果方向是錯的** —— 圖上會顯示
+    Response 畫在 Request 前面，而讀圖的人會相信它。
+
+    這條原本掛在 `/subscriber`（舊檢視器的合併 ladder），Phase 4 那條路由
+    退場後由這裡接手。**舊那條測試其實驗不到東西**：它自己把 list 排序完
+    才斷言它有序，永遠為真。這裡驗的是 `callflow_json` 真正吐出來的東西，
+    拿掉 `messages.sort(...)` 就會紅（已用變異測試確認）。
+
+    `abs_ts` 缺席時排序鍵退回相對秒數，單檔內兩者一致 —— 所以這裡同時
+    檢查兩個欄位都不倒退，混用一個檔裡兩種時間基準會被抓到。
+    """
+    events = wire_flow["events"]
+    assert len(events) > 1, "只有一則訊息，這條測試沒在驗東西"
+    for earlier, later in zip(events, events[1:]):
+        assert earlier["abs_ts"] <= later["abs_ts"], (
+            f"frame {earlier['frame']} 的絕對時間晚於 frame {later['frame']}"
+        )
+        assert earlier["ts"] <= later["ts"], (
+            f"frame {earlier['frame']} 的相對時間晚於 frame {later['frame']} "
+            "—— 兩種時間基準在同一份檔裡不一致"
+        )

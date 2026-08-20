@@ -1,10 +1,15 @@
 """`telcoshark serve` —— 本機 Web UI。
 
-把入口從終端機搬到瀏覽器：拖進一份擷取檔，或貼上一條路徑，直接看到報告。
+把入口從終端機搬到瀏覽器：拖進一份擷取檔，或貼上一條路徑，直接開互動介面。
 
-**結果頁就是 `render_html.render_report()` 的輸出，一字不差。** 這裡不另寫
-一套呈現 —— 兩套必然漂移，而漂移的症狀是「網頁上看到的圖，跟寄出去的報告
-不一樣」，沒有人會發現。`tests/test_web.py` 有一條逐字元比對守著這件事。
+**這個模組只送兩種頁面**：首頁／錯誤頁（伺服器端 HTML，樣式來自
+`chrome.CHROME_CSS` ＋ 本檔的 `_EXTRA_CSS`），以及 React 介面的外殼
+`/app/<sid>`（`viewer.app_page()`，樣式全部來自 Vite 產出的 `app.css`）。
+
+Phase 4（2026-08-21）之前還有第三種：`/analyze` 與 `/upload` 產的靜態報告，
+逐位元組等於 CLI 的 `--html`。**兩者已一起退場** —— 那套 SVG 排版住在
+Python 裡、React 那套住在瀏覽器裡，同一條泳道規則要改兩個地方，而不一致
+不會報錯。現在呈現只有一份。
 
 ## 為什麼沒有 multipart 解析器
 
@@ -35,18 +40,13 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import time
-from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from telcoshark.extract import ExtractError
-from telcoshark.pipeline import Prefilter, analyse
-from telcoshark.prefilter import PrefilterError, TimeWindow
-from telcoshark.render_html import PAGE_CSS, esc, render_report
+from telcoshark.chrome import CHROME_CSS, esc
 from telcoshark.adapters import default_decode_as
 from telcoshark.decode import DecodeCache, DecodeError
 from telcoshark.decodeas import (
@@ -82,10 +82,7 @@ from telcoshark.viewer import (
     index_json,
     progress_json,
     static_body,
-    viewer_page,
-    flow_json,
     flows_json,
-    subscriber_json,
 )
 
 DEFAULT_PORT = 3005
@@ -97,11 +94,6 @@ DEFAULT_HOST = "127.0.0.1"
 MAX_UPLOAD_BYTES = 1 << 30  # 1 GiB
 
 _CHUNK = 1 << 20  # 串流讀取的分塊大小
-
-#: 上傳暫存檔的前綴。挑一個認得出來的名字，萬一真的殘留（例如整個行程被
-#: kill -9），使用者找得到、刪得掉。
-_TMP_PREFIX = "telcoshark-upload-"
-
 
 def _remove_upload(tmp: Path) -> None:
     """刪掉上傳的暫存檔。刪不掉要出聲，不能默默留著。
@@ -162,10 +154,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_html(_home_page())
         elif route.startswith("/static/") and self._viewer_enabled():
             self._send_static(route[len("/static/"):])
-        elif route.startswith("/v/") and self._viewer_enabled():
-            self._send_viewer(route[len("/v/"):])
         elif route.startswith("/app/") and self._viewer_enabled():
-            self._send_viewer(route[len("/app/"):], page=app_page)
+            self._send_viewer(route[len("/app/"):])
         elif route.startswith("/api/") and self._viewer_enabled():
             self._route_api(route[len("/api/"):])
         else:
@@ -175,18 +165,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self._rejected_by_origin_checks():
             return
         route = urlsplit(self.path).path
-        # `/analyze` 與 `/upload` 是靜態報告路徑 —— 逐位元組等於 `--html`，
-        # 由 test_web_output_is_identical_to_the_html_export 守著。**不要動它們。**
-        #
-        # **2026-08-20 起首頁不再連到這兩條**（使用者拖檔進來會直接開互動
-        # 介面）。它們仍然存在、仍然被測試守著，只是不再是網頁的入口 ——
-        # 靜態報告改由 CLI 的 `--html` 提供，那本來就是那條路的正主。
-        # 路由留著是因為它們是 `--html` 那份輸出的迴歸基準。
-        if route == "/analyze":
-            self._handle_path_form()
-        elif route == "/upload":
-            self._handle_upload()
-        elif route == "/open" and self._viewer_enabled():
+        if route == "/open" and self._viewer_enabled():
             self._handle_open()
         elif route == "/open-upload" and self._viewer_enabled():
             self._handle_open_upload()
@@ -226,12 +205,15 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def _send_viewer(self, sid: str, *, page: Callable[..., str] = viewer_page) -> None:
-        """送出一份檢視器外殼。`page` 選 `/v/` 的舊介面或 `/app/` 的 React 介面。
+    def _send_viewer(self, sid: str) -> None:
+        """送出 React 介面的外殼（`/app/<sid>`）。
 
-        兩條路由共用這裡，是為了讓「工作階段過期給人話」與那六個回應標頭
-        （特別是 CSP）**只有一份**。複製第二份的失敗方式是新路由少一個標頭，
-        而少了 CSP 不會有任何徵兆 —— 頁面照常運作，只是外部請求不再被瀏覽器擋。
+        Phase 4 之前這裡吃一個 `page` 參數，讓 `/v/` 的舊檢視器與 `/app/`
+        共用同一條送出路徑 —— 為的是讓「工作階段過期給人話」與那六個回應
+        標頭（特別是 CSP）**只有一份**。舊路由退場後參數沒有意義了，但
+        **那個理由仍然成立**：日後要再加一個頁面路由，加在這裡，不要複製
+        一份。少一個標頭不會有任何徵兆 —— 頁面照常運作，只是 CSP 沒了，
+        外部請求不再被瀏覽器擋。
         """
         session = self._store.get(sid)
         if session is None:
@@ -244,7 +226,7 @@ class _Handler(BaseHTTPRequestHandler):
                 HTTPStatus.NOT_FOUND,
             )
             return
-        body = page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
+        body = app_page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -308,14 +290,6 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(flows_json(
                 session, since=_float("since"), until=_float("until"),
             ))
-        elif not post and action == "flow":
-            payload = flow_json(session, self._int_param(query, "id", -1))
-            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
-            self._send_json(payload, status)
-        elif not post and action == "subscriber":
-            payload = subscriber_json(session, self._int_param(query, "i", -1))
-            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
-            self._send_json(payload, status)
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             if not supi:
@@ -566,8 +540,11 @@ class _Handler(BaseHTTPRequestHandler):
     def _pcap_from_form(self, form: dict[str, list[str]]) -> Path | None:
         """解析並驗證表單裡的路徑。失敗時自己回錯誤頁並回 None。
 
-        `/analyze` 與 `/open` 共用 —— 兩份實作會漂移，而漂移的症狀是
-        「同一個路徑在一個入口能開、另一個不能」。
+        原本由 `/analyze` 與 `/open` 共用；`/analyze` 已於 Phase 4 退場，
+        現在只剩 `/open`。**留成獨立函式而不是內聯回去**是因為它做的是
+        「把使用者貼進來的字串變成一個可信的路徑」—— 那件事日後只要多一個
+        入口就會再需要一次，而它的每一行都是踩過才加的（去引號、展開 ~、
+        錯誤訊息不透露其他檔案系統資訊）。
         """
         raw = (form.get("path") or [""])[0].strip()
         # 從檔案總管拖到輸入框常常會帶上引號，直接吃掉而不是叫使用者自己修。
@@ -585,135 +562,6 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return None
         return pcap
-
-    def _handle_path_form(self) -> None:
-        form = self._read_form()
-        wire = (form.get("flow") or [""])[0] != "1"
-        pcap = self._pcap_from_form(form)
-        if pcap is None:
-            return
-        try:
-            prefilter = _prefilter_from_form(form)
-        except PrefilterError as exc:
-            self._send_html(
-                _error_page("過濾條件有問題。", detail=str(exc)), HTTPStatus.BAD_REQUEST
-            )
-            return
-        # 貼路徑不複製、不刪除 —— 那是使用者自己的檔案。
-        self._analyse_and_respond(pcap, pcap.name, wire=wire, prefilter=prefilter)
-
-    # ── 上傳：raw body 串流落地 ───────────────────────────────────
-
-    def _handle_upload(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0:
-            self._send_html(_error_page("沒有收到檔案內容。"), HTTPStatus.BAD_REQUEST)
-            return
-        if length > MAX_UPLOAD_BYTES:
-            self._send_html(
-                _error_page(
-                    f"檔案超過 {MAX_UPLOAD_BYTES >> 20} MB 的上傳上限。",
-                    hint="改用「貼上路徑」——不搬檔、不落地、立刻開始，大檔快得多。",
-                ),
-                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-            )
-            return
-
-        # 檔名走 encodeURIComponent 送來 —— HTTP 標頭只吃 ASCII，中文檔名
-        # 不編碼會直接壞掉。解回來，並且只取檔名部分（丟掉任何路徑成分）。
-        raw_name = unquote(self.headers.get("X-TelcoShark-Filename") or "")
-        name = Path(raw_name).name or "capture.pcap"
-
-        fd, tmp_name = tempfile.mkstemp(prefix=_TMP_PREFIX, suffix=".pcap")
-        tmp = Path(tmp_name)
-        try:
-            # 分塊寫檔，絕不 read() 整包 —— 記憶體要有界。
-            remaining = length
-            with os.fdopen(fd, "wb") as out:
-                while remaining > 0:
-                    chunk = self.rfile.read(min(_CHUNK, remaining))
-                    if not chunk:
-                        break
-                    out.write(chunk)
-                    remaining -= len(chunk)
-            if remaining > 0:
-                self._send_html(_error_page("上傳中斷，檔案不完整。"), HTTPStatus.BAD_REQUEST)
-                return
-            wire = (parse_qs(urlsplit(self.path).query).get("flow") or [""])[0] != "1"
-            # 清理交給 `_analyse_and_respond`，它會在**分析一結束就刪**，
-            # 不等回應寫完 —— 見那個函式裡的說明。
-            self._analyse_and_respond(
-                tmp, name, wire=wire, cleanup=lambda: _remove_upload(tmp)
-            )
-        finally:
-            # 保險：上傳中斷等走不到上面那條路的情況。刪過了就沒事。
-            _remove_upload(tmp)
-
-    # ── 共用 ──────────────────────────────────────────────────────
-
-    def _analyse_and_respond(
-        self,
-        pcap: Path,
-        display_name: str,
-        *,
-        wire: bool = False,
-        cleanup: Callable[[], None] | None = None,
-        prefilter: Prefilter | None = None,
-    ) -> None:
-        """分析並回應。`cleanup` 在**分析結束的那一刻**執行。
-
-        時機很要緊：上傳的暫存檔是客戶的封包，`analyse()` 一回來就不再需要
-        它（報告此時已經在記憶體裡）。把刪除放在回應寫完之後會留下一個
-        競態窗口 —— 客戶端可能在伺服器執行緒跑到清理之前就讀完回應，
-        看到的是「檔案還在」。
-
-        **`try` / `finally` 要包住的只有 `analyse()` 那一句，不能包住回應。**
-        這是第二次踩：第一版把 `except` 區塊裡的 `_send_html` 留在同一層
-        `try` 內，於是成功路徑修好了，而失敗路徑照樣先送回應才清理 ——
-        Windows CI 抓到兩次。現在的巢狀寫法讓清理**嚴格早於任何回應**，
-        每一條路徑都是。
-        """
-        try:
-            try:
-                result = analyse(pcap, wire=wire, prefilter=prefilter)
-            finally:
-                # 內層 finally：先清理，才輪到外層的 except 送回應。
-                if cleanup is not None:
-                    cleanup()
-        except TsharkNotFound as exc:
-            self._send_html(_error_page("找不到 tshark。", detail=str(exc)), HTTPStatus.INTERNAL_SERVER_ERROR)
-            return
-        except ExtractError as exc:
-            self._send_html(_error_page("讀不動這個檔案。", detail=str(exc)), HTTPStatus.BAD_REQUEST)
-            return
-        except PrefilterError as exc:
-            # 條件本身有問題 —— 錯在輸入不在擷取檔（例如 IMSI 不是數字）。
-            self._send_html(
-                _error_page("過濾條件有問題。", detail=str(exc)), HTTPStatus.BAD_REQUEST
-            )
-            return
-
-        if not result.flows:
-            self._send_html(
-                _error_page(
-                    f"{display_name} 裡沒有找到任何 5G 信令訊息。",
-                    hint="目前支援 NGAP / NAS-5GS / PFCP / HTTP-2 SBI。"
-                    "若擷取內容是使用者面或加密的 SBI，本工具看不到。",
-                )
-            )
-            return
-
-        self._send_html(
-            render_report(
-                result.flows,
-                source_name=display_name,
-                ciphered=result.ciphered,
-                # 漏掉這個參數，網頁報告就會少掉「解碼方式被調整過」那段宣告，
-                # 而 `--html` 有 —— 正是本檔開頭要防的那種漂移。
-                auto_decode=result.auto_decode,
-                prefilter=result.prefilter,
-            )
-        )
 
     def _send_html(self, body: str, status: HTTPStatus = HTTPStatus.OK) -> None:
         payload = body.encode("utf-8")
@@ -827,7 +675,7 @@ def _shell(title: str, body: str) -> str:
         '<html lang="zh-Hant"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{esc(title)}</title>"
-        f"<style>{PAGE_CSS}{_EXTRA_CSS}</style></head><body><div class='wrap'>"
+        f"<style>{CHROME_CSS}{_EXTRA_CSS}</style></head><body><div class='wrap'>"
         '<header><div class="brand"><span class="dot"></span><h1>TelcoShark</h1></div></header>'
         f"{body}</div></body></html>\n"
     )
@@ -856,32 +704,6 @@ def _tshark_banner() -> str:
     return (
         f'<p class="hint" style="margin:-8px 0 18px">'
         f"tshark {esc(tshark.version_string)}</p>"
-    )
-
-
-def _prefilter_from_form(form: dict[str, list[str]]) -> Prefilter:
-    """把表單欄位轉成 `Prefilter`。空欄位一律當成「不收窄」。
-
-    **語意必須與 CLI 的旗標逐項相同** —— 兩邊都只是把值塞進同一個
-    `Prefilter`，判斷全在 pipeline 裡。這是本檔開頭那條反漂移原則
-    在輸入端的版本。
-    """
-    def num(name: str) -> float | None:
-        raw = (form.get(name) or [""])[0].strip()
-        if not raw:
-            return None
-        try:
-            return float(raw)
-        except ValueError:
-            raise PrefilterError(f"{name} 要是數字，收到：{raw!r}") from None
-
-    def text(name: str) -> str:
-        return (form.get(name) or [""])[0].strip()
-
-    return Prefilter(
-        window=TimeWindow(num("since"), num("until")),
-        subscriber=text("subscriber") or None,
-        display_filter=text("filter"),
     )
 
 

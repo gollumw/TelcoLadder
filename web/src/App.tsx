@@ -297,19 +297,8 @@ export default function App() {
     );
   }
 
-  const sid = currentSid();
-
   return (
     <>
-      {sid && (
-        // 舊檢視器仍是對照組（`/v/<sid>`，見 CLAUDE.md §5.5）—— 入口改送
-        // React 介面之後，得留一條路回得去，否則「拿舊的比對」就只剩手打網址。
-        <div className="flex justify-end border-b border-slate-800 bg-slate-950 px-4 py-1 text-[11px] text-slate-500">
-          <a href={`/v/${sid}`} className="hover:text-slate-300">
-            以舊檢視器開啟這份擷取（對照用）
-          </a>
-        </div>
-      )}
       {data.autoDecode.length > 0 && (
         // 與 coverage 是一組的：一個說「我沒看到什麼」，這個說「我為了
         // 看到它做了什麼」。只印前者，使用者不知道結果已經被調整過。

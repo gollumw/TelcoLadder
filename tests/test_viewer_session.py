@@ -31,7 +31,6 @@ import pytest
 
 from telcoshark import session as session_mod
 from telcoshark import viewer as viewer_mod
-from telcoshark.render_html import PAGE_CSS
 from telcoshark.session import SESSION_PREFIX, Session, SessionStore
 from telcoshark.web import make_server
 
@@ -40,9 +39,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "ki-mismatch" / "capture.pcap"
 #: 檢視器的每一條路由。`test_every_viewer_route_enforces_host_and_origin`
 #: 把整張表跑一遍 —— 新增路由忘記加守衛時，那條測試會紅。
 VIEWER_ROUTES = [
-    ("GET", "/v/whatever"),
     ("GET", "/app/whatever"),
-    ("GET", "/static/viewer.js"),
     ("GET", "/static/app.js"),
     ("POST", "/open"),
     ("POST", "/open-upload"),
@@ -57,8 +54,6 @@ VIEWER_ROUTES = [
     ("GET", "/api/whatever/decode-as"),
     ("POST", "/api/whatever/decode-as"),
     ("GET", "/api/whatever/flows"),
-    ("GET", "/api/whatever/flow"),
-    ("GET", "/api/whatever/subscriber"),
     ("POST", "/api/whatever/select"),
     ("POST", "/api/whatever/refilter"),
 ]
@@ -374,7 +369,7 @@ def test_session_ids_are_not_guessable() -> None:
 
 
 def test_unknown_session_gives_a_human_error_not_a_traceback(server) -> None:
-    status, body, _ = _request(server, "/v/does-not-exist")
+    status, body, _ = _request(server, "/app/does-not-exist")
     assert status == 404
     assert "已過期" in body
     assert "Traceback" not in body
@@ -398,7 +393,7 @@ def test_missing_path_on_open_is_a_readable_error(server) -> None:
     "../../etc/passwd",
     "..%2f..%2fetc%2fpasswd",
     "",
-    "viewer.js/../viewer.js",
+    "app.js/../app.js",
     "../telcoshark/web.py",
     "nope.js",
 ])
@@ -416,20 +411,24 @@ def test_static_route_serves_the_allowlisted_files(server) -> None:
         assert body.strip(), f"{name} 是空的"
 
 
-def test_report_css_is_literally_the_reports_own_stylesheet() -> None:
-    """`/static/report.css` 必須是 `PAGE_CSS` 本身，不是複本。
+def test_the_static_allowlist_holds_only_the_react_bundle() -> None:
+    """白名單只剩 Vite 的兩份產物。
 
-    複本會漂移，而漂移的症狀是「檢視器裡的失敗紅帶跟報告裡的顏色不一樣」。
-    這條讓那件事變成結構上不可能，而不只是「有人會記得同步」。
+    **白名單放寬就是把防路徑穿越那道線往後退** —— `/static/<name>` 是字典
+    查表而不是路徑拼接，正是因為拼接一定會有人寫出穿越。Phase 4 之後
+    `viewer.js` / `viewer.css` / `report.css` 都退場了，表就該剩兩筆。
+
+    加回任何一筆會讓這條紅 —— 那個紅是要人停下來想清楚，不是要人改測試。
     """
-    payload, _ = viewer_mod.static_body("report.css")
-    assert payload.decode("utf-8") == PAGE_CSS
+    assert set(viewer_mod.STATIC_TYPES) == {"app.js", "app.css"}, (
+        f"白名單多了東西：{sorted(set(viewer_mod.STATIC_TYPES) - {'app.js', 'app.css'})}"
+    )
 
 
 def test_viewer_page_sets_a_csp_that_forbids_external_requests(server) -> None:
     """檢視器可以用 JS，但不准對外連線 —— 而且由瀏覽器強制。"""
     sid = _open_path_session(server, FIXTURE)
-    status, _, headers = _request(server, f"/v/{sid}")
+    status, _, headers = _request(server, f"/app/{sid}")
     assert status == 200
     csp = headers.get("Content-Security-Policy", "")
     assert "default-src 'none'" in csp, "沒有 default-src 'none'，漏的東西會被放行"
@@ -443,27 +442,40 @@ def test_viewer_page_sets_a_csp_that_forbids_external_requests(server) -> None:
 def test_viewer_page_makes_no_external_requests(server) -> None:
     """跟報告用同一組判準 —— 只是檢視器允許 `<script src="/static/...">`。"""
     sid = _open_path_session(server, FIXTURE)
-    _, body, _ = _request(server, f"/v/{sid}")
+    _, body, _ = _request(server, f"/app/{sid}")
     for pattern in (r"https?://", r"@import", r"url\(\s*['\"]?(?!data:)",
                     r"<iframe|<object|<embed"):
         assert not re.search(pattern, body, re.IGNORECASE), f"檢視器頁面含外連：{pattern}"
 
 
-def test_viewer_js_never_uses_innerHTML() -> None:
-    """檢視器顯示的東西全部來自擷取檔，也就是敵意輸入。
+def test_the_ui_never_builds_markup_from_capture_contents() -> None:
+    """畫面上顯示的東西全部來自擷取檔，也就是**敵意輸入**。
 
-    `textContent` 讓注入在結構上不可能；`innerHTML` 把它變成「要記得跳脫」。
-    這個 repo 沒有 linter，所以用測試釘住。
+    React 預設就跳脫，`dangerouslySetInnerHTML` 是唯一的逃生口 —— 用了它
+    就等於把「注入在結構上不可能」換成「要記得自己跳脫」。
+
+    這條原本盯的是舊檢視器的 `viewer.js`（手寫 DOM，禁用 `innerHTML` 家族）。
+    那個檔在 Phase 4 退場，但**守的東西一模一樣**，只是換了實作 —— 所以
+    這裡改掃 React 原始碼。這個 repo 沒有 linter，用測試釘住。
     """
-    src = (Path(viewer_mod.__file__).parent / "static" / "viewer.js").read_text(encoding="utf-8")
-    # 註解裡本來就會提到 innerHTML（那份說明就是在講為什麼不用它）。
-    # 精確地把 `//` 註解剝掉再檢查程式碼，而不是放寬樣式 ——
-    # 比照 test_render_html.py 對 SVG xmlns 那個唯一合法例外的處理方式。
-    code = "\n".join(
-        line.split("//", 1)[0] for line in src.splitlines()
-    )
-    for banned in ("innerHTML", "outerHTML", "document.write", "insertAdjacentHTML", "eval("):
-        assert banned not in code, f"viewer.js 用了 {banned} —— 改用 textContent"
+    root = Path(__file__).resolve().parent.parent / "web" / "src"
+    assert root.is_dir(), f"找不到前端原始碼：{root}"
+    sources = sorted(root.rglob("*.ts")) + sorted(root.rglob("*.tsx"))
+    assert sources, "一個原始檔都沒掃到 —— 這條測試沒在驗東西"
+
+    banned = ("dangerouslySetInnerHTML", "innerHTML", "outerHTML",
+              "document.write", "insertAdjacentHTML")
+    for path in sources:
+        # 註解裡本來就會提到這些名字（說明就是在講為什麼不用它們）。
+        # 精確剝掉 `//` 註解再檢查，而不是放寬樣式。
+        code = "\n".join(
+            line.split("//", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()
+        )
+        for name in banned:
+            assert name not in code, (
+                f"{path.relative_to(root)} 用了 {name} —— "
+                "擷取檔的內容不得變成標記"
+            )
 
 
 # ── 安全把關要涵蓋新表面 ──────────────────────────────────────────

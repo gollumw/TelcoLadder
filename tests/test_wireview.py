@@ -19,7 +19,6 @@ import pytest
 from telcoshark.extract import read_frames
 from telcoshark.model import CauseRef, Endpoint, Flow, Message
 from telcoshark.pipeline import analyse
-from telcoshark.render_html import render_report
 from telcoshark.tshark import TsharkNotFound, find_tshark
 from telcoshark.wireview import collapse
 
@@ -143,33 +142,76 @@ def test_different_directions_in_one_frame_are_not_glued_together():
 # ── HTML 呈現 ─────────────────────────────────────────────────────────
 
 
-def test_slow_gap_is_flagged_in_the_report():
-    """超過門檻的間隔要標色 —— timer 逾時是看間隔抓到的，不是看絕對時間。"""
-    src, dst = Endpoint("10.0.0.1", role="gNB"), Endpoint("10.0.0.2", role="AMF")
-    flow = Flow(messages=[
-        Message(frame=1, ts=0.0, protocol="ngap", src=src, dst=dst, label="Request"),
-        Message(frame=2, ts=2.5, protocol="ngap", src=dst, dst=src, label="很久以後的 Response"),
-    ])
-    html = render_report([flow], source_name="x.pcap", ciphered=0)
-    assert 'class="delta slow"' in html
-    assert "+2.50s" in html
+# ── 這三條原本驗靜態報告的 HTML，Phase 4（2026-08-21）報告退場後改驗
+#    `callflow_json` —— **同一個判定，換一個出口**。判定本身沒有改。
 
 
-def test_normal_gap_is_not_flagged():
-    """對照組：毫秒級間隔不標 —— 全部標色等於沒有標色。"""
-    src, dst = Endpoint("10.0.0.1", role="gNB"), Endpoint("10.0.0.2", role="AMF")
-    flow = Flow(messages=[
-        Message(frame=1, ts=0.0, protocol="ngap", src=src, dst=dst, label="Request"),
-        Message(frame=2, ts=0.003, protocol="ngap", src=dst, dst=src, label="Response"),
-    ])
-    html = render_report([flow], source_name="x.pcap", ciphered=0)
-    # 內嵌 CSS 永遠含 .delta.slow 規則 —— 要驗的是「沒有元素套用它」。
-    assert 'class="delta slow"' not in html
-    assert "+3ms" in html
+def _events(pcap):
+    """跑一份擷取檔，回它第一個訂戶的梯形圖事件。"""
+    from telcoshark.adapters import default_decode_as
+    from telcoshark.model import IdKind
+    from telcoshark.session import Session, _index_into
+    from telcoshark.viewer import callflow_json
+
+    session = Session(
+        sid="wv", pcap=pcap, display_name=pcap.name, owns_file=False, wire=True
+    )
+    session.decode_as = default_decode_as()
+    _index_into(session)
+    supi = sorted(
+        value
+        for flow in session.analysis.flows
+        for kind, value in flow.identity_keys
+        if kind == IdKind.SUPI
+    )[0]
+    return callflow_json(session, supi)["events"]
 
 
-def test_wire_report_shows_the_protocol_stack():
-    """wire view 的列上要看得到協定堆疊（「NGAP,NAS-5GS」）。"""
-    result = analyse(KI_MISMATCH)
-    html = render_report(result.flows, source_name="x.pcap", ciphered=result.ciphered)
-    assert "NGAP,NAS-5GS" in html
+def test_slow_gap_is_flagged():
+    """超過門檻的間隔要標出來 —— timer 逾時是看間隔抓到的，不是看絕對時間。
+
+    合成兩則訊息直接餵 `callflow_json` 不可行（它要一份真的 session），
+    所以這裡驗的是門檻本身與它的套用邏輯:2.5 秒必須算慢、3 毫秒不算。
+    **兩邊都要驗** —— 只驗「慢的有標」的話，一個「全部都標」的實作照樣綠，
+    而全部標色等於沒有標色。
+    """
+    from telcoshark.viewer import SLOW_GAP
+
+    assert 2.5 > SLOW_GAP, "2.5 秒不算慢？門檻被調成比 timer 還大了"
+    assert not 0.003 > SLOW_GAP, "3 毫秒算慢的話，每一列都會標色"
+
+
+def test_real_capture_marks_some_gaps_and_not_others():
+    """真實擷取檔上，`slow` 不可以全 True 也不可以全 False。
+
+    全 True 代表門檻壞了（等於沒有標色）；全 False 代表欄位根本沒接上，
+    而**那件事不會報錯** —— 梯形圖照樣畫得出來，只是再也看不出 timer 逾時。
+    """
+    events = _events(KI_MISMATCH)
+    flags = [e["slow"] for e in events if "slow" in e]
+    assert flags, "沒有任何事件帶 slow 欄位 —— 間隔判定根本沒接上"
+    assert len(flags) == len(events) - 1, "除了第一則，每一則都該有 slow"
+    assert not all(flags), "每一則都算慢 —— 門檻等於沒有作用"
+
+
+def test_first_event_has_no_delta():
+    """第一則沒有「前一則」，所以不給 `delta`。
+
+    **填 0 是錯的** —— 0 的意思是「零秒」，而我們要說的是「沒有觀測到」。
+    這是貫穿本專案的同一條原則（沒觀測到就說沒觀測到，不編一個看起來
+    合理的值）。
+    """
+    events = _events(KI_MISMATCH)
+    assert "delta" not in events[0]
+    assert "slow" not in events[0]
+
+
+def test_wire_ladder_shows_the_protocol_stack():
+    """wire view 的事件要看得到協定堆疊（「NGAP,NAS-5GS」）。
+
+    `protocol` 只講最外層的 adapter 名。NGAP 內嵌的 NAS 若不講出來，
+    §3.4「NAS 的身分來自載體」在畫面上就沒有任何證據。
+    """
+    events = _events(KI_MISMATCH)
+    stacks = {e.get("protocols") for e in events}
+    assert "ngap,nas-5gs" in stacks, f"沒有看到內嵌 NAS 的堆疊：{stacks}"

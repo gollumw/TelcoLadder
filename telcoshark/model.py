@@ -119,9 +119,14 @@ IdKey = tuple[IdKind, str]
 #: 身分完全來自載體（HTTP/2 stream 與同層的 IMSI）。**「這則訊息屬於某訂戶」
 #: 與「我們是怎麼知道的」是兩回事**，而後者決定了使用者要不要相信前者。
 #:
-#: adapter 一律記錄它（那是資料）；要不要顯示由呈現層決定 ——
-#: `render_html.render_report(show_identity_source=…)`。常數放在這裡是因為
-#: 兩邊都要用，而 adapter 不該 import render 層。
+#: adapter 一律記錄它（那是資料）；呈現層負責把它講出來 ——
+#: `viewer.callflow_json()` 讀，梯形圖的事件詳情列顯示。常數放在這裡是因為
+#: 兩邊都要用，而 adapter 不該 import 呈現層。
+#:
+#: **2026-08-21 之前唯一的讀者是靜態報告的 tooltip。** 報告在 Phase 4 退場，
+#: 若沒有一併接到梯形圖，這個鍵就會變成「寫了沒人讀」—— 引擎照算，而使用者
+#: 再也看不到歸戶的依據。由 test_carrier_polymorphism 的
+#: test_the_ladder_says_where_a_borrowed_identity_came_from 釘住。
 IDENTITY_SOURCE_KEY = "身分來源"
 
 

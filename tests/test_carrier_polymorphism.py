@@ -358,24 +358,54 @@ def test_nas_with_its_own_supi_is_not_tagged(registration_pcap: Path) -> None:
                 assert IDENTITY_SOURCE_KEY not in msg.detail
 
 
-def test_identity_source_toggle_only_changes_display(multi_imsi_pcap: Path) -> None:
-    """**關掉的只是顯示，不是判定。**
+def test_the_ladder_says_where_a_borrowed_identity_came_from(
+    multi_imsi_pcap: Path,
+) -> None:
+    """**「這則訊息算誰的」要講得出依據。**
 
-    身分鍵照常參與 `correlate`，所以流程切分不受影響 —— 兩份報告的差別
-    只有那幾行 tooltip。這條同時守住「開關真的有效」與「開關沒有偷改結果」。
+    NAS 沒有自己的 UE ID，身分是跟載體借的（§3.4）。而載體有兩種：N2 的
+    NGAP，與 SBI 的 multipart（§3.1）。哪一則是從哪一邊看到的，決定了它
+    算誰的 —— 判錯的症狀是流程一分為二，兩條各自看起來都很合理。
+
+    原本這條驗的是 `--html` 的 `--no-identity-source` 開關（關掉的只是顯示，
+    不是判定）。**報告與開關都在 Phase 4 退場**，但那個鍵不能跟著死 ——
+    它是本工具「講得出依據」與「只是猜」的分界。所以改驗它有沒有走到梯形圖
+    的出口:引擎寫進 `detail`、`callflow_json` 讀得到、事件上帶得出來。
+
+    這條會紅的兩種情況都是靜默的：adapter 不再寫那個鍵（身分繼承斷了），
+    或 `callflow_json` 不再讀它（依據消失但圖照畫）。
     """
-    from telcoshark.model import IDENTITY_SOURCE_KEY
-    from telcoshark.pipeline import analyse
-    from telcoshark.render_html import render_report
+    from telcoshark.adapters import default_decode_as
+    from telcoshark.model import IDENTITY_SOURCE_KEY, IdKind
+    from telcoshark.session import Session, _index_into
+    from telcoshark.viewer import callflow_json
 
-    analysis = analyse(multi_imsi_pcap)
-    shown = render_report(analysis.flows, source_name="x", show_identity_source=True)
-    hidden = render_report(analysis.flows, source_name="x", show_identity_source=False)
+    session = Session(
+        sid="cp", pcap=multi_imsi_pcap, display_name="x", owns_file=False, wire=True
+    )
+    session.decode_as = default_decode_as()
+    _index_into(session)
 
-    assert shown.count(IDENTITY_SOURCE_KEY) > 0
-    assert hidden.count(IDENTITY_SOURCE_KEY) == 0
-    # 流程數與訊息數不因顯示開關而改變
-    assert len(analysis.flows) == len(analyse(multi_imsi_pcap).flows)
+    borrowed = []
+    for supi in sorted({
+        value
+        for flow in session.analysis.flows
+        for kind, value in flow.identity_keys
+        if kind == IdKind.SUPI
+    }):
+        borrowed += [
+            e["identity_source"]
+            for e in callflow_json(session, supi)["events"]
+            if "identity_source" in e
+        ]
+
+    assert borrowed, (
+        f"沒有任何事件講得出身分來源 —— "
+        f"要嘛 adapter 不再寫 {IDENTITY_SOURCE_KEY}，要嘛梯形圖不再讀它"
+    )
+    assert all("載體" in text for text in borrowed), (
+        f"身分來源的措辭變了，UI 上會是一串沒有意義的字：{set(borrowed)}"
+    )
 
 
 # ── T1f：_to_int 整併 ───────────────────────────────────────

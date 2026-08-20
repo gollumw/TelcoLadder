@@ -32,10 +32,10 @@ from telcoshark.identities import (
     no_result_explanation,
 )
 from telcoshark.packets import COLUMN_TITLES
-from telcoshark.flowtable import FlowTable, SubscriberRow, build_table
-from telcoshark.render_html import PAGE_CSS, esc, render_flow_svg
+from telcoshark.flowtable import FlowTable, build_table
+from telcoshark.chrome import esc
 from telcoshark.interfaces import reference_point
-from telcoshark.model import Endpoint, Flow, IdKind
+from telcoshark.model import IDENTITY_SOURCE_KEY, Endpoint, Flow, IdKind
 from telcoshark.nf import participant_rank
 from telcoshark.session import Session
 
@@ -46,10 +46,11 @@ from telcoshark.session import Session
 #: 檔名**刻意固定不帶 hash**，因為這裡是字典查表 —— hash 檔名每次建置都不一樣，
 #: 白名單追不上。Vite 同時會吐一份 `index.html` 進 `static/`，但它不在這張表裡，
 #: 所以送不出去；外殼由 `app_page()` 產生（要注入 sid）。
+#:
+#: **這張表只剩兩筆是 Phase 4（2026-08-21）的結果** —— 舊檢視器的
+#: `viewer.js` / `viewer.css` 與報告樣式 `report.css` 隨靜態報告一起退場。
+#: 加回任何一筆之前先想清楚：白名單放寬就是把防路徑穿越那道線往後退。
 STATIC_TYPES = {
-    "viewer.js": "application/javascript; charset=utf-8",
-    "viewer.css": "text/css; charset=utf-8",
-    "report.css": "text/css; charset=utf-8",
     "app.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
 }
@@ -63,6 +64,16 @@ CSP = (
     "base-uri 'none'"
 )
 
+#: 超過這個秒數的相鄰訊息間隔要在梯形圖上標出來（單位：秒）。
+#:
+#: **這是診斷用的,不是美觀用的** —— 3GPP 的 timer 逾時就是靠間隔看出來的
+#: （T3510 / T3560 這一類都是秒級）。一則 Request 之後隔了兩秒才有 Response,
+#: 那多半不是網路慢,是某一端等到 timer 到期才重試。
+#:
+#: 數值自 `render_html.SLOW_GAP` 原樣接手（Phase 4,2026-08-21）。報告退場
+#: 之後這個判定一度整個消失 —— 引擎照算間隔,但沒有任何一個出口講出來。
+SLOW_GAP = 1.0
+
 _cache: dict[str, str] = {}
 
 
@@ -72,15 +83,9 @@ def static_body(name: str) -> tuple[bytes, str] | None:
     if content_type is None:
         return None
     if name not in _cache:
-        if name == "report.css":
-            # **不是複本，是同一個字串。** 報告內嵌的樣式與檢視器用的樣式
-            # 出自同一處，所以泳道底色、失敗紅帶、協定配色不可能漂移 ——
-            # 那不是靠測試守住的，是結構上做不到。
-            _cache[name] = PAGE_CSS
-        else:
-            _cache[name] = (
-                resources.files("telcoshark").joinpath("static", name).read_text(encoding="utf-8")
-            )
+        _cache[name] = (
+            resources.files("telcoshark").joinpath("static", name).read_text(encoding="utf-8")
+        )
     return _cache[name].encode("utf-8"), content_type
 
 
@@ -300,26 +305,6 @@ def _table_for(session: Session) -> "FlowTable | None":
     return table
 
 
-def _event_json(event, message_by_frame: dict) -> dict:
-    payload = {
-        "kind": event.kind,
-        "certainty": event.certainty,
-        "frames": list(event.frames),
-        "label": event.label,
-        "basis": event.basis,
-    }
-    if event.kind == "failure":
-        # 失敗事件補上 cause 說明 —— 結構化 JSON，前端用 createElement 建。
-        # 刻意不重用 _cause_cards()：它回 HTML 字串，前端插入就得用 innerHTML。
-        msg = message_by_frame.get(event.frames[0])
-        if msg is not None:
-            for key in ("cause_note", "cause_plain", "cause_common"):
-                value = msg.detail.get(key)
-                if value:
-                    payload[key] = value
-    return payload
-
-
 def _row_json(row, analysis) -> dict:
     """一條 session 的摘要，**外加它涵蓋哪些 frame**。
 
@@ -420,68 +405,6 @@ def flows_json(
     return payload
 
 
-def flow_json(session: Session, flow_id: int) -> dict:
-    """單一 session 子列的 ladder（SVG）與事件清單。"""
-    table = _table_for(session)
-    if table is None:
-        return {"error": "完整解剖還沒跑完，工作階段表尚未可用。"}
-    with session.lock:
-        analysis = session.analysis
-    if not 0 <= flow_id < len(analysis.flows):
-        return {"error": f"沒有這個工作階段：{flow_id}"}
-
-    flow = analysis.flows[flow_id]
-    row = next(
-        r for sub in table.subscribers for r in sub.sessions if r.flow_id == flow_id
-    )
-    by_frame = {m.frame: m for m in flow.messages}
-    return {
-        "id": flow_id,
-        "title": row.title,
-        "svg": render_flow_svg(flow),
-        "truncated": max(0, len(flow.messages) - 300),
-        "events": [_event_json(e, by_frame) for e in row.events],
-        "frames": sorted(by_frame),
-    }
-
-
-def subscriber_json(session: Session, index: int) -> dict:
-    """訂戶父列的**合併時序 ladder**：該訂戶全部訊息按 abs_ts 合排成
-    一個合成 Flow，餵同一個 renderer。這正是參考介面「勾選多個 session
-    → 合成一張時序圖」的行為 —— 少了它，「這個用戶發生了什麼」還是要
-    人腦自己拼幾十張圖。
-    """
-    table = _table_for(session)
-    if table is None:
-        return {"error": "完整解剖還沒跑完，工作階段表尚未可用。"}
-    if not 0 <= index < len(table.subscribers):
-        return {"error": f"沒有這個訂戶列：{index}"}
-    with session.lock:
-        analysis = session.analysis
-
-    sub: SubscriberRow = table.subscribers[index]
-    flows = [analysis.flows[r.flow_id] for r in sub.sessions]
-    merged = [m for f in flows for m in f.messages]
-    # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
-    # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現。
-    merged.sort(key=lambda m: (m.abs_ts, m.ts, m.frame))
-    synthetic = Flow(
-        messages=merged,
-        identity_keys=frozenset().union(*(f.identity_keys for f in flows)),
-    )
-    by_frame = {m.frame: m for m in merged}
-    events = [e for r in sub.sessions for e in r.events]
-    events.sort(key=lambda e: e.frames[0])
-    return {
-        "title": sub.title,
-        "svg": render_flow_svg(synthetic),
-        "truncated": max(0, len(merged) - 300),
-        "sessions": len(sub.sessions),
-        "events": [_event_json(e, by_frame) for e in events],
-        "frames": sorted(by_frame),
-    }
-
-
 #: adapter 名稱 → 電信領域。前端的 `mapIndex.domainFromStack` 用 dissector
 #: 短名做同一件事；**兩張表都只認得出自己看得到的東西**，所以刻意分開放而
 #: 不共用一份 —— 這裡拿到的是 adapter 名（`sbi`），前端拿到的是 tshark 的
@@ -522,7 +445,11 @@ def callflow_json(session: Session, supi: str) -> dict:
 
     messages = [m for f in flows for m in f.messages]
     # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
-    # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現（比照 subscriber_json）。
+    # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現。
+    #
+    # **拿掉這一行不會有任何徵兆** —— 圖照樣畫得出來，只是 Response 會排在
+    # Request 前面，而讀圖的人會相信它。由
+    # test_callflow_api.test_events_are_ordered_by_absolute_time 釘住。
     messages.sort(key=lambda m: (m.abs_ts, m.ts, m.frame))
 
     seen: dict[str, Endpoint] = {}
@@ -565,6 +492,36 @@ def callflow_json(session: Session, supi: str) -> dict:
                 if value:
                     event["cause_text"] = value
                     break
+        # **這則訊息的身分是從哪裡繼承來的。**
+        #
+        # NAS 沒有自己的 UE ID，它的身分來自載體（CLAUDE.md §3.4）。而載體
+        # 有兩種：N2 的 NGAP，以及 SBI 的 multipart（§3.1）。同一則
+        # `Registration request` 從哪一邊看到的，決定了它算誰的 —— 判錯的
+        # 症狀是流程一分為二，而兩條各自看起來都很合理。
+        #
+        # 這個鍵原本只有靜態報告的 tooltip 在讀。報告於 Phase 4 退場，
+        # 若不在這裡接住，它就變成寫了沒人讀的死資料 —— 而它正是本工具
+        # 「講得出依據」與「只是猜」的分界。
+        source = msg.detail.get(IDENTITY_SOURCE_KEY)
+        if source:
+            event["identity_source"] = source
+        # **這一格裡實際疊了哪些協定**（如 `NGAP,NAS-5GS`）。
+        #
+        # `event["protocol"]` 是 adapter 名，只講最外層；wire 視圖把同一格的
+        # 多則訊息收攏成一列時，「裡面還有什麼」只有 `wireview.collapse()`
+        # 知道。少了它，NGAP 內嵌的 NAS 在梯形圖上看不出來 —— 而那正是
+        # §3.4「NAS 的身分來自載體」在畫面上唯一看得見的地方。
+        stack = msg.detail.get("protocols")
+        if stack and stack != msg.protocol:
+            event["protocols"] = stack
+        # 與**前一則**的間隔。第一則沒有前一則，留 None 而不是填 0 ——
+        # 0 的意思是「零秒」，那是一個我們沒有觀測到的值。
+        if index > 0:
+            previous = messages[index - 1]
+            delta = msg.abs_ts - previous.abs_ts if msg.abs_ts and previous.abs_ts \
+                else msg.ts - previous.ts
+            event["delta"] = delta
+            event["slow"] = delta > SLOW_GAP
         events.append(event)
 
     # **這份擷取檔裡有、但接不到這個人身上的領域。**
@@ -658,18 +615,18 @@ def decode_as_json(session: Session) -> dict:
 
 
 def app_page(session: Session, *, idle_ttl: float) -> str:
-    """React 介面（`/app/<sid>`）的外殼。
+    """React 介面（`/app/<sid>`）的外殼 —— **這是唯一一個檢視器頁面**。
 
-    **與 `/v/<sid>` 的舊檢視器並存是刻意的，不是過渡期的髒東西。** 移植期間
-    每一步都要拿舊介面當對照組確認新的沒少東西；等新介面達到對等，舊的才在
-    Phase 4 整批退場。
+    舊的零依賴 JS 檢視器 `/v/<sid>` 在移植期間當對照組並存，已於 Phase 4
+    （2026-08-21）連同靜態報告一起退場。
 
     這份外殼必須與 `web/index.html`（開發用）的 `<html>` / `<body>` class 與
     資產路徑一致 —— `class="dark"` 是 `darkMode: "class"` 的開關，掉了整個
     配色會變成亮色而且不會報錯。由 `tests/test_web_assets.py` 釘住。
 
-    `idle_ttl` 目前用不到（生命週期的提示還在舊外殼上），但簽名與
-    `viewer_page` 對齊，讓 `_send_viewer` 能共用同一條送出路徑。
+    `idle_ttl` 目前用不到 —— 生命週期的提示原本住在舊外殼上，React 那側
+    還沒接。**簽名留著參數是刻意的**：拿掉它等於讓「工作階段會自己過期」
+    這件事在呈現層徹底消失，而那正是使用者最需要知道卻最容易忘的一件事。
     """
     del idle_ttl
     return f"""<!doctype html>
@@ -688,118 +645,3 @@ def app_page(session: Session, *, idle_ttl: float) -> str:
 """
 
 
-def viewer_page(session: Session, *, idle_ttl: float) -> str:
-    """檢視器的外殼。
-
-    階段 1 只放來源資訊與釋放按鈕 —— 封包清單、解碼窗與梯形圖是後面的階段。
-    刻意先讓生命週期那一半能單獨被審：它承載了全部的安全性退步。
-    """
-    # 這幾個值先算出來再進 f-string。**不要內嵌成 {"a" if x else "b"}** ——
-    # Python 3.11 的 f-string 不接受與外層相同的引號字元，而 CI 有跑 3.11。
-    if session.owns_file:
-        held = (
-            "這份檔案是上傳進來的複本，"
-            f"閒置 {int(idle_ttl // 60)} 分鐘後自動刪除，或按下面的按鈕立刻刪。"
-        )
-        badge, badge_class, button = "暫存複本", "owned", "立即釋放"
-    else:
-        held = (
-            "這是你自己的檔案，我們只是讀它 —— "
-            "<strong>不會複製、也不會刪除</strong>。"
-        )
-        badge, badge_class, button = "零複製", "borrowed", "關閉"
-
-    return f"""<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TelcoShark — {esc(session.display_name)}</title>
-<link rel="stylesheet" href="/static/report.css">
-<link rel="stylesheet" href="/static/viewer.css">
-</head><body class="viewer">
-<header class="vhead">
-  <div class="brand"><span class="dot"></span><h1>TelcoShark</h1></div>
-  <span class="source" id="source">{esc(session.display_name)}</span>
-  <span class="spacer"></span>
-  <a class="newfile" href="/">＋ 開新檔案</a>
-  <span class="held {badge_class}">{badge}</span>
-  <form class="release" method="post" action="/release">
-    <input type="hidden" name="sid" value="{esc(session.sid)}">
-    <button type="submit">{button}</button>
-  </form>
-</header>
-<div class="vtools">
-  <label class="q">
-    <span>在已索引的封包裡搜尋（子字串）</span>
-    <input type="search" id="q" placeholder="reject、NGAP、172.22.0.10…" autocomplete="off">
-  </label>
-  <form class="df" id="df-form">
-    <label>
-      <span>以 tshark display filter 篩選（按 Enter 送出，會重新掃描）</span>
-      <input type="text" id="df" placeholder="nas-5gs.mm.5gmm_cause == 111" autocomplete="off"
-             value="{esc(session.display_filter)}">
-    </label>
-    <button type="submit">套用</button>
-    <button type="button" id="df-clear">清除</button>
-  </form>
-  <p class="df-error" id="df-error" hidden></p>
-</div>
-<main class="vmain">
-  <p class="held-note">{held}</p>
-  <nav class="vtabs" aria-label="視圖切換">
-    <button type="button" id="tab-packets" class="vtab on">封包</button>
-    <button type="button" id="tab-sessions" class="vtab">工作階段
-      <span class="tabdot" id="tabdot" hidden aria-label="已就緒">●</span></button>
-  </nav>
-  <div id="pane-sessions" hidden>
-    <form class="timefilter" id="timefilter">
-      <label>起 <input type="datetime-local" step="1" id="tf-since"></label>
-      <label>迄 <input type="datetime-local" step="1" id="tf-until"></label>
-      <button type="submit">套用</button>
-      <button type="button" id="tf-clear">清除</button>
-      <span class="tfnote" id="tfnote">以本機時區顯示</span>
-    </form>
-    <p class="flownote" id="flownote">關聯分析中，完成後這張表自動亮起。
-      大檔可以<a href="/">回首頁用時間範圍縮小再開一次</a>（會先切片，快很多）。</p>
-    <div class="flowtable" id="flowtable"></div>
-    <div class="ladder" id="ladder" hidden>
-      <div class="ladderhead">
-        <span id="ladder-title"></span>
-        <button type="button" id="ladder-close">收合</button>
-      </div>
-      <div class="laddersvg" id="laddersvg"></div>
-      <div class="ladderevents" id="ladderevents"></div>
-    </div>
-  </div>
-  <div id="pane-packets">
-  <div class="panes">
-  <aside class="rail" id="rail">
-    <div class="railhead">訂戶 / 身分</div>
-    <label class="railsearch">
-      <span>IMSI / SUPI（可只打後幾碼）</span>
-      <input type="search" id="idq" placeholder="001011234567895" autocomplete="off">
-    </label>
-    <p class="railnote" id="railnote">完整解剖進行中……</p>
-    <div class="railbody" id="railbody"></div>
-  </aside>
-  <div class="mainpane">
-  <div class="gridwrap">
-    <div class="gridhead" id="gridhead"></div>
-    <div class="gridscroll" id="gridscroll" tabindex="0">
-      <div class="gridspacer" id="gridspacer"><div class="gridrows" id="gridrows"></div></div>
-    </div>
-  </div>
-  <p class="status" id="status">正在索引……</p>
-  <div class="decodewrap">
-    <div class="decodehead">
-      <span id="decode-title">封包詳情</span>
-      <span class="decode-hint" id="decode-hint">點上面任一列</span>
-    </div>
-    <div class="decodetree" id="decodetree"></div>
-  </div>
-  </div>
-  </div>
-  </div>
-</main>
-<script src="/static/viewer.js" data-sid="{esc(session.sid)}"></script>
-</body></html>
-"""

@@ -211,6 +211,14 @@ export interface CallFlowEventJson {
   status: "SUCCESS" | "ERROR";
   /** 只有失敗事件有。文字來自 `data/causes/*.yaml` 的靜態查表。 */
   cause_text?: string;
+  /** 身分是跟哪個載體借的。NAS 沒有自己的 UE ID（CLAUDE.md §3.4）。 */
+  identity_source?: string;
+  /** 這一格實際疊了哪些協定（`ngap,nas-5gs`）。只在線路視圖有。 */
+  protocols?: string;
+  /** 與前一則的間隔（秒）。**第一則沒有這個鍵**，不是 0。 */
+  delta?: number;
+  /** 間隔超過 `viewer.SLOW_GAP`。 */
+  slow?: boolean;
 }
 
 /**
@@ -241,6 +249,13 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     // **不編一句** —— 失敗事件有 cause 解釋可放，其餘留空。
     summary: event.cause_text ?? "",
     ...(event.cause_text ? { causeText: event.cause_text } : {}),
+    // **後端沒給就整個鍵不存在**，不是填空字串或 0 —— 與 `Sourced` 那邊
+    // 同一條原則（沒觀測到就說沒觀測到）。`delta` 特別要小心:0 是一個
+    // 合法的間隔值，用 `??` 以外的寫法會把它當成「沒有」。
+    ...(event.identity_source ? { identitySource: event.identity_source } : {}),
+    ...(event.protocols ? { protocolStack: event.protocols } : {}),
+    ...(event.delta !== undefined ? { deltaSeconds: event.delta } : {}),
+    ...(event.slow !== undefined ? { slow: event.slow } : {}),
   };
 }
 

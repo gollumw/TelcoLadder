@@ -348,7 +348,9 @@ def parse(frame: Frame) -> list[Message]:
             # 決定了他要不要相信前者。
             #
             # 一律記錄（那是資料），要不要顯示由呈現層決定（D4）——
-            # 見 `render_html.IDENTITY_SOURCE_KEY`。
+            # 讀者是 `viewer.callflow_json()`，會把它送到梯形圖的事件詳情列。
+            # （2026-08-21 之前唯一的讀者是靜態報告的 tooltip；報告退場時
+            # 這個鍵差點變成寫了沒人讀的死資料。）
             detail[IDENTITY_SOURCE_KEY] = f"{carrier_adapter.NAME} 載體"
 
         # PDU Session 級的欄位。**有就記、沒有就不記** —— 這些只出現在

@@ -77,6 +77,21 @@ export interface CallFlowEvent {
   /** Only for status === "ERROR": id of the Cause IE inside this event's decodeTree, so the
    *  Decode Inspector can auto-focus it instead of making the user hunt through the tree. */
   causeNodeId?: string;
+  /** 這則訊息的身分是跟誰借的（`NGAP 載體` / `SBI 載體`）。
+   *
+   *  NAS 沒有自己的 UE ID —— 它算誰的取決於從哪個載體看到它。判錯的症狀是
+   *  流程一分為二，兩條各自看起來都很合理。**推不出來時整個鍵不存在**，
+   *  不是空字串:「沒有借」與「借了但不知道跟誰借」是兩件事。 */
+  identitySource?: string;
+  /** 這一格裡實際疊了哪些協定（`ngap,nas-5gs`）。線路視圖把同一格的多則
+   *  訊息收攏成一列時，「裡面還有什麼」只有這裡講得出來。 */
+  protocolStack?: string;
+  /** 與前一則訊息的間隔（秒）。第一則沒有前一則，所以整個鍵不存在 ——
+   *  **不填 0**，那會宣稱一個我們沒有觀測到的值。 */
+  deltaSeconds?: number;
+  /** 間隔超過門檻。3GPP 的 timer 逾時是秒級的，所以「隔了兩秒才回應」
+   *  多半不是網路慢，是某一端等到 timer 到期。 */
+  slow?: boolean;
 }
 
 /**

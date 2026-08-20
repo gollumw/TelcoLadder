@@ -117,7 +117,6 @@ setx TELCOSHARK_TSHARK "C:\Program Files\Wireshark\tshark.exe"  # Windows
 ```bash
 telcoshark analyze capture.pcapng                     # diagram to stdout
 telcoshark analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
-telcoshark analyze capture.pcapng --html report.html  # standalone HTML report
 telcoshark analyze capture.pcapng --flow              # one row per message
 telcoshark analyze capture.pcapng --max-messages 80
 telcoshark analyze capture.pcapng --no-frames         # drop packet numbers
@@ -126,22 +125,21 @@ telcoshark analyze capture.pcapng --no-frames         # drop packet numbers
 The diagram goes to stdout and the summary to stderr, so
 `telcoshark analyze x.pcapng > flow.mmd` gives you a clean file.
 
-### The HTML report
+### Output is Mermaid, and it stays that way
 
-`--html` writes one file you can double-click — no viewer, no toolchain, no
-network. It draws its own SVG — colour-coded lanes, failures highlighted
-in place, hover a message for the packet detail, expand a failure for the
-plain-language explanation and the causes engineers actually hit in the field.
+The diagram is text. It diffs, it reviews, it pastes into a GitHub comment or a
+ticket, and it survives your company's document pipeline — which is more than a
+screenshot of a probe UI can say.
 
-It is **completely self-contained**: no CDN, no web fonts, no remote images,
-and **no JavaScript at all** (`<details>` for expanding, CSS for hover, SVG
-`<title>` for tooltips). It opens on an air-gapped machine and inside strict
-CSP. That is not a purity exercise — the whole point of this tool is that
-customer captures do not leave the building, and a report that phones home to
-a CDN tells an outside server that someone is looking at an analysis.
+Output is byte-for-byte reproducible: no generation timestamp, so two runs over
+the same capture diff cleanly.
 
-Output is byte-for-byte reproducible: no generation timestamp, so two runs
-over the same capture diff cleanly.
+> **There used to be a `--html` report.** It was retired in August 2026. It drew
+> its own SVG in Python, which meant every layout rule — lane order, colour
+> groups, the slow-gap threshold — existed twice: once there and once in the
+> browser UI. Two implementations of the same judgement drift, and the drift is
+> silent. The browser view is now the only rendered surface; Mermaid is the only
+> file this tool writes.
 
 ### Two views
 
@@ -155,10 +153,10 @@ becomes **two** arrows, and the NAS one is drawn UE↔AMF because that is who is
 actually talking. Looser, but it reads like a call flow, which is easier when
 you are trying to understand a procedure rather than scan for the break.
 
-Either way the gutter carries both the absolute timestamp (to find the packet
-again in Wireshark) and the **delta from the previous row**. Gaps past one
-second are highlighted: signalling runs on millisecond rhythms, so a second-long
-hole is almost always a timer waiting, and that is usually where the fault is.
+Either way the browser ladder carries the **delta from the previous message**,
+and gaps past one second are flagged: signalling runs on millisecond rhythms, so
+a second-long hole is almost always a timer waiting, and that is usually where
+the fault is.
 
 ### In the browser
 
@@ -166,20 +164,20 @@ hole is almost always a timer waiting, and that is usually where the fault is.
 telcoshark serve            # → http://localhost:3005
 ```
 
-Drop a capture onto the page, or paste a path. You get **exactly** the report
-`--html` produces — same code path, byte for byte.
+Drop a capture onto the page, or paste a path. This is the full interface:
+a Wireshark-style packet list with real tshark display filters, per-frame decode
+trees and hex, the subscriber list, the call-flow ladder, and a PDU-session
+correlation matrix where **every cell cites the message and frame it came from**.
 
 **Paste the path for anything large.** It reads the file where it already is:
-no copy, no temp file, starts immediately. Pushing a few hundred MB through
-HTTP to a server on the same machine buys you nothing. Uploaded files live in
-the system temp directory only while they are being analysed and are deleted
-as soon as the report is rendered — that path is for convenience, not for the
-2 GB capture from a customer site.
+no copy, no temp file, starts immediately. Pushing a few hundred MB through HTTP
+to a server on the same machine buys you nothing.
 
-Analysis is synchronous with no intermediate progress to report, so a large
-capture will sit there looking hung until the whole report appears. It has not
-crashed. We have not measured where "large" starts — every capture we have is
-small enough to finish instantly.
+Uploaded files are different: drilling into a capture means reading it again on
+later requests, so an upload is kept in the system temp directory (mode 0600)
+until you release it or it idles out — 15 minutes by default, `--idle-ttl` to
+change, `--no-viewer` to refuse uploads entirely. That path is for convenience,
+not for the 2 GB capture from a customer site.
 
 The server binds `127.0.0.1` only and checks the `Host` header. It runs
 `tshark` on paths you hand it, so **do not put it on a public interface**.
@@ -209,14 +207,25 @@ the large-capture path works with scripting turned off.
   transcribed yet, so a failed N4 message is highlighted without a clause
   citation. Transcribing that table is manual work by design — no clause number
   in this repo is machine-generated.
-- **N4 does not join the subscriber's flow.** No message carries both a SUPI and
-  a PFCP SEID, so the union-find has nothing to join them on. The N4 session
-  renders as its own flow rather than an invented link.
+- **N4 joins the subscriber through the GTP-U tunnel endpoint, not the SEID.**
+  No message carries both a SUPI and a PFCP SEID. What both sides *do* carry is
+  the F-TEID the UPF allocates: it appears in the PFCP Session Establishment
+  Response and again in NGAP's UP transport layer information on its way to the
+  gNB. Keying on (address, TEID) merges them — flow counts drop from 9 to 7 on
+  `5gc-e2e` and 25 to 15 on `multi-imsi`. The address matters: one capture had
+  two different endpoints both using TEID 3.
+  **The user plane itself (N3, GTP-U) is still unread** — see the next entry.
 - **Failure highlighting is verified against real testbed captures**, not
   synthetic ones — see `tests/fixtures/`, where each scenario ships the
   core-network log that independently confirms the cause code. What is *not*
   covered is the long tail: the cause table holds the codes we have actually
   seen, and anything else prints "尚未收錄" rather than a guess.
+- **There is no GTP-U adapter.** N4 tells you a tunnel was set up; nothing here
+  reads what went through it. This is blocked on data, not on design: every
+  capture we have was taken at the signalling points, so there is not a single
+  GTP-U frame in the fixtures to verify an adapter against. Writing one without
+  a capture to check it would produce exactly the kind of confidently-wrong
+  output this tool exists to avoid.
 - **NAS after Security Mode Command is encrypted** and its content is invisible.
   Those packets still appear as their NGAP carrier. This is how the network
   works, not a parsing failure.

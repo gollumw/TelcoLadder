@@ -465,6 +465,14 @@ export function SessionAnalysisView({
                       )}
                       <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} fill="#64748b" className="select-none">
                         {event.interfaceName}
+                        {/* **只標超過門檻的**。每一列都標等於沒有標 ——
+                            這一欄要一眼就看得出「哪裡卡住了」。3GPP 的 timer
+                            逾時是秒級的，隔了兩秒才回應多半不是網路慢。 */}
+                        {event.slow && event.deltaSeconds !== undefined && (
+                          <tspan fill="#fdb022" fontWeight={700}>
+                            {"  +"}{event.deltaSeconds.toFixed(2)}s
+                          </tspan>
+                        )}
                       </text>
                     </g>
                   );
@@ -508,19 +516,50 @@ export function SessionAnalysisView({
             )}
           </div>
           <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-            {selectedEvent && selectedPacket ? (
+            {/* **事件的事實與封包的事實要分開把關。**
+                `selectedPacket` 來自 `rawPackets`，那是封包清單的**載入視窗**
+                （前幾百列）。整份擷取檔動輒幾千格，所以視窗外的事件永遠配不到
+                封包 —— 原本兩者綁在同一個條件上，症狀是使用者點了梯形圖上的
+                事件，右邊卻寫著「選一個信令事件」。他明明選了。
+                參考點、身分來源、協定堆疊、cause 全部來自**事件**，視窗載到哪
+                跟它們無關，所以照常顯示；只有協定徽章、frame 編號與解碼樹要等
+                封包。 */}
+            {selectedEvent ? (
               <>
                 <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-slate-400">
-                  <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">{selectedPacket.protocol}</span>
-                  <span>Frame #{selectedPacket.frameNumber}</span>
+                  {selectedPacket && (
+                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">{selectedPacket.protocol}</span>
+                  )}
+                  <span>Frame #{selectedEvent.frameNumber}</span>
                   <span className={cn("font-medium", STATUS_TEXT[selectedEvent.status])}>{selectedEvent.status}</span>
                   <span className="text-slate-600">· {selectedEvent.interfaceName}</span>
+                  {/* 這一格裡實際疊了哪些協定。`selectedPacket.protocol` 是
+                      tshark 的欄位、只講最外層 —— NGAP 內嵌的 NAS 要靠這個
+                      才看得見，而那是「這則訊息算誰的」的依據。 */}
+                  {selectedEvent.protocolStack && (
+                    <span className="text-slate-500">· {selectedEvent.protocolStack}</span>
+                  )}
+                  {/* **身分是跟誰借的。** 這是本工具「講得出依據」與「只是猜」
+                      的分界 —— 沒有它，使用者無法反駁工具的歸戶判斷。 */}
+                  {selectedEvent.identitySource && (
+                    <span className="text-sky-400" title="這則訊息沒有自己的 UE ID，身分是跟載體借的">
+                      · 身分來源 {selectedEvent.identitySource}
+                    </span>
+                  )}
                   {selectedEvent.causeText && <span className="text-rose-400">· {selectedEvent.causeText}</span>}
                 </div>
                 {selectedTree ? (
                   <ProtocolTree nodes={selectedTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
                 ) : (
-                  <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>
+                  // **兩種「沒有樹」要分得出來。** 「還沒載入」與「這一格在
+                  // 封包清單的視窗外」是不同的狀況，而使用者能做的事也不同：
+                  // 後者要他先去 Data Mining 捲到那一格。講成同一句話，他會
+                  // 以為工具壞了。
+                  <div className="p-3 text-xs text-slate-500">
+                    {selectedPacket
+                      ? "解碼樹尚未載入"
+                      : `Frame #${selectedEvent.frameNumber} 不在封包清單目前載入的範圍內 —— 到 Data Mining 捲到該格即可看到解碼內容。`}
+                  </div>
                 )}
               </>
             ) : (
