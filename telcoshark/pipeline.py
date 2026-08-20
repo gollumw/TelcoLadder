@@ -244,6 +244,15 @@ def _extract(
     return messages, ciphered, protected_suci, undecoded
 
 
+def _port_of(rule: str) -> int | None:
+    """`tcp.port==8080,http2` → 8080。不是埠選擇器就回 None（不過濾它）。"""
+    selector = rule.rsplit(",", 1)[0]
+    field, _, value = selector.partition("==")
+    if not field.endswith(".port") or not value.isdigit():
+        return None
+    return int(value)
+
+
 def analyse(
     pcap: Path,
     *,
@@ -357,8 +366,33 @@ def _analyse_within(
     shape: CaptureShape | None = None
     if auto_decode:
         shape = inspect(pcap)
+        # 候選來自兩處：這份檔裡實際偵測到的未認領埠，**以及隨程式出貨的
+        # 已驗證經驗**（`data/decode-as.yaml`）。
+        #
+        # 後者補的是 probe 補不到的一種情況：**埠被別的 dissector 認領時
+        # probe 不會建議它** —— port 80 平常被 http 認領，而某些網路的 SBI
+        # 就跑在那裡。經驗知道，動態偵測不知道。
+        #
+        # 兩者都只是候選：底下「訊息數必須嚴格增加」那道閘不變，所以一條
+        # 在別人網路上不適用的規則會自己退場（把真正的網頁流量解成 HTTP/2
+        # 產不出訊息）。這是敢把經驗出貨給別人的唯一理由。
+        from telcoshark.decodeas import load_disabled, load_shipped_rules
+
+        blocked = set(load_disabled())
+        # 出貨候選先用「這份檔裡有沒有這個埠」過濾一次。**沒有就別試** ——
+        # 檔案裡根本沒有 port 80 的流量時，拿 `tcp.port==80,http2` 去重跑
+        # 是純粹白跑一趟 tshark（436 MB 上約 70 秒）。
+        present = set(shape.server_ports)
+        shipped = tuple(
+            r.rule
+            for r in load_shipped_rules()
+            if _port_of(r.rule) is None or _port_of(r.rule) in present
+        )
+        candidates = (*shape.suggested_decode_as(), *shipped)
         extra = tuple(
-            rule for rule in shape.suggested_decode_as() if rule not in rules
+            dict.fromkeys(
+                rule for rule in candidates if rule not in rules and rule not in blocked
+            )
         )
         # 沒有新規則、序號也正常，重跑的參數就跟第一趟**逐字相同** ——
         # 那是純粹白跑一趟 tshark。`5gc-e2e` 正是這個情況：它唯一的未認領埠

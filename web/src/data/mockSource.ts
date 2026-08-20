@@ -94,7 +94,13 @@ export function mockSource(): DataSource {
     async loadDecodeAs() {
       // mock 是編譯期常數，沒有解碼這回事 —— 但介面要有，不然元件得
       // 為了 mock 多長一條分支（那條分支永遠沒人在真實資料上走過）。
-      return { rules: [], configPath: "（範例資料沒有設定檔）" };
+      return {
+        rules: [],
+        promotable: [],
+        disabled: [],
+        configPath: "（範例資料沒有設定檔）",
+        shippedPath: "（範例資料沒有出貨清單）",
+      };
     },
 
     async applyDecodeAs() {

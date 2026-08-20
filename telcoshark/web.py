@@ -49,7 +49,14 @@ from telcoshark.prefilter import PrefilterError, TimeWindow
 from telcoshark.render_html import PAGE_CSS, esc, render_report
 from telcoshark.adapters import default_decode_as
 from telcoshark.decode import DecodeCache, DecodeError
-from telcoshark.decodeas import DecodeAsError, save_user_rules, validate
+from telcoshark.decodeas import (
+    DecodeAsError,
+    load_shipped_rules,
+    save_shipped_rules,
+    save_user_rules,
+    shipped_path,
+    validate,
+)
 from telcoshark.framebytes import FrameBytesCache, FrameBytesError
 from telcoshark.packets import PacketColumnsUnavailable, matching_frames
 from telcoshark.session import (
@@ -365,6 +372,35 @@ class _Handler(BaseHTTPRequestHandler):
         """
         form = self._read_form()
         rules = tuple(r.strip() for r in form.get("rule", []) if r.strip())
+        disabled = tuple(r.strip() for r in form.get("disabled", []) if r.strip())
+        promote = tuple(r.strip() for r in form.get("promote", []) if r.strip())
+
+        if promote:
+            # **把這次學到的收編成內建預設。** 這改的是版控裡的資料檔，
+            # 不是使用者自己的設定 —— 意義是「傳給下一個拿到這個程式的人」。
+            from telcoshark.decodeas import Rule as _Rule
+
+            known = load_shipped_rules()
+            fresh = tuple(
+                _Rule(rule=r, origin="shipped", note=f"自 {session.display_name} 自動偵測後收編")
+                for r in promote
+                if r not in {k.rule for k in known}
+            )
+            try:
+                save_shipped_rules((*known, *fresh))
+            except OSError as exc:
+                # pip 安裝時 site-packages 多半不可寫。**說出真正的原因**，
+                # 不要只說「失敗」—— 使用者要據此判斷該改用自己的規則。
+                self._send_json(
+                    {
+                        "error": f"寫不進出貨清單（{shipped_path()}）：{exc}。"
+                        "這份程式若是安裝上去的，那個檔通常是唯讀的 —— "
+                        "請改把規則加在「你設定的」那一區。"
+                    },
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
         try:
             for rule in rules:
                 validate(rule, session.pcap, tshark=session.tshark)
@@ -376,7 +412,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            save_user_rules(rules)
+            save_user_rules(rules, disabled)
         except OSError as exc:
             # 這個要擋 —— 使用者以為存好了，下次開檔卻沒有那條規則。
             self._send_json(
@@ -399,7 +435,9 @@ class _Handler(BaseHTTPRequestHandler):
             session.display_filter = ""
             session.progress = Progress()
         start_index(session)
-        self._send_json({"rules": list(rules), "rerunning": True})
+        self._send_json(
+            {"rules": list(rules), "promoted": list(promote), "rerunning": True}
+        )
 
     def _handle_refilter(self, session) -> None:
         """套用 tshark display filter，重新掃描一次只取 frame 編號。

@@ -1,13 +1,16 @@
 """使用者自訂的 decode-as 規則。
 
-守的是三件事，每一件的失敗都是靜默的：
+守的是四件事，每一件的失敗都是靜默的：
 
-* **三種來源分得出來**（內建預設／自動偵測／使用者）。分不出來的話，
-  使用者不知道哪條能刪、也不知道自動偵測那條只對這份檔有效。
-* **順序即優先權**（default → auto → user）。tshark 同一個選擇器取最後
-  一條，順序錯了就是使用者說的話被工具蓋掉，而畫面上兩條規則都在。
+* **四種來源分得出來**（adapter 宣告／隨程式出貨／自動偵測／使用者）。
+  分不出來的話，使用者不知道哪條能刪、也不知道自動偵測那條只對這份檔有效。
+* **順序即優先權**（default → shipped → auto → user）。tshark 同一個選擇器
+  取最後一條，順序錯了就是使用者說的話被工具蓋掉，而畫面上兩條規則都在。
 * **壞規則存不進去**。存進去一條壞規則會讓**之後每一份**擷取檔都開不
   起來，而使用者多半不知道那個設定檔在哪。
+* **出貨的規則是候選，不是無條件套用**，而且檔案裡沒那個埠時一趟都不多跑。
+  前者防的是「把某個網路的經驗強加到別人的擷取檔上」，後者防的是
+  「每個不需要它的人都替別人付重跑成本」。
 """
 
 from __future__ import annotations
@@ -130,3 +133,130 @@ def test_the_static_defaults_are_not_something_the_user_can_delete() -> None:
     save_user_rules(())
     assert load_user_rules() == ()
     assert default_decode_as(), "adapter 一條 DECODE_AS 都沒宣告？這條測試沒在驗東西"
+
+
+# ── 隨程式出貨的規則 ──────────────────────────────────────────────
+
+def test_shipped_rules_carry_where_they_were_verified() -> None:
+    """出貨清單的每一條都要有 `note` 說在哪驗證過的。
+
+    **少了它，三個月後沒有人知道這條規則根據什麼加的，也就沒有人敢刪。**
+    一份沒人敢刪的清單只會越長越髒，最後每份擷取檔都在為別人的網路付
+    重跑的成本。
+    """
+    from telcoshark.decodeas import load_shipped_rules
+
+    shipped = load_shipped_rules()
+    assert shipped, "出貨清單是空的 —— 這條測試沒在驗東西"
+    for rule in shipped:
+        assert rule.origin == "shipped"
+        assert rule.note.strip(), f"{rule.rule} 沒寫在哪驗證過的"
+
+
+def test_disabled_rules_disappear_from_the_effective_set() -> None:
+    """關掉的內建規則不出現在生效清單裡。
+
+    **不列出來又標成「已關閉」** —— 那會讓表變成兩種狀態混排，而使用者
+    要看的是「現在到底套了什麼」。關掉的另外列在一區，可以重新啟用。
+    """
+    from telcoshark.decodeas import Rule, effective
+
+    shipped = (Rule(rule="tcp.port==80,http2", origin="shipped", note="x"),)
+    live = effective((), (), (), shipped=shipped, disabled=("tcp.port==80,http2",))
+    assert live == ()
+
+
+def test_saving_rules_does_not_wipe_the_disabled_list(isolated_config) -> None:
+    """只改規則不該把「我關掉了哪些內建規則」洗掉。
+
+    兩者存在同一個檔裡，而 UI 上是兩個獨立的動作 —— 存規則時沒帶
+    disabled，使用者關掉的那些會靜默復活。
+    """
+    from telcoshark.decodeas import load_disabled
+
+    save_user_rules(("tcp.port==3868,diameter",), disabled=("tcp.port==80,http2",))
+    save_user_rules(("tcp.port==3868,diameter", "udp.port==5060,sip"))
+    assert load_disabled() == ("tcp.port==80,http2",)
+
+
+def test_a_shipped_rule_for_an_absent_port_costs_nothing(e2e_pcap) -> None:
+    """檔案裡沒有那個埠時，出貨候選不該讓解剖多跑一趟。
+
+    重跑是一整趟 tshark（436 MB 上約 70 秒）。**把經驗出貨給別人，不該
+    讓每個不需要它的人都付這個成本。**
+
+    `5gc-e2e` 只有 7777 這個伺服端埠，而出貨清單裡是 80/81/7070/8080 ——
+    一條都不適用，所以 `auto_decode` 必須是 None（代表根本沒有重跑，
+    或重跑被丟掉）。
+    """
+    from telcoshark.pipeline import analyse
+    from telcoshark.probe import inspect
+
+    shape = inspect(e2e_pcap)
+    assert shape.server_ports == (7777,), f"這份 fixture 的埠變了：{shape.server_ports}"
+    assert analyse(e2e_pcap, wire=True).auto_decode is None
+
+
+def test_the_port_filter_only_touches_port_selectors() -> None:
+    """非埠選擇器（如 `sctp.ppi`）不受「這份檔有沒有這個埠」過濾。
+
+    拿埠去過濾一條 `sctp.ppi==60,ngap`，它永遠不會通過 —— 而那條規則
+    跟埠一點關係都沒有。
+    """
+    from telcoshark.pipeline import _port_of
+
+    assert _port_of("tcp.port==8080,http2") == 8080
+    assert _port_of("sctp.ppi==60,ngap") is None
+    assert _port_of("這不是規則") is None
+
+
+def test_shipped_rules_are_candidates_not_unconditional(ne_trace_pcap) -> None:
+    """出貨規則走「訊息數必須增加」那道閘，不是無條件套用。
+
+    這是敢把經驗出貨給別人的**唯一**理由：`tcp.port==80,http2` 在別人的
+    擷取檔裡可能是真正的網頁流量，無條件套用會把 HTTP 變成解不出內容的
+    HTTP2 而且不報錯。
+
+    `ne-trace` 的 7070 在出貨清單裡，所以這裡驗的是「它確實被當成候選、
+    而且因為真的多解出訊息才被採用」—— `AutoDecode` 的存在本身就是那道
+    閘通過的證據。
+    """
+    from telcoshark.pipeline import analyse
+
+    adjusted = analyse(ne_trace_pcap, wire=True).auto_decode
+    assert adjusted is not None, "ne-trace 應該要觸發自動調整"
+    assert adjusted.messages_after > adjusted.messages_before, (
+        "採用了卻沒有多解出訊息 —— 那道閘沒有生效"
+    )
+
+
+def test_a_shipped_rule_is_not_relabelled_as_auto() -> None:
+    """同時在出貨清單與自動偵測裡的規則，要標「內建預設」。
+
+    這種重疊是常態 —— 一條規則會進出貨清單，正是因為當初被自動偵測到過。
+    標成「自動偵測」的意思是「只對這份擷取檔有效」，而它其實會跟著程式走
+    到每個使用者身上。標錯的後果是使用者以為換一份檔就沒了，於是又去自己
+    設一次。
+    """
+    from telcoshark.decodeas import Rule, effective
+
+    rules = effective(
+        (),
+        auto=("tcp.port==80,http2",),
+        user=(),
+        shipped=(Rule(rule="tcp.port==80,http2", origin="shipped", note="驗證過"),),
+    )
+    assert [r.origin for r in rules] == ["shipped"]
+
+
+def test_the_user_still_outranks_a_shipped_rule() -> None:
+    """使用者自己設的仍然蓋得過出貨清單 —— 上一條不能把這件事弄丟。"""
+    from telcoshark.decodeas import Rule, effective
+
+    rules = effective(
+        (),
+        auto=(),
+        user=("tcp.port==80,diameter",),
+        shipped=(Rule(rule="tcp.port==80,http2", origin="shipped", note="x"),),
+    )
+    assert [(r.rule, r.origin) for r in rules][-1] == ("tcp.port==80,diameter", "user")

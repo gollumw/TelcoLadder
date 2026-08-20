@@ -94,6 +94,14 @@ class CaptureShape:
     #: 這些埠上總共有多少格未認領的載荷。
     unclaimed_frames: int
 
+    #: 這份擷取檔裡出現過的**所有** TCP 伺服端埠（不論有沒有被認領）。
+    #:
+    #: 與 `unclaimed_ports` 是兩件事：那個是「沒人認領，可以猜」，這個是
+    #: 「這份檔裡有沒有這個埠」。後者用來過濾隨程式出貨的候選規則 ——
+    #: 檔案裡根本沒有那個埠時，拿它去重跑是純粹白跑一趟 tshark
+    #: （436 MB 上約 70 秒）。
+    server_ports: tuple[int, ...] = ()
+
     def is_network_element_trace(self) -> bool:
         """看起來像網元吐出來的 trace，而不是線路側錄。
 
@@ -200,4 +208,7 @@ def inspect(pcap: Path, *, tshark: Tshark | None = None) -> CaptureShape:
         synthetic_directions=synthetic,
         unclaimed_ports=tuple(port for port, _ in ranked),
         unclaimed_frames=sum(count for _, count in ranked),
+        server_ports=tuple(
+            sorted({int(port) for port in server_port.values() if port.isdigit()})
+        ),
     )

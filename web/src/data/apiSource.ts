@@ -252,16 +252,31 @@ export function apiSource(sid: string | null): DataSource {
     },
 
     async loadDecodeAs(): Promise<DecodeAsState> {
-      const body = await getJson<{ rules: DecodeAsRule[]; config_path: string }>(
-        `/api/${need()}/decode-as`,
-      );
-      return { rules: body.rules ?? [], configPath: body.config_path };
+      const body = await getJson<{
+        rules: DecodeAsRule[];
+        promotable: string[];
+        disabled: string[];
+        config_path: string;
+        shipped_path: string;
+      }>(`/api/${need()}/decode-as`);
+      return {
+        rules: body.rules ?? [],
+        promotable: body.promotable ?? [],
+        disabled: body.disabled ?? [],
+        configPath: body.config_path,
+        shippedPath: body.shipped_path,
+      };
     },
 
-    async applyDecodeAs(rules: string[]): Promise<void> {
-      // 重複的 `rule` 欄位 —— 後端用 `form.get("rule", [])` 收成 list。
+    async applyDecodeAs(
+      rules: string[],
+      options?: { disabled?: string[]; promote?: string[] },
+    ): Promise<void> {
+      // 重複的欄位名 —— 後端用 `form.get("rule", [])` 收成 list。
       const form = new URLSearchParams();
       rules.forEach((r) => form.append("rule", r));
+      (options?.disabled ?? []).forEach((r) => form.append("disabled", r));
+      (options?.promote ?? []).forEach((r) => form.append("promote", r));
       await postForm(`/api/${need()}/decode-as`, form);
     },
 

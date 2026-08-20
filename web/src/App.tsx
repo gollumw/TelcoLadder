@@ -54,7 +54,13 @@ export default function App() {
   const [packets, setPackets] = useState<PacketStore | null>(null);
   /** display filter 的語法錯誤。**不是**整頁的錯誤 —— 打錯字不該把畫面清空。 */
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [decodeAs, setDecodeAs] = useState<DecodeAsState>({ rules: [], configPath: "" });
+  const [decodeAs, setDecodeAs] = useState<DecodeAsState>({
+    rules: [],
+    promotable: [],
+    disabled: [],
+    configPath: "",
+    shippedPath: "",
+  });
   const [decodeAsError, setDecodeAsError] = useState<string | null>(null);
   /** 套用規則後整份重跑中。期間不接受第二次套用 —— 兩趟會搶同一份檔。 */
   const [rerunning, setRerunning] = useState(false);
@@ -187,11 +193,11 @@ export default function App() {
    * 重新載入一次；少清哪一塊，那一塊就會用舊規則的內容繼續顯示。
    */
   const applyDecodeAs = useCallback(
-    (rules: string[]) => {
+    (rules: string[], options?: { disabled?: string[]; promote?: string[] }) => {
       setDecodeAsError(null);
       setRerunning(true);
       void source
-        .applyDecodeAs(rules)
+        .applyDecodeAs(rules, options)
         .then(() => source.load())
         .then((loaded) => {
           setData(loaded);

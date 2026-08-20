@@ -126,16 +126,30 @@ export interface CallFlow {
 /** 一條生效中的 decode-as 規則。`origin` 決定畫面上怎麼標、能不能刪。 */
 export interface DecodeAsRule {
   rule: string;
-  /** `default`＝adapter 宣告的；`auto`＝這次自動偵測的；`user`＝你設定的。 */
+  /**
+   * `default`＝adapter 宣告的（協定本身的定義）；`shipped`＝隨程式出貨的
+   * 已驗證經驗；`auto`＝這次自動偵測的；`user`＝你設定的。
+   *
+   * 前兩者在畫面上都標「內建預設」，但意義不同 —— `shipped` 是某個網路的
+   * 實務經驗，只在它真的多解出訊息時才生效。
+   */
   origin: string;
   selector: string;
   protocol: string;
+  /** `shipped` 專用：在哪份擷取檔上驗證過的。 */
+  note?: string;
 }
 
 export interface DecodeAsState {
   rules: DecodeAsRule[];
+  /** 這次自動偵測到、但還不在出貨清單裡的規則。 */
+  promotable: string[];
+  /** 被關掉的內建規則。**要看得到，否則「關掉」是單行道。** */
+  disabled: string[];
   /** 使用者規則存在哪 —— 畫面要講出來，否則他不知道去哪改或刪。 */
   configPath: string;
+  /** 出貨清單的位置（版控裡的檔）。 */
+  shippedPath: string;
 }
 
 export interface DataSource {
@@ -193,7 +207,10 @@ export interface DataSource {
    * 規則不合法時丟例外，訊息是 tshark 自己說的 —— 與 display filter
    * 同一條原則：不自己寫語法檢查。
    */
-  applyDecodeAs(rules: string[]): Promise<void>;
+  applyDecodeAs(
+    rules: string[],
+    options?: { disabled?: string[]; promote?: string[] },
+  ): Promise<void>;
 
   /**
    * 一格的原始位元組（連續小寫 hex）。**懶載入** —— 一份擷取幾十萬格，

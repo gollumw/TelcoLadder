@@ -28,7 +28,7 @@ build-backend = "setuptools.build_meta"
 include = ["telcoshark*"]
 
 [tool.setuptools.package-data]
-telcoshark = ["data/causes/*.yaml", "static/*.js", "static/*.css"]
+telcoshark = ["data/causes/*.yaml", "data/decode-as.yaml", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

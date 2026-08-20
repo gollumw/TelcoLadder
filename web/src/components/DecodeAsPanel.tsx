@@ -15,7 +15,12 @@ const ORIGIN_META: Record<string, { label: string; className: string; hint: stri
   default: {
     label: "內建預設",
     className: "border-slate-600 bg-slate-700/40 text-slate-300",
-    hint: "adapter 自己宣告的，不能刪",
+    hint: "協定本身的定義（SBI 就是跑在 7777），隨程式出貨",
+  },
+  shipped: {
+    label: "內建預設",
+    className: "border-slate-600 bg-slate-700/40 text-slate-300",
+    hint: "實地驗證過的經驗，隨程式出貨給每個使用者。只有在它真的多解出訊息時才會生效",
   },
   auto: {
     label: "自動偵測",
@@ -46,13 +51,27 @@ export function DecodeAsPanel({
   configPath,
   busy,
   error,
+  promotable,
+  disabled,
+  shippedPath,
   onApply,
+  onDisable,
+  onEnable,
+  onPromote,
 }: {
   rules: DecodeAsRule[];
   configPath: string;
   busy: boolean;
   error: string | null;
+  /** 這次自動偵測到、但還不在出貨清單裡的規則。 */
+  promotable: string[];
+  /** 被關掉的內建規則。 */
+  disabled: string[];
+  shippedPath: string;
   onApply: (userRules: string[]) => void;
+  onDisable: (rule: string) => void;
+  onEnable: (rule: string) => void;
+  onPromote: (rules: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [selector, setSelector] = useState(SELECTORS[0]);
@@ -63,6 +82,7 @@ export function DecodeAsPanel({
   const [pending, setPending] = useState<string[] | null>(null);
 
   const applied = rules.filter((r) => r.origin === "user").map((r) => r.rule);
+  const builtin = rules.filter((r) => r.origin === "default" || r.origin === "shipped");
   const draft = pending ?? applied;
   const dirty = pending !== null && pending.join("\n") !== applied.join("\n");
 
@@ -105,8 +125,18 @@ export function DecodeAsPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
+              {builtin.map((r) => (
+                <Row
+                  key={r.rule}
+                  rule={r}
+                  // 內建的不能「刪」（下次啟動又回來），但可以關掉 ——
+                  // 那是一個記錄下來的決定，存在使用者的設定檔裡。
+                  onRemove={() => onDisable(r.rule)}
+                  removeTitle="關掉這條內建規則（記在你的設定裡，之後都不套用）"
+                />
+              ))}
               {rules
-                .filter((r) => r.origin !== "user")
+                .filter((r) => r.origin === "auto")
                 .map((r) => (
                   <Row key={r.rule} rule={r} />
                 ))}
@@ -186,6 +216,60 @@ export function DecodeAsPanel({
             </pre>
           )}
 
+          {disabled.length > 0 && (
+            // **關掉的規則要看得見。** 只是從表上消失的話，使用者三個月後
+            // 遇到同一種擷取檔解不開，不會想到是自己關過。
+            <div className="rounded border border-slate-700 bg-slate-950/60 p-2.5">
+              <p className="text-[11px] text-slate-500">已關閉的內建規則</p>
+              <ul className="mt-1 space-y-1">
+                {disabled.map((rule) => (
+                  <li key={rule} className="flex items-center gap-2 font-mono text-[11px] text-slate-500">
+                    <span className="line-through">{rule}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onEnable(rule)}
+                      className="rounded border border-slate-700 px-2 py-0.5 text-[10px] not-italic text-slate-400 hover:border-sky-500 hover:text-sky-300 disabled:opacity-50"
+                    >
+                      重新啟用
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {promotable.length > 0 && (
+            // **這是「把我驗證過的經驗傳給別人」那個動作。**
+            // 使用者規則存在 ~/.config，那不會跟著程式走；出貨清單在版控裡，
+            // 所以要 commit 才會真的給到別人 —— 這件事必須講出來。
+            <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+              <p className="text-[11px] leading-relaxed text-emerald-200">
+                這次自動偵測到 {promotable.length} 條還沒收編的規則。收編之後它們會
+                <strong className="font-semibold">隨程式出貨給每個使用者</strong>
+                ，下次別人開類似的擷取檔就不必再撞一次。
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-emerald-300/70">
+                {promotable.join("　")}
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onPromote(promotable)}
+                className="mt-2 flex items-center gap-1.5 rounded border border-emerald-500/40 px-2.5 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+              >
+                <Plus className="h-3 w-3" />
+                加入內建預設
+              </button>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+                寫進 <code className="text-slate-400">{shippedPath}</code>（版控裡的檔，
+                要 commit 才會給到別人）。收編的規則仍然只是
+                <strong className="font-semibold text-slate-400">候選</strong>
+                —— 它在別人的擷取檔上若解不出更多訊息就自己退場，不會弄壞他們的檔。
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -223,7 +307,15 @@ export function DecodeAsPanel({
   );
 }
 
-function Row({ rule, onRemove }: { rule: DecodeAsRule; onRemove?: () => void }) {
+function Row({
+  rule,
+  onRemove,
+  removeTitle = "移除這條規則",
+}: {
+  rule: DecodeAsRule;
+  onRemove?: () => void;
+  removeTitle?: string;
+}) {
   const meta = ORIGIN_META[rule.origin] ?? ORIGIN_META.default;
   return (
     <tr>
@@ -232,7 +324,7 @@ function Row({ rule, onRemove }: { rule: DecodeAsRule; onRemove?: () => void }) 
       <td className="py-1">
         <span
           className={cn("rounded-full border px-2 py-0.5 text-[10px]", meta.className)}
-          title={meta.hint}
+          title={rule.note ? `${meta.hint}\n\n${rule.note}` : meta.hint}
         >
           {meta.label}
         </span>
@@ -242,7 +334,7 @@ function Row({ rule, onRemove }: { rule: DecodeAsRule; onRemove?: () => void }) 
           <button
             type="button"
             onClick={onRemove}
-            title="移除這條規則"
+            title={removeTitle}
             className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-rose-300"
           >
             <Trash2 className="h-3 w-3" />

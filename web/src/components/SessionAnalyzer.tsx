@@ -49,7 +49,10 @@ export default function SessionAnalyzer({
   decodeAs: import("@/data/source").DecodeAsState;
   decodeAsError: string | null;
   decodeAsBusy: boolean;
-  onApplyDecodeAs: (rules: string[]) => void;
+  onApplyDecodeAs: (
+    rules: string[],
+    options?: { disabled?: string[]; promote?: string[] },
+  ) => void;
   /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
   bytesByFrame?: Record<number, string | null>;
   /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */

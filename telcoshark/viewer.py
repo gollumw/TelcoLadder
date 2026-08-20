@@ -625,15 +625,32 @@ def decode_as_json(session: Session) -> dict:
     某條自動偵測的規則會一直存在（它只對這份擷取檔有效）。
     """
     from telcoshark.adapters import default_decode_as
-    from telcoshark.decodeas import config_path, effective
+    from telcoshark.decodeas import (
+        config_path,
+        effective,
+        load_disabled,
+        load_shipped_rules,
+        shipped_path,
+    )
 
     with session.lock:
         auto = session.auto_decode_as
         user = session.user_decode_as
         ready = session.progress.stage in ("done", "error")
+    shipped = load_shipped_rules()
+    disabled = load_disabled()
+    rules = effective(default_decode_as(), auto, user, shipped=shipped, disabled=disabled)
+    # `auto` 裡有哪幾條還不在出貨清單裡 —— 那就是「這次學到、還沒傳給
+    # 別人」的部分，畫面上要能一鍵收編。
+    known = {r.rule for r in shipped}
     return {
-        "rules": [r.to_json() for r in effective(default_decode_as(), auto, user)],
+        "rules": [r.to_json() for r in rules],
+        "promotable": [rule for rule in auto if rule not in known],
+        # 被關掉的內建規則。**要回給前端** —— 否則「關掉」是一條單行道：
+        # 使用者看不到自己關過什麼，也沒有路重新啟用。
+        "disabled": list(disabled),
         "config_path": str(config_path()),
+        "shipped_path": str(shipped_path()),
         # 重跑期間不要讓使用者再按一次 —— 第二趟會與第一趟搶同一份檔。
         "ready": ready,
         "relax_seq": session.relax_seq,

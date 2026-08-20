@@ -100,7 +100,10 @@ export function DataMiningView({
   decodeAs: DecodeAsState;
   decodeAsError: string | null;
   decodeAsBusy: boolean;
-  onApplyDecodeAs: (rules: string[]) => void;
+  onApplyDecodeAs: (
+    rules: string[],
+    options?: { disabled?: string[]; promote?: string[] },
+  ) => void;
   focusedSupi: string | null;
   onFocusSupi: (supi: string | null) => void;
   onlySessionFilter: boolean;
@@ -351,10 +354,33 @@ export function DataMiningView({
           的地方就在下面那張表，修它的工具應該就在旁邊。 */}
       <DecodeAsPanel
         rules={decodeAs.rules}
+        promotable={decodeAs.promotable}
+        disabled={decodeAs.disabled}
         configPath={decodeAs.configPath}
+        shippedPath={decodeAs.shippedPath}
         busy={decodeAsBusy}
         error={decodeAsError}
         onApply={onApplyDecodeAs}
+        // 關閉／重新啟用都送**完整的** disabled 清單 —— 後端是整批覆寫，
+        // 只送一條會把先前關掉的洗掉。
+        onDisable={(rule) =>
+          onApplyDecodeAs(
+            decodeAs.rules.filter((r) => r.origin === "user").map((r) => r.rule),
+            { disabled: [...decodeAs.disabled, rule] },
+          )
+        }
+        onEnable={(rule) =>
+          onApplyDecodeAs(
+            decodeAs.rules.filter((r) => r.origin === "user").map((r) => r.rule),
+            { disabled: decodeAs.disabled.filter((r) => r !== rule) },
+          )
+        }
+        onPromote={(rules) =>
+          onApplyDecodeAs(
+            decodeAs.rules.filter((r) => r.origin === "user").map((r) => r.rule),
+            { promote: rules },
+          )
+        }
       />
 
       {/* Packet List */}
