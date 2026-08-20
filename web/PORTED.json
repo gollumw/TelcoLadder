@@ -47,11 +47,11 @@
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
-      "current_sha256": "9d88fcbdffa81bea12df00d06f212ee3d571bc3880e037c066f82b79751c3a4d",
+      "current_sha256": "ae6012d3a350bfe403ecd8add76584db6f00a203a7bb1eedd958ad10bdc40920",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
-      "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道 —— 送往 UDM 的訊息會被畫成送往 UE）；加上繪製模式說明、「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」。"
+      "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道）；繪製模式說明與「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」；SVG 不再用 width=100% 拉伸（泳道少時會放大 4 倍）、超長 SBI 網址截斷但保留 title、加上交替列底紋與提亮的標籤顏色。"
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",

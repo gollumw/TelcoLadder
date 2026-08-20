@@ -88,3 +88,66 @@ def test_relative_timestamps_start_at_zero(registration_pcap):
     assert all(f.ts >= 0 for f in frames)
     # 時間必須單調遞增 —— 亂序會讓時序圖失去意義。
     assert frames == sorted(frames, key=lambda f: f.ts)
+
+
+# ── EXPORTED_PDU：網元自己匯出的格式沒有 IP 層 ──────────────────────
+
+def test_addresses_come_from_exported_pdu_when_there_is_no_ip_layer() -> None:
+    """EXPORTED_PDU 擷取檔的位址在 `exported_pdu` 那一層裡。
+
+    網元匯出的 PDU 沒有真正的 IP／TCP 標頭 —— tshark 把位址與埠放進
+    `exported_pdu.ipv4_src` / `exported_pdu.src_port`。只找頂層 `ip` 層的話，
+    每一格都會拿到空字串。
+
+    **症狀是整張梯形圖塌成一條無名泳道**：`Endpoint.label()` 對「沒有角色
+    也沒有位址」的端點回空字串，於是所有端點合成同一個 key。圖畫得出來、
+    箭頭都在、一則訊息都沒少 —— 只是每一支箭都從自己指向自己，而且因為
+    泳道只有一條，SVG 的 viewBox 只有 290 寬，在面板裡被放大 4 倍。
+    使用者看到的是「跑版」，真正的原因在這裡。
+
+    用合成的 layers dict 而不是擷取檔：那份 EXPORTED_PDU 樣本是客戶封包，
+    依 CLAUDE.md §2.1 不得進版控。
+    """
+    from telcoshark.extract import _endpoints
+
+    layers = {
+        "exported_pdu": {
+            "exported_pdu_exported_pdu_ipv4_src": "10.0.10.101",
+            "exported_pdu_exported_pdu_ipv4_dst": "192.168.2.151",
+            "exported_pdu_exported_pdu_src_port": "1509",
+            "exported_pdu_exported_pdu_dst_port": "6443",
+        },
+        "http2": {},
+    }
+    assert _endpoints(layers) == ("10.0.10.101", "192.168.2.151", 1509, 6443)
+
+
+def test_a_real_ip_layer_still_wins_over_exported_pdu() -> None:
+    """有真正的 IP／傳輸層時以它為準。
+
+    tshark 對 EXPORTED_PDU 也會合成 `ip.src` 放在同一層裡 —— 兩邊都在時
+    不該讓後備路徑蓋過真正的封包標頭。
+    """
+    from telcoshark.extract import _endpoints
+
+    layers = {
+        "ip": {"ip_ip_src": "2.0.0.3", "ip_ip_dst": "3.0.0.4"},
+        "sctp": {"sctp_sctp_srcport": "38412", "sctp_sctp_dstport": "38412"},
+        "exported_pdu": {
+            "exported_pdu_exported_pdu_ipv4_src": "10.0.0.1",
+            "exported_pdu_exported_pdu_src_port": "1",
+        },
+    }
+    assert _endpoints(layers) == ("2.0.0.3", "3.0.0.4", 38412, 38412)
+
+
+def test_neither_source_present_stays_empty_rather_than_inventing() -> None:
+    """兩邊都沒有就是空字串 —— 不編一個位址出來。
+
+    空字串在上層會變成「推不出角色的端點」，畫面上顯示成一條標著 IP 的
+    泳道（`Endpoint.label()`）。那是誠實的；編一個假位址則會讓使用者
+    以為工具知道那是誰。
+    """
+    from telcoshark.extract import _endpoints
+
+    assert _endpoints({"frame": {}}) == ("", "", None, None)

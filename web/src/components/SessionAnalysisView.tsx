@@ -90,6 +90,31 @@ function laneX(lanes: Lane[], id: string): number | null {
   return i < 0 ? null : LANE_MARGIN + i * LANE_GAP;
 }
 
+/**
+ * 箭頭上的字太長時截斷。
+ *
+ * SBI 的訊息名是完整的 URL —— 實測最長 119 字元
+ * （`GET /nudm-sdm/v2/imsi-…?dnn=internet&single-nssai=%7B%22sst%22%3A1…`）。
+ * 照畫會橫跨整張圖、蓋掉別的箭頭，而且那串百分比編碼沒有人在讀。
+ *
+ * **保留的是尾巴而不是頭**，當標籤帶 `▸` 時：那個分隔號後面是 NAS 訊息名
+ * （`PDU session establishment request`），那才是使用者要找的東西；前面的
+ * HTTP 路徑截掉還看得出是哪個服務。完整字串放 `<title>`，滑過去就有。
+ */
+function shortenLabel(label: string, maxChars: number): string {
+  if (label.length <= maxChars) return label;
+  const marker = " ▸ ";
+  const cut = label.lastIndexOf(marker);
+  if (cut > 0) {
+    const tail = label.slice(cut + marker.length);
+    const room = maxChars - tail.length - marker.length - 1;
+    if (room > 8) return `${label.slice(0, room)}…${marker}${tail}`;
+    // 尾巴自己就超長 —— 那時保尾巴，前面整段丟掉。
+    return `…${marker}${tail.slice(0, Math.max(maxChars - 2, 8))}`;
+  }
+  return `${label.slice(0, maxChars - 1)}…`;
+}
+
 function formatUncaptured(value: string | undefined): string {
   return value ?? "Uncaptured / N/A";
 }
@@ -183,7 +208,12 @@ export function SessionAnalysisView({
   const hoveredPacket = hover ? rawPackets.find((p) => p.frameNumber === hover.frame) ?? null : null;
 
   const rowOffset = isMidStream ? 1 : 0;
-  const width = LANE_MARGIN * 2 + Math.max(activeLanes.length - 1, 1) * LANE_GAP;
+  // 下限是為了泳道少的時候版面不要縮成一小條；**不是**為了把圖撐滿面板
+  // （那正是原本 `width="100%"` 造成放大的原因）。
+  const width = Math.max(
+    720,
+    LANE_MARGIN * 2 + Math.max(activeLanes.length - 1, 1) * LANE_GAP,
+  );
   const height = TOP_PAD + Math.max(filteredEvents.length + rowOffset, 1) * ROW_HEIGHT + 20;
 
   const sessionEntries = supi ? correlationEntries.filter((e) => e.supi === supi) : [];
@@ -279,7 +309,19 @@ export function SessionAnalysisView({
                 <p className="py-10 text-center text-xs text-slate-600">此 Domain 目前沒有信令事件</p>
               )
             ) : (
-              <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="min-w-[640px]" role="img" aria-label="5G SA call flow ladder diagram">
+              // **不用 `width="100%"`。** 那會把 viewBox 拉伸到容器寬度：
+              // 泳道少的時候 viewBox 只有 290，在 1200px 的面板裡就是放大
+              // 4.1 倍 —— 字級、線寬、間距全部跟著爆掉。實測
+              // `an-operator-smf-trace.pcap` 正是這個情況。
+              // 改成畫在它自己的尺寸上，容器已經有 overflow-x-auto 會捲。
+              <svg
+                viewBox={`0 0 ${width} ${height}`}
+                width={width}
+                height={height}
+                className="max-w-none"
+                role="img"
+                aria-label="5G SA call flow ladder diagram"
+              >
                 <defs>
                   {activeLanes.map((lane) => (
                     <marker key={lane.id} id={markerId(lane.id)} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -291,11 +333,28 @@ export function SessionAnalysisView({
                   </marker>
                 </defs>
 
+                {/* **列底紋。** 梯形圖最難讀的地方是「這支箭跟左邊那個時間戳
+                    是不是同一列」—— 一張圖十幾二十列，眼睛在寬度上會跑掉。
+                    交替底紋是這類圖表最有效的一招，而且它不加任何顏色語意，
+                    純粹幫眼睛對齊。 */}
+                {filteredEvents.map((_, i) => (
+                  i % 2 === 1 ? (
+                    <rect
+                      key={`band-${i}`}
+                      x={0}
+                      y={TOP_PAD + (i + rowOffset) * ROW_HEIGHT - ROW_HEIGHT / 2}
+                      width={width}
+                      height={ROW_HEIGHT}
+                      fill="rgba(148,163,184,0.045)"
+                    />
+                  ) : null
+                ))}
+
                 {activeLanes.map((lane, i) => {
                   const x = LANE_MARGIN + i * LANE_GAP;
                   return (
                     <g key={lane.id}>
-                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} stroke="#1e293b" strokeWidth={1} />
+                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} stroke="#334155" strokeWidth={1} />
                       <text x={x} y={24} textAnchor="middle" fill={lane.hex} fontSize={13} fontWeight={600}>
                         {lane.label}
                       </text>
@@ -372,19 +431,39 @@ export function SessionAnalysisView({
                         x={(fromX + toX) / 2}
                         y={y - 4}
                         textAnchor="middle"
-                        fontSize={10.5}
+                        fontSize={11}
                         fontWeight={isError ? 700 : 400}
-                        fill={isError ? "#fecaca" : isSelected ? "#f1f5f9" : "#94a3b8"}
+                        // slate-400 (#94a3b8) 在 10.5px 上太細 —— 這是使用者
+                        // 反映「黑底白字讀不清楚」的主因：不是對比不夠，是
+                        // 字太細而灰階太靠近背景。提到 slate-300 並加大半級。
+                        fill={isError ? "#fecaca" : isSelected ? "#f8fafc" : "#cbd5e1"}
                         className="select-none"
                       >
-                        {event.messageName}
+                        <title>{event.messageName}</title>
+                        {shortenLabel(
+                          event.messageName,
+                          // 標籤置中在兩條泳道的中點，所以它往兩邊各長一半 ——
+                          // **可用寬度是「中點到最近那一側邊界」的兩倍**，
+                          // 不是整張圖的寬度。靠邊的箭頭本來就放不下那麼多字。
+                          // 每字元 6.9px。**這個數字是量出來的不是猜的**：
+                          // 第一版寫 5.9，實測 119 字元的 SBI 網址渲染成
+                          // 792px（6.65 px/字），於是還是溢出圖外 26px。
+                          // 取 6.9 留一點餘裕 —— 這是比例字型，不同內容的
+                          // 平均字寬會變（數字比小寫寬）。
+                          Math.max(
+                            Math.floor(
+                              (2 * Math.min((fromX + toX) / 2, width - (fromX + toX) / 2) - 16) / 6.9,
+                            ),
+                            18,
+                          ),
+                        )}
                       </text>
                       {isError && event.causeText && (
-                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={9.5} fill="#f87171" fontWeight={600} className="select-none">
+                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} fill="#fca5a5" fontWeight={600} className="select-none">
                           ⚠ {event.causeText}
                         </text>
                       )}
-                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={9.5} fill="#475569" className="select-none">
+                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} fill="#64748b" className="select-none">
                         {event.interfaceName}
                       </text>
                     </g>

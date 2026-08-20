@@ -123,7 +123,18 @@ _to_int = to_int
 
 
 def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None]:
-    """抽出來源／目的地址與埠。IPv4 找不到就找 IPv6。"""
+    """抽出來源／目的地址與埠。IPv4 找不到就找 IPv6，再找不到就找 EXPORTED_PDU。
+
+    **EXPORTED_PDU 是網元自己匯出的格式，沒有真正的 IP 層。** 位址與埠被
+    tshark 放在 `exported_pdu` 那一層裡（`exported_pdu.ipv4_src`、
+    `exported_pdu.src_port`）。只找 `ip` 層的話，那種擷取檔的每一格都會
+    拿到空字串。
+
+    症狀是**整張梯形圖塌成一條無名泳道**：`Endpoint.label()` 對「沒有角色
+    也沒有位址」的端點回空字串，於是所有端點合成同一個 key。圖畫得出來、
+    箭頭都在、一則訊息都沒少 —— 只是每一支箭都從自己指向自己。
+    實測 `an-operator-smf-trace.pcap`：14 則事件、1 條泳道。
+    """
     ip_layer = _as_dict_list(layers.get("ip")) or _as_dict_list(layers.get("ipv6"))
     src = dst = ""
     if ip_layer:
@@ -131,14 +142,37 @@ def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None
         src = str(first(block.get("ip_ip_src")) or first(block.get("ipv6_ipv6_src")) or "")
         dst = str(first(block.get("ip_ip_dst")) or first(block.get("ipv6_ipv6_dst")) or "")
 
+    exported = _as_dict_list(layers.get("exported_pdu"))
+    if not (src and dst) and exported:
+        block = exported[0]
+        # tshark 同時給 `exported_pdu.ipv4_src` 與（合成的）`ip.src`，
+        # 兩個都在這一層裡。前者是這個格式自己的欄位，優先。
+        src = src or str(
+            first(block.get("exported_pdu_exported_pdu_ipv4_src"))
+            or first(block.get("exported_pdu_exported_pdu_ipv6_src"))
+            or first(block.get("ip_ip_src"))
+            or ""
+        )
+        dst = dst or str(
+            first(block.get("exported_pdu_exported_pdu_ipv4_dst"))
+            or first(block.get("exported_pdu_exported_pdu_ipv6_dst"))
+            or first(block.get("ip_ip_dst"))
+            or ""
+        )
+
     src_port = dst_port = None
     for proto, s_key, d_key in (
         ("sctp", "sctp_sctp_srcport", "sctp_sctp_dstport"),
         ("tcp", "tcp_tcp_srcport", "tcp_tcp_dstport"),
         ("udp", "udp_udp_srcport", "udp_udp_dstport"),
+        # 最後才問 EXPORTED_PDU —— 有真正的傳輸層時以它為準。
+        ("exported_pdu", "exported_pdu_exported_pdu_src_port",
+         "exported_pdu_exported_pdu_dst_port"),
     ):
         block_list = _as_dict_list(layers.get(proto))
-        if block_list:
+        if block_list and (
+            block_list[0].get(s_key) is not None or block_list[0].get(d_key) is not None
+        ):
             src_port = _to_int(block_list[0].get(s_key))
             dst_port = _to_int(block_list[0].get(d_key))
             break
