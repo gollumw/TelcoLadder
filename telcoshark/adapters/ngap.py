@@ -11,7 +11,7 @@ from typing import Any
 from telcoshark.extract import Frame, first
 from telcoshark.extract import to_int as _to_int
 from telcoshark import pdusession as ps
-from telcoshark.identity import connection_scope, scoped
+from telcoshark.identity import connection_scope, gtp_tunnel, scoped
 from telcoshark.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "ngap"
@@ -153,6 +153,19 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
         keys.add(scoped(IdKind.RAN_UE_NGAP_ID, scope, ran_id))
     if amf_id is not None:
         keys.add(scoped(IdKind.AMF_UE_NGAP_ID, scope, amf_id))
+
+    # GTP-U 隧道端點 —— **N4（PFCP）靠這個才接得上訂戶**。
+    # 見 `identity.gtp_tunnel`：範圍是位址而不是連線，因為 N4 與 N2 走的
+    # 是完全不同的連線。
+    teids = block.get("ngap_ngap_gTP_TEID")
+    addresses = block.get("ngap_ngap_TransportLayerAddressIPv4")
+    teids = teids if isinstance(teids, list) else [teids]
+    addresses = addresses if isinstance(addresses, list) else [addresses]
+    for teid, address in zip(teids, addresses):
+        tunnel = gtp_tunnel(str(address or ""), teid)
+        if tunnel is not None:
+            keys.add(tunnel)
+
     return frozenset(keys)
 
 

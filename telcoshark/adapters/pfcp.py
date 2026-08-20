@@ -16,7 +16,7 @@ from typing import Any
 
 from telcoshark.extract import Frame, first
 from telcoshark.extract import to_int as _to_int
-from telcoshark.identity import connection_scope, scoped
+from telcoshark.identity import connection_scope, gtp_tunnel, scoped
 from telcoshark.model import Endpoint, IdKey, IdKind, Message
 
 NAME = "pfcp"
@@ -73,6 +73,41 @@ _CAUSE_ACCEPTED = 1
 _UNKNOWN_SEID = 0
 
 
+def _tunnel_keys(block: dict[str, Any]) -> set[IdKey]:
+    """這則 PFCP 訊息提到的 GTP-U 隧道端點。
+
+    兩個來源，都是「TEID ＋ 擁有它的位址」成對出現：
+
+    * **F-TEID**（Create/Created PDR）—— 陣列，第 i 個 TEID 配第 i 個位址。
+      SMF 送出的請求裡常常是 CH（choose）旗標而沒有實際值，那時整組不存在，
+      迴圈自然跑不到。
+    * **Outer Header Creation**（FAR）—— 要把封包送去哪條隧道。
+
+    **位址一定要一起取。** 實測同一份擷取檔裡有兩個 TEID 都是 3，
+    一個屬於 SMF、一個屬於 gNB —— 少了位址就會被當成同一條隧道。
+    """
+    keys: set[IdKey] = set()
+
+    teids = block.get("pfcp_pfcp_f_teid_teid")
+    addresses = block.get("pfcp_pfcp_f_teid_ipv4_addr")
+    teids = teids if isinstance(teids, list) else [teids]
+    addresses = addresses if isinstance(addresses, list) else [addresses]
+    # **只走成對的部分。** 長度不一致時多出來的那幾個配不到位址，
+    # 而沒有位址的 TEID 不能建 key（見 `identity.gtp_tunnel`）。
+    for teid, address in zip(teids, addresses):
+        key = gtp_tunnel(str(address or ""), teid)
+        if key is not None:
+            keys.add(key)
+
+    outer = gtp_tunnel(
+        str(first(block.get("pfcp_pfcp_outer_hdr_creation_ipv4")) or ""),
+        first(block.get("pfcp_pfcp_outer_hdr_creation_teid")),
+    )
+    if outer is not None:
+        keys.add(outer)
+    return keys
+
+
 def _seids(block: dict[str, Any]) -> set[int]:
     """這一則訊息裡出現的所有 SEID。
 
@@ -109,6 +144,17 @@ def parse(frame: Frame) -> list[Message]:
             # 理由同 NGAP ID（見專案 CLAUDE.md §3.3）：兩對 SMF/UPF
             # 都會從小號開始配，少了前綴會把不同用戶併成一條流程。
             identity.add(scoped(IdKind.PFCP_SEID, scope, seid))
+
+        # **N4 與 N2 之間唯一在線路上看得到的橋。**
+        #
+        # UPF 在 Session Establishment Response 裡回自己配的上行 F-TEID，
+        # SMF 再經 AMF 把同一個 TEID 送給 gNB（NGAP 的 UP transport layer
+        # information）。兩邊都帶「TEID ＋ 位址」，所以只要算出同一個 key，
+        # 聯集查找就會把 PFCP 的流程併進訂戶的流程。
+        #
+        # 在此之前 PFCP 完全接不上任何訂戶 —— 它自成獨立流程，畫面上
+        # User Plane 那個 Domain 永遠是空的。
+        identity.update(_tunnel_keys(block))
 
         cause = _to_int(block.get("pfcp_pfcp_cause"))
 

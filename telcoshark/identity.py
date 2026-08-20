@@ -43,6 +43,52 @@ def scoped(kind: IdKind, scope: str, value: object) -> IdKey:
     return (kind, f"{scope}/{value}")
 
 
+def gtp_tunnel(address: str, teid: object) -> IdKey | None:
+    """N3／N9 的 GTP-U 隧道端點 —— **TEID ＋ 擁有它的傳輸位址**。
+
+    這是 N4（PFCP）與 N2（NGAP）之間唯一在線路上看得到的橋：UPF 配好
+    上行 F-TEID 之後，SMF 會經 AMF 把同一個 TEID 送給 gNB。兩邊都帶著
+    「TEID ＋ 位址」，所以只要兩邊算出同一個 key，`correlate` 的聯集查找
+    就會把 PFCP 的流程併進訂戶的流程。
+
+    **範圍是位址而不是連線**（所以不能用 `connection_scope`）—— N4 與 N2
+    走的是完全不同的連線，用連線當範圍就永遠併不起來。而位址是必要的：
+    實測 `5gc-e2e` 同一份檔裡有兩個 TEID 都是 3，一個在 172.22.0.7（SMF
+    自己的隧道），一個在 172.22.0.23（gNB）。少了位址前綴，那兩個會被
+    當成同一條隧道而把不相干的流程黏在一起 —— 圖照樣畫得出來。
+
+    **兩邊的進位不同**：NGAP 的 ek 輸出是 `00:00:c8:58`，PFCP 是十進位的
+    `51288`。所以正規化成 int 在這裡做一次，**不要讓兩個 adapter 各寫
+    一份**：那是兩份會漂移的定義，而漂移的症狀是「明明是同一條隧道，
+    就是併不起來」，沒有任何一層會報錯。
+
+    值解不出來就回 None —— 呼叫端不加這個 key。**寧可少一個關聯，
+    也不要加一個算錯的**。
+    """
+    number = _teid_int(teid)
+    if number is None or not address:
+        return None
+    return scoped(IdKind.GTP_TEID, address, number)
+
+
+def _teid_int(value: object) -> int | None:
+    """把 TEID 轉成 int。接受十進位、`0x` 開頭、以及冒號分隔的十六進位。"""
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if ":" in text:
+        try:
+            return int(text.replace(":", ""), 16)
+        except ValueError:
+            return None
+    try:
+        return int(text, 0)
+    except ValueError:
+        return None
+
+
 def globally_unique(kind: IdKind, value: object) -> IdKey:
     """給**全網唯一**的識別碼建 key。
 

@@ -264,17 +264,25 @@ def test_fixtures_without_sbi_nas_are_untouched(fixture_name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("fixture_name", "flows_before", "flows_after"),
-    [("5gc-e2e", 9, 8), ("multi-imsi", 25, 20)],
+    ("fixture_name", "flows_before_t1", "flows_after_t1", "flows_now"),
+    [("5gc-e2e", 9, 8, 7), ("multi-imsi", 25, 20, 15)],
 )
-def test_imsi_attribution_merges_orphan_sbi_flows(
-    fixture_name: str, flows_before: int, flows_after: int
+def test_correlation_keeps_reducing_the_flow_count(
+    fixture_name: str, flows_before_t1: int, flows_after_t1: int, flows_now: int
 ) -> None:
-    """同層 IMSI 讓訊息變多、流程反而變少。
+    """關聯做得越好，流程數越少 —— **而且這件事是可量的，不是感覺。**
 
-    `flows_before` 是 T1 之前的流程數（留在這裡當歷史對照）。重點是
-    `flows_after`：原本歸不了戶的 SBI 流程被併回訂戶名下，工作階段表因此
-    更乾淨 —— 這是可量的，不是感覺。
+    這條測試是關聯能力的歷史紀錄，每一欄都是一次真實的改善：
+
+    | 階段 | 5gc-e2e | multi-imsi | 做了什麼 |
+    |---|---|---|---|
+    | T1 之前 | 9 | 25 | SBI 夾帶的 NAS 完全看不到 |
+    | T1 之後 | 8 | 20 | 同層 IMSI 把孤兒 SBI 流程併回訂戶 |
+    | 現在 | 7 | 15 | **GTP-U 隧道端點把 N4（PFCP）接上訂戶** |
+
+    **加一欄而不是改掉舊數字**：改掉的話，下次有人想知道「這條線走過
+    哪些階段、每一階段值多少」就沒有依據了。而那正是這個工具賣的東西 ——
+    關聯做得好不好要拿得出數字。
     """
     from telcoshark.adapters import parse_frame
 
@@ -283,8 +291,10 @@ def test_imsi_attribution_merges_orphan_sbi_flows(
     for frame in read_frames(pcap, decode_as=default_decode_as()):
         messages.extend(parse_frame(frame))
     flows = correlate(messages)
-    assert len(flows) == flows_after
-    assert flows_after < flows_before, "IMSI 歸戶應該讓流程數下降"
+    assert len(flows) == flows_now
+    assert flows_now < flows_after_t1 < flows_before_t1, (
+        "每一階段都應該讓流程數下降 —— 沒下降就是那次改動沒有真的多關聯到東西"
+    )
 
 
 def test_nas_blocks_are_deduplicated() -> None:
