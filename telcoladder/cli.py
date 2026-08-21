@@ -179,113 +179,124 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="telcoladder",
-        description="把電信信令封包轉成 Mermaid 時序圖。",
+        description="Turn a telecom signalling capture into a per-subscriber call flow "
+                    "with every failure explained.",
     )
     parser.add_argument("--version", action="version", version=f"telcoladder {__version__}")
 
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
-    analyze = sub.add_parser("analyze", help="把擷取檔轉成 Mermaid 時序圖")
-    analyze.add_argument("pcap", type=Path, help="pcap / pcapng 檔")
+    analyze = sub.add_parser("analyze", help="Render a capture as a Mermaid sequence diagram")
+    analyze.add_argument("pcap", type=Path, help="pcap / pcapng file")
     analyze.add_argument(
-        "-o", "--output", type=Path, help="寫入檔案（預設印到 stdout）"
+        "-o", "--output", type=Path, help="write the diagram here (default: stdout)"
     )
     analyze.add_argument(
-        "--xdr", type=Path, metavar="檔案",
-        help="另外匯出程序級的結構化記錄（JSON）。一段程序一筆：誰、哪種程序、"
-             "成功或失敗、cause 與起因、耗時。給腳本吃的 —— 用 jq 就能回答"
-             "「這批擷取的失敗率」。同一份擷取檔的輸出逐位元組可重現。",
+        "--xdr", type=Path, metavar="FILE",
+        help="Also export procedure-level records as JSON, one per procedure: "
+             "who, which procedure, outcome, cause and root cause, duration. "
+             "Made for scripts - jq can answer 'what is the failure rate in this batch'. "
+             "Byte-for-byte reproducible for the same capture.",
     )
     analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,
-        help=f"每條流程最多畫幾則訊息，超過會截斷並在圖上註明（預設 {DEFAULT_MAX_MESSAGES}）",
+        help=f"Messages per flow before the diagram is truncated; truncation is "
+             f"stated inside the diagram (default {DEFAULT_MAX_MESSAGES})",
     )
     analyze.add_argument(
-        "--decode-as", action="append", metavar="規則",
-        help="強制某個 port 以指定協定解碼，如 tcp.port==5062,sip。"
-             "信令跑非標準 port 時必要 —— tshark 的啟發式偵測結果會隨版本改變。"
-             "可重複指定。",
+        "--decode-as", action="append", metavar="RULE",
+        help="Force a port to decode as a protocol, e.g. tcp.port==5062,sip. "
+             "Needed when signalling runs on non-standard ports - tshark's heuristics "
+             "change between versions. Repeatable.",
     )
     analyze.add_argument(
-        "--no-frames", action="store_true", help="不在箭頭上標封包編號"
+        "--no-frames", action="store_true", help="Omit frame numbers from the arrows"
     )
     analyze.add_argument(
         "--flow", action="store_true",
-        help="流程視圖：一則訊息一列，NAS 依協定語意畫在 UE↔AMF。"
-             "比預設的線路視圖鬆，但看得出「這段程序在做什麼」。"
-             "預設是線路視圖 —— 一格封包一列，載體與載荷堆疊在同一列。",
+        help="Flow view: one row per message, NAS drawn UE<->AMF by protocol semantics. "
+             "Looser than the default wire view but reads like a call flow. "
+             "The default is the wire view: one row per packet, carrier and payload "
+             "stacked on the same line.",
     )
     analyze.add_argument(
         "--no-ue-lifeline", action="store_true",
-        help="（僅配合 --flow）NAS 照封包畫在 gNB↔AMF，而非畫成 UE↔AMF",
+        help="(with --flow) Draw NAS gNB<->AMF as captured instead of UE<->AMF",
     )
     narrow = analyze.add_argument_group(
-        "先收窄範圍（大檔會快很多）",
-        "時間範圍是唯一可以直接下推到封包層的條件；訂戶識別碼走兩段式擴展，"
-        "因為多數封包根本不帶識別碼（加密的 NAS、已註冊的 UE），直接拿它過濾"
-        "會把整個 N2 介面丟掉。工具會告訴你哪些流量沒被納入。",
+        "Narrowing the capture first (much faster on large files)",
+        "A time range is the only condition that pushes straight down to the packet "
+        "layer. A subscriber identifier expands in two steps, because most packets "
+        "carry no identifier at all (ciphered NAS, already-registered UEs) and "
+        "filtering on it directly would drop the whole N2 interface. The tool "
+        "tells you which traffic was left out.",
     )
     narrow.add_argument(
-        "--since", type=float, metavar="秒",
-        help="只看第一格之後這麼多秒開始的封包（相對時間）",
+        "--since", type=float, metavar="SECONDS",
+        help="Only packets from this many seconds after the first frame (relative time)",
     )
     narrow.add_argument(
-        "--until", type=float, metavar="秒",
-        help="只看到第一格之後這麼多秒為止",
+        "--until", type=float, metavar="SECONDS",
+        help="Only packets up to this many seconds after the first frame",
     )
     narrow.add_argument(
         "--subscriber", metavar="IMSI",
-        help="只看這個訂戶（IMSI / MSISDN，純數字）。先找出直接帶著它的封包，"
-             "再擴展到那些封包所在的 TCP 串流與 SCTP association —— "
-             "**擴展不到的傳輸會明確列出來**，不會安靜地少給。",
+        help="Only this subscriber (IMSI / MSISDN, digits only). Finds the packets that "
+             "carry it directly, then expands to the TCP streams and SCTP associations "
+             "those packets belong to. Transports it could not reach are listed "
+             "explicitly - never silently dropped.",
     )
     narrow.add_argument(
-        "--filter", metavar="運算式",
-        help="原樣疊上去的 tshark display filter，如 'ngap || http2'、'ip.addr==10.1.2.3'。"
-             "這一欄不做任何檢查 —— 你比我們更清楚要看什麼。",
+        "--filter", metavar="EXPR",
+        help="A tshark display filter applied as-is, e.g. 'ngap || http2' or "
+             "'ip.addr==10.1.2.3'. Not validated - you know better than we do "
+             "what you are looking for.",
     )
     narrow.add_argument(
         "--no-slice", action="store_true",
-        help="有時間範圍時不要先用 editcap 切片。預設會切 —— `-Y` 只省解析，"
-             "tshark 仍要讀完整個檔，切片才省得掉讀取。切片是暫存檔，跑完即刪。",
+        help="With a time range, do not pre-slice with editcap. Slicing is the default: "
+             "-Y only saves dissection, tshark still reads the whole file; slicing "
+             "saves the read. The slice is a temp file, deleted afterwards.",
     )
     analyze.add_argument(
         "--no-auto-decode", action="store_true",
-        help="不要自動判斷擷取檔形狀。預設會先掃一趟：偵測到網元 trace 的"
-             "合成 TCP 序號、或沒被認領的 TCP 埠時，用調整過的參數重跑一次，"
-             "**只在訊息數真的增加時採用**，並在摘要裡說明做了什麼。"
-             "關掉可省一趟掃描，代價是網元 trace 會只解出 NGAP。",
+        help="Do not probe the capture's shape first. By default one pass detects "
+             "network-element traces (synthetic TCP sequence numbers) and unclaimed "
+             "TCP ports, reruns with adjusted settings, and keeps the result only if "
+             "the message count actually went up - saying so in the summary. Skipping "
+             "it saves one pass; the cost is that an element trace decodes as NGAP only.",
     )
     analyze.set_defaults(func=_cmd_analyze)
 
-    check = sub.add_parser("check", help="檢查 tshark 與 dissector 是否就緒")
+    check = sub.add_parser("check", help="Verify that tshark and its dissectors are ready")
     check.set_defaults(func=_cmd_check)
 
     serve_cmd = sub.add_parser(
-        "serve", help="在瀏覽器裡分析：拖放擷取檔，或貼上路徑"
+        "serve", help="Analyse in the browser: drop a capture on the page, or paste a path"
     )
     serve_cmd.add_argument(
         "--port", type=int, default=DEFAULT_PORT,
-        help=f"監聽的 port（預設 {DEFAULT_PORT}）",
+        help=f"Port to listen on (default {DEFAULT_PORT})",
     )
     serve_cmd.add_argument(
         "--host", default=DEFAULT_HOST,
-        help="監聽位址。預設只綁 127.0.0.1 —— 這是一個會拿路徑去執行 tshark "
-             "的伺服器，改成對外監聽等於把客戶封包分析器暴露到網路上。",
+        help="Address to bind. Default is 127.0.0.1 only - this server runs tshark on "
+             "paths it is handed, so exposing it means exposing a capture analyser "
+             "to the network.",
     )
     serve_cmd.add_argument(
         "--idle-ttl",
         type=float,
         default=IDLE_TTL,
-        metavar="秒",
-        help=f"互動檢視器閒置多久就釋放上傳的複本（預設 {int(IDLE_TTL)} 秒）。"
-        "貼路徑開的不受影響 —— 那從來不複製。",
+        metavar="SECONDS",
+        help=f"Release an uploaded copy after this much idle time (default {int(IDLE_TTL)}). "
+        "Captures opened by path are unaffected - those are never copied.",
     )
     serve_cmd.add_argument(
         "--no-viewer",
         action="store_true",
-        help="完全關掉互動檢視器，只留靜態報告。"
-        "檢視器會把上傳的複本留在暫存目錄一段時間，不想要那個行為就用這個關掉。",
+        help="Disable the interactive viewer entirely. The viewer keeps uploaded copies "
+        "in the temp directory for a while; use this if you do not want that.",
     )
     serve_cmd.set_defaults(func=_cmd_serve)
 

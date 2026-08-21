@@ -2,8 +2,11 @@
 
 [![CI](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml)
 
-Turn a telecom signalling capture into a Mermaid sequence diagram you can paste
-straight into GitHub — or anywhere else that renders Mermaid.
+Point it at a 5G core capture and get the call flow **per subscriber, with every
+failure explained**: NGAP, NAS, SBI, PFCP and GTP-U correlated into one timeline,
+each cause code resolved to the 3GPP clause it comes from, each network function
+named instead of shown as an IP. The output is Mermaid you can paste into GitHub,
+or an interactive viewer in your browser.
 
 ```bash
 telcoladder analyze failed_attach.pcapng
@@ -39,6 +42,20 @@ and every unfamiliar cause code sends you back to the specs. TelcoLadder turns t
 capture into a diagram, names the network functions, and cites the clause the
 cause code comes from.
 
+The same capture in the browser: a packet list with real tshark display filters,
+per-frame decode tree and hex, the subscriber list, the ladder, and a per-PDU-session
+correlation matrix where **every cell cites the frame it came from**.
+
+```bash
+telcoladder serve            # → http://localhost:3005, drop a capture on the page
+```
+
+![TelcoLadder browser interface](docs/images/browser.png)
+
+> Named after the ladder diagram — the call-flow drawing every telecom engineer has
+> squinted at. The name is narrower than the tool: the browser view, the
+> per-procedure xDR export and the PDU-session matrix are not ladders. It stuck anyway.
+
 > 中文使用指南（面向真實封包的操作與能力邊界）：[docs/使用指南.md](docs/使用指南.md)
 
 **Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, and PFCP are each exercised
@@ -65,9 +82,12 @@ registration. What that capture does *not* contain is the long tail — see
   forward that never happened is still visible.
 - **Correlates one subscriber** across identifiers and across protocols: SUPI
   (recovered from a null-scheme SUCI in NAS, and from `imsi-…` / `suci-…` in
-  SBI resource paths) and RAN/AMF UE NGAP IDs. A test capture ties the NGAP/NAS
-  attach and the SBI exchanges behind it into **one** flow. HTTP/2 stream IDs
-  are tracked separately, pairing a request with its response.
+  SBI resource paths) and RAN/AMF UE NGAP IDs. On a testbed capture — null-scheme
+  SUCI, cleartext h2c — the NGAP/NAS attach and the SBI exchanges behind it land
+  in **one** flow. On a production trace with TLS on SBI and ECIES-protected SUCIs
+  the N2 side still forms its own per-UE flow; what could not be read is counted
+  and reported, not silently dropped. HTTP/2 stream IDs are tracked separately,
+  pairing a request with its response.
 - **Needs to be told how to decode non-standard ports.** A capture that starts
   after the TCP connections are up has no HTTP/2 preface for `tshark` to find,
   so SBI silently decodes as raw data. Adapters declare the common cases
@@ -123,7 +143,9 @@ telcoladder analyze capture.pcapng --no-frames         # drop packet numbers
 ```
 
 The diagram goes to stdout and the summary to stderr, so
-`telcoladder analyze x.pcapng > flow.mmd` gives you a clean file.
+`telcoladder analyze x.pcapng > flow.mmd` gives you a clean file. GitHub, GitLab,
+Obsidian and Notion render Mermaid inline, so the `.mmd` pastes straight into an
+issue or an RCA document; `telcoladder serve` shows it rendered right now.
 
 ### Output is Mermaid, and it stays that way
 
@@ -189,51 +211,6 @@ the large-capture path works with scripting turned off.
 > no failure seen** instead — because not seeing a failure is not the same
 > as there not being one.
 
-## Honest limitations
-
-- **SBI is verified against exactly one deployment.** `tests/fixtures/5gc-e2e/`
-  is Open5GS with an SCP in the path, so the service-name-to-NF mapping and the
-  SUPI extraction are exercised — but only for the services that deployment
-  emits, and only for null-scheme SUCIs. Real SBI is usually TLS encrypted; you
-  need a testbed or cleartext h2c to see inside at all.
-- **Relay detection needs the deployment to say so.** It keys on the target the
-  message names — `3gpp-Sbi-Target-apiRoot` in SBI. A fully transparent SCP that
-  sends no such header is indistinguishable from the real endpoint, and its
-  address falls back to an unlabelled IP. That is the correct failure direction,
-  but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
-  `Origin-Host`, and it signs its own passage with a `Route-Record`.
-- **PFCP carries no cause explanations.** The adapter reads message types and
-  SEIDs and marks failures, but TS 29.244's cause table has not been
-  transcribed yet, so a failed N4 message is highlighted without a clause
-  citation. Transcribing that table is manual work by design — no clause number
-  in this repo is machine-generated.
-- **N4 joins the subscriber through the GTP-U tunnel endpoint, not the SEID.**
-  No message carries both a SUPI and a PFCP SEID. What both sides *do* carry is
-  the F-TEID the UPF allocates: it appears in the PFCP Session Establishment
-  Response and again in NGAP's UP transport layer information on its way to the
-  gNB. Keying on (address, TEID) merges them — flow counts drop from 9 to 7 on
-  `5gc-e2e` and 25 to 15 on `multi-imsi`. The address matters: one capture had
-  two different endpoints both using TEID 3.
-  The same key now also joins the **user plane**: see the next entry.
-- **Failure highlighting is verified against real testbed captures**, not
-  synthetic ones — see `tests/fixtures/`, where each scenario ships the
-  core-network log that independently confirms the cause code. What is *not*
-  covered is the long tail: the cause table holds the codes we have actually
-  seen, and anything else prints "尚未收錄" rather than a guess.
-- **GTP-U joins the subscriber, but carries no KPIs yet.** The `gtp` adapter
-  (2026-08-21) keys each packet on (destination address, TEID) — the same
-  `gtp_tunnel()` the signalling side emits — so user-plane packets land in the
-  right subscriber's flow, QFI included (verified against a testbed capture
-  where the N3 TEID is byte-for-byte the one NGAP promised, and the message
-  count is cross-checked against tshark). What it does *not* do yet is
-  aggregate: no throughput, no sequence-gap loss, no Echo RTT. Every G-PDU is
-  one row — honest, but heavy user-plane captures will want `--since/--until`.
-- **NAS after Security Mode Command is encrypted** and its content is invisible.
-  Those packets still appear as their NGAP carrier. This is how the network
-  works, not a parsing failure.
-- **Mermaid gets slow with very large flows.** Use `--max-messages`; truncation
-  is always stated inside the diagram, never silent.
-
 ## Where this is going
 
 The real gap in the open-source tooling is not drawing 5G call flows — it is
@@ -251,8 +228,10 @@ one new axis into the adapter contract (`DECODE_AS`, because a display filter
 alone does not make tshark decode a protocol on a non-standard port). Expect
 IMS to find more.
 
-Planned, in order: IMS adapters (SIP, Diameter, GTP) → local-LLM root cause
-annotation over the extracted facts → optional web UI.
+Planned, in order: IMS adapters (SIP, Diameter) and EPC (GTP-C, NAS-EPS) →
+local-LLM root-cause narration over the extracted facts and the cause table.
+The model narrates; it never produces a clause number — that rule is in
+`CONTRIBUTING.md` and it applies to the model too.
 
 ## Prior art, and why this exists anyway
 
@@ -301,6 +280,54 @@ systems, and whatever tshark each of them ships. No skips, so the cross-checks
 above genuinely run. It does **not** cover IMS, TLS-protected SBI, ECIES-protected
 SUCIs, or any deployment other than the one Open5GS topology the fixtures came from.
 Those gaps are real and are named in `.github/workflows/ci.yml`.
+
+## Honest limitations
+
+- **SBI is verified against exactly one deployment.** `tests/fixtures/5gc-e2e/`
+  is Open5GS with an SCP in the path, so the service-name-to-NF mapping and the
+  SUPI extraction are exercised — but only for the services that deployment
+  emits, and only for null-scheme SUCIs. Real SBI is usually TLS-encrypted, so on
+  a production trace you will not see inside SBI — but N2 is unaffected: you still
+  get the per-UE registration flow, every NGAP cause, and NAS causes up to Security
+  Mode Command, plus an explicit count of the SBI frames that could not be read.
+  Testbeds and cleartext h2c are where the SBI *correlation* is exercised.
+- **Relay detection needs the deployment to say so.** It keys on the target the
+  message names — `3gpp-Sbi-Target-apiRoot` in SBI. A fully transparent SCP that
+  sends no such header is indistinguishable from the real endpoint, and its
+  address falls back to an unlabelled IP. That is the correct failure direction,
+  but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
+  `Origin-Host`, and it signs its own passage with a `Route-Record`.
+- **PFCP carries no cause explanations.** The adapter reads message types and
+  SEIDs and marks failures, but TS 29.244's cause table has not been
+  transcribed yet, so a failed N4 message is highlighted without a clause
+  citation. Transcribing that table is manual work by design — no clause number
+  in this repo is machine-generated.
+- **N4 joins the subscriber through the GTP-U tunnel endpoint, not the SEID.**
+  No message carries both a SUPI and a PFCP SEID. What both sides *do* carry is
+  the F-TEID the UPF allocates: it appears in the PFCP Session Establishment
+  Response and again in NGAP's UP transport layer information on its way to the
+  gNB. Keying on (address, TEID) merges them — flow counts drop from 9 to 7 on
+  `5gc-e2e` and 25 to 15 on `multi-imsi`. The address matters: one capture had
+  two different endpoints both using TEID 3.
+  The same key now also joins the **user plane**: see the next entry.
+- **Failure highlighting is verified against real testbed captures**, not
+  synthetic ones — see `tests/fixtures/`, where each scenario ships the
+  core-network log that independently confirms the cause code. What is *not*
+  covered is the long tail: the cause table holds the codes we have actually
+  seen, and anything else prints "尚未收錄" rather than a guess.
+- **GTP-U joins the subscriber, but carries no KPIs yet.** The `gtp` adapter
+  (2026-08-21) keys each packet on (destination address, TEID) — the same
+  `gtp_tunnel()` the signalling side emits — so user-plane packets land in the
+  right subscriber's flow, QFI included (verified against a testbed capture
+  where the N3 TEID is byte-for-byte the one NGAP promised, and the message
+  count is cross-checked against tshark). What it does *not* do yet is
+  aggregate: no throughput, no sequence-gap loss, no Echo RTT. Every G-PDU is
+  one row — honest, but heavy user-plane captures will want `--since/--until`.
+- **NAS after Security Mode Command is encrypted** and its content is invisible.
+  Those packets still appear as their NGAP carrier. This is how the network
+  works, not a parsing failure.
+- **Mermaid gets slow with very large flows.** Use `--max-messages`; truncation
+  is always stated inside the diagram, never silent.
 
 ## Contributing, and reporting problems
 

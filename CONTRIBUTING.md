@@ -89,6 +89,12 @@ Fixtures must be either self-generated (Open5GS + UERANSIM, see
 "please cite our paper" note is a citation request, not a licence, and is not
 enough.
 
+If you have the protocol knowledge but no way to produce a clean fixture, **open
+an issue first** with a hex dump of one or two packets (synthetic, or from a
+source whose licence allows it). The fixture requirement is for *merging*, not
+for starting the conversation - we will work out together where a legitimate
+capture can come from. Do not let it stop you from proposing the adapter.
+
 ## Running the tests
 
 ```bash
@@ -104,8 +110,15 @@ child process and is skipped on Windows.
 
 `CLAUDE.md` and `docs/plugin-contract.md` are in Traditional Chinese — they are
 the maintainer's working notes and the place where design decisions are
-recorded with their reasons. `README.md`, this file, and everything a user
-touches are in English. Issues and pull requests in either language are fine.
+recorded with their reasons. `README.md`, this file and `--help` are in English.
+
+**Two user-facing surfaces are still Chinese**: the runtime summaries `analyze`
+prints (coverage, auto-decode, ciphered-NAS warnings) and the browser interface.
+That is a known inconsistency, not a choice — see `T-I18N` in `TODOS.md`. If it
+is the thing stopping you from using the tool, say so in an issue; that is the
+signal that would move it up the list.
+
+Issues and pull requests in either language are fine.
 
 ## Reporting a vulnerability
 

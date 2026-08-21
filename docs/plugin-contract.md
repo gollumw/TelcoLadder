@@ -1,5 +1,17 @@
 # 外掛契約
 
+> **English summary.** This is the contract a protocol plugin must satisfy; the
+> body is in Traditional Chinese. The structure is what matters: the first table
+> lists every axis a plugin provides (adapter and cause-table entry points,
+> `DISPLAY_FILTER`, `DECODE_AS`, `CARRIES`, `CARRIER_LAYER`, `carrier_keys()`,
+> `Message.releases`), and for each one **what silently breaks if you omit it** -
+> none of these failures raise an error. Identity keys go through
+> `telcoladder/identity.py` and have three scope dimensions: global, connection or
+> address, and allocation episode. The code examples are language-neutral and
+> `tests/test_plugins.py` pins every behaviour described here. If a section needs
+> translating to be usable, open an issue and say which one.
+
+
 TelcoLadder 的協定支援是可插拔的。**加一個協定 = 裝一個套件**，不是改核心
 程式碼 —— 這是為了讓 IMS（商業模組）與 5GC（Apache-2.0）能各自演進而不分家。
 
