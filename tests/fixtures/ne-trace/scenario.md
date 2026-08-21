@@ -54,7 +54,7 @@ metadata was falsified — so any shortfall means the recovery is incomplete.
 That assertion is deliberately relative. Both numbers come from whichever tshark
 is running, so it holds across versions; an absolute count would go red on CI's
 older tshark for reasons that have nothing to do with this feature. That mistake
-has been made in this repo before (`9db032b`).
+has been made in this repo before (`6964ff7`).
 
 Measured on tshark 4.4.9: 31 messages without the correction, 173 with it, and
 173 for `5gc-e2e` itself.

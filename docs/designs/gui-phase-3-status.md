@@ -6,9 +6,9 @@
 
 | | commit | 內容 |
 |---|---|---|
-| Phase 1 | `41467d5` | 6 個元件 ＋ `lib/` 三檔自 TelcoShark-Sandbox 逐位元組移植，走 `/app/<sid>` |
-| Phase 2 | `c7e06a1` | `DataSource` 介面、`mockSource` / `apiSource`、`App.tsx` 負責載入與失敗狀態 |
-| Phase 3 前置 | `3c65d67` | `/index` 補上 tcp/udp/sctp 的埠（`RawPacket` 需要 `IP:port`） |
+| Phase 1 | `a816609` | 6 個元件 ＋ `lib/` 三檔自 TelcoShark-Sandbox 逐位元組移植，走 `/app/<sid>` |
+| Phase 2 | `5885aca` | `DataSource` 介面、`mockSource` / `apiSource`、`App.tsx` 負責載入與失敗狀態 |
+| Phase 3 前置 | `5434a87` | `/index` 補上 tcp/udp/sctp 的埠（`RawPacket` 需要 `IP:port`） |
 
 ## `/index` → `RawPacket` 的對映現況
 
@@ -17,7 +17,7 @@
 | `frameNumber` | `n` | ✅ |
 | `timestamp` / `epochMicroseconds` | `epoch` | ✅ |
 | `srcIp` / `dstIp` | `src` / `dst` | ✅ |
-| `srcPort` / `dstPort` | `sport` / `dport` | ✅（`3c65d67`）|
+| `srcPort` / `dstPort` | `sport` / `dport` | ✅（`5434a87`）|
 | `length` / `info` | `len` / `info` | ✅ |
 | `protocol` | `proto` | ⚠ 型別是 8 值 union，實際是任意字串（`NGAP/NAS-5GS`） |
 | `domain` | 由 `stack` 推導 | ⚠ 要寫映射 |

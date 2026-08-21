@@ -1,6 +1,6 @@
 # TelcoShark vs NETSCOUT NSA/ISA — Gap Analysis 與 4G/IMS/Diameter 擴展架構
 
-> 2026-08-21。基準點：commit `94ebd84`（lifecycle 修完、417 passed）。
+> 2026-08-21。基準點：commit `11216a6`（lifecycle 修完、417 passed）。
 > 本檔是**對標分析與擴展設計**，不是現況文件 —— 現況以 `CLAUDE.md` 為準，
 > 外掛怎麼寫以 `docs/plugin-contract.md` 為準。日期與結論綁定這一天的程式碼。
 
@@ -8,7 +8,7 @@
 
 ## 0. 先修正 baseline —— 兩處宣稱與程式碼不符
 
-Review 的前提必須是真的。對照 `94ebd84`：
+Review 的前提必須是真的。對照 `11216a6`：
 
 | 宣稱 | 實際 |
 |---|---|
@@ -45,7 +45,7 @@ KPI 儀表板往下鑽到 session。TelcoShark 是**離線鑑識工具**：一�
 
 ### 2.1 會話縫合維度（Session Stitching & Keys）
 
-| | NSA/ISA | TelcoShark（`94ebd84`） |
+| | NSA/ISA | TelcoShark（`11216a6`） |
 |---|---|---|
 | 鍵覆蓋 | SUPI/IMSI、SUCI、**5G-GUTI/4G-GUTI（含重配鏈）**、MSISDN、PEI/IMEI、UE IP（分 APN/DNN）、GTPv2 各介面 F-TEID、GTP-U TEID、NGAP/S1AP ID 對、SEID、SIP Call-ID＋tags、**ICID**、Diameter Session-Id | SUPI、NGAP ID 對（scoped＋**episodic**）、PFCP SEID、GTP TEID（位址範圍）、SBI stream、SM context ref |
 | 生命週期 | 訂戶 context 跨程序、跨日維護 | `lifecycle.py`（2026-08-21）：釋放事件驅動的 episode 切分 —— 機制與商用同型，鍵種類少 |

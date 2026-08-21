@@ -228,7 +228,7 @@ export interface DataSource {
    *
    * 與 `applyDisplayFilter` 是**兩個獨立條件、會疊加**，不是互相取代 ——
    * 「鎖定一個人但看他的某一種協定」是實際的用法。後端原本共用一個
-   * `keep_frames` 而後設的會靜默丟掉先設的，已於 `d03235a` 拆開。
+   * `keep_frames` 而後設的會靜默丟掉先設的，已於 `8aaaa8c` 拆開。
    */
   focusIdentity(supi: string | null): Promise<void>;
 

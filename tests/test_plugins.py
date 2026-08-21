@@ -295,7 +295,7 @@ class _FakeAdapter:
 def test_decode_as_is_optional(monkeypatch):
     """沒宣告 `DECODE_AS` 的 adapter 不該讓聚合爆掉。
 
-    契約落地（`edcbc14`）時還沒有這個欄位，既有外掛不必改版就要能繼續用。
+    契約落地（`2a9a641`）時還沒有這個欄位，既有外掛不必改版就要能繼續用。
     """
     class _NoDecodeAs:
         NAME = "olderplugin"
