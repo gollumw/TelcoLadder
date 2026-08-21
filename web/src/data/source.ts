@@ -98,6 +98,19 @@ export interface Dataset {
    */
   firstFrameBySupi: Record<string, number>;
   /**
+   * 這份擷取檔裡**看得到有、但看不進去**的東西。
+   *
+   * `ciphered`：Security Mode Command 之後的 NAS 是加密的，只看得到它的
+   * NGAP 載體。`protectedSuci`：SUCI 以 ECIES 保護，SUPI 原理上取不出來。
+   *
+   * **一定要呈現。** 引擎算得出來、CLI 也印了（`⚠ 另有 N 則 NAS 訊息已加密`），
+   * 但 GUI 若不說，畫面就給出一個「一切都在這裡」的假象 —— 而程序切段讓
+   * 那個假象更強:它列出一份乾淨的程序清單，讀起來像完整交代。
+   * `unknown-dnn` fixture 就是這個情境:PDU 建立被拒，但整段加密看不到，
+   * 畫面只顯示「註冊 ✓」。
+   */
+  invisible: { ciphered: number; protectedSuci: number };
+  /**
    * 工具為了讀懂這份擷取檔自己多做的事，一行一則、每則都講依據。
    *
    * **一定要呈現。** 自動調整解碼方式而不告訴使用者，等於讓他無法反駁

@@ -319,3 +319,29 @@ def test_every_class_used_is_actually_styled() -> None:
         assert used <= styled, (
             f"{name} 用了沒有樣式的 class：{sorted(used - styled)}"
         )
+
+
+# ── 誠實性：看不到的東西要說出來（ISSUE-003，/qa 2026-08-22）─────────
+
+
+def test_the_ui_reads_the_invisibility_counters() -> None:
+    """引擎算出來的「看不到什麼」必須有前端讀者。
+
+    `/identities` 一直回 `ciphered` 與 `protected_suci`，CLI 也一直印
+    （`⚠ 另有 N 則 NAS 訊息已加密`），但 **GUI 從來沒讀** —— 於是畫面給出
+    「一切都在這裡」的假象。程序切段（2026-08-21）讓沉默更危險:它列出一份
+    乾淨的程序清單，讀起來像完整交代。
+
+    `unknown-dnn` 就是這個情境:PDU 建立被拒，但整段加密看不到，
+    畫面只顯示「註冊 ✓」。
+
+    這是 §5.5「唯一的讀者」判準的反向:後端寫了、API 送了、**沒有人讀**。
+    grep 只找得到寫入端一樣是警訊。
+    """
+    api = (_WEB / "src" / "data" / "apiSource.ts").read_text(encoding="utf-8")
+    assert "ciphered" in api, "apiSource 沒讀 /identities 的 ciphered"
+    assert "protected_suci" in api, "apiSource 沒讀 protected_suci"
+
+    app = (_WEB / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert "invisible" in app, "App.tsx 沒有呈現 invisible"
+    assert "已加密" in app, "橫幅沒有講出「加密」這件事"

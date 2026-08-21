@@ -65,6 +65,8 @@ export function mockSource(): DataSource {
         page,
         // mock 是編譯期常數，沒有解碼這回事。
         autoDecode: [],
+        // mock 是編譯期常數 —— 沒有加密這回事，也沒有東西看不到。
+        invisible: { ciphered: 0, protectedSuci: 0 },
         // mock 的封包陣列**就是**全母體，所以就地聚合在這裡是對的 ——
         // 真實資料那邊不行（視窗只有幾百格），改由 `/flows` 供應。
         discoveredSessions: computeDiscoveredSessions(mockData.rawPackets),
@@ -128,7 +130,11 @@ export function mockSource(): DataSource {
         uncorrelatedDomains: [],
         // mock 沒有程序切段 —— 那是引擎對真實訊息序列的判讀，假資料上
         // 湊一份出來只會讓介面在假資料下走一條真實資料走不到的路徑。
-        // 空陣列讓畫面顯示「未切段」，那是誠實的。
+        //
+        // **空陣列時整條程序列不顯示**（不是顯示「未切段」—— 這行註解
+        // 第一版寫錯了，由 /qa 2026-08-22 實測更正）。真實擷取檔也到得了
+        // 這個狀態:只抓 SBI 那一腿時訂戶只出現在 URL 裡，沒有 NAS/NGAP
+        // 開段訊息， 就給零段。見 TODOS 的 T-PROCEMPTY。
         procedures: [],
       };
     },

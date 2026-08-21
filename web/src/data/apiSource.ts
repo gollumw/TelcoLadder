@@ -180,7 +180,11 @@ export function apiSource(sid: string | null): DataSource {
         getJson<{ subscribers: FlowSubscriber[]; abs_time_available: boolean }>(
           `/api/${need()}/flows`,
         ),
-        getJson<{ groups: { kind: string; values: { value: string }[] }[] }>(
+        getJson<{
+          groups: { kind: string; values: { value: string }[] }[];
+          ciphered?: number;
+          protected_suci?: number;
+        }>(
           `/api/${need()}/identities`,
         ),
         // 整份擷取檔的矩陣，一次取完。量級是「訂戶數 × 每人幾條 session」，
@@ -207,6 +211,12 @@ export function apiSource(sid: string | null): DataSource {
 
       return {
         autoDecode,
+        // 引擎看得到、CLI 也印了，但 GUI 原本從來沒讀 —— 於是畫面給出
+        // 「一切都在這裡」的假象（ISSUE-003，/qa 2026-08-22）。
+        invisible: {
+          ciphered: identities.ciphered ?? 0,
+          protectedSuci: identities.protected_suci ?? 0,
+        },
         rawPackets: page.rows,
         page,
         // 全母體的訂戶清單來自 `/flows`（伺服器端算的），**不是**由上面那

@@ -311,6 +311,37 @@ export default function App() {
           </ul>
         </div>
       )}
+      {(data.invisible.ciphered > 0 || data.invisible.protectedSuci > 0) && (
+        // **這份擷取檔裡有東西看得到卻看不進去。**
+        //
+        // 引擎一直算得出來、CLI 也印了，但 GUI 從來沒說（ISSUE-003）——
+        // 而程序切段讓沉默更危險:它列出一份乾淨的程序清單，讀起來像
+        // 完整交代。`unknown-dnn` 就是這個情境:PDU 建立被拒，但整段加密
+        // 看不到，畫面只顯示「註冊 ✓」。
+        //
+        // 用 amber 不用 rose —— 這不是錯誤，是**證據的極限**。標紅會讓人
+        // 以為網路出事了。
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+          <p className="font-semibold">這份擷取檔有部分內容看得到、但看不進去</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
+            {data.invisible.ciphered > 0 && (
+              <li>
+                <b>{data.invisible.ciphered}</b> 則 NAS 訊息已加密（Security Mode
+                Command 之後），只看得到它的 NGAP 載體。
+                <span className="ml-1 opacity-80">
+                  失敗的程序可能藏在裡面 —— 上方的程序清單只列得出看得見的那些。
+                </span>
+              </li>
+            )}
+            {data.invisible.protectedSuci > 0 && (
+              <li>
+                <b>{data.invisible.protectedSuci}</b> 個 SUCI 以 ECIES 保護，
+                SUPI 原理上取不出來（不是解析失敗）。
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
       {source.notice && (
         // 常駐橫幅，不是可關閉的提示 —— 使用者每一眼看到的畫面都少了東西，
         // 那件事不該只在載入時說一次。
