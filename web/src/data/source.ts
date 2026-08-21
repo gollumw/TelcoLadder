@@ -113,9 +113,36 @@ export interface CallFlowParticipant {
   known: boolean;
 }
 
+/** 一段程序 —— 一次註冊、一次 PDU 建立。xDR 的一列。
+ *
+ *  **只帶邊界與結局，不帶訊息** —— 事件在 `CallFlow.events` 裡，畫面依
+ *  frame 範圍過濾。兩邊各存一份訊息會漂移，而且白白多送一份。 */
+export interface CallFlowProcedure {
+  kind: string;
+  outcome: "success" | "failure" | "incomplete";
+  /** 終端 cause（最後一則失敗的）。 */
+  cause: string | null;
+  /** 起因（第一則失敗的）。**只在與終端不同時才有** —— ki-mismatch 的終端
+   *  cause 是零資訊量的「協定錯誤」，起因才是「SQN 不同步」。 */
+  rootCause: string | null;
+  pduSessionId: string | null;
+  startFrame: number;
+  endFrame: number;
+  messages: number;
+  failures: number;
+  durationS: number;
+  /** 「落在擷取結尾附近，可能只是截到一半」之類的但書。空字串＝沒有。 */
+  note: string;
+}
+
 /** 一個訂戶的梯形圖資料。 */
 export interface CallFlow {
   events: CallFlowEvent[];
+  /** 這個訂戶的程序段，依起始 frame 排序。
+   *
+   *  少了它，一份長擷取裡同一個人的三次註冊會攤在同一條梯形圖上 ——
+   *  而工程師問的是程序級的問題。 */
+  procedures: CallFlowProcedure[];
   participants: CallFlowParticipant[];
   /** true＝照封包路徑畫；false＝照協定語意畫（NAS 畫在 UE↔AMF）。 */
   wire: boolean;

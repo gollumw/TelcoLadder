@@ -228,3 +228,61 @@ def test_events_are_ordered_by_absolute_time(wire_flow) -> None:
             f"frame {earlier['frame']} 的相對時間晚於 frame {later['frame']} "
             "—— 兩種時間基準在同一份檔裡不一致"
         )
+
+
+# ── 程序切段（M0 的最後一哩，2026-08-21）────────────────────────────
+
+
+def test_the_ladder_carries_procedure_segments(wire_flow) -> None:
+    """`/callflow` 要一併回程序段 —— 梯形圖靠它切開。
+
+    少了這個欄位，畫面回到「整段訂戶 context 一條長梯形圖」，而那正是
+    對標 NSA 時 §2.2 的核心缺口。**症狀是靜默的**:圖照樣畫得出來。
+    """
+    procs = wire_flow["procedures"]
+    assert procs, "沒有任何程序段"
+    kinds = [p["kind"] for p in procs]
+    assert kinds == ["registration", "pdu-session-establishment"], kinds
+
+
+def test_procedures_carry_boundaries_not_messages(wire_flow) -> None:
+    """程序段只帶邊界與結局，**不帶訊息**。
+
+    訊息已經在 `events` 裡了 —— 兩邊各存一份會漂移，而且白白多送一份。
+    """
+    for p in wire_flow["procedures"]:
+        assert "messages" in p and isinstance(p["messages"], int)
+        assert "events" not in p, "程序段夾帶了訊息 —— 那是第二份會漂移的複本"
+
+
+def test_every_procedure_frame_range_selects_real_events(wire_flow) -> None:
+    """每段的 frame 範圍在 `events` 裡都要選得到東西。
+
+    範圍與事件對不上的話，畫面選了那一段會得到空梯形圖 —— 而使用者
+    只會以為「這段沒有訊息」。
+    """
+    frames = [e["frame"] for e in wire_flow["events"]]
+    for p in wire_flow["procedures"]:
+        inside = [f for f in frames if p["start_frame"] <= f <= p["end_frame"]]
+        assert inside, f"{p['kind']} 的範圍 [{p['start_frame']}-{p['end_frame']}] 選不到任何事件"
+
+
+def test_procedures_do_not_overlap(wire_flow) -> None:
+    """段與段不重疊 —— 重疊代表同一則訊息會出現在兩段裡，而畫面上
+    「這一段有幾則」的數字就會比實際多。"""
+    ranges = sorted((p["start_frame"], p["end_frame"]) for p in wire_flow["procedures"])
+    for (_, prev_end), (next_start, _) in zip(ranges, ranges[1:]):
+        assert prev_end < next_start, f"段重疊：…{prev_end} 與 {next_start}…"
+
+
+def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
+    """失敗的段要同時帶終端 cause 與起因 —— 畫面在段的層級講一次，
+    使用者不必自己找哪支箭是紅的。"""
+    from telcoshark.viewer import callflow_json
+
+    session = _session(e2e_pcap.parent.parent / "ki-mismatch" / "capture.pcap", wire=True)
+    flow = callflow_json(session, _a_supi(session))
+    failed = [p for p in flow["procedures"] if p["outcome"] == "failure"]
+    assert failed, "ki-mismatch 應該要有失敗的段"
+    assert failed[0]["cause"] and "協定錯誤" in failed[0]["cause"]
+    assert failed[0]["root_cause"] and "SQN" in failed[0]["root_cause"]

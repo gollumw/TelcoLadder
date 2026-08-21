@@ -5,7 +5,7 @@ import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
 import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
-import type { CallFlowParticipant } from "@/data/source";
+import type { CallFlowParticipant, CallFlowProcedure } from "@/data/source";
 
 /**
  * 泳道**樣式**表。注意這不是泳道清單 —— 清單由資料決定。
@@ -63,6 +63,34 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "CORE_SBI", label: "Core Control (SBI N11/N12)" },
   { id: "USER_PLANE_N4_N3", label: "User Plane & Tunnel (N4/N3)" },
 ];
+
+//: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**
+//: （`PROCEDURE_LABEL[p.kind] ?? p.kind`）—— 引擎日後加 4G 的 attach /
+//: TAU 或 IMS 的 call setup 時，畫面不會靜默漏掉一段，只是標籤是英文的。
+const PROCEDURE_LABEL: Record<string, string> = {
+  registration: "註冊",
+  "pdu-session-establishment": "PDU 建立",
+  "pdu-session-release": "PDU 釋放",
+  "service-request": "服務請求",
+  deregistration: "去註冊",
+  "ue-context-release": "Context 釋放",
+};
+
+//: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
+//: 選擇列的重點:一眼掃過去知道哪一段掛了。
+const OUTCOME_STYLE: Record<string, string> = {
+  success: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
+  failure: "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:border-rose-400",
+  incomplete: "border-amber-500/40 bg-amber-500/5 text-amber-300/90 hover:border-amber-400",
+};
+
+//: 結局的符號。**incomplete 用 ⋯ 不用 ✗** —— 「沒等到結局」與「失敗」
+//: 是兩件事，混用會把截斷的擷取報成網路故障。
+const OUTCOME_MARK: Record<string, string> = {
+  success: "✓",
+  failure: "✗",
+  incomplete: "⋯",
+};
 
 const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {
   SUCCESS: "text-emerald-400",
@@ -124,6 +152,7 @@ function formatUncaptured(value: string | undefined): string {
 export function SessionAnalysisView({
   supi,
   callFlowEvents,
+  procedures,
   participants,
   ladderIsWireView,
   uncorrelatedDomains,
@@ -139,6 +168,9 @@ export function SessionAnalysisView({
 }: {
   supi: string | null;
   callFlowEvents: CallFlowEvent[];
+  /** 這個訂戶的程序段（`telcoshark/procedures.py`）。空陣列＝未切段
+   *  （範例資料就是空的 —— 切段是引擎對真實訊息序列的判讀）。 */
+  procedures: CallFlowProcedure[];
   /** 這張圖有哪些參與者，**已依 `nf.PARTICIPANT_ORDER` 排好**。
    *  由後端給是刻意的 —— 讓前端自己湊網元順序等於兩邊各維護一份，一定漂移。 */
   participants: CallFlowParticipant[];
@@ -159,6 +191,8 @@ export function SessionAnalysisView({
   onViewInDataMining: (frame: number) => void;
 }) {
   const [domain, setDomain] = useState<TelecomDomain | "ALL">("ALL");
+  //: 選中的程序（`startFrame`，唯一）。null ＝ 全部，也就是切段前的行為。
+  const [activeProcedure, setActiveProcedure] = useState<number | null>(null);
   const [hover, setHover] = useState<{ frame: number; x: number; y: number } | null>(null);
   const [activePduSessionId, setActivePduSessionId] = useState<number | null>(null);
 
@@ -167,10 +201,24 @@ export function SessionAnalysisView({
 
   const supiEvents = useMemo(() => (supi ? callFlowEvents.filter((e) => e.supi === supi) : []), [callFlowEvents, supi]);
 
-  const filteredEvents = useMemo(
-    () => (domain === "ALL" ? supiEvents : supiEvents.filter((e) => e.domain === domain)),
-    [supiEvents, domain],
+  //: 選中的那一段。`startFrame` 當識別碼 —— 一個訂戶不可能有兩段同時開始。
+  const current = useMemo(
+    () => procedures.find((p) => p.startFrame === activeProcedure) ?? null,
+    [procedures, activeProcedure],
   );
+
+  const filteredEvents = useMemo(() => {
+    // **程序先於 Domain。** 選了程序就是「只看這一段」，Domain 是那一段
+    // 之內的再過濾 —— 反過來（Domain 先）在畫面上是同一個結果，但語意
+    // 不同:程序是範圍，Domain 是視角。
+    let events = supiEvents;
+    if (current) {
+      events = events.filter(
+        (e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame,
+      );
+    }
+    return domain === "ALL" ? events : events.filter((e) => e.domain === domain);
+  }, [supiEvents, domain, current]);
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
@@ -271,6 +319,76 @@ export function SessionAnalysisView({
             <p className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
               ⚠ 有 {undrawable} 則事件的端點排不進泳道，未繪出（不是這份擷取檔沒有它們）
             </p>
+          )}
+
+          {/* 程序切段 —— 一段一個有結局的程序。
+              沒有這一條，一份長擷取裡同一個人的三次註冊會攤在同一條梯形圖上，
+              而工程師問的是程序級的問題（「第二次為什麼失敗」）。 */}
+          {procedures.length > 0 && (
+            <div className="mb-3 rounded border border-slate-800 bg-slate-950/40 p-2">
+              <div className="mb-1.5 flex items-center gap-2 text-[11px] text-slate-500">
+                <span className="font-medium text-slate-400">程序 · Procedures</span>
+                <span>{procedures.length} 段</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveProcedure(null)}
+                  className={cn(
+                    "rounded border px-2 py-1 text-[11px] font-medium",
+                    activeProcedure === null
+                      ? "border-sky-500 bg-sky-500/15 text-sky-300"
+                      : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
+                  )}
+                >
+                  全部（{supiEvents.length} 則）
+                </button>
+                {procedures.map((p) => (
+                  <button
+                    key={p.startFrame}
+                    type="button"
+                    onClick={() => setActiveProcedure(p.startFrame)}
+                    title={
+                      // 完整資訊放 title —— 按鈕上只留一眼看得懂的部分。
+                      [
+                        `frame ${p.startFrame}–${p.endFrame}`,
+                        `${p.messages} 則訊息`,
+                        p.failures ? `${p.failures} 則失敗` : null,
+                        p.cause ? `cause：${p.cause}` : null,
+                        p.rootCause ? `起因：${p.rootCause}` : null,
+                        p.note || null,
+                      ].filter(Boolean).join("\n")
+                    }
+                    className={cn(
+                      "rounded border px-2 py-1 text-[11px] font-medium",
+                      activeProcedure === p.startFrame
+                        ? "border-sky-500 bg-sky-500/15 text-sky-300"
+                        : OUTCOME_STYLE[p.outcome],
+                    )}
+                  >
+                    <span>{PROCEDURE_LABEL[p.kind] ?? p.kind}</span>
+                    {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
+                    <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
+                    <span className="ml-1 tabular-nums opacity-60">
+                      {p.durationS < 1 ? `${Math.round(p.durationS * 1000)}ms` : `${p.durationS.toFixed(2)}s`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {current?.cause && (
+                // **失敗要在段的層級講一次。** 箭頭上的 cause 只在那一列;
+                // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。
+                <p className="mt-2 text-[11px] text-rose-300">
+                  ⚠ {current.cause}
+                  {current.rootCause && (
+                    <span className="ml-2 text-amber-300">起因：{current.rootCause}</span>
+                  )}
+                </p>
+              )}
+              {current?.note && (
+                <p className="mt-1 text-[11px] text-slate-500">{current.note}</p>
+              )}
+            </div>
           )}
 
           {/* Domain Filter Toolbar */}

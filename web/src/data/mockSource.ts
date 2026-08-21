@@ -126,6 +126,10 @@ export function mockSource(): DataSource {
         wire: false,
         // mock 的四種邊界情境是手寫的，沒有「有但接不上」這種狀態。
         uncorrelatedDomains: [],
+        // mock 沒有程序切段 —— 那是引擎對真實訊息序列的判讀，假資料上
+        // 湊一份出來只會讓介面在假資料下走一條真實資料走不到的路徑。
+        // 空陣列讓畫面顯示「未切段」，那是誠實的。
+        procedures: [],
       };
     },
   };

@@ -195,6 +195,36 @@ export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, 
 // ── 梯形圖 ──────────────────────────────────────────────────
 
 /** `/callflow` 回的一則事件。欄位名由後端 `viewer.callflow_json` 決定。 */
+export interface CallFlowProcedureJson {
+  kind: string;
+  outcome: "success" | "failure" | "incomplete";
+  cause: string | null;
+  root_cause: string | null;
+  pdu_session_id: string | null;
+  start_frame: number;
+  end_frame: number;
+  messages: number;
+  failures: number;
+  duration_s: number;
+  note: string;
+}
+
+export function toCallFlowProcedure(p: CallFlowProcedureJson) {
+  return {
+    kind: p.kind,
+    outcome: p.outcome,
+    cause: p.cause,
+    rootCause: p.root_cause,
+    pduSessionId: p.pdu_session_id,
+    startFrame: p.start_frame,
+    endFrame: p.end_frame,
+    messages: p.messages,
+    failures: p.failures,
+    durationS: p.duration_s,
+    note: p.note,
+  };
+}
+
 export interface CallFlowEventJson {
   id: string;
   frame: number;

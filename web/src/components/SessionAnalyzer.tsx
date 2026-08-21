@@ -218,6 +218,7 @@ export default function SessionAnalyzer({
           <SessionAnalysisView
             supi={focusedSupi}
             callFlowEvents={callFlow?.events ?? callFlowEvents}
+            procedures={callFlow?.procedures ?? []}
             participants={callFlow?.participants ?? []}
             ladderIsWireView={callFlow?.wire ?? false}
             uncorrelatedDomains={callFlow?.uncorrelatedDomains ?? []}

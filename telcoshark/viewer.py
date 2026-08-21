@@ -37,6 +37,7 @@ from telcoshark.chrome import esc
 from telcoshark.interfaces import reference_point
 from telcoshark.model import IDENTITY_SOURCE_KEY, Endpoint, Flow, IdKind
 from telcoshark.nf import participant_rank
+from telcoshark.procedures import capture_end, segment_flow
 from telcoshark.session import Session
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -443,6 +444,10 @@ def callflow_json(session: Session, supi: str) -> dict:
     if not flows:
         return {"error": f"這個訂戶沒有對應的流程：{supi}"}
 
+    # 「落在擷取結尾附近」的判定以**整份擷取檔**為準（理由見
+    # `procedures.capture_end`）。走那個函式而不是在這裡再算一次 ——
+    # 兩份會漂移，而症狀是同一段在 CLI 與畫面上一個有但書、一個沒有。
+    end = capture_end(analysis)
     messages = [m for f in flows for m in f.messages]
     # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
     # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現。
@@ -539,10 +544,38 @@ def callflow_json(session: Session, supi: str) -> dict:
     }
     uncorrelated = sorted(d for d in elsewhere - mine if d)
 
+    # **程序切段** —— 一段一個有結局的程序（`telcoshark/procedures.py`）。
+    #
+    # 沒有這一段，一份長擷取裡同一個人的三次註冊會攤在同一條梯形圖上 ——
+    # 而工程師問的是程序級的問題（「第二次為什麼失敗」）。NSA 的 xDR 以
+    # 程序為單位就是這個原因。
+    #
+    # 只回**邊界與結局**，不回訊息 —— 事件已經在 `events` 裡了，前端依
+    # frame 範圍過濾即可。兩邊各存一份訊息會漂移，而且白白多送一份。
+    procedures = [
+        {
+            "kind": p.kind,
+            "outcome": p.outcome,
+            "cause": p.cause,
+            "root_cause": p.root_cause,
+            "pdu_session_id": p.pdu_session_id,
+            "start_frame": p.start_frame,
+            "end_frame": p.end_frame,
+            "messages": p.messages,
+            "failures": p.failures,
+            "duration_s": round(p.duration, 6),
+            "note": p.note,
+        }
+        for flow in flows
+        for p in segment_flow(flow, capture_end=end)[0]
+    ]
+    procedures.sort(key=lambda p: p["start_frame"])
+
     return {
         "ready": True,
         "supi": supi,
         "domains_uncorrelated": uncorrelated,
+        "procedures": procedures,
         # **這張圖是照封包路徑畫的還是照協定語意畫的。**
         # wire=True（預設）時 NAS 畫在它實際走的那一段 —— SBI 夾帶的 NAS
         # 會顯示成 AMF→SCP→SMF，而不是 UE→AMF。那是事實，但看到的人若

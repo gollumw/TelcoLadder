@@ -216,19 +216,30 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     return procedures, unassigned
 
 
+def capture_end(analysis: Analysis) -> float:
+    """整份擷取檔的最後一則訊息（相對秒）。
+
+    **一定要以整份為準，不能用單一訂戶的最後一則。** 用後者的話，每個訂戶
+    的最後一段都會落在「距離結尾 0 秒」而被誤標成「可能只是截到一半」——
+    而那句話會讓使用者把正常結束的程序當成擷取斷掉。
+
+    只有一份定義，`viewer.callflow_json()` 也呼叫這裡 —— 兩份會漂移，
+    而漂移的症狀是「同一段程序在 CLI 與畫面上一個有但書、一個沒有」。
+    """
+    return max((m.ts for f in analysis.flows for m in f.messages), default=0.0)
+
+
 def segment(analysis: Analysis) -> tuple[list[Procedure], int]:
     """整份分析的程序段。回傳 (全部段依 start_frame 排序, 未指派訊息數)。"""
-    capture_end = max(
-        (m.ts for f in analysis.flows for m in f.messages), default=0.0
-    )
+    end = capture_end(analysis)
     procedures: list[Procedure] = []
     stray = 0
     for flow in analysis.flows:
-        segs, unassigned = segment_flow(flow, capture_end=capture_end)
+        segs, unassigned = segment_flow(flow, capture_end=end)
         procedures.extend(segs)
         stray += len(unassigned)
     procedures.sort(key=lambda p: p.start_frame)
     return procedures, stray
 
 
-__all__ = ["KINDS", "Procedure", "segment", "segment_flow", "TAIL_SLACK"]
+__all__ = ["KINDS", "Procedure", "capture_end", "segment", "segment_flow", "TAIL_SLACK"]

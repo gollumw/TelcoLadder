@@ -33,8 +33,10 @@ import {
   attachFlowFacts,
   firstFrameBySupi,
   toCallFlowEvent,
+  toCallFlowProcedure,
   toCorrelationEntry,
   type CallFlowEventJson,
+  type CallFlowProcedureJson,
   type PduSessionJson,
   rowToPacket,
   subscribersToSessions,
@@ -242,12 +244,14 @@ export function apiSource(sid: string | null): DataSource {
         domains_uncorrelated: TelecomDomain[];
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
+        procedures?: CallFlowProcedureJson[];
       }>(`/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
       return {
         wire: body.wire,
         uncorrelatedDomains: body.domains_uncorrelated ?? [],
         participants: body.participants ?? [],
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
+        procedures: (body.procedures ?? []).map(toCallFlowProcedure),
       };
     },
 
