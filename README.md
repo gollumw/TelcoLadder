@@ -302,6 +302,14 @@ above genuinely run. It does **not** cover IMS, TLS-protected SBI, ECIES-protect
 SUCIs, or any deployment other than the one Open5GS topology the fixtures came from.
 Those gaps are real and are named in `.github/workflows/ci.yml`.
 
+## Contributing, and reporting problems
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is short. It has two rules that matter
+more than anything else in it: **no real subscriber or customer data, anywhere**,
+and **every spec clause is verified by a human, never generated**.
+
+Found a vulnerability? [`SECURITY.md`](SECURITY.md) — not a public issue.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

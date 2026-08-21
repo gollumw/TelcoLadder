@@ -276,3 +276,58 @@ def test_the_known_capture_list_is_actually_used() -> None:
     assert not stale, (
         f"`_KNOWN_CAPTURES` 有 {len(stale)} 筆已經不在樹裡了，刪掉它們：{stale}"
     )
+
+
+# ── 第三道網：進件點（issue／PR 範本），2026-08-22 ──────────────────────
+#
+# 前兩道網守的是**版控**。但 GitHub issue 的附件不在 git 裡 —— 有人貼一張帶著
+# 真實 IMSI 的截圖，`git filter-repo` 洗不掉，那是唯一真正不可逆的洩漏管道。
+# 範本是那個進件點上唯一的守衛，而範本是可以被隨手改掉的。
+
+import yaml
+
+_TEMPLATES = REPO / ".github" / "ISSUE_TEMPLATE"
+#: 警語必須同時講到這三件事，缺一個就是漏了一種資料。
+_WARNING_MUST_MENTION = ("IMSI", "real", "not")
+
+
+def _issue_forms() -> list[Path]:
+    forms = sorted(p for p in _TEMPLATES.glob("*.yml") if p.name != "config.yml")
+    assert forms, "沒有任何 issue 範本 —— 進件點沒有守衛"
+    return forms
+
+
+def test_every_issue_form_opens_with_the_no_real_data_warning() -> None:
+    """每個 issue 範本的**第一個**元素必須是那段警語，而且要在任何輸入欄之前。
+
+    放在第一個不是排版偏好：使用者是由上往下填的，警語在輸入框下面等於沒有。
+    """
+    for form in _issue_forms():
+        data = yaml.safe_load(form.read_text(encoding="utf-8"))
+        body = data.get("body") or []
+        assert body, f"{form.name} 沒有 body"
+        first = body[0]
+        assert first.get("type") == "markdown", (
+            f"{form.name} 的第一個元素是 {first.get('type')!r}，警語必須排在所有輸入欄之前"
+        )
+        text = first["attributes"]["value"]
+        for word in _WARNING_MUST_MENTION:
+            assert word.lower() in text.lower(), f"{form.name} 的警語沒提到 {word!r}"
+
+
+def test_blank_issues_are_disabled_so_the_warning_cannot_be_skipped() -> None:
+    """`blank_issues_enabled: false`，否則「開一個空白 issue」就繞過了所有範本。"""
+    config = yaml.safe_load((_TEMPLATES / "config.yml").read_text(encoding="utf-8"))
+    assert config.get("blank_issues_enabled") is False, (
+        "config.yml 允許空白 issue —— 那條路沒有警語"
+    )
+
+
+def test_the_pull_request_template_carries_the_same_rule() -> None:
+    """PR 範本的 checklist 第一條必須是「沒有真實資料」。"""
+    text = (REPO / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    boxes = [l for l in text.splitlines() if l.lstrip().startswith("- [ ]")]
+    assert boxes, "PR 範本沒有任何 checklist"
+    assert "real" in boxes[0].lower() and "data" in boxes[0].lower(), (
+        f"PR checklist 第一條不是資料紅線：{boxes[0]!r}"
+    )

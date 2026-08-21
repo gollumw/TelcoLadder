@@ -1,0 +1,8 @@
+# Blank issues are disabled on purpose: every template starts with the
+# no-real-subscriber-data warning, and a blank issue would skip it.
+# Issue attachments live outside git — a leak there cannot be rewritten away.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gollumw/TelcoLadder/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue. See SECURITY.md.

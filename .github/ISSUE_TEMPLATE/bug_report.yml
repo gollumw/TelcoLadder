@@ -1,0 +1,71 @@
+name: Bug report
+description: Something decoded wrong, crashed, or a diagram does not match the capture
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠ Before you attach anything
+
+        **Do not upload a capture, log, screenshot, or diagram that contains real subscriber
+        or customer data.** That means real IMSI / SUPI / MSISDN / IMEI, real operator
+        network addresses or hostnames, real DNNs, or anything captured on a network that
+        is not yours.
+
+        Attachments on GitHub issues are **not** in git. A history rewrite cannot remove
+        them. If you paste a real IMSI here it is public forever.
+
+        If you cannot reproduce the problem on a testbed capture (Open5GS + UERANSIM,
+        MCC 001 / MNC 01), describe it in words and we will work from there.
+
+  - type: checkboxes
+    id: no-real-data
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have checked that nothing I am attaching or pasting contains a real subscriber identifier, customer address, or operator hostname.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: TelcoLadder version
+      description: Output of `telcoladder --version`
+      placeholder: telcoladder 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: check
+    attributes:
+      label: Environment
+      description: Paste the output of `telcoladder check` — it reports OS, tshark path and version, and which dissectors are present.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: capture-provenance
+    attributes:
+      label: Where did the capture come from?
+      options:
+        - Self-generated on a testbed (Open5GS / UERANSIM / srsRAN …)
+        - Public dataset with a redistribution licence (say which, below)
+        - Real network — I cannot share it, and I will describe it in words
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What you ran, and what happened
+      description: The exact command, and what the output or diagram showed. If tshark decodes the capture correctly but TelcoLadder does not, say what `tshark -r file.pcap` shows for the frames in question — that is the oracle we test against.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true

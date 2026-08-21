@@ -1,0 +1,22 @@
+name: Question, cause code, or anything else
+description: Not a bug — a question, a missing cause code, a protocol you want supported, a doc fix
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠ Same rule as everywhere else in this project
+
+        **Do not paste real subscriber or customer data** — no real IMSI / SUPI / MSISDN,
+        no operator addresses or hostnames, no captures from a network that is not yours.
+        Issue attachments are outside git and cannot be taken back.
+
+        If you are proposing a cause code: the `spec` / `clause` reference must be one you
+        verified against the actual 3GPP document, not one an LLM suggested. Say which
+        document and version you checked.
+
+  - type: textarea
+    id: body
+    attributes:
+      label: What's on your mind
+    validations:
+      required: true
