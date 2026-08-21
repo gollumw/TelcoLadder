@@ -162,7 +162,10 @@ def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None
     症狀是**整張梯形圖塌成一條無名泳道**：`Endpoint.label()` 對「沒有角色
     也沒有位址」的端點回空字串，於是所有端點合成同一個 key。圖畫得出來、
     箭頭都在、一則訊息都沒少 —— 只是每一支箭都從自己指向自己。
-    實測 `an-operator-smf-trace.pcap`：14 則事件、1 條泳道。
+    實測一份網元匯出的 SMF trace：14 則事件、1 條泳道。
+    **`tests/fixtures/` 裡沒有這種擷取檔** —— `ne-trace` 走的是
+    `sll:ip:tcp` 而不是 EXPORTED_PDU（已實測）。所以這條分支只有這段
+    註解記著它為什麼在，沒有測試守得住它。
     """
     ip_layer = _as_dict_list(layers.get("ip")) or _as_dict_list(layers.get("ipv6"))
     src = dst = ""

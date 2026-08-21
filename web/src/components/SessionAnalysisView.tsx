@@ -440,7 +440,7 @@ export function SessionAnalysisView({
               // **不用 `width="100%"`。** 那會把 viewBox 拉伸到容器寬度：
               // 泳道少的時候 viewBox 只有 290，在 1200px 的面板裡就是放大
               // 4.1 倍 —— 字級、線寬、間距全部跟著爆掉。實測
-              // `an-operator-smf-trace.pcap` 正是這個情況。
+              // 一份網元匯出的 SMF trace 實測正是這個情況。
               // 改成畫在它自己的尺寸上，容器已經有 overflow-x-auto 會捲。
               <svg
                 viewBox={`0 0 ${width} ${height}`}
