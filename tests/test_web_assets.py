@@ -345,3 +345,34 @@ def test_the_ui_reads_the_invisibility_counters() -> None:
     app = (_WEB / "src" / "App.tsx").read_text(encoding="utf-8")
     assert "invisible" in app, "App.tsx 沒有呈現 invisible"
     assert "已加密" in app, "橫幅沒有講出「加密」這件事"
+
+
+# ── 授權：打包進 app.js 的每個套件都要在 NOTICE 裡（轉 public 前置，2026-08-22）──
+
+
+def test_every_bundled_dependency_is_credited_in_notice() -> None:
+    """`web/package.json` 的每個 runtime 相依都必須出現在 `NOTICE`。
+
+    `telcoshark/static/app.js` 是 Vite 打包產物，**進版控且隨 pip 套件散布**。
+    MIT／ISC 的唯一對價是「著作權聲明隨實質部分散布」—— 打包會把原始
+    LICENSE 檔剝掉，所以那些聲明只能靠 `NOTICE` 帶出去。
+
+    漏列的症狀完全靜默:build 成功、套件裝得起來、沒有任何工具會抱怨。
+    這條測試讓「加一個前端套件」這個動作**一定**得同時碰 NOTICE。
+
+    `scheduler` 不在 package.json 裡（它是 react-dom 的傳遞相依），但它
+    **確實**在 bundle 裡，所以單獨釘住。devDependencies 不打包、不列。
+    """
+    notice = (_REPO / "NOTICE").read_text(encoding="utf-8")
+    pkg = json.loads((_WEB / "package.json").read_text(encoding="utf-8"))
+    runtime = set(pkg["dependencies"]) | {"scheduler"}
+    assert len(runtime) >= 5, f"只找到 {len(runtime)} 個相依 —— 這條測試沒在驗東西"
+
+    missing = sorted(name for name in runtime if name not in notice)
+    assert not missing, (
+        f"這些套件打包進了 app.js 但 NOTICE 沒有列：{missing}\n"
+        "補上套件名、著作權人與授權全文 —— 那是 MIT/ISC 的散布條件。"
+    )
+    # 授權全文要真的在，不是只有名字。
+    assert "Permission is hereby granted, free of charge" in notice, "缺 MIT 全文"
+    assert "Permission to use, copy, modify, and/or distribute" in notice, "缺 ISC 全文"
