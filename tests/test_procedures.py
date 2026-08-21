@@ -238,3 +238,65 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
     doc = json.loads(out.read_text(encoding="utf-8"))
     assert doc["xdr_version"] == 1
     assert doc["procedures"], "一段程序都沒有 —— 端到端斷了"
+
+
+# ── 迴歸：ISSUE-002 —— 最後一段吸收到檔尾，duration 灌水 ──────────────
+# Found by /qa on 2026-08-22
+# Report: a local QA report
+
+
+def test_a_procedure_ends_at_the_quiet_period_after_its_outcome() -> None:
+    """程序在結局之後的安靜期收段，不吸收到檔尾。
+
+    **原本 `userplane` 的 PDU 建立報 17.414 秒，實際是 13 毫秒** —— 段一路
+    吸到 frame 602，中間全是心跳、NF 註冊與使用者面封包。差 1300 倍，而
+    數字看起來完全合理:「PDU 建立花了 17 秒」會讓人去追一個不存在的效能問題。
+
+    `duration` 是 xDR 的頭號欄位（「這次建立花多久」正是排障要問的），
+    所以這條盯的是**數量級**而不是精確值:亞秒級才對。
+    """
+    result = analyse(FIXTURES / "userplane" / "capture.pcap")
+    procs, _ = segment(result)
+    est = [p for p in procs if p.kind == "pdu-session-establishment"]
+    assert len(est) == 1
+    assert est[0].duration < 1.0, (
+        f"PDU 建立報 {est[0].duration:.3f}s —— 段吸收了程序結束後的流量"
+        f"（[{est[0].start_frame}-{est[0].end_frame}]）"
+    )
+
+
+def test_tail_messages_after_the_outcome_stay_in_their_procedure() -> None:
+    """**收段不能收過頭。** 結局之後的收尾（SMF 向 UDM 註冊、PCF 綁定）
+    在毫秒內到達，語意上屬於同一個程序。
+
+    `5gc-e2e` 的 PDU 建立:accept 在 frame 463，其後到 522 還有九則收尾。
+    段必須含到 522 —— 用結局當邊界會把它們丟進未指派堆，而使用者會看到
+    一個「建立完就沒事了」的假象。
+    """
+    result = analyse(FIXTURES / "5gc-e2e" / "capture.pcap")
+    procs, _ = segment(result)
+    est = [p for p in procs if p.kind == "pdu-session-establishment"][0]
+    assert est.end_frame >= 522, f"收尾被切掉了，段只到 {est.end_frame}"
+
+
+def test_a_long_gap_before_the_outcome_does_not_split_the_procedure() -> None:
+    """**結局之前的長間隔不收段** —— 那多半是 timer 在等（T3510 族 6–15 秒），
+    其後的重送屬於同一個程序。
+
+    收了會把一次有重試的註冊切成兩段，而兩段各自看起來都合理 ——
+    正是 §4 那一類。這是 `QUIET_GAP` 在兩種語境下的相反判讀，
+    測試把它釘住免得被「統一」掉。
+    """
+    from telcoshark.model import Flow
+
+    flow = Flow(messages=[
+        _msg(10, "InitialUEMessage ▸ Registration request"),
+        # timer 逾時，遠超過 QUIET_GAP —— 但結局還沒到，不准切。
+        _msg(11, "DownlinkNASTransport ▸ Authentication request"),
+        _msg(12, "InitialContextSetupResponse"),
+    ])
+    # 手動把時間拉開:frame 11 之後隔 9 秒才有 12。
+    flow.messages[2].ts = flow.messages[1].ts + 9.0
+    procs, stray = segment_flow(flow, capture_end=100.0)
+    assert len(procs) == 1, f"timer 等待被誤判成程序結束，切成 {len(procs)} 段"
+    assert not stray

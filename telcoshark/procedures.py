@@ -17,10 +17,23 @@ xDR）以程序為單位就是這個原因。
 整串背景訊息（heartbeat、別人的交換）誤吸進一個「程序」。v1 寧可把那些
 留在未指派堆，誠實計數。
 
-**② 段的邊界是「下一個開段訊息」，不是結局訊息。** 結局之後常有收尾
-（SMF 向 UDM 註冊、PCF 綁定），那些語意上屬於同一個程序 —— 用結局收窄
-視窗會把它們丟進未指派堆。實測 `5gc-e2e`：PDU 建立的 accept 在 frame 463，
-其後到 522 還有九則收尾。
+**② 段的邊界是「下一個開段訊息」，但結局之後遇到安靜期就收。**
+
+結局訊息本身不能當邊界 —— 其後常有收尾（SMF 向 UDM 註冊、PCF 綁定），
+語意上屬於同一個程序。實測 `5gc-e2e`：PDU 建立的 accept 在 frame 463，
+其後到 522 還有九則收尾，全在毫秒內。
+
+**但只用「下一個開段」也不行:一份擷取檔的最後一段會吸收到檔尾。**
+實測 `userplane`（2026-08-22 由 `/qa` 抓到）:PDU 建立實際花 13 毫秒
+（frame 318→439），而段一路吸到 frame 602，`duration` 報 **17.414 秒** ——
+中間全是心跳、NF 註冊與使用者面封包。差 1300 倍，而數字看起來完全合理:
+「PDU 建立花了 17 秒」會讓人去追一個不存在的效能問題。
+
+所以加第二個邊界:**看到結局之後，第一個超過 `QUIET_GAP` 的間隔就收段**。
+
+**結局之前不收** —— 那時的長間隔多半是 timer 在等（T3510 族是 6–15 秒級），
+其後的重送屬於同一個程序。收了會把一次有重試的註冊切成兩段，而兩段各自
+看起來都合理。這是同一個門檻在兩種語境下的相反判讀，寫下來免得被「統一」掉。
 
 **③ 同型開段訊息重複時合併，不另開新段。** 兩個原因都真實存在：
 SCP 轉送讓同一則 NAS 出現兩次（AMF→SCP 與 SCP→SMF 兩腿，`5gc-e2e` 的
@@ -61,6 +74,14 @@ from telcoshark.pdusession import PDU_SESSION_ID
 
 #: 「incomplete 且落在擷取結尾附近」的判定窗（秒），語意同 `flowtable.TAIL_SLACK`。
 TAIL_SLACK = 2.0
+
+#: 結局之後多久沒有訊息就算這段結束了（秒）。
+#:
+#: 與 `viewer.SLOW_GAP` 同一個物理事實 —— **信令的內部節奏是毫秒級**，
+#: 秒級空窗代表「這段沒事了」。刻意不 import 那個常數:呈現層的門檻是
+#: 「要不要標色給人看」，這裡是「段在哪裡結束」，兩者剛好同值但語意不同，
+#: 綁在一起的話日後調整其中一個會靜默改變另一個。
+QUIET_GAP = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,7 +218,18 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             procedures.append(_finish(active_kind, window, supi, capture_end))
         active_kind, window = None, []
 
+    def _outcome_seen() -> bool:
+        """視窗裡已經出現過收段訊息了嗎。"""
+        assert active_kind is not None
+        return any(any(s in m.label for s in active_kind.success) for m in window)
+
     for msg in flow.messages:
+        # **結局之後的安靜期＝這段結束。** 沒有這一段，一份擷取檔的最後一段
+        # 會吸收到檔尾，`duration` 因此嚴重灌水（見檔頭規則 ②）。
+        if active_kind is not None and window and _outcome_seen():
+            if msg.ts - window[-1].ts > QUIET_GAP:
+                close()
+
         opened = _opens(msg)
         if opened is not None:
             # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段。
@@ -242,4 +274,4 @@ def segment(analysis: Analysis) -> tuple[list[Procedure], int]:
     return procedures, stray
 
 
-__all__ = ["KINDS", "Procedure", "capture_end", "segment", "segment_flow", "TAIL_SLACK"]
+__all__ = ["KINDS", "Procedure", "QUIET_GAP", "capture_end", "segment", "segment_flow", "TAIL_SLACK"]
