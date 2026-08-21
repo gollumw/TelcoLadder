@@ -58,6 +58,7 @@
 from __future__ import annotations
 
 import re
+import struct
 import subprocess
 from pathlib import Path
 
@@ -100,8 +101,12 @@ _KNOWN_CAPTURES = {
 #: 東西報兩次，而且它是 minified，行號指不到任何有意義的地方。原始碼那側
 #: 照掃，所以覆蓋沒有缺口。
 #:
-#: 二進位擷取檔本來就讀不成文字。**fixture 的 pcap 不需要豁免** ——
-#: 它們的內容出自測試床，本來就是 `00101…`。
+#: 二進位擷取檔的**封包內容**讀不成文字，而且它們出自測試床，本來就是 `00101…`。
+#:
+#: **但「讀不成文字」這句話只對封包內容成立。** pcapng 的檔頭放得下字串，
+#: 而 `mergecap` 曾經把來源檔的絕對路徑寫了進去（T-PCAPMETA，2026-08-22）——
+#: 前三道網因為這個豁免全部看不見它。檔頭由本檔最後一條測試單獨掃，
+#: 只走非封包區塊，所以不會被封包裡的隨機位元組淹沒。
 _SKIP_SUFFIXES = {".pcap", ".pcapng", ".cap", ".png", ".jpg", ".ico"}
 _SKIP_PATHS = {"telcoladder/static/app.js", "telcoladder/static/app.css"}
 
@@ -330,4 +335,95 @@ def test_the_pull_request_template_carries_the_same_rule() -> None:
     assert boxes, "PR 範本沒有任何 checklist"
     assert "real" in boxes[0].lower() and "data" in boxes[0].lower(), (
         f"PR checklist 第一條不是資料紅線：{boxes[0]!r}"
+    )
+
+
+# ── 第四道網：擷取檔的檔頭 metadata（T-PCAPMETA，2026-08-22）─────────────
+#
+# 前三道網都跳過 `.pcap`，理由寫在 `_SKIP_SUFFIXES` 上：「二進位擷取檔本來就
+# 讀不成文字」。**那句話對封包內容成立，對檔頭不成立。**
+#
+# pcapng 的 Section Header Block 帶著製作工具寫進去的選項，而 `mergecap` 會把
+# 來源檔清單原樣寫進去 —— 於是三份 fixture 的檔頭裡躺著
+# `/Users/<使用者名稱>/…/part-amf.pcap`。`strings capture.pcap | grep /Users`
+# 就看得到，不需要任何工具。2026-08-22 改名時順手發現的，**不是被任何一層抓到的**。
+
+_PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
+#: 封包區塊的型別：Packet(2, 已廢棄)、Simple Packet(3)、Enhanced Packet(6)。
+#: 這幾個的內容是線路上的位元組，掃它們只會得到滿滿的誤判。
+_PACKET_BLOCKS = {2, 3, 6}
+
+#: 絕對路徑的形狀。**這是從實際發生的洩漏逼出來的**，不是猜的。
+#: 檔頭裡容得下的識別資訊裡，路徑是唯一有穩定形狀的一種。
+_ABSOLUTE_PATH = re.compile(rb"(/Users/|/home/|/root/|[A-Za-z]:\\Users\\)")
+
+
+def _metadata_bytes(path: Path) -> bytes:
+    """一個擷取檔裡**不是封包內容**的那些位元組。
+
+    classic pcap（`d4c3b2a1` 等魔數）的檔頭是 24 個位元組的純數值欄位，
+    放不下字串 —— 回空，沒有東西要掃。
+
+    pcapng 走區塊走訪，把封包區塊整個跳掉。剩下的是 SHB / IDB / NRB /
+    DSB 之類的 metadata，那才是工具寫東西進去的地方。
+    """
+    raw = path.read_bytes()
+    if raw[:4] != _PCAPNG_MAGIC:
+        return b""
+
+    # 位元組序由 SHB 的 byte-order magic 決定，兩種都要接。
+    endian = "<" if raw[8:12] == b"\x4d\x3c\x2b\x1a" else ">"
+    out, offset = bytearray(), 0
+    while offset + 12 <= len(raw):
+        block_type, total = struct.unpack_from(endian + "II", raw, offset)
+        # 長度不合理就停 —— 寧可少掃也不要無限迴圈或讀出界。
+        if total < 12 or offset + total > len(raw):
+            break
+        if block_type not in _PACKET_BLOCKS:
+            out += raw[offset:offset + total]
+        offset += total
+    return bytes(out)
+
+
+def test_no_absolute_paths_in_capture_file_metadata() -> None:
+    """擷取檔的檔頭不得帶著製作機器的絕對路徑。
+
+    紅了代表某份 fixture 是 `mergecap` 合出來的而沒有清掉來源清單。修法：
+
+        editcap --discard-capture-comment in.pcap out.pcap
+
+    那個動作**不動任何封包** —— 已用 oracle 驗過（`tshark -r … -x` 的雜湊、
+    時戳、長度、封包數、封裝格式在前後完全相同）。
+
+    ## 這條守不住什麼，講明白
+
+    它只認**絕對路徑**。SHB 裡還留著 `shb_os`（`macOS 26.5.2, build …`）與
+    `shb_userappl`（`Mergecap (Wireshark) 4.4.9`）—— 那是**刻意留的**：幾乎每份
+    擷取檔都有，而且它與 `scenario.md` 的「自產」宣告互相佐證。洩漏的是路徑，
+    不是工具版本。
+
+    主機名、使用者名稱若以其他形式出現（例如 NRB 的名稱解析紀錄），這條認不出來。
+    """
+    captures = sorted(REPO.glob("tests/fixtures/*/capture.pcap*"))
+    assert len(captures) >= 8, f"只找到 {len(captures)} 份 fixture —— 這條測試沒在驗東西"
+
+    offenders: list[str] = []
+    scanned_pcapng = 0
+    for path in captures:
+        meta = _metadata_bytes(path)
+        if not meta:
+            continue  # classic pcap：檔頭放不下字串
+        scanned_pcapng += 1
+        found = {m.group(1).decode("ascii", "replace") for m in _ABSOLUTE_PATH.finditer(meta)}
+        if found:
+            # 印前綴就好，不要把整條路徑印進 CI log。
+            offenders.append(f"{path.relative_to(REPO)} → {sorted(found)}")
+
+    assert scanned_pcapng, (
+        "沒有任何 pcapng fixture 被掃到 —— 區塊走訪可能壞了，這條測試會靜默通過"
+    )
+    assert not offenders, (
+        "擷取檔的檔頭帶著製作機器的絕對路徑：\n  "
+        + "\n  ".join(offenders)
+        + "\n\n修法：editcap --discard-capture-comment in.pcap out.pcap"
     )
