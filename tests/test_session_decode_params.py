@@ -5,7 +5,8 @@
 （`matching_frames`）。**四條路徑用不同參數，就是同一份檔的四個答案**，
 而使用者只會看到其中一個。
 
-實測的症狀（`Demo_Case/ue_trace…`，不進版控）：`Session.decode_as` 從來
+實測的症狀（一份網元匯出的 per-IMSI trace，不進版控；本檔以
+`tests/fixtures/ne-trace/` 重現同一個病理）：`Session.decode_as` 從來
 沒有人設過，是空的 tuple —— 連 adapter 自己宣告的 `DECODE_AS` 都沒生效。
 於是 356 格裡有 **169 格（47%）** 在封包清單上顯示為未解碼的「TCP」，
 而它們全部都是 HTTP/2 SBI，其中包含帶 NAS-5GS/NGAP 的 20 格與一則
