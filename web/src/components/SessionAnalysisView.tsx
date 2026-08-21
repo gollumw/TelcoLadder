@@ -336,7 +336,17 @@ export function SessionAnalysisView({
                   onClick={() => setActiveProcedure(null)}
                   className={cn(
                     "rounded border px-2 py-1 text-[11px] font-medium",
-                    activeProcedure === null
+                    // **看 `current` 不看 `activeProcedure`** —— 兩者在換訂戶時會分家:
+                    // `activeProcedure` 存的是 frame 編號，換人之後那個編號不在新訂戶
+                    // 的段裡，`current` 於是變 null（畫面顯示全部），而 `activeProcedure`
+                    // 還留著舊值。用後者判斷的話**沒有任何按鈕會亮**，畫面顯示全部卻
+                    // 說不出自己在顯示什麼。
+                    //
+                    // 目前這個分家走不到 —— 切回 Data Mining 會讓整個 view unmount，
+                    // state 跟著沒了（實測換人後正確亮「全部」）。但那是**副作用**，
+                    // 不是保證:哪天在這個畫面裡加一個訂戶切換器（NSA 有），
+                    // 它就會靜默壞掉。看推導出來的 `current` 則與 unmount 無關。
+                    current === null
                       ? "border-sky-500 bg-sky-500/15 text-sky-300"
                       : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
                   )}
@@ -361,7 +371,7 @@ export function SessionAnalysisView({
                     }
                     className={cn(
                       "rounded border px-2 py-1 text-[11px] font-medium",
-                      activeProcedure === p.startFrame
+                      current?.startFrame === p.startFrame
                         ? "border-sky-500 bg-sky-500/15 text-sky-300"
                         : OUTCOME_STYLE[p.outcome],
                     )}
