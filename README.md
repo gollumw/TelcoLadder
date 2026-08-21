@@ -214,18 +214,20 @@ the large-capture path works with scripting turned off.
   gNB. Keying on (address, TEID) merges them — flow counts drop from 9 to 7 on
   `5gc-e2e` and 25 to 15 on `multi-imsi`. The address matters: one capture had
   two different endpoints both using TEID 3.
-  **The user plane itself (N3, GTP-U) is still unread** — see the next entry.
+  The same key now also joins the **user plane**: see the next entry.
 - **Failure highlighting is verified against real testbed captures**, not
   synthetic ones — see `tests/fixtures/`, where each scenario ships the
   core-network log that independently confirms the cause code. What is *not*
   covered is the long tail: the cause table holds the codes we have actually
   seen, and anything else prints "尚未收錄" rather than a guess.
-- **There is no GTP-U adapter.** N4 tells you a tunnel was set up; nothing here
-  reads what went through it. This is blocked on data, not on design: every
-  capture we have was taken at the signalling points, so there is not a single
-  GTP-U frame in the fixtures to verify an adapter against. Writing one without
-  a capture to check it would produce exactly the kind of confidently-wrong
-  output this tool exists to avoid.
+- **GTP-U joins the subscriber, but carries no KPIs yet.** The `gtp` adapter
+  (2026-08-21) keys each packet on (destination address, TEID) — the same
+  `gtp_tunnel()` the signalling side emits — so user-plane packets land in the
+  right subscriber's flow, QFI included (verified against a testbed capture
+  where the N3 TEID is byte-for-byte the one NGAP promised, and the message
+  count is cross-checked against tshark). What it does *not* do yet is
+  aggregate: no throughput, no sequence-gap loss, no Echo RTT. Every G-PDU is
+  one row — honest, but heavy user-plane captures will want `--since/--until`.
 - **NAS after Security Mode Command is encrypted** and its content is invisible.
   Those packets still appear as their NGAP carrier. This is how the network
   works, not a parsing failure.

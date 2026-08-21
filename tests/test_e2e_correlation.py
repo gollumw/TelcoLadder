@@ -103,13 +103,17 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
     `DISPLAY_FILTER` 漏了、或協定跑在非標準 port 而沒宣告 `DECODE_AS`，
     它就一格都收不到 —— **而且完全不報錯**。
 
-    這份擷取檔刻意四種協定都含（N2 的 NGAP 與內嵌 NAS、SBI、N4 的 PFCP），
-    所以「零命中」一定是 adapter 壞了，不是擷取檔不對。
+    `5gc-e2e` 刻意四種信令協定都含（N2 的 NGAP 與內嵌 NAS、SBI、N4 的
+    PFCP）；GTP-U 只存在於 `userplane`（信令 fixture 產生時 N3 不在擷取
+    範圍）。兩份合起來，每個內建 adapter 都有一份**已知含它協定**的檔案 ——
+    「零命中」因此一定是 adapter 壞了，不是擷取檔不對。
     """
     counts = {a.NAME: 0 for a in BUILTIN_ADAPTERS}
-    for frame in read_frames(e2e_pcap):
-        for message in parse_frame(frame):
-            counts[message.protocol] = counts.get(message.protocol, 0) + 1
+    userplane = e2e_pcap.parent.parent / "userplane" / "capture.pcap"
+    for pcap in (e2e_pcap, userplane):
+        for frame in read_frames(pcap):
+            for message in parse_frame(frame):
+                counts[message.protocol] = counts.get(message.protocol, 0) + 1
 
     silent = [name for name, n in counts.items() if n == 0]
     assert not silent, (

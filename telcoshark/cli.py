@@ -97,8 +97,8 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         # 空結果要講清楚是「這個檔沒有信令」而不是「工具壞了」（Rule 12）。
         print(
             f"{args.pcap.name} 裡沒有找到任何 5G 信令訊息。\n"
-            f"目前支援 NGAP / NAS-5GS / PFCP / HTTP-2 SBI；"
-            f"若擷取內容是使用者面或加密的 SBI，本工具看不到。",
+            f"目前支援 NGAP / NAS-5GS / PFCP / HTTP-2 SBI / GTP-U；"
+            f"若擷取內容是加密的 SBI，本工具看不到內層。",
             file=sys.stderr,
         )
         return 1
