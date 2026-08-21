@@ -40,7 +40,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -812,6 +815,48 @@ def make_server(
     return server
 
 
+@contextmanager
+def _sigterm_as_keyboard_interrupt() -> Iterator[None]:
+    """把 SIGTERM 導進 Ctrl-C 那條路，好讓 `serve()` 的 `finally` 真的跑得到。
+
+    **Python 對 SIGTERM 的預設處置是當場結束行程** —— 不丟例外，於是
+    `finally` 與 `atexit` 都不會跑。換句話說在這條處理裝上之前，
+    `kill -TERM` 的清理效果等同 `kill -9`：實測留下 7 個
+    `telcoshark-session-*.pcap`，那是客戶封包（見 `CLAUDE.md` §2.1）。
+    而 `serve()` 裡那句「這是唯一保證會跑到的清理點」的註解讓人以為
+    已經處理了 —— 沒有任何一層會說話。
+
+    **必須是 raise，不能在處理器裡呼叫 `server.shutdown()`**：
+    處理器跑在主執行緒上，而 `shutdown()` 會等 `serve_forever()` 的迴圈
+    自己結束 —— 那個迴圈正被這個處理器擋著，直接死鎖。
+
+    **處理器先把處置恢復成預設再 raise。** 這樣清理途中再來一次 SIGTERM
+    是當場結束（跟裝這條之前一樣），而不是從 `finally` 中間再拋一次例外
+    把清理攔腰砍斷。
+
+    Windows 允許註冊 SIGTERM 但不會用同一套機制送達（`TerminateProcess`
+    不經訊號），所以那裡註冊了也等於沒有 —— 無害，故不特別分支。
+    回收測試也因此只在 POSIX 上跑。
+    """
+
+    def _raise(signum, frame) -> None:  # noqa: ARG001 —— 簽章由 signal 決定
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        raise KeyboardInterrupt
+
+    try:
+        previous = signal.signal(signal.SIGTERM, _raise)
+    except ValueError:
+        # 不在主執行緒 —— `signal.signal()` 只能在主執行緒註冊。這條路徑
+        # （例如測試把伺服器包進 thread）本來就有自己的清理，放棄註冊
+        # 而不是炸掉。
+        yield
+        return
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def serve(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
@@ -839,16 +884,19 @@ def serve(
                 print(f"    {path}")
             print("  那是客戶封包。確認不需要之後請自行刪除 —— 本工具不會替你刪。\n")
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n收工。")
-    finally:
-        server.shutdown()
-        # **先清工作階段再關 socket。** 這是唯一保證會跑到的清理點
-        # （atexit 也掛了一份，但那條在 kill -9 下同樣不會跑）。
-        store = getattr(server, "store", None)
-        if store is not None:
-            store.close_all()
-        server.server_close()
+    with _sigterm_as_keyboard_interrupt():
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\n收工。")
+        finally:
+            server.shutdown()
+            # **先清工作階段再關 socket。** 這是唯一保證會跑到的清理點 ——
+            # 前提是行程真的走得到這裡，而 Ctrl-C 與 SIGTERM 兩條路都靠
+            # 上面那個 context manager 才成立（atexit 也掛了一份，但那條在
+            # `kill -9` 下同樣不會跑）。
+            store = getattr(server, "store", None)
+            if store is not None:
+                store.close_all()
+            server.server_close()
     return 0

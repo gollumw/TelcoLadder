@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -350,6 +352,70 @@ def test_serve_cleans_up_sessions_on_exit() -> None:
     serve_src = body[body.index("def serve("):]
     assert "close_all()" in serve_src, "serve() 沒有清理工作階段"
     assert "finally:" in serve_src, "清理不在 finally 裡 —— 例外路徑會漏"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows 不用訊號送 SIGTERM（TerminateProcess 不經處理器），沒得測",
+)
+def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
+    """`kill -TERM` 之後暫存目錄必須是空的。
+
+    **這條要真的開一個行程、真的送訊號、真的量暫存目錄**，因為上面那條
+    原始碼檢查對這個 bug 是**空轉通過**的：`finally` 一直都寫著
+    `close_all()`，只是 Python 對 SIGTERM 的預設處置會當場結束行程，
+    誰都跑不到。實測留下 7 個 `telcoshark-session-*.pcap` —— 客戶封包
+    （`CLAUDE.md` §2.1），而畫面上沒有任何異狀。
+
+    子行程給自己的 `TMPDIR`：斷言才能是「這個目錄一個都不剩」這種絕對
+    值，而不是跟全域暫存目錄比差集。順帶讓這條測試不會被別的行程干擾。
+    """
+    sandbox = tmp_path / "tmpdir"
+    sandbox.mkdir()
+    env = {**os.environ, "TMPDIR": str(sandbox), "PYTHONIOENCODING": "utf-8"}
+    # port 0 讓 OS 配一個沒人用的 —— 先挑再開會有競態。真正的 port 從
+    # `serve()` 自己印出來的那行讀回來，所以子行程要 `-u`（不然 print
+    # 進 pipe 是整批緩衝，這裡會空等到逾時）。
+    child = subprocess.Popen(
+        [sys.executable, "-u", "-c",
+         "import sys; from telcoshark.web import serve;"
+         " sys.exit(serve('127.0.0.1', 0))"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
+    )
+    try:
+        banner = child.stdout.readline()
+        match = re.search(r"http://([\d.]+):(\d+)", banner)
+        assert match, f"`serve()` 沒有印出綁定位址，拿到：{banner!r}"
+        server = (match.group(1), int(match.group(2)), None)
+
+        status, body, _ = _request(
+            server, "/open-upload", method="POST", body=FIXTURE.read_bytes(),
+            headers={"Content-Type": "application/octet-stream",
+                     "X-TelcoShark-Filename": "sigterm-probe.pcap"},
+        )
+        assert status == 200, body
+        uploaded = sorted(sandbox.glob(f"{SESSION_PREFIX}*"))
+        assert len(uploaded) == 1, f"上傳沒有留下剛好一個暫存檔：{uploaded}"
+
+        child.send_signal(signal.SIGTERM)
+        try:
+            output = child.communicate(timeout=30)[0]
+        except subprocess.TimeoutExpired:
+            child.kill()
+            pytest.fail("SIGTERM 之後 30 秒還沒結束 —— 清理路徑卡住了")
+    finally:
+        if child.poll() is None:  # 上面任何一步炸掉都不要留下孤兒行程
+            child.kill()
+            child.wait(timeout=10)
+
+    leftover = sorted(sandbox.glob(f"{SESSION_PREFIX}*"))
+    assert not leftover, (
+        f"SIGTERM 之後還留著上傳的擷取檔：{leftover}\n"
+        f"子行程輸出：\n{output}"
+    )
+    assert child.returncode == 0, f"結束碼 {child.returncode}，輸出：\n{output}"
 
 
 def test_two_sessions_on_one_pcap_get_different_ids(server) -> None:
