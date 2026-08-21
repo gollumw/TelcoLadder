@@ -235,7 +235,7 @@ export interface CallFlowEventJson {
   name: string;
   protocol: string;
   /** 參考點代號（N1／N2／N11…）。**推不出來時是 null** —— 後端刻意留空
-   *  而不是猜一個（`telcoshark/interfaces.py`）。 */
+   *  而不是猜一個（`telcoladder/interfaces.py`）。 */
   interface: string | null;
   domain: TelecomDomain | null;
   status: "SUCCESS" | "ERROR";

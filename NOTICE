@@ -1,4 +1,4 @@
-TelcoShark
+TelcoLadder
 Copyright (c) 2026 gollumw
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -7,7 +7,7 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party software redistributed with this product
 ================================================================================
 
-The browser interface (telcoshark/static/app.js and app.css) is a compiled
+The browser interface (telcoladder/static/app.js and app.css) is a compiled
 bundle built from web/ with Vite. It contains the following third-party
 packages, which are redistributed here under their own licences. The
 copyright notices and licence texts below are reproduced as those licences
@@ -72,18 +72,18 @@ telekom/5g-trace-visualizer (Apache License 2.0, Copyright Deutsche Telekom AG).
 See tests/fixtures/http2-multistream/scenario.md for provenance.
 
 All other captures under tests/fixtures/ were generated on a local
-Open5GS + UERANSIM testbed by the TelcoShark authors and are covered by this
+Open5GS + UERANSIM testbed by the TelcoLadder authors and are covered by this
 product's Apache License 2.0.
 
 ================================================================================
 Standards
 ================================================================================
 
-Cause names and clause references in telcoshark/data/causes/*.yaml are cited
+Cause names and clause references in telcoladder/data/causes/*.yaml are cited
 from 3GPP Technical Specifications for the purpose of interoperability.
 3GPP is a trademark of ETSI. The accompanying plain-language explanations are
-original work of the TelcoShark authors and are not part of any specification.
+original work of the TelcoLadder authors and are not part of any specification.
 
-TelcoShark is not affiliated with or endorsed by the Wireshark Foundation.
-Wireshark and tshark are trademarks of their respective owners; TelcoShark
+TelcoLadder is not affiliated with or endorsed by the Wireshark Foundation.
+Wireshark and tshark are trademarks of their respective owners; TelcoLadder
 invokes tshark as an external, separately installed program.

@@ -30,11 +30,11 @@
 
 from __future__ import annotations
 
-from telcoshark.correlate import correlate
-from telcoshark.extract import Frame
-from telcoshark.lifecycle import apply as apply_lifecycle
-from telcoshark.identity import connection_scope, globally_unique, gtp_tunnel, scoped
-from telcoshark.model import Endpoint, IdKey, IdKind, Message
+from telcoladder.correlate import correlate
+from telcoladder.extract import Frame
+from telcoladder.lifecycle import apply as apply_lifecycle
+from telcoladder.identity import connection_scope, globally_unique, gtp_tunnel, scoped
+from telcoladder.model import Endpoint, IdKey, IdKind, Message
 
 #: 兩端。內容不重要 —— 這些測試驗的是 key 的併流行為，不是拓撲。
 _A = Endpoint("10.0.0.1", role="gNB")
@@ -326,7 +326,7 @@ def test_the_adapters_declare_releases_on_a_real_capture(e2e_pcap) -> None:
     **同時守「是 Response 不是 Request」。** Request 只是「請你刪」，可能被
     拒絕；依它切分等於在 session 還活著時把一個人的流程切成兩半。
     """
-    from telcoshark.pipeline import analyse
+    from telcoladder.pipeline import analyse
 
     result = analyse(e2e_pcap)
     declaring = [m for f in result.flows for m in f.messages if m.releases]
@@ -363,7 +363,7 @@ def test_a_capture_without_reuse_is_completely_unaffected(e2e_pcap) -> None:
     「行為完全不變」。**這條紅了代表切過頭** —— 在沒有第二次配發的地方
     憑空製造了 episode，而那會把一個人的流程斷成兩半。
     """
-    from telcoshark.pipeline import analyse
+    from telcoladder.pipeline import analyse
 
     result = analyse(e2e_pcap)
     rewritten = sorted(

@@ -1,6 +1,6 @@
 """擷取檔形狀偵測，以及據此自動重跑。
 
-背景在 `telcoshark/probe.py` 的模組說明與 `tests/fixtures/ne-trace/scenario.md`：
+背景在 `telcoladder/probe.py` 的模組說明與 `tests/fixtures/ne-trace/scenario.md`：
 第一份真實封包裡，全部的 SBI 流量與 15 則 HTTP 404 因為兩個**不會報錯**的
 原因整個消失，而工具回報「187 則訊息」，看起來一切正常。
 
@@ -22,10 +22,10 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters.sbi import _sm_context_ref
-from telcoshark.pipeline import analyse
-from telcoshark.probe import MIN_FRAMES_FOR_SYNTHETIC_SEQ, inspect
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.adapters.sbi import _sm_context_ref
+from telcoladder.pipeline import analyse
+from telcoladder.probe import MIN_FRAMES_FOR_SYNTHETIC_SEQ, inspect
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)

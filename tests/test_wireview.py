@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.extract import read_frames
-from telcoshark.model import CauseRef, Endpoint, Flow, Message
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
-from telcoshark.wireview import collapse
+from telcoladder.extract import read_frames
+from telcoladder.model import CauseRef, Endpoint, Flow, Message
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
+from telcoladder.wireview import collapse
 
 FIXTURES = Path(__file__).parent / "fixtures"
 KI_MISMATCH = FIXTURES / "ki-mismatch" / "capture.pcap"
@@ -148,10 +148,10 @@ def test_different_directions_in_one_frame_are_not_glued_together():
 
 def _events(pcap):
     """跑一份擷取檔，回它第一個訂戶的梯形圖事件。"""
-    from telcoshark.adapters import default_decode_as
-    from telcoshark.model import IdKind
-    from telcoshark.session import Session, _index_into
-    from telcoshark.viewer import callflow_json
+    from telcoladder.adapters import default_decode_as
+    from telcoladder.model import IdKind
+    from telcoladder.session import Session, _index_into
+    from telcoladder.viewer import callflow_json
 
     session = Session(
         sid="wv", pcap=pcap, display_name=pcap.name, owns_file=False, wire=True
@@ -175,7 +175,7 @@ def test_slow_gap_is_flagged():
     **兩邊都要驗** —— 只驗「慢的有標」的話，一個「全部都標」的實作照樣綠，
     而全部標色等於沒有標色。
     """
-    from telcoshark.viewer import SLOW_GAP
+    from telcoladder.viewer import SLOW_GAP
 
     assert 2.5 > SLOW_GAP, "2.5 秒不算慢？門檻被調成比 timer 還大了"
     assert not 0.003 > SLOW_GAP, "3 毫秒算慢的話，每一列都會標色"

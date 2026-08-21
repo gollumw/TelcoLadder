@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)

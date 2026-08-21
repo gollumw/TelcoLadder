@@ -13,12 +13,12 @@ from __future__ import annotations
 import pytest
 from conftest import require_capture
 
-from telcoshark.adapters import default_decode_as
-from telcoshark.interfaces import reference_point
-from telcoshark.model import IdKind
-from telcoshark.nf import PARTICIPANT_ORDER
-from telcoshark.session import Session, _index_into
-from telcoshark.viewer import callflow_json
+from telcoladder.adapters import default_decode_as
+from telcoladder.interfaces import reference_point
+from telcoladder.model import IdKind
+from telcoladder.nf import PARTICIPANT_ORDER
+from telcoladder.session import Session, _index_into
+from telcoladder.viewer import callflow_json
 
 
 def _session(pcap, *, wire: bool) -> Session:
@@ -278,7 +278,7 @@ def test_procedures_do_not_overlap(wire_flow) -> None:
 def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
     """失敗的段要同時帶終端 cause 與起因 —— 畫面在段的層級講一次，
     使用者不必自己找哪支箭是紅的。"""
-    from telcoshark.viewer import callflow_json
+    from telcoladder.viewer import callflow_json
 
     session = _session(e2e_pcap.parent.parent / "ki-mismatch" / "capture.pcap", wire=True)
     flow = callflow_json(session, _a_supi(session))

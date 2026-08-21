@@ -17,8 +17,8 @@ import subprocess
 
 import pytest
 
-from telcoshark.extract import read_frames
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.extract import read_frames
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 

@@ -18,26 +18,26 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters import (
+from telcoladder.adapters import (
     adapters,
     carrier_blocks,
     carrier_keys_from,
     carriers_of,
     default_decode_as,
 )
-from telcoshark.adapters import sbi as sbi_adapter
-from telcoshark.adapters.nas5gs import _MAX_DIG_DEPTH, _dig, _nas_blocks
-from telcoshark.adapters.nas5gs import NAME as NAS
-from telcoshark.correlate import correlate
-from telcoshark.extract import read_frames
-from telcoshark.model import IdKind
-from telcoshark.tshark import find_tshark
+from telcoladder.adapters import sbi as sbi_adapter
+from telcoladder.adapters.nas5gs import _MAX_DIG_DEPTH, _dig, _nas_blocks
+from telcoladder.adapters.nas5gs import NAME as NAS
+from telcoladder.correlate import correlate
+from telcoladder.extract import read_frames
+from telcoladder.model import IdKind
+from telcoladder.tshark import find_tshark
 
 
 def _tshark_nested_nas_count(pcap: Path) -> int:
     """獨立 oracle：直接問 tshark 有幾格帶著 SBI 夾帶的 NAS。
 
-    刻意不重用 `telcoshark.extract` —— 用同一條程式碼算兩次不叫交叉驗證。
+    刻意不重用 `telcoladder.extract` —— 用同一條程式碼算兩次不叫交叉驗證。
     """
     tshark = find_tshark()
     proc = subprocess.run(
@@ -158,7 +158,7 @@ def test_dig_needs_exactly_one_intermediate_layer(e2e_pcap: Path) -> None:
 
 def _dig_with_limit(node, target, limit):
     """複製 `_dig` 的語意但可指定上限 —— 只給上面那條測試用。"""
-    import telcoshark.adapters.nas5gs as mod
+    import telcoladder.adapters.nas5gs as mod
 
     original = mod._MAX_DIG_DEPTH
     mod._MAX_DIG_DEPTH = limit
@@ -194,7 +194,7 @@ def test_sbi_carrier_keys_match_what_parse_produces(e2e_pcap: Path) -> None:
 
 def test_carrier_keys_without_imsi_field_still_works() -> None:
     """舊版 tshark 不產 `e212_e212_assoc_imsi` 時，只剩 stream 鍵 —— 不是壞掉。"""
-    from telcoshark.extract import Frame
+    from telcoladder.extract import Frame
 
     frame = Frame(
         number=1, ts=0.0, src_ip="10.0.0.1", dst_ip="10.0.0.2",
@@ -206,7 +206,7 @@ def test_carrier_keys_without_imsi_field_still_works() -> None:
 
 
 def test_carrier_keys_picks_up_sibling_imsi() -> None:
-    from telcoshark.extract import Frame
+    from telcoladder.extract import Frame
 
     frame = Frame(
         number=1, ts=0.0, src_ip="10.0.0.1", dst_ip="10.0.0.2",
@@ -284,7 +284,7 @@ def test_correlation_keeps_reducing_the_flow_count(
     哪些階段、每一階段值多少」就沒有依據了。而那正是這個工具賣的東西 ——
     關聯做得好不好要拿得出數字。
     """
-    from telcoshark.adapters import parse_frame
+    from telcoladder.adapters import parse_frame
 
     pcap = Path(__file__).parent / "fixtures" / fixture_name / "capture.pcap"
     messages = []
@@ -299,7 +299,7 @@ def test_correlation_keeps_reducing_the_flow_count(
 
 def test_nas_blocks_are_deduplicated() -> None:
     """同一個區塊經兩條路取得只能算一次 —— 多算一則訊息不會報錯。"""
-    from telcoshark.extract import Frame
+    from telcoladder.extract import Frame
 
     shared = {"nas-5gs_nas-5gs_mm_message_type": "0x41"}
     # 同一個物件同時掛在 ngap 底下與頂層
@@ -315,7 +315,7 @@ def test_nas_blocks_are_deduplicated() -> None:
 
 def test_carrier_blocks_uses_the_layer_not_the_name() -> None:
     """`carrier_blocks` 走 `CARRIER_LAYER` —— 用錯會一格都收不到而且不報錯。"""
-    from telcoshark.extract import Frame
+    from telcoladder.extract import Frame
 
     frame = Frame(
         number=1, ts=0.0, src_ip="10.0.0.1", dst_ip="10.0.0.2",
@@ -334,8 +334,8 @@ def test_borrowed_identity_is_recorded(multi_imsi_pcap: Path) -> None:
     「這則訊息屬於某訂戶」與「我們是怎麼知道的」是兩回事，而後者決定了
     使用者要不要相信前者。這是資料，一律記錄。
     """
-    from telcoshark.model import IDENTITY_SOURCE_KEY
-    from telcoshark.pipeline import analyse
+    from telcoladder.model import IDENTITY_SOURCE_KEY
+    from telcoladder.pipeline import analyse
 
     analysis = analyse(multi_imsi_pcap)
     tagged = [
@@ -348,8 +348,8 @@ def test_borrowed_identity_is_recorded(multi_imsi_pcap: Path) -> None:
 
 def test_nas_with_its_own_supi_is_not_tagged(registration_pcap: Path) -> None:
     """NAS 自己抽得出 SUPI 時不標 —— 那不是借來的，標了只是雜訊。"""
-    from telcoshark.model import IDENTITY_SOURCE_KEY
-    from telcoshark.pipeline import analyse
+    from telcoladder.model import IDENTITY_SOURCE_KEY
+    from telcoladder.pipeline import analyse
 
     analysis = analyse(registration_pcap)
     for flow in analysis.flows:
@@ -375,10 +375,10 @@ def test_the_ladder_says_where_a_borrowed_identity_came_from(
     這條會紅的兩種情況都是靜默的：adapter 不再寫那個鍵（身分繼承斷了），
     或 `callflow_json` 不再讀它（依據消失但圖照畫）。
     """
-    from telcoshark.adapters import default_decode_as
-    from telcoshark.model import IDENTITY_SOURCE_KEY, IdKind
-    from telcoshark.session import Session, _index_into
-    from telcoshark.viewer import callflow_json
+    from telcoladder.adapters import default_decode_as
+    from telcoladder.model import IDENTITY_SOURCE_KEY, IdKind
+    from telcoladder.session import Session, _index_into
+    from telcoladder.viewer import callflow_json
 
     session = Session(
         sid="cp", pcap=multi_imsi_pcap, display_name="x", owns_file=False, wire=True
@@ -413,11 +413,11 @@ def test_the_ladder_says_where_a_borrowed_identity_came_from(
 
 def test_to_int_is_defined_exactly_once() -> None:
     """五份複本整併成一份。重複的風險不是醜，是**行為悄悄分岔**。"""
-    import telcoshark.adapters.nas5gs as nas
-    import telcoshark.adapters.ngap as ngap
-    import telcoshark.adapters.pfcp as pfcp
-    import telcoshark.adapters.sbi as sbi
-    from telcoshark.extract import to_int
+    import telcoladder.adapters.nas5gs as nas
+    import telcoladder.adapters.ngap as ngap
+    import telcoladder.adapters.pfcp as pfcp
+    import telcoladder.adapters.sbi as sbi
+    from telcoladder.extract import to_int
 
     for module in (ngap, nas, sbi, pfcp):
         assert module._to_int is to_int, f"{module.NAME} 沒有用共用版本"
@@ -433,7 +433,7 @@ def test_to_int_accepts_bool() -> None:
     整併採用超集（`extract.py` 那份）。這條是那個決定的白紙黑字，
     不是順手發生的。
     """
-    from telcoshark.extract import to_int
+    from telcoladder.extract import to_int
 
     assert to_int(True) == 1
     assert to_int(False) == 0
@@ -441,7 +441,7 @@ def test_to_int_accepts_bool() -> None:
 
 def test_to_int_behaviour_is_otherwise_unchanged() -> None:
     """其餘輸入必須與整併前逐項相同 —— 這是回歸測試。"""
-    from telcoshark.extract import to_int
+    from telcoladder.extract import to_int
 
     assert to_int(None) is None
     assert to_int("42") == 42

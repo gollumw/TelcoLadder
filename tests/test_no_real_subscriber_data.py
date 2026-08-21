@@ -96,14 +96,14 @@ _KNOWN_CAPTURES = {
 
 #: 不掃的路徑。
 #:
-#: `telcoshark/static/app.*` 是 `web/src/` 的**建置產物** —— 掃它等於把同一筆
+#: `telcoladder/static/app.*` 是 `web/src/` 的**建置產物** —— 掃它等於把同一筆
 #: 東西報兩次，而且它是 minified，行號指不到任何有意義的地方。原始碼那側
 #: 照掃，所以覆蓋沒有缺口。
 #:
 #: 二進位擷取檔本來就讀不成文字。**fixture 的 pcap 不需要豁免** ——
 #: 它們的內容出自測試床，本來就是 `00101…`。
 _SKIP_SUFFIXES = {".pcap", ".pcapng", ".cap", ".png", ".jpg", ".ico"}
-_SKIP_PATHS = {"telcoshark/static/app.js", "telcoshark/static/app.css"}
+_SKIP_PATHS = {"telcoladder/static/app.js", "telcoladder/static/app.css"}
 
 #: 前後不得再接數字 —— 否則 16 位的微秒時戳會被切出一個 15 位的子字串。
 _FIFTEEN_DIGITS = re.compile(r"(?<!\d)(\d{15})(?!\d)")

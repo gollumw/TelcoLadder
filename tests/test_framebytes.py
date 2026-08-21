@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.framebytes import FrameBytesCache, frame_bytes
-from telcoshark.packets import read_packet_rows
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.framebytes import FrameBytesCache, frame_bytes
+from telcoladder.packets import read_packet_rows
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 

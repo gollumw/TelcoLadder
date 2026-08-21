@@ -38,10 +38,10 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.session import SESSION_PREFIX
-from telcoshark.tshark import ENV_OVERRIDE, TsharkNotFound, find_tshark
-import telcoshark.web as web
-from telcoshark.web import make_server
+from telcoladder.session import SESSION_PREFIX
+from telcoladder.tshark import ENV_OVERRIDE, TsharkNotFound, find_tshark
+import telcoladder.web as web
+from telcoladder.web import make_server
 
 FIXTURES = Path(__file__).parent / "fixtures"
 KI_MISMATCH = FIXTURES / "ki-mismatch" / "capture.pcap"
@@ -113,7 +113,7 @@ def _temp_uploads() -> set[Path]:
 def _upload(server, body: bytes, name: str = "capture.pcap"):
     return _post(server, "/open-upload", body, headers={
         "Content-Type": "application/octet-stream",
-        "X-TelcoShark-Filename": name,
+        "X-TelcoLadder-Filename": name,
     })
 
 
@@ -285,7 +285,7 @@ def test_an_interrupted_upload_leaves_nothing(server):
         f"POST /open-upload HTTP/1.1\r\n"
         f"Host: {host}:{port}\r\n"
         f"Content-Type: application/octet-stream\r\n"
-        f"X-TelcoShark-Filename: capture.pcap\r\n"
+        f"X-TelcoLadder-Filename: capture.pcap\r\n"
         f"Content-Length: {len(partial) + 10_000}\r\n"
         f"\r\n"
     ).encode() + partial
@@ -335,7 +335,7 @@ def test_interrupted_upload_is_deleted_before_the_error_is_written(server, monke
         f"POST /open-upload HTTP/1.1\r\n"
         f"Host: {host}:{port}\r\n"
         f"Content-Type: application/octet-stream\r\n"
-        f"X-TelcoShark-Filename: capture.pcap\r\n"
+        f"X-TelcoLadder-Filename: capture.pcap\r\n"
         f"Content-Length: {len(partial) + 10_000}\r\n"
         f"\r\n"
     ).encode() + partial

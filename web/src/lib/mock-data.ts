@@ -1,4 +1,4 @@
-// Mock dataset for TelcoShark Phase 1 (UI-only).
+// Mock dataset for TelcoLadder Phase 1 (UI-only).
 // A typed TS module rather than a JSON file: the decode trees are recursive
 // and cross-referenced by frame number (CallFlowEvent.frameNumber must exist
 // as a RawPacket.frameNumber) — hand-balancing that in raw JSON is error-prone

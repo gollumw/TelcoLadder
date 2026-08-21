@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.tshark import ENV_OVERRIDE, TsharkNotFound, _parse_version, find_tshark
+from telcoladder.tshark import ENV_OVERRIDE, TsharkNotFound, _parse_version, find_tshark
 
 
 def test_parse_version_from_real_banner():

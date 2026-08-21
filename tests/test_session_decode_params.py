@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.adapters import default_decode_as
-from telcoshark.packets import read_packet_rows
-from telcoshark.session import Session, SessionStore, _index_into
+from telcoladder.adapters import default_decode_as
+from telcoladder.packets import read_packet_rows
+from telcoladder.session import Session, SessionStore, _index_into
 
 
 @pytest.fixture

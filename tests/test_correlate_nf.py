@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.adapters import parse_frame
-from telcoshark.correlate import correlate
-from telcoshark.identity import connection_scope, globally_unique, scoped
-from telcoshark.extract import Frame, read_frames
-from telcoshark.model import ID_CLASSES, Endpoint, Flow, IdKind, Message, is_flow_worthy
-from telcoshark.nf import UE_ROLE, apply_roles, resolve_roles
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.adapters import parse_frame
+from telcoladder.correlate import correlate
+from telcoladder.identity import connection_scope, globally_unique, scoped
+from telcoladder.extract import Frame, read_frames
+from telcoladder.model import ID_CLASSES, Endpoint, Flow, IdKind, Message, is_flow_worthy
+from telcoladder.nf import UE_ROLE, apply_roles, resolve_roles
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -179,7 +179,7 @@ def test_same_ngap_id_on_two_associations_does_not_merge_subscribers():
     前綴，這兩個毫無關係的人會變成同一條流程 —— 而畫出來的圖看起來完全
     合理，沒有例外、沒有紅字，沒有人會發現。
 
-    這是 `telcoshark/identity.py` 存在的唯一理由，也是外掛契約裡最危險的
+    這是 `telcoladder/identity.py` 存在的唯一理由，也是外掛契約裡最危險的
     一條規則（Phase 2 的 GTP TEID 是同一類）。這裡刻意用 `scoped()`
     而不是手寫字串 —— 如果哪天有人把 `scoped()` 改成不加前綴，這條會紅。
     """

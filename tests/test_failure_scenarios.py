@@ -1,7 +1,7 @@
 """失敗場景 —— 拿核網日誌當第二 oracle 交叉驗證。
 
 這組測試與 `test_adapters.py` 的交叉驗證不同：那邊拿 tshark 對數量，但 tshark
-與 TelcoShark 共用同一個解碼器，同源的錯誤兩邊會一起錯。核網日誌不共用任何東西
+與 TelcoLadder 共用同一個解碼器，同源的錯誤兩邊會一起錯。核網日誌不共用任何東西
 ——它是 AMF 自己說「我送出了 cause 111」，那是完全獨立的真相。
 
 每個 fixture 的來源、注入方式與預期結果見各自的 `scenario.md`。
@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters import parse_frame
-from telcoshark.adapters.nas5gs import count_ciphered
-from telcoshark.causes import annotate
-from telcoshark.correlate import correlate
-from telcoshark.extract import read_frames
-from telcoshark.nf import apply_roles
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.adapters import parse_frame
+from telcoladder.adapters.nas5gs import count_ciphered
+from telcoladder.causes import annotate
+from telcoladder.correlate import correlate
+from telcoladder.extract import read_frames
+from telcoladder.nf import apply_roles
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -78,12 +78,12 @@ def _causes_in_amf_log(scenario: str) -> set[int]:
     }
 
 
-# ── 逐場景：TelcoShark 的判讀必須與核網日誌一致 ──────────────────────
+# ── 逐場景：TelcoLadder 的判讀必須與核網日誌一致 ──────────────────────
 
 
 @pytest.mark.parametrize("scenario", ["supi-not-provisioned", "ki-mismatch"])
 def test_causes_agree_with_core_network_log(scenario):
-    """TelcoShark 認定的 cause 必須被 AMF 自己的日誌證實。
+    """TelcoLadder 認定的 cause 必須被 AMF 自己的日誌證實。
 
     這是本專案最強的一條驗證：兩邊沒有共用任何程式碼。
     """
@@ -92,8 +92,8 @@ def test_causes_agree_with_core_network_log(scenario):
     theirs = _causes_in_amf_log(scenario)
 
     assert theirs, f"{scenario} 的 AMF 日誌沒有可解析的 cause，測試本身失效"
-    assert ours, f"{scenario} TelcoShark 一個 cause 都沒抽到"
-    assert ours == theirs, f"{scenario}：TelcoShark 說 {sorted(ours)}，AMF 日誌說 {sorted(theirs)}"
+    assert ours, f"{scenario} TelcoLadder 一個 cause 都沒抽到"
+    assert ours == theirs, f"{scenario}：TelcoLadder 說 {sorted(ours)}，AMF 日誌說 {sorted(theirs)}"
 
 
 def test_unprovisioned_supi_is_rejected_not_authenticated():

@@ -1,6 +1,6 @@
 {
   "source_repo": "gollumw/TelcoShark-Sandbox",
-  "source_repo_note": "移植當下它還叫 gollumw/TelcoShark。2026-08-19 產品接手了 TelcoShark 這個名字（本 repo，原 TelcoLens），設計實驗場讓位改名為 TelcoShark-Sandbox。source_commit 仍指向同一顆 commit。",
+  "source_repo_note": "移植當下（2026-08-19）它還叫 gollumw/TelcoShark —— 那天稍晚產品接手了那個名字（本 repo，當時剛從 TelcoLens 改過來），設計實驗場才讓位改名為 gollumw/TelcoShark-Sandbox。2026-08-22 產品因商標風險再改名為 TelcoLadder，實驗場**不跟著改**（見 CLAUDE.md 的命名沿革）。source_commit 自始至終指向同一顆 commit。",
   "source_commit": "b16d0d5b1ccff16e9c5065705d4a6c3f733eadc1",
   "ported_on": "2026-08-19",
   "note": "這 9 個檔是自設計實驗場（現 TelcoShark-Sandbox，port 3006）逐位元組複製的，不是重寫的。參照點凍結在上面那個 commit —— 實驗場之後會繼續改動，比對活的 3006 是追移動靶。Phase 2 起陸續有檔案刻意分岔（見 `diverged`，每一筆都寫明理由並釘住現在的雜湊）；`files` 裡剩下的是至今仍逐位元組相同的那些。",
@@ -16,9 +16,9 @@
   "diverged": {
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "0a4428a0ca5914f7a2f980d01c8448a9834f9975f372d88a6042f5a828a21eb5",
+      "current_sha256": "b889669f9f7aa062c1a86ce0a5f0aa0509fc02ee978111472e4d3c9b66f05761",
       "since": "2026-08-19（GUI Phase 2）",
-      "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。",
+      "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。"
     },
@@ -32,9 +32,9 @@
     },
     "src/lib/mock-data.ts": {
       "original_sha256": "fbb7ab75556a3bc10a2cb8cb8ef38e53a06a0dec5830c848e574bedf7d26853e",
-      "current_sha256": "97776b1ae9c1f17af90f548a2d3de3348197d02f55d91a8f90af8019feced66a",
+      "current_sha256": "0fcbce34046ef89a5071c3ff27fd8df4e3fea2dfad67a4fd1b1b05469b2407b3",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
-      "what_changed": "一行：`assignByteRanges(seed.decodeTree ?? [], …)`。`decodeTree` 在型別上已改選用，手寫的 seed 一律有，但 tsc 需要這個保護。",
+      "what_changed": "一行：`assignByteRanges(seed.decodeTree ?? [], …)`。`decodeTree` 在型別上已改選用，手寫的 seed 一律有，但 tsc 需要這個保護。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。"
     },
     "src/components/DataMiningView.tsx": {
@@ -47,9 +47,9 @@
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
-      "current_sha256": "58533880c30f2db79aa976a63aac9414ba1bb05f5b2ceead18e1ac2f7414540a",
+      "current_sha256": "3089a793b78ad8735cb82cd76039da4e03d662c5af4b408f91f921d7c58c9fc7",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
-      "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。；2026-08-21（Phase 4）:把上述四個欄位畫出來 —— 慢間隔以 `+2.50s` 標在參考點欄位旁（只標超過門檻的，每列都標等於沒標），協定堆疊與身分來源進事件詳情列。同時拆開事件詳情列的兩個把關條件:原本 `selectedEvent && selectedPacket` 綁在一起，而 `selectedPacket` 來自封包清單的**載入視窗**（前幾百列）—— 幾千格的擷取檔裡，視窗外的事件永遠配不到封包，症狀是使用者點了梯形圖卻看到「選一個信令事件」。參考點／身分來源／協定堆疊／cause 全部來自事件，照常顯示；封包徽章與解碼樹才等封包，而且「還沒載入」與「在視窗外」講成兩句不同的話。；2026-08-21（M0 最後一哩）:程序切段接進畫面 —— 梯形圖上方多一條程序選擇列（一段一個按鈕,結局用外框色與符號標示,✓/✗/⋯ 三態;incomplete 刻意不用 ✗,「沒等到結局」與「失敗」是兩件事）,選中時事件依 frame 範圍過濾。程序先於 Domain:程序是範圍,Domain 是那段之內的視角。程序按鈕的亮起條件看推導出來的 `current` 而不是 raw state `activeProcedure` —— 兩者在換訂戶時會分家（frame 編號不在新訂戶的段裡），用 raw state 會導致「畫面顯示全部但沒有任何按鈕亮」。；2026-08-22（轉 public 前置）:清掉兩處客戶識別資訊 —— 註解裡的客戶擷取檔名，以及截斷說明範例裡真實生產網路的 DNN。**兩處都是註解，建置產物不受影響**（`telcoshark/static/app.js` 逐位元組不變，已驗）。實測數字（119 字元、放大 4.1 倍）全部保留 —— 拿掉的只有身分，不是證據。",
+      "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。；2026-08-21（Phase 4）:把上述四個欄位畫出來 —— 慢間隔以 `+2.50s` 標在參考點欄位旁（只標超過門檻的，每列都標等於沒標），協定堆疊與身分來源進事件詳情列。同時拆開事件詳情列的兩個把關條件:原本 `selectedEvent && selectedPacket` 綁在一起，而 `selectedPacket` 來自封包清單的**載入視窗**（前幾百列）—— 幾千格的擷取檔裡，視窗外的事件永遠配不到封包，症狀是使用者點了梯形圖卻看到「選一個信令事件」。參考點／身分來源／協定堆疊／cause 全部來自事件，照常顯示；封包徽章與解碼樹才等封包，而且「還沒載入」與「在視窗外」講成兩句不同的話。；2026-08-21（M0 最後一哩）:程序切段接進畫面 —— 梯形圖上方多一條程序選擇列（一段一個按鈕,結局用外框色與符號標示,✓/✗/⋯ 三態;incomplete 刻意不用 ✗,「沒等到結局」與「失敗」是兩件事）,選中時事件依 frame 範圍過濾。程序先於 Domain:程序是範圍,Domain 是那段之內的視角。程序按鈕的亮起條件看推導出來的 `current` 而不是 raw state `activeProcedure` —— 兩者在換訂戶時會分家（frame 編號不在新訂戶的段裡），用 raw state 會導致「畫面顯示全部但沒有任何按鈕亮」。；2026-08-22（轉 public 前置）:清掉兩處客戶識別資訊 —— 註解裡的客戶擷取檔名，以及截斷說明範例裡真實生產網路的 DNN。**兩處都是註解，建置產物不受影響**（`telcoladder/static/app.js` 逐位元組不變，已驗）。實測數字（119 字元、放大 4.1 倍）全部保留 —— 拿掉的只有身分，不是證據。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
       "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道）；繪製模式說明與「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」；SVG 不再用 width=100% 拉伸（泳道少時會放大 4 倍）、超長 SBI 網址截斷但保留 title、加上交替列底紋與提亮的標籤顏色。"
     },

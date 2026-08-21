@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.extract import ExtractError, read_frames
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.extract import ExtractError, read_frames
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -108,7 +108,7 @@ def test_addresses_come_from_exported_pdu_when_there_is_no_ip_layer() -> None:
     用合成的 layers dict 而不是擷取檔：那份 EXPORTED_PDU 樣本是客戶封包，
     依 CLAUDE.md §2.1 不得進版控。
     """
-    from telcoshark.extract import _endpoints
+    from telcoladder.extract import _endpoints
 
     layers = {
         "exported_pdu": {
@@ -128,7 +128,7 @@ def test_a_real_ip_layer_still_wins_over_exported_pdu() -> None:
     tshark 對 EXPORTED_PDU 也會合成 `ip.src` 放在同一層裡 —— 兩邊都在時
     不該讓後備路徑蓋過真正的封包標頭。
     """
-    from telcoshark.extract import _endpoints
+    from telcoladder.extract import _endpoints
 
     layers = {
         "ip": {"ip_ip_src": "2.0.0.3", "ip_ip_dst": "3.0.0.4"},
@@ -148,6 +148,6 @@ def test_neither_source_present_stays_empty_rather_than_inventing() -> None:
     泳道（`Endpoint.label()`）。那是誠實的；編一個假位址則會讓使用者
     以為工具知道那是誰。
     """
-    from telcoshark.extract import _endpoints
+    from telcoladder.extract import _endpoints
 
     assert _endpoints({"frame": {}}) == ("", "", None, None)

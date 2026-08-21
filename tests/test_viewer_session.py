@@ -31,10 +31,10 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark import session as session_mod
-from telcoshark import viewer as viewer_mod
-from telcoshark.session import SESSION_PREFIX, Session, SessionStore
-from telcoshark.web import make_server
+from telcoladder import session as session_mod
+from telcoladder import viewer as viewer_mod
+from telcoladder.session import SESSION_PREFIX, Session, SessionStore
+from telcoladder.web import make_server
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ki-mismatch" / "capture.pcap"
 
@@ -74,7 +74,7 @@ def test_the_route_table_above_covers_every_api_action() -> None:
     import re
     from pathlib import Path
 
-    source = Path(__file__).resolve().parents[1] / "telcoshark" / "web.py"
+    source = Path(__file__).resolve().parents[1] / "telcoladder" / "web.py"
     # **字元類要含連字號。** 第一版寫成 `[a-z_]+`，於是 `decode-as` 這條
     # 路由被整個跳過而測試綠燈 —— 一個守衛自己漏掉的東西，症狀跟它要防的
     # 完全一樣：安全測試對那條路由空轉通過。
@@ -96,7 +96,7 @@ def test_the_landing_page_only_leads_to_the_interactive_interface() -> None:
 
     這條測試守的是**入口指向哪裡**，那是 399 條測試裡原本沒有人守的東西。
     """
-    from telcoshark.web import _home_page
+    from telcoladder.web import _home_page
 
     page = _home_page()
     assert 'action="/open"' in page, "貼路徑那條沒有指向互動介面"
@@ -170,7 +170,7 @@ def _open_upload_session(server, pcap: Path) -> tuple[str, Path]:
     status, body, _ = _request(
         server, "/open-upload", method="POST", body=pcap.read_bytes(),
         headers={"Content-Type": "application/octet-stream",
-                 "X-TelcoShark-Filename": urllib.parse.quote(pcap.name)},
+                 "X-TelcoLadder-Filename": urllib.parse.quote(pcap.name)},
     )
     assert status == 200, body
     sid = json.loads(body)["sid"]
@@ -240,7 +240,7 @@ def test_delete_refuses_a_file_without_the_session_prefix() -> None:
 def test_delete_guard_is_a_prefix_check_not_a_substring_check() -> None:
     """使用者的檔案名字裡**含有**前綴時不能通過。
 
-    `my-telcoshark-session-notes.pcap` 用子字串比對會過關 —— 而使用者從殘檔
+    `my-telcoladder-session-notes.pcap` 用子字串比對會過關 —— 而使用者從殘檔
     訊息複製檔名再改名，很容易產生這種名字。
     """
     victim = Path(tempfile.gettempdir()) / f"my-{SESSION_PREFIX}notes.pcap"
@@ -266,7 +266,7 @@ def test_delete_guard_survives_python_dash_O() -> None:
     probe = textwrap.dedent(f"""
         import tempfile
         from pathlib import Path
-        import telcoshark.session as sm
+        import telcoladder.session as sm
         victim = Path(tempfile.gettempdir()) / "dash-O-probe-{SESSION_PREFIX}not.pcap"
         victim.write_bytes(b"x")
         bogus = sm.Session(sid="x", pcap=victim, display_name="x", owns_file=True)
@@ -329,7 +329,7 @@ def test_close_all_deletes_every_session_file(server) -> None:
     status, body, _ = _request(
         server, "/open-upload", method="POST", body=FIXTURE.read_bytes(),
         headers={"Content-Type": "application/octet-stream",
-                 "X-TelcoShark-Filename": "second.pcap"},
+                 "X-TelcoLadder-Filename": "second.pcap"},
     )
     assert status == 200, body
     assert len(set(_session_files()) - outsiders) == 2
@@ -364,7 +364,7 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
     **這條要真的開一個行程、真的送訊號、真的量暫存目錄**，因為上面那條
     原始碼檢查對這個 bug 是**空轉通過**的：`finally` 一直都寫著
     `close_all()`，只是 Python 對 SIGTERM 的預設處置會當場結束行程，
-    誰都跑不到。實測留下 7 個 `telcoshark-session-*.pcap` —— 客戶封包
+    誰都跑不到。實測留下 7 個 `telcoladder-session-*.pcap` —— 客戶封包
     （`CLAUDE.md` §2.1），而畫面上沒有任何異狀。
 
     子行程給自己的 `TMPDIR`：斷言才能是「這個目錄一個都不剩」這種絕對
@@ -378,7 +378,7 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
     # 進 pipe 是整批緩衝，這裡會空等到逾時）。
     child = subprocess.Popen(
         [sys.executable, "-u", "-c",
-         "import sys; from telcoshark.web import serve;"
+         "import sys; from telcoladder.web import serve;"
          " sys.exit(serve('127.0.0.1', 0))"],
         cwd=Path(__file__).resolve().parents[1],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -393,7 +393,7 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
         status, body, _ = _request(
             server, "/open-upload", method="POST", body=FIXTURE.read_bytes(),
             headers={"Content-Type": "application/octet-stream",
-                     "X-TelcoShark-Filename": "sigterm-probe.pcap"},
+                     "X-TelcoLadder-Filename": "sigterm-probe.pcap"},
         )
         assert status == 200, body
         uploaded = sorted(sandbox.glob(f"{SESSION_PREFIX}*"))
@@ -460,7 +460,7 @@ def test_missing_path_on_open_is_a_readable_error(server) -> None:
     "..%2f..%2fetc%2fpasswd",
     "",
     "app.js/../app.js",
-    "../telcoshark/web.py",
+    "../telcoladder/web.py",
     "nope.js",
 ])
 def test_static_route_serves_only_the_allowlist(server, bad) -> None:

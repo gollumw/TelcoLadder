@@ -1,4 +1,4 @@
-"""交叉驗證：TelcoShark 抽到的訊息，必須對得上 tshark 自己算的。
+"""交叉驗證：TelcoLadder 抽到的訊息，必須對得上 tshark 自己算的。
 
 這是本專案的核心安全網（比照 NCC Report 的 ODS↔PDF 交叉驗證）。
 守的是這類工具最致命、也最不會報錯的失敗模式：**靜默漏訊息**。
@@ -15,14 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters import parse_frame
-from telcoshark.adapters.nas5gs import MM_MESSAGE_TYPES
-from telcoshark.adapters.ngap import PROCEDURE_CODES
-from telcoshark.adapters.pfcp import MESSAGE_TYPES as PFCP_MESSAGE_TYPES
-from telcoshark.adapters.sbi import _supi_from_identifier
-from telcoshark.extract import read_frames
-from telcoshark.model import IdKind
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.adapters import parse_frame
+from telcoladder.adapters.nas5gs import MM_MESSAGE_TYPES
+from telcoladder.adapters.ngap import PROCEDURE_CODES
+from telcoladder.adapters.pfcp import MESSAGE_TYPES as PFCP_MESSAGE_TYPES
+from telcoladder.adapters.sbi import _supi_from_identifier
+from telcoladder.extract import read_frames
+from telcoladder.model import IdKind
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import HTTP2_DECODE_AS
 
@@ -30,7 +30,7 @@ from conftest import HTTP2_DECODE_AS
 def _tshark_frame_count(pcap: Path, display_filter: str) -> int:
     """獨立 oracle：直接問 tshark 有幾格符合條件。
 
-    刻意不重用 `telcoshark.extract` —— 用同一條程式碼算兩次不叫交叉驗證。
+    刻意不重用 `telcoladder.extract` —— 用同一條程式碼算兩次不叫交叉驗證。
     """
     tshark = find_tshark()
     proc = subprocess.run(

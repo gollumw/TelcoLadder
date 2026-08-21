@@ -28,7 +28,7 @@ stream=11 GET /doc/manual/html/_static/js/theme.js
 With `-T fields` tshark comma-joins those into one row and the message boundaries
 are gone. With `-T ek` the layer comes back as a list of four dicts, each complete.
 That is the entire justification for the extractor's output format — see the
-`telcoshark/extract.py` module docstring.
+`telcoladder/extract.py` module docstring.
 
 `tests/fixtures/5gc-registration/` also exercises the multi-PDU path (frame 23,
 two NGAP messages), but only this one covers it for HTTP/2, where the streams are

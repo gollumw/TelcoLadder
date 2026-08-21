@@ -1,4 +1,4 @@
-# TelcoShark vs NETSCOUT NSA/ISA — Gap Analysis 與 4G/IMS/Diameter 擴展架構
+# TelcoLadder vs NETSCOUT NSA/ISA — Gap Analysis 與 4G/IMS/Diameter 擴展架構
 
 > 2026-08-21。基準點：commit `11216a6`（lifecycle 修完、417 passed）。
 > 本檔是**對標分析與擴展設計**，不是現況文件 —— 現況以 `CLAUDE.md` 為準，
@@ -23,7 +23,7 @@ Review 的前提必須是真的。對照 `11216a6`：
 ## 1. 定位差異 —— 哪些差距是缺口，哪些是非目標
 
 NSA/ISA 是**串流監控系統**：探針常駐、xDR 持續產生、保留數天到數月、
-KPI 儀表板往下鑽到 session。TelcoShark 是**離線鑑識工具**：一份 pcap 進來、
+KPI 儀表板往下鑽到 session。TelcoLadder 是**離線鑑識工具**：一份 pcap 進來、
 分析、關掉。這個差異決定了 gap 的分類：
 
 **刻意的非目標**（對標時不算輸）：
@@ -45,7 +45,7 @@ KPI 儀表板往下鑽到 session。TelcoShark 是**離線鑑識工具**：一�
 
 ### 2.1 會話縫合維度（Session Stitching & Keys）
 
-| | NSA/ISA | TelcoShark（`11216a6`） |
+| | NSA/ISA | TelcoLadder（`11216a6`） |
 |---|---|---|
 | 鍵覆蓋 | SUPI/IMSI、SUCI、**5G-GUTI/4G-GUTI（含重配鏈）**、MSISDN、PEI/IMEI、UE IP（分 APN/DNN）、GTPv2 各介面 F-TEID、GTP-U TEID、NGAP/S1AP ID 對、SEID、SIP Call-ID＋tags、**ICID**、Diameter Session-Id | SUPI、NGAP ID 對（scoped＋**episodic**）、PFCP SEID、GTP TEID（位址範圍）、SBI stream、SM context ref |
 | 生命週期 | 訂戶 context 跨程序、跨日維護 | `lifecycle.py`（2026-08-21）：釋放事件驅動的 episode 切分 —— 機制與商用同型，鍵種類少 |
@@ -59,7 +59,7 @@ episodic 機制上**。
 
 ### 2.2 信令時序與根因（Ladder & RCA）
 
-| | NSA/ISA | TelcoShark |
+| | NSA/ISA | TelcoLadder |
 |---|---|---|
 | 梯形圖 | 程序切段（一次 Registration 一段）、程序自動識別 | **整段訂戶 context 一條** —— 一份長擷取裡三次註冊會攤在同一條梯形圖上 |
 | 根因 | cause 統計、跨訂戶 top-N 失敗、引導式下鑽 | 單訊息 cause＋3GPP 條文（出處更可信）、slow-gap 標註、身分來源 |
@@ -72,7 +72,7 @@ failure/registration 等 kind，缺的是把一條 flow 再切成 procedure 段�
 
 ### 2.3 用戶面關聯深度（U-Plane KPIs）
 
-| | NSA/ISA | TelcoShark |
+| | NSA/ISA | TelcoLadder |
 |---|---|---|
 | U-plane | 每承載/QFI 吞吐、GTP-U seq 掉包、Echo RTT、DPI 分應用、語音 MOS | **零**。QFI/5QI/TEID 全部來自信令面（矩陣有、且帶出處），N3 封包本身沒讀過一格 |
 
@@ -83,7 +83,7 @@ Echo Request/Response RTT** 兩個指標就能回答「用戶面到底有沒有�
 
 ### 2.4 不完整擷取容錯（Orphan / Partial Capture）
 
-| | NSA/ISA | TelcoShark |
+| | NSA/ISA | TelcoLadder |
 |---|---|---|
 | 亂序 | 串流端要靠緩衝與 late-binding | **離線 union-find 天生免疫**（優勢面） |
 | 孤兒 | orphan xDR，鍵晚到時回補 | 「無用戶關聯」共用桶（不丟）、`uncorrelatedDomains` 明講「有此領域但接不上這個人」 |
@@ -95,7 +95,7 @@ Echo Request/Response RTT** 兩個指標就能回答「用戶面到底有沒有�
 
 ### 2.5 xDR / CDR 結構化彙總
 
-| | NSA/ISA | TelcoShark |
+| | NSA/ISA | TelcoLadder |
 |---|---|---|
 | 記錄 | ASI xDR：每**程序**一筆（attach xDR、session xDR、call xDR、HO xDR），數百欄位，可匯出、餵 KPI 庫 | `flowtable` 的 SubscriberRow/session 列（duration/protocols/failures/retrans/unanswered）＋關聯矩陣（每格帶出處）—— **是 xDR 的胚胎**，但以訂戶為單位不是程序、只活在 API 回應裡、無匯出 |
 
@@ -193,7 +193,7 @@ adapter 要負責的雙鍵宣告：
 **沒觀測到就整個欄位不存在，不填 0 不填 null 佔位**。
 
 ```python
-# telcoshark/epsbearer.py（M1）—— 對照 pdusession.PduSession
+# telcoladder/epsbearer.py（M1）—— 對照 pdusession.PduSession
 @dataclass(slots=True)
 class EpsBearer:
     imsi: str
@@ -206,7 +206,7 @@ class EpsBearer:
     s1u_sgw_fteid: Sourced | None
     tft_ports: tuple[int, ...] = ()   # ← 通到 RTP 的橋（§3.3-2）
 
-# telcoshark/imscall.py（M3）
+# telcoladder/imscall.py（M3）
 @dataclass(slots=True)
 class ImsCall:
     served_impu: str
@@ -247,7 +247,7 @@ ek 輸出形狀（它的 IE 巢狀方式與 NGAP 不同）再展開 —— 原�
 
 | | 內容 | 核心挑戰 | DoD（可量測） |
 |---|---|---|---|
-| **M0** | 程序切段、xDR JSON 匯出、跨訂戶 cause 彙總 | 切段規則要資料驅動（哪些訊息開段/收段），不是 if 串；**切錯段不報錯** —— 用 e2e fixture 人工數段數當 oracle | ① `5gc-e2e` 的段數/每段 outcome 與人工判讀一致並釘成測試 ② `telcoshark analyze --xdr out.json` 產出 schema 化記錄，欄位集合有測試釘住 ③ 既有 418 條全綠、流程數不變 |
+| **M0** | 程序切段、xDR JSON 匯出、跨訂戶 cause 彙總 | 切段規則要資料驅動（哪些訊息開段/收段），不是 if 串；**切錯段不報錯** —— 用 e2e fixture 人工數段數當 oracle | ① `5gc-e2e` 的段數/每段 outcome 與人工判讀一致並釘成測試 ② `telcoladder analyze --xdr out.json` 產出 schema 化記錄，欄位集合有測試釘住 ③ 既有 418 條全綠、流程數不變 |
 | **M1** | 4G EPC：S1AP＋NAS-EPS＋GTPv2-C adapter、`EpsBearer` 抽取 | ① 測試床要換 RAN（UERANSIM 是 5G-only —— 4G 要 srsRAN，開床成本比上次高） ② GTPv2 的 **piggyback**（Create Session Response 同一 UDP datagram 夾帶 Create Bearer Request）—— 漏解就是靜默少訊息，§3.1 那類 ③ 序號配對 req/rsp | ① 4G attach fixture 進版控（授權同 §2.2 慣例），訊息數 tshark oracle 交叉驗證 ② S1AP ID 的 scoped＋episodic 測試（照抄 NGAP 那組） ③ 矩陣出現 EBI/F-TEID/UE IP 各帶出處 ④ IMSI 縫合讓流程數下降，數字寫進 `test_carrier_polymorphism` 那張表 |
 | **M2** | Diameter：S6a＋Gx adapter、`UE_IP` 關聯鍵 | ① S6a Session-Id **不是長命鍵**（NO_STATE_MAINTAINED），縫合鍵是 User-Name=IMSI —— 寫錯的症狀是 S6a 自成孤兒流程 ② UE_IP 必須 episodic（release 事件：Delete Session / PDU Session Release），否則 IP 重配就是 lifecycle 修掉的那個 bug 再犯一次 | ① S6a/Gx 訊息併進訂戶流程（流程數再降，量化進表） ② Framed-IP↔IMSI 綁定有正反向測試（綁對人＋不同 APN 不互串） ③ `test_identifier_reuse.py` 加 UE_IP 情境 |
 | **M3** | IMS：SIP/SDP＋Rx adapter、`ImsCall`、RTP 品質 | ① §3.3 整條鏈每跳都要有雙鍵橋樑訊息的測試 ② TFT port ↔ SDP port 的配對（NSA 有、開源全無的那條） ③ RTP 指標的 oracle：**拿 `tshark -q -z rtp,streams` 交叉驗證 loss/jitter**（§4 慣例的直接應用）；MOS 標「估計」 | ① 一張梯形圖同框 SIP＋Rx/Gx＋GTPv2＋RTP（Kamailio 測試床 fixture） ② ICID 三方鍵測試 ③ loss/jitter 與 tshark oracle 一致；④ Gm-IPsec/VoWiFi 可見性限制寫進 README 的 Honest limitations |

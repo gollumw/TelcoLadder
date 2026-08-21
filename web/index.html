@@ -3,13 +3,13 @@
      `viewer.py:viewer_page()` 自己組同樣結構的 HTML，因為它要注入 sid 與 CSP 標頭。
      兩邊的 <html>/<body> class 與資產路徑必須一致，由 tests/test_web_assets.py 釘住。
 
-     建置時 Vite 會把這個檔也吐進 telcoshark/static/，但它**不在 STATIC_TYPES 白名單裡，
+     建置時 Vite 會把這個檔也吐進 telcoladder/static/，但它**不在 STATIC_TYPES 白名單裡，
      所以送不出去** —— 白名單就是那道守衛，不需要額外處理。 -->
 <html lang="zh-Hant" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TelcoShark</title>
+    <title>TelcoLadder</title>
   </head>
   <body class="font-sans antialiased">
     <div id="root"></div>

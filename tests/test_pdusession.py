@@ -15,10 +15,10 @@ import subprocess
 import pytest
 from conftest import require_capture
 
-from telcoshark.adapters import default_decode_as
-from telcoshark.pdusession import extract, extract_all
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import find_tshark
+from telcoladder.adapters import default_decode_as
+from telcoladder.pdusession import extract, extract_all
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import find_tshark
 
 SUPI = "001011234567895"
 
@@ -122,7 +122,7 @@ def test_one_pass_and_per_subscriber_agree(analysis) -> None:
     前者是為了效能（O(訊息數) 而非 O(訂戶數 × 訊息數)）而寫的第二條路徑，
     **兩條路徑就是兩份答案的開始**。這條測試讓它們不能各走各的。
     """
-    from telcoshark.model import IdKind
+    from telcoladder.model import IdKind
 
     supis = sorted(
         {v for f in analysis.flows for k, v in f.identity_keys if k is IdKind.SUPI}

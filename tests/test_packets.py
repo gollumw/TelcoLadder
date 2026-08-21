@@ -34,15 +34,15 @@ import subprocess
 
 import pytest
 
-from telcoshark.packets import (
+from telcoladder.packets import (
     COLUMN_FIELDS,
     PacketColumnsUnavailable,
     matching_frames,
     read_packet_rows,
     total_packets,
 )
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 
@@ -271,7 +271,7 @@ def test_a_bad_display_filter_reports_tsharks_own_words() -> None:
     )
     # tshark 各版本的措辭不同，但它一定會**提到**這是個 filter 問題：
     # 我們只確認自己沒有另寫一套說法蓋掉它。
-    assert "TelcoShark" not in message, "我們用自己的措辭蓋掉了 tshark 的訊息"
+    assert "TelcoLadder" not in message, "我們用自己的措辭蓋掉了 tshark 的訊息"
 
 
 def test_row_matches_is_substring_search_not_a_display_filter() -> None:
@@ -410,7 +410,7 @@ def test_packets_module_does_not_reimplement_shutdown() -> None:
     """
     from pathlib import Path
 
-    import telcoshark.packets as packets_mod
+    import telcoladder.packets as packets_mod
 
     src = Path(packets_mod.__file__).read_text(encoding="utf-8")
     assert "shutdown(proc, consumed_fully)" in src, "沒有用共用的 shutdown"

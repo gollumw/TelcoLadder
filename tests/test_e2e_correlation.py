@@ -10,10 +10,10 @@
 
 from __future__ import annotations
 
-from telcoshark.adapters import BUILTIN_ADAPTERS, parse_frame
-from telcoshark.extract import read_frames
-from telcoshark.model import IdKind
-from telcoshark.pipeline import analyse
+from telcoladder.adapters import BUILTIN_ADAPTERS, parse_frame
+from telcoladder.extract import read_frames
+from telcoladder.model import IdKind
+from telcoladder.pipeline import analyse
 
 
 def _roles_in(flow) -> set[str]:
@@ -197,8 +197,8 @@ def test_direct_communication_is_not_mistaken_for_relaying():
     直接通訊模式下，apiRoot 就是收件者本人。把它判成轉送者會讓一個真正的
     網元被標成 SCP —— 標錯比不標更糟，而且這種圖看起來完全合理。
     """
-    from telcoshark.model import Endpoint, Message
-    from telcoshark.nf import find_relays
+    from telcoladder.model import Endpoint, Message
+    from telcoladder.nf import find_relays
 
     ausf, amf = Endpoint("172.22.0.11", 7777), Endpoint("172.22.0.10", 50000)
 
@@ -231,7 +231,7 @@ def test_every_service_this_capture_emits_is_in_the_map(e2e_pcap):
     這條同時是「下一個部署帶來新服務」的預警：換一家核網廠商時，
     這裡會先紅，而不是等到有人盯著圖問「這個 IP 是誰」。
     """
-    from telcoshark.nf import SBI_SERVICE_TO_NF
+    from telcoladder.nf import SBI_SERVICE_TO_NF
 
     services = {
         service
@@ -302,9 +302,9 @@ def test_five_subscribers_stay_five_flows(multi_imsi_pcap):
 
 
 def test_core_network_log_agrees_on_who_registered(multi_imsi_pcap):
-    """TelcoShark 找到的五個用戶，必須跟核網自己記錄的一致。
+    """TelcoLadder 找到的五個用戶，必須跟核網自己記錄的一致。
 
-    AMF 的日誌是**獨立於 tshark 與 TelcoShark 的第二個 oracle** ——
+    AMF 的日誌是**獨立於 tshark 與 TelcoLadder 的第二個 oracle** ——
     前兩者共用同一個 dissector，AMF 不共用。數量對得上但身分對不上
     （例如漏了一個、多算一個重試），只有這條抓得到。
     """
@@ -325,5 +325,5 @@ def test_core_network_log_agrees_on_who_registered(multi_imsi_pcap):
     }
 
     assert found == logged, (
-        f"TelcoShark 找到 {sorted(found)}，AMF 日誌記的是 {sorted(logged)}"
+        f"TelcoLadder 找到 {sorted(found)}，AMF 日誌記的是 {sorted(logged)}"
     )

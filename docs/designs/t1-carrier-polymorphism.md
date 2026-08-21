@@ -5,7 +5,7 @@
 
 ## 問題
 
-`telcoshark/adapters/nas5gs.py:123` 的 `_nas_blocks()` 只認一種載體：
+`telcoladder/adapters/nas5gs.py:123` 的 `_nas_blocks()` 只認一種載體：
 
 ```python
 for parent in frame.layer("ngap"):
@@ -76,8 +76,8 @@ mime_multipart
 現況的耦合是 `nas5gs.py:15-16` 直接 import ngap 的內部函式：
 
 ```python
-from telcoshark.adapters.ngap import association_scope
-from telcoshark.adapters.ngap import identity_keys as ngap_identity_keys
+from telcoladder.adapters.ngap import association_scope
+from telcoladder.adapters.ngap import identity_keys as ngap_identity_keys
 ```
 
 `identity_keys` / `association_scope` **不在 `adapters/__init__.py` 的五項契約裡**。
@@ -215,7 +215,7 @@ NGAP 是 `ngap.nas-5gs` 直接一層，SBI 是隔著 `mime_multipart`。實作�
 ## 平行化
 
 Sequential implementation, no parallelization opportunity —— 五個步驟全部集中在
-`telcoshark/adapters/`，共用同一個模組目錄，拆 worktree 只會製造合併衝突。
+`telcoladder/adapters/`，共用同一個模組目錄，拆 worktree 只會製造合併衝突。
 
 ## Implementation Tasks
 
@@ -242,7 +242,7 @@ Sequential implementation, no parallelization opportunity —— 五個步驟全
     是 JSON，布林可能出現。
   - **做法**：統一採 `extract.py` 的超集版本（它已經是公用模組），並**加一條測試明確
     釘住布林輸入的結果**，讓這個行為改變是寫下來的而不是順手發生的。
-  - Files: `telcoshark/extract.py`, `telcoshark/adapters/{ngap,nas5gs,sbi,pfcp}.py`
+  - Files: `telcoladder/extract.py`, `telcoladder/adapters/{ngap,nas5gs,sbi,pfcp}.py`
   - Verify: `test_to_int_accepts_bool`；全套 326 綠
 
 ## 刻意不做
@@ -258,7 +258,7 @@ Sequential implementation, no parallelization opportunity —— 五個步驟全
 
 ```bash
 .venv/bin/pytest -q                       # 326 + 新測試，全綠
-.venv/bin/telcoshark analyze tests/fixtures/multi-imsi/capture.pcap --html /tmp/a.html
+.venv/bin/telcoladder analyze tests/fixtures/multi-imsi/capture.pcap --html /tmp/a.html
 ```
 
 手動：拿使用者的真實 ue_trace 跑，確認那則 `PDU session establishment reject`

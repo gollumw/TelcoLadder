@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// 產物直接落在 telcoshark/static/，由既有的 3005 伺服器送出（同 origin）。
+// 產物直接落在 telcoladder/static/，由既有的 3005 伺服器送出（同 origin）。
 //
 // 兩個設定不是風格偏好，改了會壞：
 //
@@ -11,7 +11,7 @@ import { defineConfig } from "vite";
 // 都不一樣，白名單追不上 —— 症狀是 404，還算會講話；但若有人為此把那條路由
 // 改成服務整個目錄，就把那道防線拆了。
 //
-// **`emptyOutDir: false`。** `telcoshark/static/` 現在還住著 `viewer.js` 與
+// **`emptyOutDir: false`。** `telcoladder/static/` 現在還住著 `viewer.js` 與
 // `viewer.css`，要到 Phase 4 舊介面退場才刪。預設的清空行為會把它們掃掉，
 // 而且是在建置成功之後才發現舊檢視器壞了。
 export default defineConfig({
@@ -22,7 +22,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../telcoshark/static",
+    outDir: "../telcoladder/static",
     emptyOutDir: false,
     rollupOptions: {
       output: {

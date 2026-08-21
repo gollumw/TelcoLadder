@@ -17,12 +17,12 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters import gtp
-from telcoshark.extract import Frame
-from telcoshark.identity import gtp_tunnel
-from telcoshark.model import IdKind
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.adapters import gtp
+from telcoladder.extract import Frame
+from telcoladder.identity import gtp_tunnel
+from telcoladder.model import IdKind
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 FIXTURE = Path(__file__).parent / "fixtures" / "userplane" / "capture.pcap"
 

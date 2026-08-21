@@ -20,15 +20,15 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.coverage import (
+from telcoladder.coverage import (
     MIN_TOTAL_FOR_ALERT,
     Coverage,
     UnclaimedConversation,
     describe,
     measure,
 )
-from telcoshark.pipeline import analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.pipeline import analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

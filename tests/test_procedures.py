@@ -19,11 +19,11 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.model import Endpoint, Message
-from telcoshark.pipeline import analyse
-from telcoshark.procedures import TAIL_SLACK, Procedure, segment, segment_flow
-from telcoshark.tshark import TsharkNotFound, find_tshark
-from telcoshark import xdr
+from telcoladder.model import Endpoint, Message
+from telcoladder.pipeline import analyse
+from telcoladder.procedures import TAIL_SLACK, Procedure, segment, segment_flow
+from telcoladder.tshark import TsharkNotFound, find_tshark
+from telcoladder import xdr
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -150,7 +150,7 @@ def _msg(frame: int, label: str, *, failure: bool = False) -> Message:
 def test_an_unfinished_procedure_near_capture_end_says_so() -> None:
     """開了段、沒等到結局、而且擷取就停在那 —— 要標 incomplete 並加註
     「可能只是截到一半」。沒有這句話，使用者會把截檔當成網路卡住。"""
-    from telcoshark.model import Flow
+    from telcoladder.model import Flow
 
     flow = Flow(messages=[_msg(10, "InitialUEMessage ▸ Registration request")])
     procs, _ = segment_flow(flow, capture_end=10.0 + TAIL_SLACK / 2)
@@ -166,7 +166,7 @@ def test_an_unfinished_procedure_near_capture_end_says_so() -> None:
 def test_ue_context_release_opener_is_exact_match() -> None:
     """`UEContextRelease` 是 `UEContextReleaseResponse` 的前綴 ——
     開段若用包含比對，收段訊息會自己開一段新的。"""
-    from telcoshark.model import Flow
+    from telcoladder.model import Flow
 
     flow = Flow(messages=[
         _msg(10, "UEContextRelease"),
@@ -230,7 +230,7 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
 
     out = tmp_path / "records.json"
     proc = subprocess.run(
-        [sys.executable, "-m", "telcoshark", "analyze", str(e2e_pcap),
+        [sys.executable, "-m", "telcoladder", "analyze", str(e2e_pcap),
          "--xdr", str(out), "-o", str(tmp_path / "flow.mmd")],
         capture_output=True, text=True,
     )
@@ -287,7 +287,7 @@ def test_a_long_gap_before_the_outcome_does_not_split_the_procedure() -> None:
     正是 §4 那一類。這是 `QUIET_GAP` 在兩種語境下的相反判讀，
     測試把它釘住免得被「統一」掉。
     """
-    from telcoshark.model import Flow
+    from telcoladder.model import Flow
 
     flow = Flow(messages=[
         _msg(10, "InitialUEMessage ▸ Registration request"),

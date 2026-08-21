@@ -1,5 +1,5 @@
 /**
- * 真實資料來源 —— 打 TelcoShark 的 `/api/<sid>/…`。
+ * 真實資料來源 —— 打 TelcoLadder 的 `/api/<sid>/…`。
  *
  * ## 目前做到哪裡（GUI Phase 3）
  *
@@ -144,7 +144,7 @@ export function apiSource(sid: string | null): DataSource {
   function need(): string {
     if (!sid) {
       throw new NotConnectedError(
-        "沒有工作階段 —— 網址裡缺 sid，或這一頁不是由 telcoshark serve 送出的。",
+        "沒有工作階段 —— 網址裡缺 sid，或這一頁不是由 telcoladder serve 送出的。",
       );
     }
     return sid;

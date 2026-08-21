@@ -2,13 +2,13 @@
 
 Product-scoping notes, 2026-08-17
 Branch: master
-Repo: gollumw/TelcoShark
+Repo: gollumw/TelcoLadder
 Status: DRAFT
 Mode: Builder
 
 ## Problem Statement
 
-TelcoShark 有三個驗證缺口，全部卡在同一件事上：**沒有授權明確的真實擷取檔**。
+TelcoLadder 有三個驗證缺口，全部卡在同一件事上：**沒有授權明確的真實擷取檔**。
 
 - PFCP adapter 未實作 —— 沒有測試資料
 - SBI adapter 只驗過 HTTP/2 結構解析，5G 語意未驗
@@ -67,7 +67,7 @@ ENUM 分流、`BPF_SAFE` 欄位，一條都沒碰過真實封包。
 
 ### Approach B: 場景即設定檔（M / Med risk）
 YAML 描述場景（deploy 檔、訂戶欄位改動、UE 動作、抓哪個介面），一指令重生全部 fixture。
-**否決理由**：可重現這點已達標，但驗證仍只有 tshark 一個 oracle，而它與 TelcoShark 用同一個解碼器。
+**否決理由**：可重現這點已達標，但驗證仍只有 tshark 一個 oracle，而它與 TelcoLadder 用同一個解碼器。
 
 ### Approach C: B ＋ 核網日誌當第二 oracle（M / Med risk）← 採用
 
@@ -75,11 +75,11 @@ YAML 描述場景（deploy 檔、訂戶欄位改動、UE 動作、抓哪個介�
 
 **C。** 同 B，但每份 fixture 額外附上 Open5GS 自己的日誌（AMF/SMF 說發生了什麼）。
 
-理由：TelcoShark 從第一天起的核心安全網就是「拿獨立 oracle 交叉驗證訊息數」。
-核網日誌是**第二個同時獨立於 tshark 與 TelcoShark** 的真相來源，而它就在那裡，
+理由：TelcoLadder 從第一天起的核心安全網就是「拿獨立 oracle 交叉驗證訊息數」。
+核網日誌是**第二個同時獨立於 tshark 與 TelcoLadder** 的真相來源，而它就在那裡，
 `docker logs` 就拿得到，邊際成本近零。
 
-測試可以斷言：「AMF 日誌說 registration reject cause 3」→ TelcoShark 也該說同一件事。
+測試可以斷言：「AMF 日誌說 registration reject cause 3」→ TelcoLadder 也該說同一件事。
 這讓 fixture 從「一份封包」變成「一份封包 ＋ 真相」。
 
 每份 fixture 的產物：
@@ -102,21 +102,21 @@ fixtures/<scenario>/
 
 ## Success Criteria
 
-- `telcoshark analyze` 對自產的 5G SA 註冊擷取畫得出正確時序圖
+- `telcoladder analyze` 對自產的 5G SA 註冊擷取畫得出正確時序圖
 - `tests/conftest.py` 的 `local/` fallback 移除，CI 從 44/62 → 62/62
 - 至少一份 VoLTE 擷取存在，足以驗證 SIP/Diameter 的 identity key 假設
 - 場景可用一個指令重生，產物逐位元組穩定（或差異可解釋）
 
 ## Distribution Plan
 
-測試床本身**不散布**（P1）。散布的是它產出的 fixture，隨 TelcoShark repo 走
+測試床本身**不散布**（P1）。散布的是它產出的 fixture，隨 TelcoLadder repo 走
 Apache-2.0，進 `tests/fixtures/`。`.gitignore` 現有的 pcap 白名單機制已就位。
 
 ## Next Steps
 
 1. 啟動 Docker daemon，clone `herlesupreeth/docker_open5gs`
 2. 跑 `sa-deploy.yaml`，用 UERANSIM 做一次成功註冊，抓 N2（SCTP 38412）
-3. **拿這份擷取跑 `telcoshark analyze`，確認整條路徑通** ← 先證明可行再自動化
+3. **拿這份擷取跑 `telcoladder analyze`，確認整條路徑通** ← 先證明可行再自動化
 4. 加第一個失敗場景（Ki 不符 → MAC failure #20），驗證 cause 表對得上
 5. 把步驟 2–4 寫成 `scenario.yaml` ＋ 產生器
 6. 加 VoLTE 場景，回頭驗證 E13/E14/E15 的 IMS 契約假設

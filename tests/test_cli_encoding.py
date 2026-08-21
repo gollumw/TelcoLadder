@@ -1,6 +1,6 @@
 """CLI 輸出編碼 —— Windows 專屬的坑，但這些測試在所有平台上都會真的重現。
 
-`telcoshark check` 印 `✓`，`analyze` 的摘要印 `⚠`。這兩個字元在 cp950
+`telcoladder check` 印 `✓`，`analyze` 的摘要印 `⚠`。這兩個字元在 cp950
 （繁中 Windows）與 cp1252（英文 Windows）**都編不出來**，cp1252 更是連
 中文摘要整行都編不出來。Python 對 stdout 用 `errors='strict'`，所以那是
 exit code 1 的真當機；stderr 用 `backslashreplace`，退化成 `\\u26a0` 這種
@@ -8,7 +8,7 @@ exit code 1 的真當機；stderr 用 `backslashreplace`，退化成 `\\u26a0` �
 
 **手動測試抓不到這個 bug。** 互動式 console 下 Python 走 Windows 的 console
 API，完全不受 code page 影響，敲一次看起來一切正常。只有輸出被導向或被管道
-接走時才會炸 —— 也就是 README 教的 `telcoshark analyze x.pcap > flow.mmd`。
+接走時才會炸 —— 也就是 README 教的 `telcoladder analyze x.pcap > flow.mmd`。
 
 所以這裡一律用 subprocess 跑真正的 CLI 並接管道，再用 `PYTHONIOENCODING`
 把子行程的預設編碼壓成 Windows 的 code page。輸出一律以 bytes 收，
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -44,7 +44,7 @@ def _require_tshark():
 
 def _run(args: list[str], codepage: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
-        [sys.executable, "-m", "telcoshark", *args],
+        [sys.executable, "-m", "telcoladder", *args],
         env={**os.environ, "PYTHONIOENCODING": codepage},
         capture_output=True,  # bytes，刻意不解碼
     )
@@ -52,7 +52,7 @@ def _run(args: list[str], codepage: str) -> subprocess.CompletedProcess[bytes]:
 
 @pytest.mark.parametrize("codepage", WINDOWS_CODEPAGES)
 def test_check_survives_a_non_utf8_console(codepage):
-    """`telcoshark check` 的 `✓` 不得因為 console 編碼而讓整個指令當掉。
+    """`telcoladder check` 的 `✓` 不得因為 console 編碼而讓整個指令當掉。
 
     這是使用者跑的第一個指令。它在 Windows 上被管道接走時當掉，
     給出的印象會是「這個工具在 Windows 上不能用」，而不是「編碼設定問題」。

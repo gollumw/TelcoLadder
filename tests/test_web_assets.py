@@ -2,10 +2,10 @@
 
 這個檔守兩件在別處都不會報錯的事：
 
-**① 搬過來的是同一份程式碼，不是重寫的。** `web/src/` 的九個檔自 TelcoShark
+**① 搬過來的是同一份程式碼，不是重寫的。** `web/src/` 的九個檔自 TelcoLadder
 `b16d0d5` 逐位元組複製而來，雜湊記在 `web/PORTED.json`。人工比對兩個跑起來的
 app「看起來一樣」是主觀的、慢的、而且沒有回歸保護；比對雜湊是客觀的、秒級的。
-參照點**凍結在那個 commit** —— TelcoShark 之後會繼續當設計實驗場改動，
+參照點**凍結在那個 commit** —— TelcoLadder 之後會繼續當設計實驗場改動，
 比對活的 3006 是追移動靶。
 
 > **Phase 2–3 陸續分岔了 5 個檔，但這條測試沒有退休。** 原本的計畫是整條
@@ -33,8 +33,8 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 _WEB = _REPO / "web"
 _MANIFEST = _WEB / "PORTED.json"
-_BUILT_CSS = _REPO / "telcoshark" / "static" / "app.css"
-_BUILT_JS = _REPO / "telcoshark" / "static" / "app.js"
+_BUILT_CSS = _REPO / "telcoladder" / "static" / "app.css"
+_BUILT_JS = _REPO / "telcoladder" / "static" / "app.js"
 
 
 def _manifest() -> dict:
@@ -42,9 +42,9 @@ def _manifest() -> dict:
 
 
 def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
-    """九個移植檔的內容必須仍等於 TelcoShark 那個 commit 的版本。
+    """九個移植檔的內容必須仍等於 TelcoLadder 那個 commit 的版本。
 
-    紅了代表有人改了移植過來的檔。在 Phase 1 那是錯的 —— 要改就先在 TelcoShark
+    紅了代表有人改了移植過來的檔。在 Phase 1 那是錯的 —— 要改就先在 TelcoLadder
     改再重新移植，否則「兩邊是同一份」這個前提就沒了，而它正是畫面對照能夠
     歸因於建置管線的唯一理由。
     """
@@ -55,7 +55,7 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
         if actual != expected:
             drifted.append(rel)
     assert not drifted, (
-        f"這些檔已偏離 TelcoShark {manifest['source_commit'][:12]}：{drifted}。"
+        f"這些檔已偏離 TelcoLadder {manifest['source_commit'][:12]}：{drifted}。"
         "Phase 1 期間它們必須逐位元組相同 —— 見 web/PORTED.json 的 note。"
     )
 
@@ -166,8 +166,8 @@ def test_the_app_shell_matches_the_dev_shell() -> None:
     而且不會有任何錯誤訊息。兩份外殼分開存在是必要的（出貨那份要注入 sid
     與 CSP 標頭），所以需要一條測試把它們綁在一起。
     """
-    from telcoshark.viewer import app_page
-    from telcoshark.session import Session
+    from telcoladder.viewer import app_page
+    from telcoladder.session import Session
 
     dev = (_WEB / "index.html").read_text(encoding="utf-8")
     shipped = app_page(
@@ -191,7 +191,7 @@ def test_the_built_assets_are_served_by_name_from_the_whitelist() -> None:
     **字典查表而非路徑拼接**（刻意的防路徑穿越設計），所以 hash 檔名追不上 ——
     而修法若是「把那條路由改成服務整個目錄」，就把那道防線拆了。
     """
-    from telcoshark.viewer import STATIC_TYPES, static_body
+    from telcoladder.viewer import STATIC_TYPES, static_body
 
     assert _BUILT_JS.exists() and _BUILT_CSS.exists(), "先在 web/ 跑 `npm run build`。"
     for name in ("app.js", "app.css"):
@@ -208,7 +208,7 @@ def test_the_built_assets_are_served_by_name_from_the_whitelist() -> None:
 
 @pytest.mark.parametrize("name", ["app-D4f2x9.js", "../pyproject.toml", "viewer.js.map"])
 def test_unregistered_names_are_refused(name: str) -> None:
-    from telcoshark.viewer import static_body
+    from telcoladder.viewer import static_body
 
     assert static_body(name) is None
 
@@ -267,7 +267,7 @@ def test_the_only_data_seam_is_the_source_layer() -> None:
 
 def _served_pages() -> dict[str, str]:
     """伺服器自己產的每一頁 HTML。新增頁面時加進來。"""
-    from telcoshark.web import _error_page, _home_page
+    from telcoladder.web import _error_page, _home_page
 
     return {
         "首頁": _home_page(),
@@ -353,7 +353,7 @@ def test_the_ui_reads_the_invisibility_counters() -> None:
 def test_every_bundled_dependency_is_credited_in_notice() -> None:
     """`web/package.json` 的每個 runtime 相依都必須出現在 `NOTICE`。
 
-    `telcoshark/static/app.js` 是 Vite 打包產物，**進版控且隨 pip 套件散布**。
+    `telcoladder/static/app.js` 是 Vite 打包產物，**進版控且隨 pip 套件散布**。
     MIT／ISC 的唯一對價是「著作權聲明隨實質部分散布」—— 打包會把原始
     LICENSE 檔剝掉，所以那些聲明只能靠 `NOTICE` 帶出去。
 

@@ -7,15 +7,15 @@
 #   - 每週一與手動：加跑 macOS 與 Windows。
 #   理由是計費倍率，不是那兩個平台不重要 —— 見 cross-platform job 上方的算式。
 #   代價寫在這裡：**macOS / Windows 的回歸最多會晚一週才被發現。**
-#   動到 telcoshark/tshark.py 的後備路徑、.gitattributes、或任何輸出編碼相關的
+#   動到 telcoladder/tshark.py 的後備路徑、.gitattributes、或任何輸出編碼相關的
 #   程式碼時，自己按一下 workflow_dispatch，別等週一。
 #
 # 守得住：
 #   - 三個 Python 版本的相容性。3.13 拿掉了 EntryPoint 的 tuple 介面，
 #     而外掛註冊表（見 TODOS 的 E1）正要用 entry point，這個矩陣是它的安全網。
-#   - 三個平台的 tshark 定位。telcoshark/tshark.py 的後備路徑清單每個平台
+#   - 三個平台的 tshark 定位。telcoladder/tshark.py 的後備路徑清單每個平台
 #     長得都不一樣（Wireshark.app / Program Files / /usr/bin），
-#     `telcoshark check` 這一步就是它們各自的真實測試。（每週）
+#     `telcoladder check` 這一步就是它們各自的真實測試。（每週）
 #   - **Windows 的輸出編碼。** 這是這份矩陣裡唯一「只有真的在那個 OS 上跑
 #     才驗得到」的東西之外的補充：編碼測試本身用 PYTHONIOENCODING 在所有
 #     平台重現，但 Program Files 路徑組合與 core.autocrlf 只有 windows job 驗得到。（每週）
@@ -95,9 +95,9 @@ jobs:
 
       - name: Environment check
         # 這一步本身就是測試：驗證 tshark 定位邏輯在這個作業系統上找得到，
-        # 且四個必要 dissector 都在。失敗代表 telcoshark/tshark.py 的
+        # 且四個必要 dissector 都在。失敗代表 telcoladder/tshark.py 的
         # 後備路徑清單漏了這個平台。
-        run: telcoshark check
+        run: telcoladder check
 
       - name: Run tests
         # fixture 已進版控，所以這裡不該有任何 skip。
@@ -160,14 +160,14 @@ jobs:
       - name: Install tshark (Windows)
         if: runner.os == 'Windows'
         # 裝進 C:\Program Files\Wireshark —— 也就是 _fallback_paths() 找的位置。
-        # 刻意不設 TELCOSHARK_TSHARK：讓自動定位邏輯真的被測到。
+        # 刻意不設 TELCOLADDER_TSHARK：讓自動定位邏輯真的被測到。
         run: choco install wireshark --no-progress -y
 
       - name: Install package
         run: python -m pip install --upgrade pip && pip install -e ".[dev]"
 
       - name: Environment check
-        run: telcoshark check
+        run: telcoladder check
 
       - name: Run tests
         run: pytest -q -ra

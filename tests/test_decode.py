@@ -19,14 +19,14 @@ import subprocess
 
 import pytest
 
-from telcoshark.decode import (
+from telcoladder.decode import (
     DecodeError,
     DecodeNode,
     _frame_filter,
     decode_frames,
     window_around,
 )
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 
@@ -82,7 +82,7 @@ def test_reassembly_context_is_preserved() -> None:
     上下文有被讀進去。
     """
     pcap = require_capture("5gc-e2e/capture.pcap")
-    from telcoshark.packets import read_packet_rows
+    from telcoladder.packets import read_packet_rows
 
     http2 = [r.number for r in read_packet_rows(pcap) if "http2" in r.protocols]
     if not http2:
@@ -277,7 +277,7 @@ def test_missing_byte_range_is_none_not_zero(e2e_pcap) -> None:
     """
     import xml.etree.ElementTree as ET
 
-    from telcoshark.decode import _node
+    from telcoladder.decode import _node
 
     bare = ET.fromstring('<field name="synthetic" showname="沒有位置的節點"/>')
     node = _node(bare)

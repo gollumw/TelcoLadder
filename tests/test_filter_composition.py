@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.adapters import default_decode_as
-from telcoshark.model import IdKind
-from telcoshark.packets import matching_frames
-from telcoshark.session import Session, _index_into
-from telcoshark.viewer import effective_matched, index_json, select_identity
+from telcoladder.adapters import default_decode_as
+from telcoladder.model import IdKind
+from telcoladder.packets import matching_frames
+from telcoladder.session import Session, _index_into
+from telcoladder.viewer import effective_matched, index_json, select_identity
 
 #: 兩個條件都要有東西可篩才驗得到疊加：`e2e_pcap` 是 N2 + SBI + N4 三個擷取點
 #: 合併，既有多種傳輸層（filter 篩得動），又有解得出來的 SUPI（身分篩得動）。
@@ -177,7 +177,7 @@ def test_selecting_a_subscriber_matches_what_the_drawer_promised(
 
     兩個數字都在同一個畫面上，而且各自看起來都很合理。
     """
-    from telcoshark.flowtable import build_table
+    from telcoladder.flowtable import build_table
 
     table = build_table(analysed.analysis)
     subscriber = next(

@@ -168,7 +168,7 @@ export function SessionAnalysisView({
 }: {
   supi: string | null;
   callFlowEvents: CallFlowEvent[];
-  /** 這個訂戶的程序段（`telcoshark/procedures.py`）。空陣列＝未切段
+  /** 這個訂戶的程序段（`telcoladder/procedures.py`）。空陣列＝未切段
    *  （範例資料就是空的 —— 切段是引擎對真實訊息序列的判讀）。 */
   procedures: CallFlowProcedure[];
   /** 這張圖有哪些參與者，**已依 `nf.PARTICIPANT_ORDER` 排好**。

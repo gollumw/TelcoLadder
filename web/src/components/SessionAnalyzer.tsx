@@ -119,7 +119,7 @@ export default function SessionAnalyzer({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-sky-400" />
-              <h1 className="text-lg font-semibold text-white">TelcoShark</h1>
+              <h1 className="text-lg font-semibold text-white">TelcoLadder</h1>
               <span className="text-sm text-slate-500">5G Subscriber Session Correlation &amp; Call Flow Analyzer</span>
             </div>
 

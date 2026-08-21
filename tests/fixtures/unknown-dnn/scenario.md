@@ -14,12 +14,12 @@ cause 91, "DNN not supported or not subscribed in the slice".
 
 **None of that is visible in the capture.** The rejection arrives after Security
 Mode Command, so the NAS payload is ciphered (`nas-5gs.security_header_type == 2`)
-and neither tshark nor TelcoShark can read inside. The diagram shows a normal-looking
+and neither tshark nor TelcoLadder can read inside. The diagram shows a normal-looking
 flow with no highlighted failure.
 
 ## Why this fixture exists
 
-This is the honest limit of packet capture alone, and it is the reason TelcoShark
+This is the honest limit of packet capture alone, and it is the reason TelcoLadder
 now reports a ciphered-NAS count instead of staying silent:
 
 ```

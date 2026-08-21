@@ -25,10 +25,10 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.pipeline import analyse
-from telcoshark.session import Session
-from telcoshark.tshark import TsharkNotFound, find_tshark
-from telcoshark.viewer import callflow_json, flows_json
+from telcoladder.pipeline import analyse
+from telcoladder.session import Session
+from telcoladder.tshark import TsharkNotFound, find_tshark
+from telcoladder.viewer import callflow_json, flows_json
 
 
 @pytest.fixture(scope="session", autouse=True)

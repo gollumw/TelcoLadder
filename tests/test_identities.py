@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from telcoshark.adapters.nas5gs import count_protected_suci
-from telcoshark.extract import Frame
-from telcoshark.identities import (
+from telcoladder.adapters.nas5gs import count_protected_suci
+from telcoladder.extract import Frame
+from telcoladder.identities import (
     UNIMPLEMENTED_KINDS,
     availability,
     enumerate_identities,
@@ -29,13 +29,13 @@ from telcoshark.identities import (
     lookup,
     no_result_explanation,
 )
-from telcoshark.model import IdKind
-from telcoshark.pipeline import Analysis, analyse
-from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoladder.model import IdKind
+from telcoladder.pipeline import Analysis, analyse
+from telcoladder.tshark import TsharkNotFound, find_tshark
 
 from conftest import require_capture
 
-ADAPTER_DIR = Path(__file__).resolve().parent.parent / "telcoshark" / "adapters"
+ADAPTER_DIR = Path(__file__).resolve().parent.parent / "telcoladder" / "adapters"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -80,7 +80,7 @@ def test_every_unimplemented_kind_has_a_reason() -> None:
     使用者需要知道要等什麼 —— MSISDN 等 IMS adapter 跟 GTP TEID 等 GTP
     adapter 是不同的等待。
     """
-    from telcoshark.identities import UNAVAILABLE_REASONS
+    from telcoladder.identities import UNAVAILABLE_REASONS
 
     for kind in UNIMPLEMENTED_KINDS:
         assert kind in UNAVAILABLE_REASONS, f"{kind.name} 沒有寫原因"

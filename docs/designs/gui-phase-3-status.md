@@ -28,7 +28,7 @@
 ## 還沒動的兩塊大的
 
 - **結構化 call flow API** —— 目前只回 SVG 字串，y 座標在 Python 端算死，
-  做不到 TelcoShark 介面要的泳道動態增減與 Domain 切換。
+  做不到 TelcoLadder 介面要的泳道動態增減與 Domain 切換。
 - **規模** —— GUI 把全部封包當一個記憶體陣列做客戶端過濾。真實 pcap 幾十萬
   封包會卡死。要改視窗化，並把 `computeDiscoveredSessions` 的全母體聚合移到
   伺服器端（`flows_json` 已經在做那件事，而且有測試）。

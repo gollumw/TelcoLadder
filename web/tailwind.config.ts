@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-// 自 TelcoShark 移植，只有 `content` 改了 —— 那裡原本是
+// 自 TelcoLadder 移植，只有 `content` 改了 —— 那裡原本是
 // `["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"]`（Next 的目錄結構）。
 //
 // **這一行漏掉任何一個路徑都是靜默失敗**：Tailwind 只產出它在 content 掃到的

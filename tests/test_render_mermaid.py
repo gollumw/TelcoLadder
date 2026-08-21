@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.model import Endpoint, Flow, IdKind, Message
-from telcoshark.render_mermaid import render
+from telcoladder.model import Endpoint, Flow, IdKind, Message
+from telcoladder.render_mermaid import render
 
 
 def _msg(frame: int, src: str, dst: str, label: str, **kw) -> Message:
@@ -128,18 +128,18 @@ def test_real_capture_produces_wellformed_diagram(registration_pcap):
     形狀檢查而非逐字比對：逐字比對會在每次調整標籤時無謂地失敗。
     真正的渲染驗證靠 mermaid 本身（見 README 的驗證章節）。
     """
-    from telcoshark.adapters import parse_frame
-    from telcoshark.correlate import correlate
-    from telcoshark.extract import read_frames
-    from telcoshark.nf import apply_roles
-    from telcoshark.tshark import TsharkNotFound, find_tshark
+    from telcoladder.adapters import parse_frame
+    from telcoladder.correlate import correlate
+    from telcoladder.extract import read_frames
+    from telcoladder.nf import apply_roles
+    from telcoladder.tshark import TsharkNotFound, find_tshark
 
     try:
         find_tshark()
     except TsharkNotFound:
         pytest.skip("本機沒有 tshark")
 
-    from telcoshark.model import IdKind
+    from telcoladder.model import IdKind
 
     messages = [m for f in read_frames(registration_pcap) for m in parse_frame(f)]
     apply_roles(messages)

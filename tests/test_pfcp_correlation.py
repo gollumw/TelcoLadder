@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import pytest
 
-from telcoshark.adapters import default_decode_as
-from telcoshark.identity import gtp_tunnel
-from telcoshark.model import IdKind
-from telcoshark.pipeline import analyse
+from telcoladder.adapters import default_decode_as
+from telcoladder.identity import gtp_tunnel
+from telcoladder.model import IdKind
+from telcoladder.pipeline import analyse
 
 
 @pytest.fixture(scope="module")
