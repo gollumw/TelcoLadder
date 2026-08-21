@@ -1,0 +1,3 @@
+08/21 20:18:48.541: [upf] INFO: [Removed] Number of UPF-sessions is now 0 (../src/upf/context.c:256)
+08/21 20:18:48.778: [upf] INFO: [Added] Number of UPF-Sessions is now 1 (../src/upf/context.c:212)
+08/21 20:18:48.778: [upf] INFO: UE F-SEID[UP:0x73f CP:0x204] APN[internet] PDN-Type[1] IPv4[192.168.100.4] IPv6[] (../src/upf/context.c:498)

@@ -1,0 +1,240 @@
+"""程序切段與 xDR 匯出。
+
+守四件事，每一件的失敗都是靜默的：
+
+* **段數與結局對得上人工判讀** —— 切錯段不報錯，圖照樣畫得出來。
+  oracle 是各 fixture 的訊息序列**人工數過**的結果（設計時逐份 dump 過）。
+* **守恆**：每則訊息要嘛屬於恰好一段，要嘛在未指派堆。等式破了代表
+  切段規則把訊息弄丟或算了兩次 —— 與 `prefilter` 的掉格對帳同一個原則。
+* **同型開段訊息合併**：SCP 轉送讓同一則 NAS 出現兩次（`5gc-e2e` 的
+  frame 388/391），不合併會把一次建立報成兩次。
+* **xDR 逐位元組可重現且欄位集合固定** —— 它是給腳本吃的契約，
+  欄位漂移的症狀是下游 jq 靜默拿到 null。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from telcoshark.model import Endpoint, Message
+from telcoshark.pipeline import analyse
+from telcoshark.procedures import TAIL_SLACK, Procedure, segment, segment_flow
+from telcoshark.tshark import TsharkNotFound, find_tshark
+from telcoshark import xdr
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+ALL_FIXTURES = [
+    "5gc-e2e", "5gc-registration", "ki-mismatch", "multi-imsi",
+    "ne-trace", "supi-not-provisioned", "unknown-dnn", "userplane",
+]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _require_tshark():
+    try:
+        find_tshark()
+    except TsharkNotFound:
+        pytest.skip("本機沒有 tshark")
+
+
+@pytest.fixture(scope="module")
+def e2e():
+    return analyse(FIXTURES / "5gc-e2e" / "capture.pcap")
+
+
+def _by_kind(procs):
+    return [(p.supi, p.kind, p.outcome) for p in procs]
+
+
+# ── 人工數過的 oracle ────────────────────────────────────────────────
+
+
+def test_e2e_segments_match_the_hand_count(e2e) -> None:
+    """`5gc-e2e`：一次註冊、一次 PDU 建立、一個孤兒 context 釋放。
+
+    數字來自逐則 dump 人工判讀（2026-08-21）。這條紅了先去 dump 訊息序列
+    比對，**不要直接改期望值** —— 切段規則錯與 fixture 變了是兩回事。
+    """
+    procs, _ = segment(e2e)
+    assert _by_kind(procs) == [
+        ("001011234567895", "registration", "success"),
+        (None, "ue-context-release", "success"),
+        ("001011234567895", "pdu-session-establishment", "success"),
+    ]
+    est = procs[2]
+    assert est.pdu_session_id == "1"
+    assert est.start_frame == 388
+
+
+def test_relay_duplicated_openers_merge_into_one_procedure(e2e) -> None:
+    """SCP 兩腿讓「PDU session establishment request」出現兩次（388/391）——
+    必須是一段，不是兩段。分開算會把一次建立報成兩次，而兩段各自都
+    看起來很合理。"""
+    procs, _ = segment(e2e)
+    est = [p for p in procs if p.kind == "pdu-session-establishment"]
+    assert len(est) == 1
+
+
+def test_failure_records_both_final_and_root_cause() -> None:
+    """`ki-mismatch`：終端 cause 是零資訊量的「協定錯誤」，起因才是
+    SQN 重同步 —— 兩個都要給，root cause 才是排障要的那個。"""
+    result = analyse(FIXTURES / "ki-mismatch" / "capture.pcap")
+    procs, stray = segment(result)
+    assert stray == 0
+    assert _by_kind(procs) == [("001011234567895", "registration", "failure")]
+    p = procs[0]
+    assert p.cause and "協定錯誤" in p.cause
+    assert p.root_cause and "SQN" in p.root_cause
+
+
+def test_recovered_failure_is_a_success() -> None:
+    """`5gc-registration`：認證先失敗（SQN 重同步）後成功 —— 結局是
+    success，失敗數照記。只看「有沒有失敗」會把復原的註冊報成失敗。"""
+    result = analyse(FIXTURES / "5gc-registration" / "capture.pcap")
+    procs, _ = segment(result)
+    regs = [p for p in procs if p.kind == "registration"]
+    assert len(regs) == 1
+    assert regs[0].outcome == "success"
+    assert regs[0].failures == 1
+
+
+def test_release_in_the_subscribers_own_flow_is_attributed() -> None:
+    """`supi-not-provisioned`：註冊被拒後的 context 釋放與註冊同一條流程，
+    要歸到那個人名下 —— 不是丟進未歸戶。"""
+    result = analyse(FIXTURES / "supi-not-provisioned" / "capture.pcap")
+    procs, _ = segment(result)
+    assert _by_kind(procs) == [
+        ("001019999999999", "registration", "failure"),
+        ("001019999999999", "ue-context-release", "success"),
+    ]
+
+
+def test_multi_imsi_yields_two_procedures_per_subscriber() -> None:
+    """五個訂戶各自一次註冊＋一次建立 —— 段的歸屬不得互串。"""
+    result = analyse(FIXTURES / "multi-imsi" / "capture.pcap")
+    procs, _ = segment(result)
+    for supi in sorted({p.supi for p in procs if p.supi}):
+        kinds = sorted(p.kind for p in procs if p.supi == supi)
+        assert kinds == ["pdu-session-establishment", "registration"], (
+            f"{supi} 的程序不對：{kinds}"
+        )
+
+
+@pytest.mark.parametrize("name", ALL_FIXTURES)
+def test_every_message_is_assigned_or_counted(name: str) -> None:
+    """守恆：切進段的 ＋ 未指派的 ＝ 全部。
+
+    這條是切段規則的安全網 —— 規則怎麼改，訊息都不准憑空消失或算兩次。
+    """
+    result = analyse(FIXTURES / name / "capture.pcap")
+    procs, stray = segment(result)
+    total = sum(len(f.messages) for f in result.flows)
+    assert sum(p.messages for p in procs) + stray == total
+
+
+# ── 合成情境：真實 fixture 蓋不到的角落 ──────────────────────────────
+
+
+def _msg(frame: int, label: str, *, failure: bool = False) -> Message:
+    return Message(
+        frame=frame, ts=float(frame), protocol="ngap",
+        src=Endpoint("10.0.0.1"), dst=Endpoint("10.0.0.2"),
+        label=label, is_failure=failure,
+    )
+
+
+def test_an_unfinished_procedure_near_capture_end_says_so() -> None:
+    """開了段、沒等到結局、而且擷取就停在那 —— 要標 incomplete 並加註
+    「可能只是截到一半」。沒有這句話，使用者會把截檔當成網路卡住。"""
+    from telcoshark.model import Flow
+
+    flow = Flow(messages=[_msg(10, "InitialUEMessage ▸ Registration request")])
+    procs, _ = segment_flow(flow, capture_end=10.0 + TAIL_SLACK / 2)
+    assert procs[0].outcome == "incomplete"
+    assert "截到一半" in procs[0].note
+
+    # 對照組：離結尾夠遠的 incomplete 不加註 —— 那是真的沒等到。
+    procs, _ = segment_flow(flow, capture_end=10.0 + TAIL_SLACK * 10)
+    assert procs[0].outcome == "incomplete"
+    assert procs[0].note == ""
+
+
+def test_ue_context_release_opener_is_exact_match() -> None:
+    """`UEContextRelease` 是 `UEContextReleaseResponse` 的前綴 ——
+    開段若用包含比對，收段訊息會自己開一段新的。"""
+    from telcoshark.model import Flow
+
+    flow = Flow(messages=[
+        _msg(10, "UEContextRelease"),
+        _msg(11, "UEContextReleaseResponse"),
+    ])
+    procs, stray = segment_flow(flow, capture_end=100.0)
+    # segment_flow 回的是未指派**清單**（segment() 才是數字）—— 拿 list 比 0
+    # 永遠為假，第一版就這樣紅了一次。
+    assert len(procs) == 1 and not stray
+    assert procs[0].outcome == "success"
+
+
+# ── xDR ──────────────────────────────────────────────────────────────
+
+#: xDR 每筆程序記錄的欄位集合。**這是對外契約** —— 改欄位要同時想
+#: 「消費端的 jq 會不會靜默拿到 null」，破壞性變更要遞增 XDR_VERSION。
+PROCEDURE_FIELDS = {
+    "procedure", "supi", "outcome", "cause", "root_cause", "pdu_session_id",
+    "start_frame", "end_frame", "messages", "failures", "duration_s",
+    "protocols", "note",
+}
+
+
+def test_xdr_field_set_is_pinned(e2e) -> None:
+    doc = xdr.build(e2e, source_name="x.pcap")
+    assert set(doc) == {
+        "xdr_version", "source", "procedures", "messages_total",
+        "messages_in_procedures", "messages_unassigned", "cause_rollup",
+    }
+    for record in doc["procedures"]:
+        assert set(record) == PROCEDURE_FIELDS
+
+
+def test_xdr_is_byte_reproducible(e2e) -> None:
+    """同一份擷取檔兩次輸出逐位元組相同 —— 不蓋產生時間戳。
+    可 diff 的輸出才進得了版控與 CI（與 `.mmd` 同一條原則）。"""
+    assert xdr.dumps(e2e, source_name="x.pcap") == xdr.dumps(e2e, source_name="x.pcap")
+
+
+def test_xdr_bookkeeping_adds_up(e2e) -> None:
+    doc = xdr.build(e2e, source_name="x.pcap")
+    assert doc["messages_in_procedures"] + doc["messages_unassigned"] == doc["messages_total"]
+
+
+def test_cause_rollup_counts_every_failure_not_only_segmented_ones() -> None:
+    """彙總以全部失敗訊息為母體 —— 孤兒流程裡的失敗同樣是失敗，
+    漏計會讓「top 失敗原因」比現實樂觀。"""
+    result = analyse(FIXTURES / "ki-mismatch" / "capture.pcap")
+    doc = xdr.build(result, source_name="x.pcap")
+    total_failures = sum(
+        1 for f in result.flows for m in f.messages if m.is_failure
+    )
+    assert sum(g["count"] for g in doc["cause_rollup"]) == total_failures
+    assert all(g["supis"] == ["001011234567895"] for g in doc["cause_rollup"])
+
+
+def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
+    """`--xdr` 從 CLI 到檔案的整條路。"""
+    import subprocess
+    import sys
+
+    out = tmp_path / "records.json"
+    proc = subprocess.run(
+        [sys.executable, "-m", "telcoshark", "analyze", str(e2e_pcap),
+         "--xdr", str(out), "-o", str(tmp_path / "flow.mmd")],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert doc["xdr_version"] == 1
+    assert doc["procedures"], "一段程序都沒有 —— 端到端斷了"

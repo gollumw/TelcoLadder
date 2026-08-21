@@ -114,6 +114,16 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     else:
         print(output, end="")
 
+    if args.xdr:
+        from telcoshark import xdr
+
+        # 逐位元組可重現（不蓋產生時間戳），所以可以進版控、可以 diff ——
+        # 與 `.mmd` 同一條原則。
+        args.xdr.write_text(
+            xdr.dumps(result, source_name=args.pcap.name), encoding="utf-8"
+        )
+        print(f"已寫入 {args.xdr}", file=sys.stderr)
+
     # 摘要走 stderr，這樣 `telcoshark analyze x.pcap > flow.mmd` 拿到的是乾淨的圖。
     total = sum(r.total for r in results)
     shown = sum(r.shown for r in results)
@@ -179,6 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("pcap", type=Path, help="pcap / pcapng 檔")
     analyze.add_argument(
         "-o", "--output", type=Path, help="寫入檔案（預設印到 stdout）"
+    )
+    analyze.add_argument(
+        "--xdr", type=Path, metavar="檔案",
+        help="另外匯出程序級的結構化記錄（JSON）。一段程序一筆：誰、哪種程序、"
+             "成功或失敗、cause 與起因、耗時。給腳本吃的 —— 用 jq 就能回答"
+             "「這批擷取的失敗率」。同一份擷取檔的輸出逐位元組可重現。",
     )
     analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,
