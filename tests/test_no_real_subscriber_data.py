@@ -482,3 +482,64 @@ def test_the_installer_exists_and_is_executable() -> None:
         "CONTRIBUTING 沒有一行**可以照著打**的安裝指令 —— "
         "只在散文裡提到名字，讀者不會知道要怎麼跑"
     )
+
+
+# ── 第六道網：文字檔裡的個人目錄路徑（2026-08-23）────────────────────────
+#
+# 第四道網只掃擷取檔的檔頭。同一種洩漏換個載體就過得去：2026-08-23 一份由
+# 外部 agent 產出的 `docs/WALKTHROUGH.md` 帶著九條 `/Users/<帳號>/.gemini/…`
+# 的絕對路徑 —— 使用者帳號、工具名、工作目錄一次全在裡面，而前五道網沒有一道
+# 會出聲（不是 15 位數字、不是擷取檔名、不在範本裡、不在 pcapng 裡）。
+#
+# 形狀：`/Users/<名>/`、`/home/<名>/`、`C:\Users\<名>\`。**只認帶了帳號段的**，
+# 所以文件裡講規則用的 `/Users/<使用者名稱>/`（尖括號）與本檔的 regex 原文
+# （`/Users/|`）都不算 —— 那些是在描述形狀，不是路徑。
+
+_HOME_PATH = re.compile(
+    r"(?:/Users/|/home/)[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\"
+)
+
+
+def _home_paths(text: str) -> set[str]:
+    """文字裡帶著帳號段的個人目錄路徑。回的是**前綴**（到帳號段為止），
+    不是整條路徑 —— 失敗訊息印進 CI log 時不該把整條再抄一次。"""
+    return {m.group(0) for m in _HOME_PATH.finditer(text)}
+
+
+def test_the_home_path_shape_is_the_one_that_leaked() -> None:
+    """形狀要認得實際洩漏過的三種寫法，也要放過文件裡描述規則的寫法。"""
+    # 範例用串接組出來 —— 這個檔自己也在被掃的名單上，直接寫會被自己抓到。
+    mac, linux, win = "/Users/" + "alice/", "/home/" + "bob/", "C:\\Users\\" + "carol\\"
+    assert _home_paths(f"![x]({mac}.gemini/brain/1/a.png)") == {mac}
+    assert _home_paths(f"see {linux}work/x.pcap") == {linux}
+    assert _home_paths(f"{win}Desktop\\x.pcap") == {win}
+    assert _home_paths(f"file://{mac}AI%20Playgroud/x") == {mac}
+    # 描述形狀的寫法不是路徑。
+    assert _home_paths("`/Users/<使用者名稱>/…/part-amf.pcap`") == set()
+    assert _home_paths('re.compile(rb"(/Users/|/home/|/root/)")') == set()
+    assert _home_paths("（`/Users/`、`/home/`、`/root/`）") == set()
+
+
+def test_no_home_directory_path_in_any_tracked_text_file() -> None:
+    """版控裡的文字檔不得帶著任何人的個人目錄路徑。
+
+    紅了代表有東西把本機路徑原樣貼了進來 —— 最常見的是外部工具產出的報告
+    與截圖連結。修法是改成相對路徑；帳號名沒有任何理由出現在公開 repo 裡。
+    """
+    files = _tracked_text_files()
+    assert len(files) > 50, "掃到的檔案少得不合理 —— git ls-files 可能壞了"
+
+    offenders: list[str] = []
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        found = _home_paths(text)
+        if found:
+            offenders.append(f"{path.relative_to(REPO)} → {sorted(found)}")
+
+    assert not offenders, (
+        "文字檔裡帶著個人目錄路徑：\n  " + "\n  ".join(offenders)
+        + "\n\n改成相對路徑。帳號名不該出現在版控裡。"
+    )

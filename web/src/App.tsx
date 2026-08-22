@@ -270,16 +270,16 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6">
-        <div className="max-w-xl rounded-lg border border-rose-500/30 bg-rose-500/5 p-5">
-          <div className="flex items-center gap-2 text-rose-300">
+      <div className="flex min-h-screen items-center justify-center bg-canvas p-6">
+        <div className="max-w-xl rounded-lg border border-signal-red-border bg-signal-red-bg p-5">
+          <div className="flex items-center gap-2 text-signal-red-fg">
             <AlertTriangle className="h-4 w-4" />
             <span className="text-sm font-semibold">{t("Could not load data")}</span>
           </div>
           {/* 講出實際原因，不要縮成「發生錯誤」—— 使用者要能據此判斷
               是自己弄錯了，還是工具還沒做到。 */}
-          <p className="mt-2 text-sm leading-relaxed text-slate-300">{error.message}</p>
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-2 text-sm leading-relaxed text-fg-muted">{error.message}</p>
+          <p className="mt-3 text-xs text-fg-dim">
             {t("Source: {label}", { label: t(source.label) })}
             {wantsApiSource() && t("　·　Remove ?source=api from the URL to see the built-in sample data")}
           </p>
@@ -290,9 +290,9 @@ export default function App() {
 
   if (!data || !packets) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <Loader2 className="h-4 w-4 animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
+          <Loader2 className="h-4 w-4 animate-spin text-signal-cyan" />
           {t("Loading {label}…", { label: t(source.label) })}
         </div>
       </div>
@@ -304,7 +304,7 @@ export default function App() {
       {data.autoDecode.length > 0 && (
         // 與 coverage 是一組的：一個說「我沒看到什麼」，這個說「我為了
         // 看到它做了什麼」。只印前者，使用者不知道結果已經被調整過。
-        <div className="border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs text-sky-200">
+        <div className="border-b border-signal-cyan-border bg-signal-cyan-bg px-4 py-2 text-xs text-signal-cyan-fg">
           <p className="font-semibold">{t("This capture's decoding was adjusted automatically")}</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
             {data.autoDecode.map((line) => (
@@ -323,7 +323,7 @@ export default function App() {
         //
         // 用 amber 不用 rose —— 這不是錯誤，是**證據的極限**。標紅會讓人
         // 以為網路出事了。
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+        <div className="border-b border-signal-amber-border bg-signal-amber-bg px-4 py-2 text-xs text-signal-amber-fg">
           <p className="font-semibold">{t("Parts of this capture are visible but cannot be read")}</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
             {data.invisible.ciphered > 0 && (
@@ -345,7 +345,7 @@ export default function App() {
       {source.notice && (
         // 常駐橫幅，不是可關閉的提示 —— 使用者每一眼看到的畫面都少了東西，
         // 那件事不該只在載入時說一次。
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+        <div className="border-b border-signal-amber-border bg-signal-amber-bg px-4 py-2 text-xs text-signal-amber-fg">
           {t(source.notice)}
         </div>
       )}

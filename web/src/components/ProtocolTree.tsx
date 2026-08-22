@@ -59,11 +59,11 @@ function ProtocolTreeNode({
     <div>
       <div
         className={cn(
-          "flex cursor-pointer gap-1.5 rounded py-0.5 pr-1 hover:bg-slate-800/60",
+          "flex cursor-pointer gap-1.5 rounded py-0.5 pr-1 transition-colors hover:bg-surface-hover",
           // 未選中：單行，可掃。選中：整列攤開，值再長也讀得完。
           // Wireshark 用水平捲軸解決這件事；這裡的樹在一個窄欄裡，
           // 捲軸會讓人捲丟位置，所以改成「只有你正在看的那一列會變高」。
-          isSelected ? "items-start bg-sky-500/20" : "items-center",
+          isSelected ? "items-start bg-signal-cyan-bg text-fg font-medium" : "items-center",
         )}
         style={{ paddingLeft: depth * 14 }}
         onClick={() => {
@@ -73,18 +73,18 @@ function ProtocolTreeNode({
       >
         {hasChildren ? (
           open ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
+            <ChevronDown className="h-3 w-3 shrink-0 text-fg-dim" />
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+            <ChevronRight className="h-3 w-3 shrink-0 text-fg-dim" />
           )
         ) : (
           <span className="inline-block h-3 w-3 shrink-0" />
         )}
-        <span className={cn("text-sky-300", !isSelected && "truncate")}>{node.label}</span>
+        <span className={cn("text-signal-cyan font-mono", !isSelected && "truncate")}>{node.label}</span>
         {node.detail && (
           <span
             className={cn(
-              "text-slate-400",
+              "text-fg-muted font-mono",
               // 選中時 `break-all` 而不是 `break-words`：這些值是 JSON 與
               // 十六進位，沒有空白可以斷，`break-words` 會讓它整條溢出。
               isSelected ? "break-all" : "truncate",

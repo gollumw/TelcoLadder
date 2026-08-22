@@ -21,18 +21,18 @@ import type { CallFlowParticipant, CallFlowProcedure } from "@/data/source";
  * 箭頭畫得出來，圖看起來完全合理。
  */
 const LANE_STYLE: Record<string, { icon: LucideIcon; hex: string; text: string }> = {
-  UE: { icon: Smartphone, hex: "#38bdf8", text: "text-sky-400" },
-  gNB: { icon: RadioTower, hex: "#a78bfa", text: "text-violet-400" },
-  AMF: { icon: ShieldCheck, hex: "#34d399", text: "text-emerald-400" },
+  UE: { icon: Smartphone, hex: "#39b6d0", text: "text-signal-cyan" },
+  gNB: { icon: RadioTower, hex: "#a78bfa", text: "text-purple-400" },
+  AMF: { icon: ShieldCheck, hex: "#3ac178", text: "text-signal-mint" },
   AUSF: { icon: KeyRound, hex: "#2dd4bf", text: "text-teal-400" },
-  SMF: { icon: GitBranch, hex: "#fbbf24", text: "text-amber-400" },
-  UPF: { icon: Router, hex: "#fb7185", text: "text-rose-400" },
+  SMF: { icon: GitBranch, hex: "#d59733", text: "text-signal-amber" },
+  UPF: { icon: Router, hex: "#f67a73", text: "text-signal-red" },
 };
 
 /** 認得出角色但沒配色的網元（SCP／UDM／PCF…）。 */
 const KNOWN_FALLBACK = { icon: Boxes, hex: "#818cf8", text: "text-indigo-400" };
 /** 連角色都推不出來 —— 泳道標題會是 IP。**長得不一樣是刻意的。** */
-const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "#94a3b8", text: "text-slate-400" };
+const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "#6a7c98", text: "text-fg-dim" };
 
 interface Lane {
   id: string;
@@ -80,9 +80,9 @@ const PROCEDURE_LABEL: Record<string, string> = {
 //: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
 //: 選擇列的重點:一眼掃過去知道哪一段掛了。
 const OUTCOME_STYLE: Record<string, string> = {
-  success: "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
-  failure: "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:border-rose-400",
-  incomplete: "border-amber-500/40 bg-amber-500/5 text-amber-300/90 hover:border-amber-400",
+  success: "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted transition-colors",
+  failure: "border-signal-red-border bg-signal-red-bg text-signal-red hover:border-signal-red shadow-sm font-semibold transition-colors",
+  incomplete: "border-signal-amber-border bg-signal-amber-bg text-signal-amber hover:border-signal-amber font-medium transition-colors",
 };
 
 //: 結局的符號。**incomplete 用 ⋯ 不用 ✗** —— 「沒等到結局」與「失敗」
@@ -94,13 +94,13 @@ const OUTCOME_MARK: Record<string, string> = {
 };
 
 const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {
-  SUCCESS: "text-emerald-400",
-  ERROR: "text-rose-400",
-  INFO: "text-slate-400",
+  SUCCESS: "text-signal-mint font-medium",
+  ERROR: "text-signal-red font-semibold",
+  INFO: "text-fg-dim",
 };
 
-const ERROR_HEX = "#f87171";
-const ERROR_BG = "rgba(248,113,113,0.16)";
+const ERROR_HEX = "#f67a73";
+const ERROR_BG = "rgba(246,122,115,0.14)";
 
 const LANE_GAP = 150;
 const LANE_MARGIN = 70;
@@ -273,7 +273,7 @@ export function SessionAnalysisView({
     <button
       type="button"
       onClick={onBackToDataMining}
-      className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:border-sky-500 hover:text-sky-300"
+      className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
       {t("Back to Data Mining (all packets)")}
@@ -284,9 +284,9 @@ export function SessionAnalysisView({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">{backButton}</div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-10 text-center">
-          <p className="text-sm text-slate-500">{t("No subscriber selected yet.")}</p>
-          <p className="mt-1 text-xs text-slate-600">{t("Click \"Correlate\" on a row in the Data Mining packet list, or pick one of the discovered sessions.")}</p>
+        <div className="rounded-lg border border-border bg-surface-1 p-10 text-center">
+          <p className="text-sm text-fg-dim">{t("No subscriber selected yet.")}</p>
+          <p className="mt-1 text-xs text-fg-dim">{t("Click \"Correlate\" on a row in the Data Mining packet list, or pick one of the discovered sessions.")}</p>
         </div>
       </div>
     );
@@ -296,20 +296,20 @@ export function SessionAnalysisView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
-        <span className="font-mono text-xs text-slate-500">
-          {t("Analysing: ")}<span className="text-slate-300">{supi}</span>
-          {isMidStream && <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">Mid-stream</span>}
+        <span className="font-mono text-xs text-fg-dim">
+          {t("Analysing: ")}<span className="text-fg font-medium">{supi}</span>
+          {isMidStream && <span className="ml-2 rounded-full border border-signal-amber-border bg-signal-amber-bg px-2 py-0.5 text-[11px] text-signal-amber">Mid-stream</span>}
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 xl:col-span-3">
-          <h2 className="mb-1 text-sm font-semibold text-slate-200">{t("Call Flow Ladder Diagram")}</h2>
+        <section className="rounded-lg border border-border bg-surface-1 p-4 xl:col-span-3">
+          <h2 className="mb-1 text-sm font-semibold text-fg">{t("Call Flow Ladder Diagram")}</h2>
 
           {/* **模式必須講出來。** wire 模式下 SBI 夾帶的 NAS 會畫成
               AMF→SCP→SMF（那是它實際走的路），不知道模式的人會以為工具
               把 NAS 解錯了。 */}
-          <p className="mb-3 text-[11px] text-slate-500">
+          <p className="mb-3 text-[11px] text-fg-dim">
             {ladderIsWireView
               ? t("Drawn along the actual packet path - NAS carried over SBI appears between AMF↔SCP↔SMF, not UE↔AMF. For the protocol-semantic view, open with --flow.")
               : t("Drawn by protocol semantics - NAS appears UE↔AMF, the gNB is treated as a transparent relay.")}
@@ -318,7 +318,7 @@ export function SessionAnalysisView({
           {undrawable > 0 && (
             // 理論上不該發生（泳道就是從事件推出來的）。發生了要說，
             // 不要讓那幾支箭默默不見。
-            <p className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
+            <p className="mb-3 rounded border border-signal-amber-border bg-signal-amber-bg px-2 py-1 text-[11px] text-signal-amber">
               {t("⚠ {n} event(s) have endpoints that fit no lane and were not drawn (the capture does contain them)", { n: undrawable })}
             </p>
           )}
@@ -327,9 +327,9 @@ export function SessionAnalysisView({
               沒有這一條，一份長擷取裡同一個人的三次註冊會攤在同一條梯形圖上，
               而工程師問的是程序級的問題（「第二次為什麼失敗」）。 */}
           {procedures.length > 0 && (
-            <div className="mb-3 rounded border border-slate-800 bg-slate-950/40 p-2">
-              <div className="mb-1.5 flex items-center gap-2 text-[11px] text-slate-500">
-                <span className="font-medium text-slate-400">{t("Procedures")}</span>
+            <div className="mb-3 rounded border border-border bg-surface-2/60 p-2.5">
+              <div className="mb-1.5 flex items-center gap-2 text-[11px] text-fg-dim">
+                <span className="font-medium text-fg-muted">{t("Procedures")}</span>
                 <span>{t("{n} segment(s)", { n: procedures.length })}</span>
               </div>
               <div className="flex flex-wrap gap-1">
@@ -337,7 +337,7 @@ export function SessionAnalysisView({
                   type="button"
                   onClick={() => setActiveProcedure(null)}
                   className={cn(
-                    "rounded border px-2 py-1 text-[11px] font-medium",
+                    "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
                     // **看 `current` 不看 `activeProcedure`** —— 兩者在換訂戶時會分家:
                     // `activeProcedure` 存的是 frame 編號，換人之後那個編號不在新訂戶
                     // 的段裡，`current` 於是變 null（畫面顯示全部），而 `activeProcedure`
@@ -349,8 +349,8 @@ export function SessionAnalysisView({
                     // 不是保證:哪天在這個畫面裡加一個訂戶切換器（NSA 有），
                     // 它就會靜默壞掉。看推導出來的 `current` 則與 unmount 無關。
                     current === null
-                      ? "border-sky-500 bg-sky-500/15 text-sky-300"
-                      : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
+                      ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                      : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                   )}
                 >
                   {t("All ({n} events)", { n: supiEvents.length })}
@@ -372,9 +372,9 @@ export function SessionAnalysisView({
                       ].filter(Boolean).join("\n")
                     }
                     className={cn(
-                      "rounded border px-2 py-1 text-[11px] font-medium",
+                      "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
                       current?.startFrame === p.startFrame
-                        ? "border-sky-500 bg-sky-500/15 text-sky-300"
+                        ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
                         : OUTCOME_STYLE[p.outcome],
                     )}
                   >
@@ -390,15 +390,15 @@ export function SessionAnalysisView({
               {current?.cause && (
                 // **失敗要在段的層級講一次。** 箭頭上的 cause 只在那一列;
                 // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。
-                <p className="mt-2 text-[11px] text-rose-300">
+                <p className="mt-2 text-[11px] text-signal-red">
                   ⚠ {current.cause}
                   {current.rootCause && (
-                    <span className="ml-2 text-amber-300">{t("Root cause: ")}{current.rootCause}</span>
+                    <span className="ml-2 text-signal-amber">{t("Root cause: ")}{current.rootCause}</span>
                   )}
                 </p>
               )}
               {current?.note && (
-                <p className="mt-1 text-[11px] text-slate-500">{current.note}</p>
+                <p className="mt-1 text-[11px] text-fg-dim">{current.note}</p>
               )}
             </div>
           )}
@@ -411,30 +411,30 @@ export function SessionAnalysisView({
                 type="button"
                 onClick={() => setDomain(tab.id)}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                  "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
                   domain === tab.id
-                    ? "border-sky-500 bg-sky-500/15 text-sky-300"
-                    : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
+                    ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                    : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                 )}
               >
                 {tab.label}
               </button>
             ))}
           </div>
-          <p className="mb-2 text-xs text-slate-500">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
+          <p className="mb-2 text-xs text-fg-dim">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
 
           <div className="relative overflow-x-auto">
             {filteredEvents.length === 0 ? (
               // 「這裡沒有」與「有，但我們接不上這個人」是兩件完全不同的事。
               // 前者讓人放心，後者是一條該去追的線索。
               domain !== "ALL" && uncorrelatedDomains.includes(domain) ? (
-                <p className="py-10 text-center text-xs leading-relaxed text-amber-300/80">
+                <p className="py-10 text-center text-xs leading-relaxed text-signal-amber">
                   {t("This capture has messages in this domain, but ")}
                   <strong className="font-semibold">{t("none of them carries both the domain and this subscriber's identifier")}</strong>
                   {t(", so they cannot be shown to belong to them - it does not mean the subscriber has no such flow.")}
                 </p>
               ) : (
-                <p className="py-10 text-center text-xs text-slate-600">{t("No signalling events in this domain")}</p>
+                <p className="py-10 text-center text-xs text-fg-dim">{t("No signalling events in this domain")}</p>
               )
             ) : (
               // **不用 `width="100%"`。** 那會把 viewBox 拉伸到容器寬度：
@@ -473,7 +473,7 @@ export function SessionAnalysisView({
                       y={TOP_PAD + (i + rowOffset) * ROW_HEIGHT - ROW_HEIGHT / 2}
                       width={width}
                       height={ROW_HEIGHT}
-                      fill="rgba(148,163,184,0.045)"
+                      fill="rgba(255,255,255,0.02)"
                     />
                   ) : null
                 ))}
@@ -482,8 +482,8 @@ export function SessionAnalysisView({
                   const x = LANE_MARGIN + i * LANE_GAP;
                   return (
                     <g key={lane.id}>
-                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} stroke="#334155" strokeWidth={1} />
-                      <text x={x} y={24} textAnchor="middle" fill={lane.hex} fontSize={13} fontWeight={600}>
+                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} stroke="#202a3c" strokeWidth={1} />
+                      <text x={x} y={24} textAnchor="middle" fill={lane.hex} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
                         {lane.label}
                       </text>
                     </g>
@@ -507,8 +507,8 @@ export function SessionAnalysisView({
                       y={TOP_PAD + 4}
                       textAnchor="middle"
                       fontSize={10.5}
-                      fill="#fbbf24"
-                      className="select-none"
+                      fill="#fb923c"
+                      className="select-none font-mono"
                     >
                       {t("[ Pre-established session - no Registration/Attach captured ]")}
                     </text>
@@ -532,7 +532,7 @@ export function SessionAnalysisView({
                     <g
                       key={event.id}
                       className="cursor-pointer"
-                      opacity={isSelected || isError ? 1 : 0.8}
+                      opacity={isSelected || isError ? 1 : 0.85}
                       onClick={() => onSelectFrame(event.frameNumber)}
                       onMouseEnter={(e) => setHover({ frame: event.frameNumber, x: e.clientX, y: e.clientY })}
                       onMouseMove={(e) => setHover({ frame: event.frameNumber, x: e.clientX, y: e.clientY })}
@@ -543,7 +543,7 @@ export function SessionAnalysisView({
                         y={y - 18}
                         width={Math.max(Math.abs(toX - fromX) + 12, 20)}
                         height={isError ? 30 : 20}
-                        fill={isError ? ERROR_BG : isSelected ? "#1e293b" : "transparent"}
+                        fill={isError ? ERROR_BG : isSelected ? "#192131" : "transparent"}
                         rx={4}
                       />
                       <line
@@ -561,23 +561,12 @@ export function SessionAnalysisView({
                         textAnchor="middle"
                         fontSize={11}
                         fontWeight={isError ? 700 : 400}
-                        // slate-400 (#94a3b8) 在 10.5px 上太細 —— 這是使用者
-                        // 反映「黑底白字讀不清楚」的主因：不是對比不夠，是
-                        // 字太細而灰階太靠近背景。提到 slate-300 並加大半級。
-                        fill={isError ? "#fecaca" : isSelected ? "#f8fafc" : "#cbd5e1"}
-                        className="select-none"
+                        fill={isError ? "#fecdd3" : isSelected ? "#ffffff" : "#c7d2e3"}
+                        className="select-none font-mono"
                       >
                         <title>{event.messageName}</title>
                         {shortenLabel(
                           event.messageName,
-                          // 標籤置中在兩條泳道的中點，所以它往兩邊各長一半 ——
-                          // **可用寬度是「中點到最近那一側邊界」的兩倍**，
-                          // 不是整張圖的寬度。靠邊的箭頭本來就放不下那麼多字。
-                          // 每字元 6.9px。**這個數字是量出來的不是猜的**：
-                          // 第一版寫 5.9，實測 119 字元的 SBI 網址渲染成
-                          // 792px（6.65 px/字），於是還是溢出圖外 26px。
-                          // 取 6.9 留一點餘裕 —— 這是比例字型，不同內容的
-                          // 平均字寬會變（數字比小寫寬）。
                           Math.max(
                             Math.floor(
                               (2 * Math.min((fromX + toX) / 2, width - (fromX + toX) / 2) - 16) / 6.9,
@@ -587,17 +576,17 @@ export function SessionAnalysisView({
                         )}
                       </text>
                       {isError && event.causeText && (
-                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} fill="#fca5a5" fontWeight={600} className="select-none">
+                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} fill="#fca5a5" fontWeight={600} className="select-none font-mono">
                           ⚠ {event.causeText}
                         </text>
                       )}
-                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} fill="#64748b" className="select-none">
+                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} fill="#6a7c98" className="select-none font-mono">
                         {event.interfaceName}
                         {/* **只標超過門檻的**。每一列都標等於沒有標 ——
                             這一欄要一眼就看得出「哪裡卡住了」。3GPP 的 timer
                             逾時是秒級的，隔了兩秒才回應多半不是網路慢。 */}
                         {event.slow && event.deltaSeconds !== undefined && (
-                          <tspan fill="#fdb022" fontWeight={700}>
+                          <tspan fill="#f59e0b" fontWeight={700}>
                             {"  +"}{event.deltaSeconds.toFixed(2)}s
                           </tspan>
                         )}
@@ -610,15 +599,15 @@ export function SessionAnalysisView({
 
             {hover && hoveredPacket && (
               <div
-                className="pointer-events-none fixed z-50 w-64 rounded border border-slate-700 bg-slate-950/95 p-2.5 text-[11px] shadow-xl"
+                className="pointer-events-none fixed z-50 w-64 rounded border border-border bg-surface-1/95 p-2.5 text-[11px] shadow-2xl backdrop-blur-sm"
                 style={{ left: hover.x + 14, top: hover.y + 14 }}
               >
-                <p className="mb-1 font-mono text-sky-300">Frame #{hoveredPacket.frameNumber}</p>
-                <p className="text-slate-400">{hoveredPacket.timestamp}</p>
-                <p className="text-slate-400">
-                  {t("Protocol: ")}<span className="text-violet-300">{hoveredPacket.protocol}</span> · {hoveredPacket.length} bytes
+                <p className="mb-1 font-mono text-signal-cyan font-medium">Frame #{hoveredPacket.frameNumber}</p>
+                <p className="text-fg-dim font-mono">{hoveredPacket.timestamp}</p>
+                <p className="text-fg-muted font-mono">
+                  {t("Protocol: ")}<span className="text-signal-cyan font-medium">{hoveredPacket.protocol}</span> · {hoveredPacket.length} bytes
                 </p>
-                <p className="truncate text-slate-500">
+                <p className="truncate text-fg-dim font-mono">
                   {hoveredPacket.srcPort ? `${hoveredPacket.srcIp}:${hoveredPacket.srcPort}` : hoveredPacket.srcIp} → {hoveredPacket.dstPort ? `${hoveredPacket.dstIp}:${hoveredPacket.dstPort}` : hoveredPacket.dstIp}
                 </p>
               </div>
@@ -626,24 +615,24 @@ export function SessionAnalysisView({
           </div>
         </section>
 
-        <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 xl:col-span-2">
+        <section className="rounded-lg border border-border bg-surface-1 p-4 xl:col-span-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-200">
+            <h2 className="text-sm font-semibold text-fg">
               {t("Protocol Decode & IE Inspector")}
-              {selectedEvent && <span className="ml-2 font-normal text-slate-500">— {selectedEvent.messageName}</span>}
+              {selectedEvent && <span className="ml-2 font-normal text-fg-dim font-mono">— {selectedEvent.messageName}</span>}
             </h2>
             {selectedEvent && (
               <button
                 type="button"
                 onClick={() => onViewInDataMining(selectedEvent.frameNumber)}
-                className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:border-sky-500 hover:text-sky-300"
+                className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2.5 py-1 text-[11px] text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
               >
                 <ExternalLink className="h-3 w-3" />
                 {t("View this packet in Data Mining")}
               </button>
             )}
           </div>
-          <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+          <div className="rounded border border-border bg-surface-2 p-3">
             {/* **事件的事實與封包的事實要分開把關。**
                 `selectedPacket` 來自 `rawPackets`，那是封包清單的**載入視窗**
                 （前幾百列）。整份擷取檔動輒幾千格，所以視窗外的事件永遠配不到
@@ -654,27 +643,27 @@ export function SessionAnalysisView({
                 封包。 */}
             {selectedEvent ? (
               <>
-                <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-slate-400">
+                <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-fg-dim">
                   {selectedPacket && (
-                    <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">{selectedPacket.protocol}</span>
+                    <span className="rounded bg-signal-cyan-bg px-1.5 py-0.5 text-signal-cyan border border-signal-cyan-border">{selectedPacket.protocol}</span>
                   )}
                   <span>Frame #{selectedEvent.frameNumber}</span>
-                  <span className={cn("font-medium", STATUS_TEXT[selectedEvent.status])}>{selectedEvent.status}</span>
-                  <span className="text-slate-600">· {selectedEvent.interfaceName}</span>
+                  <span className={cn(STATUS_TEXT[selectedEvent.status])}>{selectedEvent.status}</span>
+                  <span className="text-fg-dim">· {selectedEvent.interfaceName}</span>
                   {/* 這一格裡實際疊了哪些協定。`selectedPacket.protocol` 是
                       tshark 的欄位、只講最外層 —— NGAP 內嵌的 NAS 要靠這個
                       才看得見，而那是「這則訊息算誰的」的依據。 */}
                   {selectedEvent.protocolStack && (
-                    <span className="text-slate-500">· {selectedEvent.protocolStack}</span>
+                    <span className="text-fg-dim">· {selectedEvent.protocolStack}</span>
                   )}
                   {/* **身分是跟誰借的。** 這是本工具「講得出依據」與「只是猜」
                       的分界 —— 沒有它，使用者無法反駁工具的歸戶判斷。 */}
                   {selectedEvent.identitySource && (
-                    <span className="text-sky-400" title={t("This message has no UE ID of its own; its identity is borrowed from the carrier")}>
+                    <span className="text-signal-cyan" title={t("This message has no UE ID of its own; its identity is borrowed from the carrier")}>
                       {t("· identity from {carrier} carrier", { carrier: selectedEvent.identitySource })}
                     </span>
                   )}
-                  {selectedEvent.causeText && <span className="text-rose-400">· {selectedEvent.causeText}</span>}
+                  {selectedEvent.causeText && <span className="text-signal-red font-semibold">· {selectedEvent.causeText}</span>}
                 </div>
                 {selectedTree ? (
                   <ProtocolTree nodes={selectedTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
@@ -683,7 +672,7 @@ export function SessionAnalysisView({
                   // 封包清單的視窗外」是不同的狀況，而使用者能做的事也不同：
                   // 後者要他先去 Data Mining 捲到那一格。講成同一句話，他會
                   // 以為工具壞了。
-                  <div className="p-3 text-xs text-slate-500">
+                  <div className="p-3 text-xs text-fg-dim font-mono">
                     {selectedPacket
                       ? t("Decode tree not loaded yet")
                       : t("Frame #{n} is outside the range the packet list has loaded - scroll to it in Data Mining to see the decode tree", { n: selectedEvent.frameNumber })}
@@ -691,16 +680,16 @@ export function SessionAnalysisView({
                 )}
               </>
             ) : (
-              <p className="py-6 text-center text-xs text-slate-600">{t("Select a signalling event to view its decode")}</p>
+              <p className="py-6 text-center text-xs text-fg-dim">{t("Select a signalling event to view its decode")}</p>
             )}
           </div>
         </section>
       </div>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-200">{t("Correlation State Matrix")}</h2>
+      <section className="rounded-lg border border-border bg-surface-1 p-4">
+        <h2 className="mb-2 text-sm font-semibold text-fg">{t("Correlation State Matrix")}</h2>
         {sessionEntries.length === 0 ? (
-          <p className="py-6 text-center text-xs text-slate-600">{t("This subscriber established no PDU session; there is no correlation data to show (rejected at registration, during signalling).")}</p>
+          <p className="py-6 text-center text-xs text-fg-dim">{t("This subscriber established no PDU session; there is no correlation data to show (rejected at registration, during signalling).")}</p>
         ) : (
           <>
             {sessionEntries.length > 1 && (
@@ -711,10 +700,10 @@ export function SessionAnalysisView({
                     type="button"
                     onClick={() => setActivePduSessionId(e.pduSessionId)}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                      "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
                       (activeSession?.pduSessionId ?? sessionEntries[0].pduSessionId) === e.pduSessionId
-                        ? "border-sky-500 bg-sky-500/15 text-sky-300"
-                        : "border-slate-700 text-slate-400 hover:border-slate-600",
+                        ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                        : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                     )}
                   >
                     Session #{e.pduSessionId}（{e.dnn}）
@@ -726,13 +715,13 @@ export function SessionAnalysisView({
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="text-slate-500">
+                    <tr className="text-fg-dim font-mono border-b border-border">
                       <th className="pb-2 pr-2 font-medium">{t("Field")}</th>
                       <th className="pb-2 pr-2 font-medium">{t("Value")}</th>
                       <th className="pb-2 font-medium">{t("Source interface")}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-border/50">
                     <MatrixRow label="SUPI" value={activeSession.supi} source={activeSession.sourceInterfaces.supi ?? "—"} />
                     <MatrixRow
                       label="5G-GUTI"
@@ -803,9 +792,9 @@ export function SessionAnalysisView({
 function MatrixRow({ label, value, source, uncaptured }: { label: string; value: string; source: string; uncaptured?: boolean }) {
   return (
     <tr>
-      <td className="py-1.5 pr-2 text-slate-400">{label}</td>
-      <td className={cn("py-1.5 pr-2 font-mono", uncaptured ? "italic text-slate-600" : "text-slate-200")}>{value}</td>
-      <td className="py-1.5 text-slate-500">{source}</td>
+      <td className="py-1.5 pr-2 text-fg-dim font-mono">{label}</td>
+      <td className={cn("py-1.5 pr-2 font-mono tabular-nums", uncaptured ? "italic text-fg-dim" : "text-fg")}>{value}</td>
+      <td className="py-1.5 text-fg-dim font-mono">{source}</td>
     </tr>
   );
 }

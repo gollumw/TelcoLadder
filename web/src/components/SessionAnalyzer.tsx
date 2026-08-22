@@ -115,26 +115,26 @@ export default function SessionAnalyzer({
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
+    <div className="min-h-screen bg-canvas text-fg">
       <div className="mx-auto max-w-[1400px] space-y-4 p-4 lg:p-6">
-        <header className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+        <header className="rounded-lg border border-border bg-surface-1 p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-sky-400" />
-              <h1 className="text-lg font-semibold text-white">TelcoLadder</h1>
-              <span className="text-sm text-slate-500">5G Subscriber Session Correlation &amp; Call Flow Analyzer</span>
+            <div className="flex items-center gap-2.5">
+              <Activity className="h-5 w-5 text-signal-cyan" />
+              <h1 className="text-lg font-semibold tracking-tight text-fg">TelcoLadder</h1>
+              <span className="text-xs text-fg-dim font-mono">5G Subscriber Session Correlation &amp; Call Flow Analyzer</span>
             </div>
 
             {/* 語言切換 —— 預設英文，選擇記在 localStorage，API 也跟著送標頭 */}
-            <div className="flex items-center gap-1 text-[11px] text-slate-500" aria-label={t("Language")}>
+            <div className="flex items-center gap-1 text-[11px] text-fg-dim" aria-label={t("Language")}>
               {(["en", "zh_TW"] as const).map((code) => (
                 <button
                   key={code}
                   type="button"
                   onClick={() => setLang(code)}
                   className={cn(
-                    "rounded px-2 py-1",
-                    lang === code ? "bg-slate-800 text-slate-200" : "hover:text-slate-300",
+                    "rounded px-2 py-1 transition-colors",
+                    lang === code ? "bg-surface-hover text-fg font-medium" : "hover:text-fg-muted",
                   )}
                 >
                   {code === "en" ? "EN" : "中文"}
@@ -143,13 +143,13 @@ export default function SessionAnalyzer({
             </div>
 
             {/* Top-level mode switch */}
-            <div className="flex rounded-lg border border-slate-800 bg-slate-950/60 p-1">
+            <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
               <button
                 type="button"
                 onClick={() => setMode("mining")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium",
-                  mode === "mining" ? "bg-sky-500/15 text-sky-300" : "text-slate-500 hover:text-slate-300",
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "mining" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
                 )}
               >
                 <Binary className="h-3.5 w-3.5" />
@@ -159,8 +159,8 @@ export default function SessionAnalyzer({
                 type="button"
                 onClick={() => setMode("session")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium",
-                  mode === "session" ? "bg-sky-500/15 text-sky-300" : "text-slate-500 hover:text-slate-300",
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "session" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
                 )}
               >
                 <LayoutList className="h-3.5 w-3.5" />
@@ -170,12 +170,12 @@ export default function SessionAnalyzer({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 text-xs text-fg-dim">
               <Clock className="h-3.5 w-3.5" />
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-300 focus:border-sky-500 focus:outline-none"
+                className="rounded border border-border bg-surface-2 px-2.5 py-1 text-xs text-fg-muted focus:border-signal-cyan focus:outline-none transition-colors"
               >
                 {TIME_RANGES.map((range) => (
                   <option key={t(range)} value={range}>
@@ -188,12 +188,12 @@ export default function SessionAnalyzer({
               type="button"
               onClick={handleReassociate}
               disabled={reassociateState === "loading"}
-              className="flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-sky-500 hover:text-sky-300 disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-3 py-1 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-50 transition-colors"
             >
               {reassociateState === "loading" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : reassociateState === "done" ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-signal-mint" />
               ) : (
                 <Upload className="h-3.5 w-3.5" />
               )}

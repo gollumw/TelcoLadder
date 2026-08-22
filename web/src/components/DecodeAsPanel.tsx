@@ -15,22 +15,22 @@ const PROTOCOLS = ["http2", "ngap", "nas-5gs", "pfcp", "gtp", "diameter", "sip"]
 const ORIGIN_META: Record<string, { label: string; className: string; hint: string }> = {
   default: {
     label: "Built-in default",
-    className: "border-slate-600 bg-slate-700/40 text-slate-300",
+    className: "border-border bg-surface-2 text-fg-dim",
     hint: "The protocol's own definition (SBI runs on 7777); ships with the program",
   },
   shipped: {
     label: "Built-in default",
-    className: "border-slate-600 bg-slate-700/40 text-slate-300",
+    className: "border-border bg-surface-2 text-fg-dim",
     hint: "Field-verified experience, shipped to every user. Only takes effect when it actually decodes more messages",
   },
   auto: {
     label: "Auto-detected",
-    className: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+    className: "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan",
     hint: "Detected when this file was opened; applies to this capture only",
   },
   user: {
     label: "Yours",
-    className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+    className: "border-signal-mint-border bg-signal-mint-bg text-signal-mint font-medium",
     hint: "Stored in your config; applied to every capture from now on",
   },
 };
@@ -101,24 +101,24 @@ export function DecodeAsPanel({
   }
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/60">
+    <div className="rounded-lg border border-border bg-surface-1">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-200"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-fg-dim hover:text-fg transition-colors"
       >
-        <Wrench className="h-3.5 w-3.5" />
+        <Wrench className="h-3.5 w-3.5 text-signal-cyan" />
         {t("Decode As")}
-        <span className="ml-1 font-normal normal-case tracking-normal text-slate-600">
+        <span className="ml-1 font-normal normal-case tracking-normal text-fg-dim font-mono">
           {t("{n} rule(s) active", { n: rules.length })}
         </span>
-        <span className="ml-auto text-slate-500">{open ? t("Collapse ▲") : t("Expand list ▼")}</span>
+        <span className="ml-auto text-fg-dim">{open ? t("Collapse ▲") : t("Expand list ▼")}</span>
       </button>
 
       {open && (
-        <div className="space-y-3 border-t border-slate-800 p-3">
+        <div className="space-y-3 border-t border-border p-3">
           <table className="w-full text-left text-[11px]">
-            <thead className="text-slate-500">
+            <thead className="text-fg-dim font-mono border-b border-border">
               <tr>
                 <th className="pb-1 font-medium">{t("Selector")}</th>
                 <th className="pb-1 font-medium">{t("Decode as")}</th>
@@ -126,7 +126,7 @@ export function DecodeAsPanel({
                 <th className="pb-1" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
+            <tbody className="divide-y divide-border/50 font-mono">
               {builtin.map((r) => (
                 <Row
                   key={r.rule}
@@ -156,7 +156,7 @@ export function DecodeAsPanel({
               ))}
               {rules.length === 0 && draft.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-3 text-center text-slate-600">
+                  <td colSpan={4} className="py-3 text-center text-fg-dim">
                     {t("No rules at the moment")}
                   </td>
                 </tr>
@@ -168,7 +168,7 @@ export function DecodeAsPanel({
             <select
               value={selector}
               onChange={(e) => setSelector(e.target.value)}
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-300 focus:border-sky-500 focus:outline-none"
+              className="rounded border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-fg-muted focus:border-signal-cyan focus:outline-none transition-colors"
             >
               {SELECTORS.map((s) => (
                 <option key={s} value={s}>
@@ -176,22 +176,22 @@ export function DecodeAsPanel({
                 </option>
               ))}
             </select>
-            <span className="pb-2 font-mono text-xs text-slate-500">==</span>
+            <span className="pb-2 font-mono text-xs text-fg-dim">==</span>
             <input
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && add()}
               placeholder="8080"
-              className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              className="w-24 rounded border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-fg-dim focus:border-signal-cyan focus:outline-none transition-colors"
             />
-            <span className="pb-2 font-mono text-xs text-slate-500">{t("Decode as")}</span>
+            <span className="pb-2 font-mono text-xs text-fg-dim">{t("Decode as")}</span>
             <input
               value={protocol}
               onChange={(e) => setProtocol(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && add()}
               list="decode-as-protocols"
               placeholder="http2"
-              className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              className="w-28 rounded border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-fg-dim focus:border-signal-cyan focus:outline-none transition-colors"
             />
             <datalist id="decode-as-protocols">
               {PROTOCOLS.map((p) => (
@@ -201,7 +201,7 @@ export function DecodeAsPanel({
             <button
               type="button"
               onClick={add}
-              className="flex items-center gap-1 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:border-sky-500 hover:text-sky-300"
+              className="flex items-center gap-1 rounded border border-border bg-surface-2 px-2.5 py-1.5 text-xs text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
             >
               <Plus className="h-3 w-3" />
               {t("Add")}
@@ -213,7 +213,7 @@ export function DecodeAsPanel({
             // **可捲動而不是截斷。** tshark 對「未知協定」會把全部可用的
             // 協定名列出來 —— 那是一面牆，但也正是修正指示本身。截掉它等於
             // 把答案藏起來。
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-rose-500/30 bg-rose-500/5 p-2 font-mono text-[11px] text-rose-300">
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-signal-red-border bg-signal-red-bg p-2 font-mono text-[11px] text-signal-red-fg">
               {error}
             </pre>
           )}
@@ -221,17 +221,17 @@ export function DecodeAsPanel({
           {disabled.length > 0 && (
             // **關掉的規則要看得見。** 只是從表上消失的話，使用者三個月後
             // 遇到同一種擷取檔解不開，不會想到是自己關過。
-            <div className="rounded border border-slate-700 bg-slate-950/60 p-2.5">
-              <p className="text-[11px] text-slate-500">{t("Disabled built-in rules")}</p>
+            <div className="rounded border border-border bg-surface-2/60 p-2.5">
+              <p className="text-[11px] text-fg-dim">{t("Disabled built-in rules")}</p>
               <ul className="mt-1 space-y-1">
                 {disabled.map((rule) => (
-                  <li key={rule} className="flex items-center gap-2 font-mono text-[11px] text-slate-500">
+                  <li key={rule} className="flex items-center gap-2 font-mono text-[11px] text-fg-dim">
                     <span className="line-through">{rule}</span>
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onEnable(rule)}
-                      className="rounded border border-slate-700 px-2 py-0.5 text-[10px] not-italic text-slate-400 hover:border-sky-500 hover:text-sky-300 disabled:opacity-50"
+                      className="rounded border border-border px-2 py-0.5 text-[10px] not-italic text-fg-muted hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-50 transition-colors"
                     >
                       {t("Re-enable")}
                     </button>
@@ -245,27 +245,27 @@ export function DecodeAsPanel({
             // **這是「把我驗證過的經驗傳給別人」那個動作。**
             // 使用者規則存在 ~/.config，那不會跟著程式走；出貨清單在版控裡，
             // 所以要 commit 才會真的給到別人 —— 這件事必須講出來。
-            <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2.5">
-              <p className="text-[11px] leading-relaxed text-emerald-200">
+            <div className="rounded border border-signal-mint-border bg-signal-mint-bg/30 p-2.5">
+              <p className="text-[11px] leading-relaxed text-signal-mint font-medium">
                 {t("Auto-detection found {n} rule(s) not yet adopted. Once adopted they ", { n: promotable.length })}
                 <strong className="font-semibold">{t("ship with the program to every user")}</strong>
                 {t(", so the next person opening a similar capture does not hit the same wall.")}
               </p>
-              <p className="mt-1 font-mono text-[11px] text-emerald-300/70">
+              <p className="mt-1 font-mono text-[11px] text-signal-mint/80">
                 {promotable.join("　")}
               </p>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => onPromote(promotable)}
-                className="mt-2 flex items-center gap-1.5 rounded border border-emerald-500/40 px-2.5 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+                className="mt-2 flex items-center gap-1.5 rounded border border-signal-mint-border px-2.5 py-1 text-[11px] font-medium text-signal-mint hover:bg-signal-mint-bg disabled:opacity-50 transition-colors"
               >
                 <Plus className="h-3 w-3" />
                 {t("Adopt as built-in default")}
               </button>
-              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-                {t("Writes to ")}<code className="text-slate-400">{t(shippedPath)}</code>{t(" (a file under version control - it reaches others only after a commit). Adopted rules are still only ")}
-                <strong className="font-semibold text-slate-400">{t("candidates")}</strong>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-fg-dim">
+                {t("Writes to ")}<code className="text-fg-muted">{t(shippedPath)}</code>{t(" (a file under version control - it reaches others only after a commit). Adopted rules are still only ")}
+                <strong className="font-semibold text-fg-muted">{t("candidates")}</strong>
                 {t(" - on someone else's capture they withdraw themselves if they do not decode more messages, so they cannot break their file.")}
               </p>
             </div>
@@ -277,10 +277,10 @@ export function DecodeAsPanel({
               disabled={!dirty || busy}
               onClick={() => onApply(draft)}
               className={cn(
-                "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium",
+                "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
                 dirty && !busy
-                  ? "bg-sky-500/20 text-sky-200 hover:bg-sky-500/30"
-                  : "cursor-not-allowed bg-slate-800 text-slate-600",
+                  ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border hover:bg-signal-cyan-bg/80 shadow-sm"
+                  : "cursor-not-allowed bg-surface-2 text-fg-dim border border-border/40",
               )}
             >
               {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
@@ -290,15 +290,15 @@ export function DecodeAsPanel({
               <button
                 type="button"
                 onClick={() => setPending(null)}
-                className="text-[11px] text-slate-500 hover:text-slate-300"
+                className="text-[11px] text-fg-dim hover:text-fg-muted transition-colors"
               >
                 {t("Discard changes")}
               </button>
             )}
-            <p className="text-[11px] leading-relaxed text-slate-500">
-              {t("Applying ")}<strong className="font-semibold text-slate-400">{t("re-runs the whole analysis")}</strong>{t(" (minutes on a large file) - rules change message boundaries, so subscribers, the ladder and the matrix all change with them.")}
+            <p className="text-[11px] leading-relaxed text-fg-dim">
+              {t("Applying ")}<strong className="font-semibold text-fg-muted">{t("re-runs the whole analysis")}</strong>{t(" (minutes on a large file) - rules change message boundaries, so subscribers, the ladder and the matrix all change with them.")}
               <br />
-              {t("Your rules live in ")}<code className="text-slate-400">{t(configPath)}</code>{t(" and apply to every capture from now on.")}
+              {t("Your rules live in ")}<code className="text-fg-muted">{t(configPath)}</code>{t(" and apply to every capture from now on.")}
             </p>
           </div>
         </div>
@@ -321,8 +321,8 @@ function Row({
   const meta = ORIGIN_META[rule.origin] ?? ORIGIN_META.default;
   return (
     <tr>
-      <td className="py-1 text-slate-300">{rule.selector}</td>
-      <td className="py-1 text-violet-300">{rule.protocol}</td>
+      <td className="py-1 text-fg-muted">{rule.selector}</td>
+      <td className="py-1 text-signal-cyan font-medium">{rule.protocol}</td>
       <td className="py-1">
         <span
           className={cn("rounded-full border px-2 py-0.5 text-[10px]", meta.className)}
@@ -337,7 +337,7 @@ function Row({
             type="button"
             onClick={onRemove}
             title={removeLabel}
-            className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-rose-300"
+            className="rounded p-1 text-fg-dim hover:bg-surface-hover hover:text-signal-red transition-colors"
           >
             <Trash2 className="h-3 w-3" />
           </button>

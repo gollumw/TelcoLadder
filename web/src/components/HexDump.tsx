@@ -11,7 +11,7 @@ export function HexDump({ hex, highlightRange }: { hex: string; highlightRange?:
   const rowCount = Math.ceil(byteCount / BYTES_PER_ROW);
 
   return (
-    <div className="overflow-x-auto font-mono text-[11px] leading-5">
+    <div className="overflow-x-auto font-mono text-[11px] leading-5 tabular-nums">
       {Array.from({ length: rowCount }).map((_, row) => {
         const rowStart = row * BYTES_PER_ROW;
         const rowBytes: number[] = [];
@@ -20,23 +20,23 @@ export function HexDump({ hex, highlightRange }: { hex: string; highlightRange?:
         }
         return (
           <div key={row} className="flex gap-3 whitespace-pre">
-            <span className="text-slate-600">{rowStart.toString(16).padStart(4, "0")}</span>
+            <span className="text-fg-dim font-mono">{rowStart.toString(16).padStart(4, "0")}</span>
             <span>
               {rowBytes.map((byte, i) => {
                 const isHighlighted = isInRange(rowStart + i, highlightRange);
                 return (
-                  <span key={i} className={cn("text-slate-400", isHighlighted && "rounded bg-sky-500/30 text-sky-200")}>
+                  <span key={i} className={cn("text-fg-muted", isHighlighted && "rounded bg-signal-cyan-bg text-signal-cyan font-bold")}>
                     {byte.toString(16).padStart(2, "0")}{" "}
                   </span>
                 );
               })}
             </span>
-            <span className="text-slate-500">
+            <span className="text-fg-dim">
               {rowBytes.map((byte, i) => {
                 const isHighlighted = isInRange(rowStart + i, highlightRange);
                 const ch = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
                 return (
-                  <span key={i} className={cn(isHighlighted && "bg-sky-500/30 text-sky-200")}>
+                  <span key={i} className={cn(isHighlighted && "rounded bg-signal-cyan-bg text-signal-cyan font-bold")}>
                     {ch}
                   </span>
                 );

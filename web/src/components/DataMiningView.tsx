@@ -27,9 +27,9 @@ const QUICK_FILTERS = [
 ];
 
 const STATUS_DOT: Record<RawPacket["status"], string> = {
-  SUCCESS: "bg-emerald-400",
-  ERROR: "bg-rose-400",
-  INFO: "bg-slate-400",
+  SUCCESS: "bg-signal-mint",
+  ERROR: "bg-signal-red",
+  INFO: "bg-fg-dim",
 };
 
 /**
@@ -218,13 +218,13 @@ export function DataMiningView({
       {/* Dual-track filter bar */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Left: Telecom Target Filter — precise identity search */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("Subscriber identity search")}</p>
+        <div className="rounded-lg border border-border bg-surface-1 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">{t("Subscriber identity search")}</p>
           <div className="flex flex-wrap gap-1.5">
             <select
               value={targetType}
               onChange={(e) => setTargetType(e.target.value as TargetType)}
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-300 focus:border-sky-500 focus:outline-none"
+              className="rounded border border-border bg-surface-2 px-2.5 py-1.5 text-xs text-fg-muted focus:border-signal-cyan focus:outline-none transition-colors"
             >
               {TARGET_TYPES.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -233,7 +233,7 @@ export function DataMiningView({
               ))}
             </select>
             <div className="relative min-w-[160px] flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-dim" />
               <input
                 value={targetValue}
                 onChange={(e) => {
@@ -242,23 +242,23 @@ export function DataMiningView({
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleTargetSearch()}
                 placeholder={t("e.g. 001010123456789 or 192.0.2.122")}
-                className="w-full rounded border border-slate-700 bg-slate-950 py-1.5 pl-8 pr-2 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+                className="w-full rounded border border-border bg-surface-2 py-1.5 pl-8 pr-2 font-mono text-xs text-fg placeholder:text-fg-dim focus:border-signal-cyan focus:outline-none transition-colors"
               />
             </div>
             <button
               type="button"
               onClick={handleTargetSearch}
-              className="rounded border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-sky-500 hover:text-sky-300"
+              className="rounded border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
             >
               {t("Search & correlate")}
             </button>
           </div>
-          {searchResult === "not-found" && <p className="mt-1.5 text-[11px] text-rose-400">{t("No subscriber matches this identifier")}</p>}
+          {searchResult === "not-found" && <p className="mt-1.5 text-[11px] text-signal-red">{t("No subscriber matches this identifier")}</p>}
           {searchResult !== null && searchResult !== "not-found" && (
             <button
               type="button"
               onClick={() => jumpTo(searchResult.supi)}
-              className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-sky-400 hover:text-sky-300"
+              className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-signal-cyan hover:text-signal-cyan-fg transition-colors"
             >
               {t("Go to Session Analysis (this subscriber)")}
               <ArrowRight className="h-3 w-3" />
@@ -267,22 +267,22 @@ export function DataMiningView({
         </div>
 
         {/* Right: Wireshark Display Filter — protocol/field syntax */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("Protocol filter · Display Filter")}</p>
+        <div className="rounded-lg border border-border bg-surface-1 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">{t("Protocol filter · Display Filter")}</p>
           <div className="relative">
-            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-dim" />
             <input
               value={displayFilter}
               onChange={(e) => onDisplayFilterChange(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && onApplyDisplayFilter(displayFilter)}
               placeholder={t("Wireshark display filter, press Enter to apply (e.g. ngap.procedureCode == 14)")}
-              className="w-full rounded border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              className="w-full rounded border border-border bg-surface-2 py-2 pl-9 pr-3 font-mono text-xs text-fg placeholder:text-fg-dim focus:border-signal-cyan focus:outline-none transition-colors"
             />
           </div>
           {/* tshark 自己的錯誤訊息，含指到出錯位置的 caret。**原樣顯示** ——
               我們不改寫也不簡化，那是使用者要據以修正的東西。 */}
           {filterError && (
-            <pre className="mt-1.5 whitespace-pre-wrap break-all rounded border border-rose-500/30 bg-rose-500/5 p-2 font-mono text-[11px] text-rose-300">
+            <pre className="mt-1.5 whitespace-pre-wrap break-all rounded border border-signal-red-border bg-signal-red-bg p-2 font-mono text-[11px] text-signal-red-fg">
               {filterError}
             </pre>
           )}
@@ -296,25 +296,25 @@ export function DataMiningView({
                   onApplyDisplayFilter(qf.expr);
                 }}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px]",
+                  "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
                   displayFilter === qf.expr
-                    ? "border-sky-500 bg-sky-500/15 text-sky-300"
-                    : "border-slate-700 text-slate-400 hover:border-slate-600",
+                    ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                    : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                 )}
               >
                 {qf.label}
               </button>
             ))}
-            <label className="ml-1 flex items-center gap-1.5 text-[11px] text-slate-400">
+            <label className="ml-1 flex items-center gap-1.5 text-[11px] text-fg-dim">
               <input
                 type="checkbox"
                 checked={onlySessionFilter}
                 disabled={!focusedSupi}
                 onChange={(e) => onOnlySessionFilterChange(e.target.checked)}
-                className="h-3 w-3 accent-emerald-500"
+                className="h-3 w-3 accent-signal-mint"
               />
               {t("Only this session")}
-              {focusedSupi && <span className="font-mono text-emerald-400">（{focusedSupi}）</span>}
+              {focusedSupi && <span className="font-mono text-signal-mint">（{focusedSupi}）</span>}
             </label>
             {(displayFilter || focusedSupi) && (
               <button
@@ -325,7 +325,7 @@ export function DataMiningView({
                   onFocusSupi(null);
                   onOnlySessionFilterChange(false);
                 }}
-                className="rounded-full border border-slate-700 px-2.5 py-1 text-[11px] text-slate-500 hover:text-slate-300"
+                className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[11px] text-fg-dim hover:text-fg-muted transition-colors"
               >
                 {t("Clear")}
               </button>
@@ -335,17 +335,17 @@ export function DataMiningView({
               的列數、`indexed` 是已索引的格數、`total` 是檔案裡真正有幾格。
               以前這裡寫「500 / 500 個封包」—— 兩個都是視窗大小，看起來就像
               這份擷取檔只有 500 格。 */}
-          <p className="mt-1.5 text-[11px] text-slate-600">
+          <p className="mt-1.5 text-[11px] text-fg-dim tabular-nums">
             {t("{matched} rows match · {indexed} indexed", { matched: matched.toLocaleString(), indexed: packetTotals.indexed.toLocaleString() })}
             {packetTotals.total !== null && t(" / {total} in file", { total: packetTotals.total.toLocaleString() })}{t(" frames")}
           </p>
           {packetTotals.truncated && (
-            <p className="mt-1 text-[11px] text-amber-400">
+            <p className="mt-1 text-[11px] text-signal-amber font-mono">
               {t("⚠ Index limit reached; later packets were not indexed - narrow with a display filter and reopen")}
             </p>
           )}
           {packetTotals.infoUnavailable && (
-            <p className="mt-1 text-[11px] text-amber-400">
+            <p className="mt-1 text-[11px] text-signal-amber font-mono">
               {t("⚠ This tshark provides no Info column; it will be empty (the capture is not missing data)")}
             </p>
           )}
@@ -386,7 +386,7 @@ export function DataMiningView({
       />
 
       {/* Packet List */}
-      <div className="rounded-lg border border-slate-800 bg-slate-900/60">
+      <div className="rounded-lg border border-border bg-surface-1">
         {/* 虛擬滾動：只畫可見的那幾十列，上下用空白列把捲軸撐到正確高度。
             25 萬列全部塞進 DOM 會讓瀏覽器直接躺平 —— 而症狀是「開一份大檔
             分頁就沒反應」，看起來像後端慢。 */}
@@ -397,8 +397,8 @@ export function DataMiningView({
           style={{ height: VIEWPORT_H }}
         >
           <table className="w-full text-left text-[11px]">
-            <thead className="sticky top-0 bg-slate-900">
-              <tr className="text-slate-500">
+            <thead className="sticky top-0 bg-surface-1 border-b border-border">
+              <tr className="text-fg-dim font-mono">
                 <th className="px-2 py-1.5 font-medium">No.</th>
                 <th className="px-2 py-1.5 font-medium">Time (offset)</th>
                 <th className="px-2 py-1.5 font-medium">Source</th>
@@ -409,7 +409,7 @@ export function DataMiningView({
                 <th className="px-2 py-1.5 font-medium text-right">{t("Correlate")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
+            <tbody className="divide-y divide-border/40 font-mono tabular-nums">
               {first > 0 && <tr style={{ height: first * ROW_H }} />}
               {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
                 const index = first + k;
@@ -419,7 +419,7 @@ export function DataMiningView({
                   // 往上補，捲動時整份清單看起來在亂跳。
                   return (
                     <tr key={`gap-${index}`} style={{ height: ROW_H }}>
-                      <td colSpan={8} className="px-2 text-slate-700">
+                      <td colSpan={8} className="px-2 text-fg-dim">
                         {t("Loading…")}
                       </td>
                     </tr>
@@ -434,31 +434,33 @@ export function DataMiningView({
                     style={{ height: ROW_H }}
                     onClick={() => onSelectFrame(p.frameNumber)}
                     className={cn(
-                      "cursor-pointer",
+                      "cursor-pointer transition-colors",
                       isSelected
-                        ? "bg-sky-500/15"
+                        ? "bg-signal-cyan-bg text-fg font-medium"
                         : p.status === "ERROR"
-                          ? "bg-rose-500/10 hover:bg-rose-500/15"
+                          ? "bg-signal-red-bg/70 hover:bg-signal-red-bg"
                           : isFocusedSession
-                            ? "bg-emerald-500/5 hover:bg-emerald-500/10"
-                            : "hover:bg-slate-800/40",
+                            ? "bg-signal-mint-bg/60 hover:bg-signal-mint-bg"
+                            : index % 2 === 1
+                              ? "bg-surface-2/60 hover:bg-surface-hover"
+                              : "hover:bg-surface-hover",
                     )}
                   >
-                    <td className="px-2 py-1 text-slate-500">
-                      {isFocusedSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" title={t("Belongs to the focused session")} />}
-                      {isKnownOtherSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-400 align-middle" title={t("Belongs to another known session")} />}
+                    <td className="px-2 py-1 text-fg-dim">
+                      {isFocusedSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-signal-mint align-middle" title={t("Belongs to the focused session")} />}
+                      {isKnownOtherSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-signal-cyan align-middle" title={t("Belongs to another known session")} />}
                       {p.frameNumber}
                     </td>
-                    <td className="px-2 py-1 text-slate-400">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
-                    <td className="px-2 py-1 text-slate-300">
+                    <td className="px-2 py-1 text-fg-dim">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
+                    <td className="px-2 py-1 text-fg-muted">
                       {p.srcPort ? `${p.srcIp}:${p.srcPort}` : p.srcIp}
                     </td>
-                    <td className="px-2 py-1 text-slate-300">
+                    <td className="px-2 py-1 text-fg-muted">
                       {p.dstPort ? `${p.dstIp}:${p.dstPort}` : p.dstIp}
                     </td>
-                    <td className="px-2 py-1 text-violet-300">{p.protocol}</td>
-                    <td className="px-2 py-1 text-slate-400">{p.length}</td>
-                    <td className="max-w-[240px] truncate px-2 py-1 text-slate-300">
+                    <td className="px-2 py-1 text-signal-cyan-fg font-medium">{p.protocol}</td>
+                    <td className="px-2 py-1 text-fg-dim">{p.length}</td>
+                    <td className="max-w-[240px] truncate px-2 py-1 text-fg-muted">
                       <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", STATUS_DOT[p.status])} />
                       {p.info}
                     </td>
@@ -471,7 +473,7 @@ export function DataMiningView({
                             onCorrelateSession(p.correlatedSupi!, p.frameNumber);
                           }}
                           title={t("Correlate session — {supi}", { supi: p.correlatedSupi })}
-                          className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-sky-300"
+                          className="rounded p-1 text-fg-dim hover:bg-surface-hover hover:text-signal-cyan transition-colors"
                         >
                           <Link2 className="h-3 w-3" />
                         </button>
@@ -485,7 +487,7 @@ export function DataMiningView({
               {last < matched && <tr style={{ height: (matched - last) * ROW_H }} />}
               {matched === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-2 py-6 text-center text-slate-600">
+                  <td colSpan={8} className="px-2 py-6 text-center text-fg-dim">
                     {t("No packet matches the filter")}
                   </td>
                 </tr>
@@ -497,31 +499,31 @@ export function DataMiningView({
 
       {/* Packet Details Tree + Hex Dump */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet Details</p>
+        <div className="rounded-lg border border-border bg-surface-1 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Packet Details</p>
           {selectedPacket ? (
             treeForSelected ? (
               <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
             ) : (
               // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
-              <div className="p-3 text-xs text-slate-500">{t("Decode tree not loaded yet")}</div>
+              <div className="p-3 text-xs text-fg-dim font-mono">{t("Decode tree not loaded yet")}</div>
             )
           ) : (
-            <p className="py-6 text-center text-xs text-slate-600">{t("Select a packet to view its decode tree")}</p>
+            <p className="py-6 text-center text-xs text-fg-dim">{t("Select a packet to view its decode tree")}</p>
           )}
         </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bytes</p>
+        <div className="rounded-lg border border-border bg-surface-1 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Bytes</p>
           {selectedPacket ? (
             hexForSelected ? (
               <HexDump hex={hexForSelected} highlightRange={selectedNode?.byteRange ?? null} />
             ) : (
               // 後端目前沒有 hex 輸出（GUI Phase 3 的待辦）。空白比假的好，
               // 但要說出是「還沒做」而不是「這格沒有位元組」。
-              <div className="p-3 text-xs text-slate-500">{t("This source does not provide raw bytes")}</div>
+              <div className="p-3 text-xs text-fg-dim font-mono">{t("This source does not provide raw bytes")}</div>
             )
           ) : (
-            <p className="py-6 text-center text-xs text-slate-600">{t("Select a packet to view the hex dump")}</p>
+            <p className="py-6 text-center text-xs text-fg-dim">{t("Select a packet to view the hex dump")}</p>
           )}
         </div>
       </div>

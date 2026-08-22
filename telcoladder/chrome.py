@@ -37,31 +37,31 @@ import html
 CHROME_CSS = """
 :root {
   color-scheme: light dark;
-  --bg: #f5f6f8;
+  --bg: #f3f5f9;
   --surface: #ffffff;
-  --border: #e4e7ec;
-  --text: #111827;
-  --dim: #667085;
-  --faint: #98a2b3;
-  --accent: #4f46e5;
-  --fail: #d92d20;
-  --fail-bg: rgba(217, 45, 32, .07);
-  --fail-line: rgba(217, 45, 32, .22);
-  --hover: rgba(79, 70, 229, .06);
+  --border: #dbe2ed;
+  --text: #0f172a;
+  --dim: #475569;
+  --faint: #94a3b8;
+  --accent: #0891b2;
+  --fail: #e11d48;
+  --fail-bg: rgba(225, 29, 72, .07);
+  --fail-line: rgba(225, 29, 72, .22);
+  --hover: rgba(8, 145, 178, .08);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1117;
-    --surface: #161a22;
-    --border: #272d3a;
-    --text: #e6e9ef;
-    --dim: #98a2b3;
-    --faint: #667085;
-    --accent: #a5b4fc;
-    --fail: #f97066;
-    --fail-bg: rgba(249, 112, 102, .10);
-    --fail-line: rgba(249, 112, 102, .30);
-    --hover: rgba(165, 180, 252, .08);
+    --bg: #090d16;
+    --surface: #101622;
+    --border: #202a3c;
+    --text: #edf1f7;
+    --dim: #9eaec7;
+    --faint: #6a7c98;
+    --accent: #39b6d0;
+    --fail: #f67a73;
+    --fail-bg: rgba(246, 122, 115, .12);
+    --fail-line: rgba(246, 122, 115, .36);
+    --hover: rgba(57, 182, 208, .10);
   }
 }
 

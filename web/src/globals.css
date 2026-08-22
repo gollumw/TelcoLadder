@@ -2,7 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #0a0e17;
-  color: #e2e8f0;
+@layer base {
+  :root {
+    --canvas: #090d16;
+    --surface-1: #101622;
+    --surface-2: #0c111c;
+    --surface-hover: #192131;
+    --border: #202a3c;
+    --border-subtle: #17202f;
+    --border-focus: #3c4d68;
+    --fg-primary: #edf1f7;
+    --fg-muted: #9eaec7;
+    --fg-dim: #6a7c98;
+    --signal-cyan: #39b6d0;
+    --signal-red: #f67a73;
+    --signal-amber: #d59733;
+    --signal-mint: #3ac178;
+  }
+
+  body {
+    background-color: #090d16;
+    color: #edf1f7;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
 }
+
+/* Custom scrollbars for data-dense tables and panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #202a3c;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3c4d68;
+}
+
