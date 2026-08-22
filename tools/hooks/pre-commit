@@ -1,0 +1,67 @@
+#!/bin/sh
+# TelcoLadder pre-commit hook — data red-line guard.
+#
+# Runs tests/test_no_real_subscriber_data.py (about 0.2s) and refuses the
+# commit if it fails.
+#
+# WHY pre-commit and not pre-push: the guards already existed, but they only
+# ran when someone ran pytest. Every leak this project has had happened between
+# "pasted real output into a comment" and "committed it". Once the commit
+# exists the string is in history, and getting it out means git filter-repo
+# plus asking GitHub to purge their object store — which is neither fast nor
+# entirely in your control.
+#
+# The guard checks SHAPE, not specific values, so it also stops leaks that have
+# not happened yet:
+#   · 15-digit identifiers outside the E.212 test network (00101…)
+#   · capture filenames that look exported from a real network
+#   · absolute paths in pcapng section headers
+#   · the no-real-data warning being removed from issue/PR templates
+#
+# Installed by tools/install-hooks.sh. To bypass once: git commit --no-verify
+#
+# telcoladder-hook: pre-commit
+
+set -u
+
+# A repo-local venv is the documented setup; fall back to whatever python3 is
+# on PATH so the hook still works for people who use pipx, uv, or a global env.
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+else
+    echo "pre-commit: no python found — skipping the data red-line guard." >&2
+    echo "            Install the dev extra and re-run tools/install-hooks.sh." >&2
+    exit 0
+fi
+
+# pytest is in the dev extra. Not having it is a setup gap, not a leak, so warn
+# loudly rather than blocking a commit the developer cannot unblock.
+if ! "$PY" -c "import pytest" >/dev/null 2>&1; then
+    echo "pre-commit: pytest not installed — the data red-line guard did NOT run." >&2
+    echo "            pip install -e \".[dev]\"" >&2
+    exit 0
+fi
+
+if output=$("$PY" -m pytest tests/test_no_real_subscriber_data.py -q 2>&1); then
+    exit 0
+fi
+
+echo "$output" | tail -25
+cat >&2 <<'MSG'
+
+⛔ Data red-line guard failed — commit refused.
+
+The output above names the file and line. Two ways forward:
+
+  · It is real data       → remove it. Do not commit and clean up later:
+                            once it is in history, removing it needs
+                            git filter-repo AND a GitHub Support request.
+  · You invented it       → add it to the allowlist in
+                            tests/test_no_real_subscriber_data.py, with a
+                            reason it is visibly fake.
+
+Bypass (you own the consequences): git commit --no-verify
+MSG
+exit 1

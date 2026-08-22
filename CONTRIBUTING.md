@@ -95,11 +95,45 @@ source whose licence allows it). The fixture requirement is for *merging*, not
 for starting the conversation - we will work out together where a legitimate
 capture can come from. Do not let it stop you from proposing the adapter.
 
-## Running the tests
+## Setting up
 
 ```bash
 pip install -e ".[dev]"
+./tools/install-hooks.sh   # installs the pre-commit data guard — please do this
 telcoladder check          # confirms tshark is reachable
+pytest
+```
+
+### Please install the hooks
+
+`tools/install-hooks.sh` puts a **pre-commit** hook in place that runs
+`tests/test_no_real_subscriber_data.py` — about 0.2 seconds — and refuses the
+commit if it fails.
+
+This exists because of the first red line above, and because of how that rule
+actually gets broken. Every leak this project has had followed the same shape:
+the capture stayed safely out of git, and then a real value was pasted into a
+*comment* as evidence — "measured on <real filename>: 14 events", a real
+subscriber id in an example, a production DNN inside a sample URL. The guards
+caught none of it at the time, because guards only run when someone runs
+pytest, and the leak happened between the paste and the commit.
+
+Once it is committed it is in history, and getting it out means `git
+filter-repo` **and** asking GitHub to purge their object store — a force-push
+alone does not do it. That is a slow, external process. Twenty seconds of
+prevention beats it comfortably.
+
+The hook checks *shape*, not a list of known-bad values, so it stops leaks that
+have not happened yet. If it fires on something you invented yourself, add it
+to the allowlist in the test with a reason it is visibly fake — that edit is
+the point: it makes you look once.
+
+The installer never overwrites a hook it did not write; anything already there
+is kept as `<name>.local` and still runs.
+
+## Running the tests
+
+```bash
 pytest
 ```
 

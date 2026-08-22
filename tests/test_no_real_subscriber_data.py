@@ -427,3 +427,58 @@ def test_no_absolute_paths_in_capture_file_metadata() -> None:
         + "\n  ".join(offenders)
         + "\n\n修法：editcap --discard-capture-comment in.pcap out.pcap"
     )
+
+
+# ── 第五道網：跑前四道網的那個 hook ────────────────────────────────
+#
+# 前四道網守的是內容。但它們**只在有人跑 pytest 時才會叫** —— 而這個專案
+# 每一次洩漏都發生在「把真實輸出貼進註解」到「commit」之間。
+# `tools/hooks/pre-commit` 把它們接到 commit 這個動作上，`tools/install-hooks.sh`
+# 讓 clone 下來的人裝得起來（`.git/hooks/` 不進版控，所以需要一支安裝腳本）。
+#
+# 這一條守的是**那兩個檔還在、而且還指向這個測試檔**。少了它，有人重構掉
+# hook、或把測試路徑改掉，防線就靜默消失了 —— 而症狀是「什麼都沒發生」。
+
+_HOOK = REPO / "tools" / "hooks" / "pre-commit"
+_INSTALLER = REPO / "tools" / "install-hooks.sh"
+
+
+def test_the_pre_commit_hook_runs_these_guards() -> None:
+    """`tools/hooks/pre-commit` 必須存在、可執行，並跑這個測試檔。
+
+    紅了代表 commit 那一層的防線斷了。前四道網還在，但只有跑 pytest 的人
+    看得到 —— 而洩漏正是發生在沒跑 pytest 的那些 commit 裡。
+    """
+    assert _HOOK.is_file(), "tools/hooks/pre-commit 不見了 —— commit 層的防線沒了"
+    text = _HOOK.read_text(encoding="utf-8")
+    assert text.startswith("#!"), "hook 沒有 shebang，git 不會執行它"
+    assert Path(__file__).name in text, (
+        f"hook 沒有跑 {Path(__file__).name} —— 它守的是別的東西，或路徑改過了"
+    )
+    # 安裝腳本靠這個標記分辨「我們的 hook」與「別人的 hook」，
+    # 拿掉它會讓重跑安裝時把使用者自己的 hook 誤判成我們的並覆蓋掉。
+    assert "telcoladder-hook:" in text, "hook 少了 telcoladder-hook: 標記"
+
+
+def test_the_installer_exists_and_is_executable() -> None:
+    """`.git/hooks/` 不進版控，所以 clone 下來的人需要一支安裝腳本。
+
+    CONTRIBUTING 指名了這支腳本；它不見了的話那份文件就在說謊。
+    """
+    assert _INSTALLER.is_file(), "tools/install-hooks.sh 不見了"
+    mode = _INSTALLER.stat().st_mode
+    assert mode & 0o111, "tools/install-hooks.sh 沒有執行權限"
+    text = _INSTALLER.read_text(encoding="utf-8")
+    assert "tools/hooks" in text, "安裝腳本沒有從 tools/hooks 取用"
+    # **要驗的是「可執行的那一行」，不是「提到這個名字」。**
+    # 第一版只斷言字串出現過 —— 而說明段裡本來就會提到它，所以把指令刪掉
+    # 測試照樣綠。變異驗證抓到了這件事。
+    contributing = (REPO / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    invocations = [
+        line for line in contributing.splitlines()
+        if "install-hooks.sh" in line and line.lstrip().startswith(("./", "sh ", "bash "))
+    ]
+    assert invocations, (
+        "CONTRIBUTING 沒有一行**可以照著打**的安裝指令 —— "
+        "只在散文裡提到名字，讀者不會知道要怎麼跑"
+    )
