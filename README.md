@@ -102,8 +102,12 @@ registration. What that capture does *not* contain is the long tail — see
   on millisecond rhythms, so a hole that big is a timer waiting.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
-- **Exports two ways**: Mermaid for version control and GitHub, or a
-  self-contained HTML report you can hand to someone else.
+- **Two ways to look at it**: `analyze` writes Mermaid — a text file you can
+  version-control, diff, and paste into GitHub — or `serve` opens an
+  interactive browser view of the same capture (packet list with real tshark
+  display filters, per-frame decode tree, the call-flow ladder, a
+  PDU-session correlation matrix). There is no third format — see the note
+  on the retired `--html` report below.
 
 ## Install
 
