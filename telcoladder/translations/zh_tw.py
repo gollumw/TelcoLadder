@@ -102,6 +102,8 @@ CATALOG: dict[str, str] = {
     "    That port is already being decoded as HTTP/2 and still cannot be read - usually the capture started **after the TCP connection was established**, so tshark never saw the HTTP/2 header table and cannot reassemble. --decode-as will not help; change how you capture (start before the connection comes up).":
         "    那個埠已經被要求解成 HTTP/2 了，仍然讀不出來 —— 通常代表**擷取起點晚於 TCP 連線建立**，tshark 沒看到 HTTP/2 的標頭表就無法重組。加 --decode-as 沒有用，要改的是擷取方式（在連線建立前就開始抓）。",
     "  · {frames} frames are {protocol}.": "  · {frames} 格是 {protocol}。",
+    "  · {frames} frames are {protocol} with nothing above the transport layer (heartbeats, acknowledgements, association control) - no signalling inside them.":
+        "  · {frames} 格是 {protocol}，傳輸層之上什麼都沒有（心跳、確認、關聯控制）—— 裡面沒有信令。",
     "  · The only network functions identified are {roles} - this may be an N2-only capture (SMF/UPF need N4 PFCP or SBI traffic), or the undecoded payload above may actually be SBI. The two call for different action: the first means a different capture point, the second means --decode-as.":
         "  · 判定出來的網元只有 {roles} —— 這可能是 N2-only 的擷取（SMF/UPF 需要 N4 的 PFCP 或 SBI 流量），也可能是上面那些未解碼的載荷其實就是 SBI。兩者的處置不同：前者要換擷取點，後者加 --decode-as 就看得到。",
     ", ": "、",
@@ -361,6 +363,8 @@ CATALOG: dict[str, str] = {
     "SUPIs": "SUPI",
     "recovered after {n} failure(s)": "中途 {n} 次失敗後成功",
     "(explained above)": "（說明見上）",
+    "Only N2 (gNB<->AMF) signalling is in this capture - nothing from SBI or N4. A rejection decided inside the core (SMF, UDM, PCF) does not appear here, and after Security Mode Command the NAS reply carrying it is ciphered too.":
+        "這份擷取檔只有 N2（gNB↔AMF）信令 —— 沒有任何 SBI 或 N4。核網內部（SMF、UDM、PCF）做出的拒絕不會出現在這裡，而 Security Mode Command 之後帶著它回來的 NAS 也是加密的。",
     # ── cli：summarize ──────────────────────────────────────────────────
     "One-page diagnostic summary for an AI agent or a ticket: what the capture contains, what could not be read, network elements, subscribers, procedures, every failure with its 3GPP cause reference":
         "一頁診斷摘要，給 AI agent 或工單用：擷取檔裡有什麼、看不見什麼、網元、訂戶、程序、每一個失敗與它的 3GPP cause 出處",

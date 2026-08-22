@@ -285,6 +285,10 @@ def measure(
     )
 
 
+#: phs 葉子落在這些協定上＝上面沒有任何載荷被解剖。措辭要跟其他未認領流量分開。
+_TRANSPORT_ONLY = frozenset({"sctp", "tcp", "udp"})
+
+
 def describe(coverage: Coverage) -> list[str]:
     """把覆蓋率講成人話。回傳要印的行；沒話說就回空 list。
 
@@ -321,6 +325,15 @@ def describe(coverage: Coverage) -> list[str]:
                 lines.append(
                     _("    That port is already being decoded as HTTP/2 and still cannot be read - usually the capture started **after the TCP connection was established**, so tshark never saw the HTTP/2 header table and cannot reassemble. --decode-as will not help; change how you capture (start before the connection comes up).")
                 )
+        elif conv.protocol in _TRANSPORT_ONLY:
+            # phs 的葉子是傳輸層，意思是**上面沒有任何東西被解剖出來** —— SCTP 的
+            # HEARTBEAT／SACK、TCP 的純 ACK。userplane 實測 13 格全是心跳與 SACK。
+            # 寫成「13 frames are sctp」會被讀成「有 13 格 N2 信令漏了」（2026-08-23
+            # 複審抓到的假警報）。講清楚裡面沒有信令，但不說它不重要 ——
+            # SCTP ABORT 也會落在這裡，而那是診斷訊號。
+            lines.append(
+                _("  · {frames} frames are {protocol} with nothing above the transport layer (heartbeats, acknowledgements, association control) - no signalling inside them.").format(frames=conv.frames, protocol=conv.protocol)
+            )
         else:
             lines.append(_("  · {frames} frames are {protocol}.").format(frames=conv.frames, protocol=conv.protocol))
 

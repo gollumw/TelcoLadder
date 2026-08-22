@@ -120,8 +120,13 @@ def _capture(analysis: Analysis) -> dict:
     }
 
 
+#: 這些協定全部走 N2 —— 只看到它們，核網內部（SBI／N4）在這份檔裡就是不存在。
+_N2_PROTOCOLS = frozenset({"ngap", "nas-5gs"})
+
+
 def _not_visible(analysis: Analysis) -> dict:
     coverage = analysis.coverage
+    protocols = {m.protocol for f in analysis.flows for m in f.messages}
     undecoded = (
         coverage.total - coverage.parsed
         if coverage is not None and coverage.total is not None else None
@@ -129,6 +134,12 @@ def _not_visible(analysis: Analysis) -> dict:
     return {
         "ciphered_nas": analysis.ciphered,
         "ecies_protected_suci": analysis.protected_suci,
+        # **只有 N2 的擷取檔。** unknown-dnn 實測：22 格全是 gNB↔AMF，registration ✓、
+        # Failures (0) —— 而它的故障是 SMF 拒絕了 PDU session，那件事發生在 SBI 上，
+        # 回到 UE 的 reject 又是加密的。不講「核網內部不在這份檔裡」，agent 會把
+        # 「看不到失敗」讀成「沒有失敗」。這是觀察（哪些協定出現過），不是推論。
+        # coverage.looks_n2_only 只在命中率低到觸發掃描時才出聲，這裡無條件看。
+        "only_n2": bool(protocols) and protocols <= _N2_PROTOCOLS,
         "frames_not_decoded": undecoded,
         "sbi_streams_with_undecoded_headers": len(analysis.sbi_undecoded),
         # **沒解碼的那些格是什麼、加參數救不救得回來。** 5gc-e2e 的 449 格裡有 212 格
@@ -336,6 +347,8 @@ def render_markdown(doc: dict) -> str:
     items: list[str] = []
     if nv["ciphered_nas"]:
         items.append(_("{n} NAS messages are ciphered; their contents (including any reject) cannot be read.").format(n=nv["ciphered_nas"]))
+    if nv["only_n2"]:
+        items.append(_("Only N2 (gNB<->AMF) signalling is in this capture - nothing from SBI or N4. A rejection decided inside the core (SMF, UDM, PCF) does not appear here, and after Security Mode Command the NAS reply carrying it is ciphered too."))
     if nv["ecies_protected_suci"]:
         items.append(_("{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.").format(n=nv["ecies_protected_suci"]))
     if nv["frames_not_decoded"]:

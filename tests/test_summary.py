@@ -31,7 +31,8 @@ ALL_FIXTURES = [
 
 #: 整份摘要的 Markdown 上限（字元）。這是給 agent 吃的，不是給它讀小說的 ——
 #: 超過代表某一節開始逐訊息列舉了，那是 callflow 的工作。
-MARKDOWN_BUDGET = 5_000
+#: 實測上限是 multi-imsi（5 個訂戶、4 次失敗、逐埠的覆蓋率但書）：5,023。
+MARKDOWN_BUDGET = 6_000
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -88,7 +89,7 @@ CAPTURE_FIELDS = {
 NOT_VISIBLE_FIELDS = {
     "ciphered_nas", "ecies_protected_suci", "frames_not_decoded",
     "sbi_streams_with_undecoded_headers", "undecoded_traffic", "coverage_notes",
-    "narrowed", "auto_decode",
+    "narrowed", "auto_decode", "only_n2",
 }
 
 
@@ -227,8 +228,13 @@ def test_the_not_visible_section_always_exists(e2e) -> None:
 
 
 def test_nothing_hidden_is_said_explicitly_not_silently() -> None:
-    md = summary.render_markdown(summary.build(_synthetic(), source_name="x"))
+    analysis = _synthetic()
+    # 純 NGAP 的合成檔會觸發「只有 N2」那句（那也是一種看不見）；
+    # 這裡要的是**什麼都沒有**的情況，所以讓它帶一則 SBI。
+    analysis.flows[0].messages[1].protocol = "sbi"
+    md = summary.render_markdown(summary.build(analysis, source_name="x"))
     assert "Everything decoded; nothing was narrowed or adjusted." in md
+    assert "Only N2" not in md
 
 
 @pytest.mark.parametrize("field, sentence", [
@@ -290,6 +296,40 @@ def test_auto_decode_is_told_before_what_is_still_unreadable() -> None:
     # JSON 的鍵序也要一樣 —— 讀 JSON 的 agent 照樣是由上往下讀。
     keys = list(doc["not_visible"])
     assert keys.index("auto_decode") < keys.index("coverage_notes")
+
+
+def test_an_n2_only_capture_says_the_core_is_not_in_the_file(e2e) -> None:
+    """unknown-dnn：22 格全是 gNB↔AMF，registration ✓、Failures (0)。
+
+    它的故障是 SMF 拒絕 PDU session —— 發生在 SBI 上，回到 UE 的 reject 又是加密的。
+    摘要不講「核網內部不在這份檔裡」，agent 會把「看不到失敗」讀成「沒有失敗」。
+    （外部複審 2026-08-23 複審提出的反例。）
+    """
+    analysis = analyse(FIXTURES / "unknown-dnn" / "capture.pcap")
+    doc = summary.build(analysis, source_name="x")
+    assert doc["not_visible"]["only_n2"] is True
+    assert doc["failures"] == [], "前提：這份檔表面上沒有失敗"
+    md = summary.render_markdown(doc)
+    assert "Only N2 (gNB<->AMF) signalling is in this capture" in md
+    # 反方向：有 SBI 的檔不能講這句。
+    e2e_doc = summary.build(e2e, source_name="x")
+    assert e2e_doc["not_visible"]["only_n2"] is False
+    assert "Only N2" not in summary.render_markdown(e2e_doc)
+
+
+def test_transport_only_residue_is_not_reported_as_missing_signalling() -> None:
+    """userplane：13 格 SCTP 是心跳與 SACK，上面沒有任何東西。
+
+    「13 frames are sctp」會被讀成「有 13 格 N2 信令漏了」——複審實測 agent 就是這樣
+    推論的。句子要講清楚裡面沒有信令。
+    """
+    analysis = analyse(FIXTURES / "userplane" / "capture.pcap")
+    doc = summary.build(analysis, source_name="x")
+    sctp = [c for c in doc["not_visible"]["undecoded_traffic"] if c["protocol"] == "sctp"]
+    assert sctp and sctp[0]["frames"] == 13
+    md = summary.render_markdown(doc)
+    assert "13 frames are sctp with nothing above the transport layer" in md
+    assert "13 frames are sctp.\n" not in md
 
 
 def test_no_coverage_means_empty_lists_not_missing_keys() -> None:
