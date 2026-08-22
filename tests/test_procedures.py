@@ -155,7 +155,7 @@ def test_an_unfinished_procedure_near_capture_end_says_so() -> None:
     flow = Flow(messages=[_msg(10, "InitialUEMessage ▸ Registration request")])
     procs, _ = segment_flow(flow, capture_end=10.0 + TAIL_SLACK / 2)
     assert procs[0].outcome == "incomplete"
-    assert "截到一半" in procs[0].note
+    assert "cut off" in procs[0].note
 
     # 對照組：離結尾夠遠的 incomplete 不加註 —— 那是真的沒等到。
     procs, _ = segment_flow(flow, capture_end=10.0 + TAIL_SLACK * 10)

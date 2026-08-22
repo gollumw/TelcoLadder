@@ -81,6 +81,11 @@ header { margin-bottom: 24px; }
 .brand { display: flex; align-items: baseline; gap: 10px; }
 .brand h1 { margin: 0; font-size: 19px; font-weight: 620; letter-spacing: -.01em; }
 .brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+
+/* Language switch, top-right of the home page. `.on` marks the current language. */
+.lang { font-size: 12px; color: var(--dim); }
+.lang a { color: var(--dim); text-decoration: none; }
+.lang a.on { color: var(--text); font-weight: 600; }
 """
 
 

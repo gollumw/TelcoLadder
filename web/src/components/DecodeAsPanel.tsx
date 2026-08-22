@@ -1,5 +1,6 @@
 "use client";
 
+import { t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
 import { Loader2, Plus, RotateCw, Trash2, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,24 +14,24 @@ const PROTOCOLS = ["http2", "ngap", "nas-5gs", "pfcp", "gtp", "diameter", "sip"]
 
 const ORIGIN_META: Record<string, { label: string; className: string; hint: string }> = {
   default: {
-    label: "內建預設",
+    label: "Built-in default",
     className: "border-slate-600 bg-slate-700/40 text-slate-300",
-    hint: "協定本身的定義（SBI 就是跑在 7777），隨程式出貨",
+    hint: "The protocol's own definition (SBI runs on 7777); ships with the program",
   },
   shipped: {
-    label: "內建預設",
+    label: "Built-in default",
     className: "border-slate-600 bg-slate-700/40 text-slate-300",
-    hint: "實地驗證過的經驗，隨程式出貨給每個使用者。只有在它真的多解出訊息時才會生效",
+    hint: "Field-verified experience, shipped to every user. Only takes effect when it actually decodes more messages",
   },
   auto: {
-    label: "自動偵測",
+    label: "Auto-detected",
     className: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-    hint: "這次開檔時偵測到的，只對這份擷取檔有效",
+    hint: "Detected when this file was opened; applies to this capture only",
   },
   user: {
-    label: "你設定的",
+    label: "Yours",
     className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-    hint: "存在設定檔裡，以後每份擷取檔都會套用",
+    hint: "Stored in your config; applied to every capture from now on",
   },
 };
 
@@ -73,6 +74,7 @@ export function DecodeAsPanel({
   onEnable: (rule: string) => void;
   onPromote: (rules: string[]) => void;
 }) {
+  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [open, setOpen] = useState(false);
   const [selector, setSelector] = useState(SELECTORS[0]);
   const [value, setValue] = useState("");
@@ -106,11 +108,11 @@ export function DecodeAsPanel({
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-200"
       >
         <Wrench className="h-3.5 w-3.5" />
-        Decode As · 解碼方式
+        {t("Decode As")}
         <span className="ml-1 font-normal normal-case tracking-normal text-slate-600">
-          {rules.length} 條規則生效中
+          {t("{n} rule(s) active", { n: rules.length })}
         </span>
-        <span className="ml-auto text-slate-500">{open ? "收合 ▲" : "展開 ▼"}</span>
+        <span className="ml-auto text-slate-500">{open ? t("Collapse ▲") : t("Expand list ▼")}</span>
       </button>
 
       {open && (
@@ -118,9 +120,9 @@ export function DecodeAsPanel({
           <table className="w-full text-left text-[11px]">
             <thead className="text-slate-500">
               <tr>
-                <th className="pb-1 font-medium">選擇器</th>
-                <th className="pb-1 font-medium">解成</th>
-                <th className="pb-1 font-medium">來源</th>
+                <th className="pb-1 font-medium">{t("Selector")}</th>
+                <th className="pb-1 font-medium">{t("Decode as")}</th>
+                <th className="pb-1 font-medium">{t("Origin")}</th>
                 <th className="pb-1" />
               </tr>
             </thead>
@@ -132,7 +134,7 @@ export function DecodeAsPanel({
                   // 內建的不能「刪」（下次啟動又回來），但可以關掉 ——
                   // 那是一個記錄下來的決定，存在使用者的設定檔裡。
                   onRemove={() => onDisable(r.rule)}
-                  removeTitle="關掉這條內建規則（記在你的設定裡，之後都不套用）"
+                  removeTitle={t("Disable this built-in rule (remembered in your config; never applied again)")}
                 />
               ))}
               {rules
@@ -155,7 +157,7 @@ export function DecodeAsPanel({
               {rules.length === 0 && draft.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-3 text-center text-slate-600">
-                    目前沒有任何規則
+                    {t("No rules at the moment")}
                   </td>
                 </tr>
               )}
@@ -182,7 +184,7 @@ export function DecodeAsPanel({
               placeholder="8080"
               className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
             />
-            <span className="pb-2 font-mono text-xs text-slate-500">解成</span>
+            <span className="pb-2 font-mono text-xs text-slate-500">{t("Decode as")}</span>
             <input
               value={protocol}
               onChange={(e) => setProtocol(e.target.value)}
@@ -202,7 +204,7 @@ export function DecodeAsPanel({
               className="flex items-center gap-1 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:border-sky-500 hover:text-sky-300"
             >
               <Plus className="h-3 w-3" />
-              加入
+              {t("Add")}
             </button>
           </div>
 
@@ -220,7 +222,7 @@ export function DecodeAsPanel({
             // **關掉的規則要看得見。** 只是從表上消失的話，使用者三個月後
             // 遇到同一種擷取檔解不開，不會想到是自己關過。
             <div className="rounded border border-slate-700 bg-slate-950/60 p-2.5">
-              <p className="text-[11px] text-slate-500">已關閉的內建規則</p>
+              <p className="text-[11px] text-slate-500">{t("Disabled built-in rules")}</p>
               <ul className="mt-1 space-y-1">
                 {disabled.map((rule) => (
                   <li key={rule} className="flex items-center gap-2 font-mono text-[11px] text-slate-500">
@@ -231,7 +233,7 @@ export function DecodeAsPanel({
                       onClick={() => onEnable(rule)}
                       className="rounded border border-slate-700 px-2 py-0.5 text-[10px] not-italic text-slate-400 hover:border-sky-500 hover:text-sky-300 disabled:opacity-50"
                     >
-                      重新啟用
+                      {t("Re-enable")}
                     </button>
                   </li>
                 ))}
@@ -245,9 +247,9 @@ export function DecodeAsPanel({
             // 所以要 commit 才會真的給到別人 —— 這件事必須講出來。
             <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2.5">
               <p className="text-[11px] leading-relaxed text-emerald-200">
-                這次自動偵測到 {promotable.length} 條還沒收編的規則。收編之後它們會
-                <strong className="font-semibold">隨程式出貨給每個使用者</strong>
-                ，下次別人開類似的擷取檔就不必再撞一次。
+                {t("Auto-detection found {n} rule(s) not yet adopted. Once adopted they ", { n: promotable.length })}
+                <strong className="font-semibold">{t("ship with the program to every user")}</strong>
+                {t(", so the next person opening a similar capture does not hit the same wall.")}
               </p>
               <p className="mt-1 font-mono text-[11px] text-emerald-300/70">
                 {promotable.join("　")}
@@ -259,13 +261,12 @@ export function DecodeAsPanel({
                 className="mt-2 flex items-center gap-1.5 rounded border border-emerald-500/40 px-2.5 py-1 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
               >
                 <Plus className="h-3 w-3" />
-                加入內建預設
+                {t("Adopt as built-in default")}
               </button>
               <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-                寫進 <code className="text-slate-400">{shippedPath}</code>（版控裡的檔，
-                要 commit 才會給到別人）。收編的規則仍然只是
-                <strong className="font-semibold text-slate-400">候選</strong>
-                —— 它在別人的擷取檔上若解不出更多訊息就自己退場，不會弄壞他們的檔。
+                {t("Writes to ")}<code className="text-slate-400">{t(shippedPath)}</code>{t(" (a file under version control - it reaches others only after a commit). Adopted rules are still only ")}
+                <strong className="font-semibold text-slate-400">{t("candidates")}</strong>
+                {t(" - on someone else's capture they withdraw themselves if they do not decode more messages, so they cannot break their file.")}
               </p>
             </div>
           )}
@@ -283,7 +284,7 @@ export function DecodeAsPanel({
               )}
             >
               {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              {busy ? "重跑中……" : "套用並重跑"}
+              {busy ? t("Re-running…") : t("Apply & re-run")}
             </button>
             {dirty && !busy && (
               <button
@@ -291,14 +292,13 @@ export function DecodeAsPanel({
                 onClick={() => setPending(null)}
                 className="text-[11px] text-slate-500 hover:text-slate-300"
               >
-                取消變更
+                {t("Discard changes")}
               </button>
             )}
             <p className="text-[11px] leading-relaxed text-slate-500">
-              套用會<strong className="font-semibold text-slate-400">整份重跑</strong>（大檔要幾分鐘）——
-              規則會改變訊息邊界，訂戶、梯形圖與關聯矩陣都要跟著變。
+              {t("Applying ")}<strong className="font-semibold text-slate-400">{t("re-runs the whole analysis")}</strong>{t(" (minutes on a large file) - rules change message boundaries, so subscribers, the ladder and the matrix all change with them.")}
               <br />
-              你設定的規則存在 <code className="text-slate-400">{configPath}</code>，以後每份擷取檔都會套用。
+              {t("Your rules live in ")}<code className="text-slate-400">{t(configPath)}</code>{t(" and apply to every capture from now on.")}
             </p>
           </div>
         </div>
@@ -310,12 +310,14 @@ export function DecodeAsPanel({
 function Row({
   rule,
   onRemove,
-  removeTitle = "移除這條規則",
+  removeTitle,
 }: {
   rule: DecodeAsRule;
   onRemove?: () => void;
   removeTitle?: string;
 }) {
+  useLang();
+  const removeLabel = removeTitle ?? t("Remove this rule");
   const meta = ORIGIN_META[rule.origin] ?? ORIGIN_META.default;
   return (
     <tr>
@@ -324,9 +326,9 @@ function Row({
       <td className="py-1">
         <span
           className={cn("rounded-full border px-2 py-0.5 text-[10px]", meta.className)}
-          title={rule.note ? `${meta.hint}\n\n${rule.note}` : meta.hint}
+          title={rule.note ? `${t(meta.hint)}\n\n${rule.note}` : t(meta.hint)}
         >
-          {meta.label}
+          {t(meta.label)}
         </span>
       </td>
       <td className="py-1 text-right">
@@ -334,7 +336,7 @@ function Row({
           <button
             type="button"
             onClick={onRemove}
-            title={removeTitle}
+            title={removeLabel}
             className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-rose-300"
           >
             <Trash2 className="h-3 w-3" />

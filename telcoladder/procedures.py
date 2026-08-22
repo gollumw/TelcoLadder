@@ -68,6 +68,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from telcoladder.i18n import _
 from telcoladder.model import Flow, IdKind, Message
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
@@ -177,7 +178,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
 
     note = ""
     if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
-        note = "落在擷取結尾附近，可能只是截到一半"
+        note = _('Near the end of the capture - may simply be cut off')
 
     ps_ids = {m.detail[PDU_SESSION_ID] for m in window if PDU_SESSION_ID in m.detail}
 

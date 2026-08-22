@@ -27,6 +27,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark
 
 
@@ -84,8 +85,7 @@ def frame_bytes(
     )
     if out.returncode != 0:
         raise FrameBytesError(
-            f"tshark 取 {pcap.name} 的原始位元組失敗（exit {out.returncode}）：\n"
-            f"{out.stderr.strip()}"
+            _('tshark failed to fetch raw bytes for {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=out.returncode, stderr=out.stderr.strip())
         )
     return _parse(out.stdout)
 
@@ -100,7 +100,7 @@ def _parse(payload: str) -> dict[int, str]:
     try:
         packets = json.loads(payload) if payload.strip() else []
     except json.JSONDecodeError as exc:
-        raise FrameBytesError(f"tshark 的 JSON 讀不動：{exc}") from exc
+        raise FrameBytesError(_("tshark's JSON could not be parsed: {error}").format(error=exc)) from exc
 
     found: dict[int, str] = {}
     for packet in packets:

@@ -127,4 +127,190 @@ CATALOG: dict[str, str] = {
     "  Could not delete temp file {path}: {error}": "  刪不掉暫存檔 {path}：{error}",
     "  Could not delete temp file; please remove it yourself: {path}":
         "  刪不掉暫存檔，請自行刪除：{path}",
+
+    # ── Phase B：例外訊息、API、首頁、flow table、identities ──────────────
+    '⚠ Could not delete the uploaded temp file: {path}\n  That is the capture you just uploaded; please remove it by hand.':
+        '⚠ 刪不掉上傳的暫存檔：{path}\n  那是你剛才上傳的擷取檔，請手動刪除。',
+    'Refused: the Host header is not a loopback address.':
+        '拒絕：Host 標頭不是本機位址。',
+    'Refused: cross-origin request.':
+        '拒絕：跨來源請求。',
+    'No such page.':
+        '找不到這個頁面。',
+    'No such resource.':
+        '找不到這個資源。',
+    'This session has expired or been released.':
+        '此工作階段已過期或已釋放。',
+    'Go back to the home page and open the capture again. Uploaded copies are deleted automatically after the idle timeout.':
+        '回首頁重新開啟擷取檔即可。上傳的複本會在閒置逾時後自動刪除。',
+    'Invalid frame parameter.':
+        'frame 參數不正確。',
+    'Missing supi parameter.':
+        '缺少 supi 參數。',
+    'No such API.':
+        '沒有這個 API。',
+    'adopted after auto-detection on {name}':
+        '自 {name} 自動偵測後收編',
+    'Could not write the shipped rule list ({path}): {error}. If this program was pip-installed that file is usually read-only - add the rule under "your rules" instead.':
+        '寫不進出貨清單（{path}）：{error}。這份程式若是安裝上去的，那個檔通常是唯讀的 —— 請改把規則加在「你設定的」那一區。',
+    'Could not save the rules: {error}':
+        '規則存檔失敗：{error}',
+    'No file content received.':
+        '沒有收到檔案內容。',
+    'The file exceeds the {mb} MB upload limit. Use "paste a path" instead - no copy, nothing written to disk.':
+        '檔案超過 {mb} MB 的上傳上限。改用「貼上路徑」——不搬檔、不落地。',
+    'Upload interrupted; the file is incomplete.':
+        '上傳中斷，檔案不完整。',
+    'Please paste the path of a capture file.':
+        '請貼上擷取檔的路徑。',
+    'No such file: {path}':
+        '找不到這個檔案：{path}',
+    'The path must be an absolute path on this machine.':
+        '路徑要是這台機器上的絕對路徑。',
+    '← Back to the home page':
+        '← 回到首頁',
+    'tshark not found - analysis is not possible yet':
+        '找不到 tshark —— 現在還不能分析',
+    'Drop a pcap here':
+        '把 pcap 拖進來',
+    'Or pick a file with the button below. Limit {mb} MB.':
+        '或點下面的按鈕選檔。上限 {mb} MB。',
+    'Choose a file':
+        '選擇檔案',
+    'An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.':
+        '上傳的複本會<b>保留</b>到你按釋放或閒置逾時 —— 逐封包解碼要跨請求讀同一份檔。',
+    'or':
+        '或',
+    'Capture file path':
+        '擷取檔路徑',
+    'Open':
+        '開啟',
+    'Flow view - one row per message, NAS drawn UE↔AMF (the default is the wire view, one row per packet)':
+        '流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）',
+    '<b>Use this one for large files.</b> Pasting a path copies nothing, writes nothing, starts immediately - pushing hundreds of MB over HTTP to a server on the same machine buys you nothing.<br>Both routes open the interactive interface (filter, per-packet decode and bytes, ladder, correlation matrix). The packet list appears while indexing, so the first page is quick; <b>subscriber identities, the ladder and the matrix wait for the full dissection</b>.<br>For a text diagram you can paste into a document, use the CLI: <code>telcoladder analyze &lt;pcap&gt;</code> - it also takes a time range, a subscriber, and a tshark filter.':
+        '<b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 —— 把幾百 MB 透過 HTTP 傳給同一台機器上的伺服器沒有意義。<br>兩條路都會開在互動介面裡（可過濾、逐封包看解碼與位元組、看梯形圖與關聯矩陣）。封包清單邊索引邊出，第一頁很快就能看；<b>訂戶身分、梯形圖與關聯矩陣要等完整解剖跑完</b>。<br>要一份可貼進文件的文字圖請用 CLI：<code>telcoladder analyze &lt;pcap&gt;</code>，它同時支援時間範圍、訂戶收窄與 tshark filter。',
+    'Analysing…':
+        '分析中……',
+    'Upload failed: ':
+        '上傳失敗：',
+    'TelcoLadder → http://{host}:{port}   (Ctrl-C to stop)':
+        'TelcoLadder → http://{host}:{port}   （Ctrl-C 結束）',
+    '\n⚠ tshark not found - analysis is not possible yet:\n{error}\n':
+        '\n⚠ 找不到 tshark，現在還不能分析：\n{error}\n',
+    '\n⚠ Found {n} temp capture file(s) left by a previous run (older than a day):':
+        '\n⚠ 找到 {n} 個前次執行留下的暫存擷取檔（超過一天）：',
+    '  Those are customer captures. Delete them yourself once you are sure - this tool will not.\n':
+        '  那是客戶封包。確認不需要之後請自行刪除 —— 本工具不會替你刪。\n',
+    '\nDone.':
+        '\n收工。',
+    'Language':
+        '語言',
+    'No frame {frame} in the capture.':
+        '擷取檔裡沒有 frame {frame}。',
+    'Full dissection has not finished; identity information is not available yet.':
+        '完整解剖還沒跑完，身分資訊尚未可用。',
+    'Unknown identity kind: {kind}':
+        '未知的身分類別：{kind}',
+    'No packets correspond to this identity: {value}':
+        '這個身分沒有對應的封包：{value}',
+    'This capture has no absolute timestamps, so time filtering is unavailable - range ignored, showing everything.':
+        '這份擷取檔沒有絕對時間戳，時間過濾不可用 —— 已忽略範圍、顯示全部。',
+    'No flow corresponds to this subscriber: {supi}':
+        '這個訂戶沒有對應的流程：{supi}',
+    'Needs the IMS adapter (not implemented yet)':
+        '需要 IMS adapter（尚未實作）',
+    'Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling':
+        '需要 IMS adapter（尚未實作）—— MSISDN 來自 IMS/Diameter，不在 5G 核網信令裡',
+    'Needs the SIP adapter (not implemented yet)':
+        '需要 SIP adapter（尚未實作）',
+    'Needs the Diameter adapter (not implemented yet)':
+        '需要 Diameter adapter（尚未實作）',
+    'Needs the GTP adapter (not implemented yet)':
+        '需要 GTP adapter（尚未實作）',
+    'Not implemented yet':
+        '尚未實作',
+    '{n} SUCIs in this capture are ECIES-protected - **the SUPI / IMSI cannot be recovered, even in principle**; that is not "not found". The MSIN is simply not on the wire, so no search will hit. Search by NGAP UE ID instead, or check the AMF log.':
+        '這份擷取裡有 {n} 個 SUCI 用了 ECIES 保護 —— **SUPI / IMSI 在原理上取不出來**，不是「沒找到」。MSIN 根本不在封包裡，再怎麼搜都不會有結果。請改用 NGAP UE ID 搜尋，或對照 AMF 日誌。',
+    'No identity matches "{needle}". {n} further SUCI(s) in this capture are ECIES-protected and those subscribers\' IMSIs cannot be recovered - the one you want may be among them. SUPIs that could be identified: {listed}':
+        '沒有符合「{needle}」的身分。這份擷取裡另有 {n} 個 SUCI 用了 ECIES 保護，那些用戶的 IMSI 取不出來 —— 你要找的可能是其中之一。已能識別的 SUPI：{listed}',
+    ' ({n} in total)':
+        '（共 {n} 個）',
+    'No identity in this capture matches "{needle}". SUPIs on record: {listed}{more}':
+        '這份擷取裡沒有符合「{needle}」的身分。已收錄的 SUPI：{listed}{more}',
+    'No identifiable SUPI in this capture, and {n} NAS messages are ciphered. Registration may have happened before the capture started - the SUCI does not appear again after that. Search by NGAP UE ID instead.':
+        '這份擷取裡沒有任何可識別的 SUPI，而且有 {n} 則 NAS 已加密。註冊流程可能發生在擷取開始之前 —— 那時 SUCI 不會再出現。請改用 NGAP UE ID 搜尋。',
+    'No subscriber identity could be extracted from this capture. It may contain only network-level messages (NGSetup, NF management), or the registration falls outside the captured range.':
+        '這份擷取裡沒有抽出任何用戶身分。可能是它只含網路層訊息（NGSetup、NF 管理），或註冊流程不在擷取範圍內。',
+    'Same direction ({src} → {dst}), same message, same PFCP sequence number ({seqno}), seen {n} times - PFCP retransmits reuse the sequence number, so this is a confirmed retransmission.':
+        '同方向（{src} → {dst}）、同訊息、同 PFCP sequence number（{seqno}）出現 {n} 次 —— PFCP 重送沿用同一序號，這是確定的重傳。',
+    'Same direction, same NAS message repeated {n} times within {window:.0f} s - NAS timer retransmissions look like this, but so do legitimate retries; they cannot be told apart, so this is marked "suspected".':
+        '同方向、同 NAS 訊息在 {window:.0f} 秒內重複 {n} 次 —— NAS 定時器重送會長這樣，但合法的重新嘗試也會；分不開，所以標「疑似」。',
+    ' (the request falls within 2 s of the end of the capture - it may simply be cut off, not actually unanswered)':
+        '（該請求落在擷取結束前不到 2 秒 —— 可能只是截到一半，不是真的沒回）',
+    'No response seen on this HTTP/2 stream within the capture':
+        '同一條 HTTP/2 stream 在擷取範圍內未見任何回應',
+    'PFCP sequence number {seqno} has a Request but no matching Response within the capture':
+        'PFCP sequence number {seqno} 只有 Request、擷取範圍內沒有對應的 Response',
+    'The adapter classified this as a failure/reject message (cause or status code); see the cause column for details.':
+        'adapter 判定為失敗/拒絕類訊息（cause 或狀態碼），詳見該列的 cause 說明。',
+    '{n} failed':
+        '{n} 則失敗',
+    '{n} retransmission group(s)':
+        '{n} 組重傳',
+    '{n} unanswered':
+        '{n} 則未獲回應',
+    'no anomalies':
+        '無異常',
+    'Unattributed sessions (no subscriber identifier to join on)':
+        '未歸戶 session（無訂戶識別碼可接）',
+    'Plugin cause table {name!r} points at {path}, which is not a directory. The entry point must resolve to a directory Path containing *.yaml.':
+        '外掛 cause 表 {name!r} 指向 {path}，但那不是一個目錄。entry point 的值必須解析成含 *.yaml 的目錄 Path。',
+    'Cause table name clash: {table!r} comes from both {first} and {second} ({file}). These are hand-verified spec assets and will not be silently overridden - rename one of them.':
+        'cause 表名撞號：{table!r} 同時來自 {first} 與 {second}（{file}）。這些是人工核對的規範資產，不會靜默覆蓋 —— 請把其中一張改名。',
+    "{table} #{value} (not in this tool's cause table yet)":
+        '{table} #{value}（本工具尚未收錄此 cause）',
+    'Plugin adapter {name!r} is missing required attributes: {attrs}. The contract is in telcoladder/adapters/__init__.py.':
+        '外掛 adapter {name!r} 缺少必要屬性：{attrs}。契約見 telcoladder/adapters/__init__.py。',
+    "decode-as clash: {selector!r} is claimed by both {first!r} and {second!r} for different protocols. tshark will apply only one; the other adapter receives nothing and nothing reports it. Specify explicitly with the CLI's --decode-as.":
+        'decode-as 撞號：{selector!r} 同時被 {first!r} 與 {second!r} 指向不同協定。tshark 只會採用其中一條，另一個 adapter 會一格都收不到而且不報錯。請改用 CLI 的 --decode-as 明確指定。',
+    'Unidentified flow':
+        '未識別的流程',
+    '⚠ Truncated: {dropped} more messages not shown ({total} in total)':
+        '⚠ 已截斷：另有 {dropped} 則訊息未顯示（共 {total} 則）',
+    'Near the end of the capture - may simply be cut off':
+        '落在擷取結尾附近，可能只是截到一半',
+    "tshark's PDML could not be parsed: {error}":
+        'tshark 的 PDML 解析失敗：{error}',
+    'tshark failed to decode {name} (exit {code}):\n{stderr}':
+        'tshark 解碼 {name} 失敗（exit {code}）：\n{stderr}',
+    'Malformed rule: {rule!r}. Expected something like `tcp.port==8080,http2` - "selector==value,protocol".':
+        '規則格式不對：{rule!r}。應該長得像 `tcp.port==8080,http2` ——「選擇器==值,要解成的協定」。',
+    'tshark rejected this rule: {rule}':
+        'tshark 不接受這條規則：{rule}',
+    'File not found: {path}':
+        '找不到檔案：{path}',
+    'tshark failed to read {name} (exit {code}):\n{stderr}':
+        'tshark 讀取 {name} 失敗（exit {code}）：\n{stderr}',
+    'tshark failed to fetch raw bytes for {name} (exit {code}):\n{stderr}':
+        'tshark 取 {name} 的原始位元組失敗（exit {code}）：\n{stderr}',
+    "tshark's JSON could not be parsed: {error}":
+        'tshark 的 JSON 讀不動：{error}',
+    'tshark gave us no stdout':
+        'tshark 沒有給我們 stdout',
+    "Could not read the first frame's timestamp, so the time range cannot be converted: {path}":
+        '讀不到第一格的時間戳，無法換算時間範圍：{path}',
+    'editcap slicing failed (exit {code}): {stderr}':
+        'editcap 切片失敗（回傳 {code}）：{stderr}',
+    '{env} points at {path}, but that is not an executable tshark.\nFix the variable, or unset it and let TelcoLadder search on its own.':
+        '環境變數 {env} 指向 {path}，但該路徑不是可執行的 tshark。\n請修正該變數，或 unset 後讓 TelcoLadder 自動搜尋。',
+    'tshark not found. TelcoLadder needs it to decode packets.\n\n  macOS   : brew install --cask wireshark\n            (or install Wireshark.app from https://www.wireshark.org/download.html)\n  Windows : winget install WiresharkFoundation.Wireshark\n            (or choco install wireshark, or the installer from the URL above)\n  Debian  : sudo apt install tshark\n  Fedora  : sudo dnf install wireshark-cli\n\n':
+        '找不到 tshark。TelcoLadder 需要它來解碼封包。\n\n  macOS   : brew install --cask wireshark\n            （或從 https://www.wireshark.org/download.html 安裝 Wireshark.app）\n  Windows : winget install WiresharkFoundation.Wireshark\n            （或 choco install wireshark，或從上述網址下載安裝程式）\n  Debian  : sudo apt install tshark\n  Fedora  : sudo dnf install wireshark-cli\n\n',
+    'The Windows installer **does not add Wireshark to PATH by default**, so not finding it after installing is normal;\nthe standard install directories were already searched - if you installed elsewhere, use the environment variable below.\n\n':
+        'Windows 的安裝程式**預設不把 Wireshark 加進 PATH**，裝完仍找不到是正常的；\n上面已經找過標準安裝目錄，若你裝在別處請用下面的環境變數指定。\n\n',
+    'If it is installed somewhere non-standard, set {env} to the tshark executable.\nSearched: PATH, {searched}':
+        '若已安裝但在非標準路徑，請設定 {env} 指向 tshark 執行檔。\n已搜尋：PATH、{searched}',
+    'Listing entry points for {group} failed ({error}) - protocols provided by plugins will not be loaded this time; built-in protocols are unaffected.':
+        '列舉 {group} 的 entry point 失敗（{error}）—— 外掛提供的協定這次不會被載入，內建協定不受影響。',
+    'Plugin {name!r} (group {group}, from {value}) failed to load: {error}\nThe protocol it provides will not be parsed at all. Fix it or remove the package - ignoring it would make results look merely "shorter" rather than failing.':
+        '外掛 {name!r}（group {group}，來自 {value}）載入失敗：{error}\n這個外掛提供的協定將完全無法解析。請修好它，或移除該套件 —— 忽略它會讓分析結果看起來只是「比較短」，而不是報錯。',
 }

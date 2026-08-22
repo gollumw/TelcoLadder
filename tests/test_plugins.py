@@ -227,7 +227,7 @@ def test_colliding_cause_table_name_is_rejected_not_silently_overridden(install_
     install_plugin("fakeplug_collide", cause_table="nas_5gmm")
     importlib.invalidate_caches()
     _clear_caches()
-    with pytest.raises(PluginError, match="撞號"):
+    with pytest.raises(PluginError, match="name clash"):
         causes_mod.lookup(CauseRef("nas_5gmm", 111))
 
 
@@ -271,7 +271,7 @@ def test_cause_table_pointing_at_a_non_directory_is_rejected(install_plugin):
     )
     importlib.invalidate_caches()
     _clear_caches()
-    with pytest.raises(PluginError, match="不是一個目錄"):
+    with pytest.raises(PluginError, match="not a directory"):
         causes_mod.lookup(CauseRef("nas_5gmm", 111))
 
 
@@ -334,5 +334,5 @@ def test_conflicting_decode_as_fails_loudly(monkeypatch):
             _FakeAdapter("otherish", ("tcp.port==5060,diameter",)),
         ),
     )
-    with pytest.raises(PluginError, match="decode-as 撞號"):
+    with pytest.raises(PluginError, match="decode-as clash"):
         adapters_mod.default_decode_as()

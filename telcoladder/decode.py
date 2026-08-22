@@ -36,6 +36,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark
 
 #: 點一列時，連同前後各多少列一起解碼並快取。
@@ -135,7 +136,7 @@ def _parse_pdml(xml_text: str) -> dict[int, tuple[DecodeNode, ...]]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        raise DecodeError(f"tshark 的 PDML 解析失敗：{exc}") from exc
+        raise DecodeError(_("tshark's PDML could not be parsed: {error}").format(error=exc)) from exc
 
     trees: dict[int, tuple[DecodeNode, ...]] = {}
     for packet in root.iter("packet"):
@@ -213,7 +214,7 @@ def decode_frames(
     )
     if out.returncode != 0:
         raise DecodeError(
-            f"tshark 解碼 {pcap.name} 失敗（exit {out.returncode}）：\n{out.stderr.strip()}"
+            _('tshark failed to decode {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=out.returncode, stderr=out.stderr.strip())
         )
     return _parse_pdml(out.stdout)
 

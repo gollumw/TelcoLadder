@@ -21,6 +21,7 @@
  * 關在這個檔裡，它就不會再冒充成真的。
  */
 
+import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
@@ -53,7 +54,7 @@ export function mockSource(): DataSource {
   }
 
   return {
-    label: "內建範例資料",
+    label: "Built-in sample data", // App 渲染時 t()
 
     async load(): Promise<Dataset> {
       // 同步資料包成 Promise：介面統一成 async 是為了 apiSource，
@@ -100,13 +101,13 @@ export function mockSource(): DataSource {
         rules: [],
         promotable: [],
         disabled: [],
-        configPath: "（範例資料沒有設定檔）",
-        shippedPath: "（範例資料沒有出貨清單）",
+        configPath: "(sample data has no config file)",
+        shippedPath: "(sample data has no shipped list)",
       };
     },
 
     async applyDecodeAs() {
-      throw new Error("範例資料不能改解碼方式 —— 它沒有擷取檔可以重跑。");
+      throw new Error(t("Sample data cannot change decoding - there is no capture to re-run."));
     },
 
     async loadCallFlow(supi: string) {

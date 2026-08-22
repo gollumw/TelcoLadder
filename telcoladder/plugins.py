@@ -39,6 +39,8 @@ IMS 的 cause 知識庫是商業模組。所以「加一個協定」必須是**�
 
 from __future__ import annotations
 
+from telcoladder.i18n import _
+
 import warnings
 from importlib.metadata import EntryPoint, entry_points
 from typing import Any
@@ -57,8 +59,7 @@ def _entry_points(group: str) -> list[EntryPoint]:
     except Exception as exc:  # noqa: BLE001
         # 探索本身壞掉 ≠ 某個外掛壞掉。見本檔開頭「兩種失敗」。
         warnings.warn(
-            f"列舉 {group} 的 entry point 失敗（{exc}）—— 外掛提供的協定"
-            f"這次不會被載入，內建協定不受影響。",
+            _('Listing entry points for {group} failed ({error}) - protocols provided by plugins will not be loaded this time; built-in protocols are unaffected.').format(group=group, error=exc),
             RuntimeWarning,
             stacklevel=3,
         )
@@ -80,8 +81,6 @@ def load_group(group: str) -> list[tuple[str, Any]]:
             loaded.append((ep.name, ep.load()))
         except Exception as exc:  # noqa: BLE001 —— 外掛可以壞在任何地方
             raise PluginError(
-                f"外掛 {ep.name!r}（group {group}，來自 {ep.value}）載入失敗：{exc}\n"
-                f"這個外掛提供的協定將完全無法解析。請修好它，或移除該套件 ——"
-                f"忽略它會讓分析結果看起來只是「比較短」，而不是報錯。"
+                _('Plugin {name!r} (group {group}, from {value}) failed to load: {error}\nThe protocol it provides will not be parsed at all. Fix it or remove the package - ignoring it would make results look merely "shorter" rather than failing.').format(name=ep.name, group=group, value=ep.value, error=exc)
             ) from exc
     return loaded

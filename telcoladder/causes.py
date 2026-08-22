@@ -30,6 +30,7 @@ from pathlib import Path
 
 import yaml
 
+from telcoladder.i18n import _
 from telcoladder.model import CauseRef
 from telcoladder.plugins import CAUSE_TABLE_GROUP, PluginError, load_group
 
@@ -59,15 +60,14 @@ def _table_dirs() -> list[tuple[str, Path]]:
     來源標籤只用在錯誤訊息裡 —— 表名撞號時必須講得出「是哪個外掛撞到誰」，
     否則使用者只會看到一個無從下手的例外。
     """
-    dirs = [("內建", DATA_DIR)]
+    dirs = [("built-in", DATA_DIR)]
     for name, value in load_group(CAUSE_TABLE_GROUP):
         directory = Path(value)
         if not directory.is_dir():
             raise PluginError(
-                f"外掛 cause 表 {name!r} 指向 {directory}，但那不是一個目錄。"
-                f"entry point 的值必須解析成含 *.yaml 的目錄 Path。"
+                _('Plugin cause table {name!r} points at {path}, which is not a directory. The entry point must resolve to a directory Path containing *.yaml.').format(name=name, path=directory)
             )
-        dirs.append((f"外掛 {name}", directory))
+        dirs.append((f"plugin {name}", directory))
     return dirs
 
 
@@ -83,9 +83,7 @@ def _load_tables() -> dict[str, dict[int, CauseInfo]]:
             table = raw["table"]
             if table in tables:
                 raise PluginError(
-                    f"cause 表名撞號：{table!r} 同時來自 {origins[table]} 與 {origin}"
-                    f"（{path.name}）。這些是人工核對的規範資產，不會靜默覆蓋 ——"
-                    f"請把其中一張改名。"
+                    _('Cause table name clash: {table!r} comes from both {first} and {second} ({file}). These are hand-verified spec assets and will not be silently overridden - rename one of them.').format(table=table, first=origins[table], second=origin, file=path.name)
                 )
             origins[table] = origin
             tables[table] = _entries(raw)
@@ -123,7 +121,7 @@ def describe(ref: CauseRef) -> str:
     """
     info = lookup(ref)
     if info is None:
-        return f"{ref.table} #{ref.value}（本工具尚未收錄此 cause）"
+        return _("{table} #{value} (not in this tool's cause table yet)").format(table=ref.table, value=ref.value)
     return info.one_line()
 
 

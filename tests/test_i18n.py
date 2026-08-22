@@ -47,18 +47,19 @@ def _source_keys() -> dict[str, list[str]]:
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
-                and node.func.id == "_"
+                and node.func.id in ("_", "N_")
                 and node.args
             ):
                 arg = node.args[0]
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     keys.setdefault(arg.value, []).append(str(path.relative_to(REPO)))
-                else:
+                elif isinstance(arg, ast.JoinedStr):
                     pytest.fail(
                         f"{path.relative_to(REPO)}:{node.lineno}: `_()` 的引數不是字串常數 —— "
                         "f-string 在 `_()` 看到之前就展開了，key 永遠對不上 catalog。"
                         "用 `_(\"… {x} …\").format(x=…)`。"
                     )
+                # 其他非常數引數（`_(variable)`）是允許的：值來自 `N_()` 標記過的 dict。
     return keys
 
 
@@ -208,3 +209,31 @@ def test_analyze_summary_follows_the_language(tmp_path) -> None:
 
     zh = _cli(["analyze", str(pcap), "-o", str(tmp_path / "zh.mmd"), "--lang", "zh_TW"]).stderr
     assert "已加密" in zh, zh
+
+
+# ── gettext 的經典陷阱：`_` 被當丟棄變數 ────────────────────────────────
+
+
+def test_no_module_rebinds_the_translation_function() -> None:
+    """匯入了 `_` 的模組裡，`_` 不得再出現在賦值的左邊。
+
+    `sid, _, action = rest.partition("/")` 會把翻譯函式蓋成一個字串，接下來
+    同一個函式裡任何 `_("…")` 都炸 `'str' object is not callable` ——
+    而那只在那條路徑真的被走到時才發生（2026-08-22 實際踩到，在 web.py 的
+    `_route_api`）。丟棄變數用 `_unused`。
+    """
+    offenders: list[str] = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        if "from telcoladder.i18n import" not in src:
+            continue
+        imported = src.split("from telcoladder.i18n import", 1)[1].split("\n", 1)[0]
+        if not any(tok.strip() == "_" for tok in imported.split(",")):
+            continue
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, ast.Name) and node.id == "_" and isinstance(node.ctx, ast.Store):
+                offenders.append(f"{path.relative_to(REPO)}:{node.lineno}")
+    assert not offenders, (
+        "這些地方把 `_` 當丟棄變數，蓋掉了翻譯函式（之後的 `_()` 會炸）：\n  "
+        + "\n  ".join(offenders) + "\n丟棄變數請用 `_unused`。"
+    )

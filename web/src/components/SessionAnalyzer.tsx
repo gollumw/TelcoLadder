@@ -1,5 +1,6 @@
 "use client";
 
+import { setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
 import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,7 +9,7 @@ import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 
-const TIME_RANGES = ["最近 5 分鐘", "最近 1 小時", "最近 24 小時", "自訂區間"];
+const TIME_RANGES = ["Last 5 minutes", "Last hour", "Last 24 hours", "Custom range"]; // t() 在渲染時翻
 
 type Mode = "mining" | "session";
 
@@ -61,6 +62,7 @@ export default function SessionAnalyzer({
   treeByFrame?: Record<number, import("@/lib/types").ProtocolNode[] | null>;
   onRequestTree?: (frame: number) => void;
 }) {
+  const lang = useLang();
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   // Data Mining is home (資料母體); Session Analysis is a drill-down (Projection View).
@@ -123,6 +125,23 @@ export default function SessionAnalyzer({
               <span className="text-sm text-slate-500">5G Subscriber Session Correlation &amp; Call Flow Analyzer</span>
             </div>
 
+            {/* 語言切換 —— 預設英文，選擇記在 localStorage，API 也跟著送標頭 */}
+            <div className="flex items-center gap-1 text-[11px] text-slate-500" aria-label={t("Language")}>
+              {(["en", "zh_TW"] as const).map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setLang(code)}
+                  className={cn(
+                    "rounded px-2 py-1",
+                    lang === code ? "bg-slate-800 text-slate-200" : "hover:text-slate-300",
+                  )}
+                >
+                  {code === "en" ? "EN" : "中文"}
+                </button>
+              ))}
+            </div>
+
             {/* Top-level mode switch */}
             <div className="flex rounded-lg border border-slate-800 bg-slate-950/60 p-1">
               <button
@@ -134,7 +153,7 @@ export default function SessionAnalyzer({
                 )}
               >
                 <Binary className="h-3.5 w-3.5" />
-                Data Mining（Wireshark 視圖）
+                {t("Data Mining (Wireshark view)")}
               </button>
               <button
                 type="button"
@@ -159,7 +178,7 @@ export default function SessionAnalyzer({
                 className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-300 focus:border-sky-500 focus:outline-none"
               >
                 {TIME_RANGES.map((range) => (
-                  <option key={range} value={range}>
+                  <option key={t(range)} value={range}>
                     {range}
                   </option>
                 ))}
@@ -179,8 +198,8 @@ export default function SessionAnalyzer({
                 <Upload className="h-3.5 w-3.5" />
               )}
               {reassociateState === "done"
-                ? `已重新關聯 ${packetTotals.indexed.toLocaleString()} 個封包`
-                : "上傳 PCAP / 重新關聯"}
+                ? t("Re-correlated {n} packets", { n: packetTotals.indexed.toLocaleString() })
+                : t("Upload PCAP / re-correlate")}
             </button>
           </div>
         </header>

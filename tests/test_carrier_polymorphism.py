@@ -343,7 +343,7 @@ def test_borrowed_identity_is_recorded(multi_imsi_pcap: Path) -> None:
         if IDENTITY_SOURCE_KEY in m.detail
     ]
     assert tagged, "SBI 夾帶的 NAS 應該標出身分是跟載體借的"
-    assert all(m.detail[IDENTITY_SOURCE_KEY] == "sbi 載體" for m in tagged)
+    assert all(m.detail[IDENTITY_SOURCE_KEY] == "sbi" for m in tagged)
 
 
 def test_nas_with_its_own_supi_is_not_tagged(registration_pcap: Path) -> None:
@@ -403,8 +403,14 @@ def test_the_ladder_says_where_a_borrowed_identity_came_from(
         f"沒有任何事件講得出身分來源 —— "
         f"要嘛 adapter 不再寫 {IDENTITY_SOURCE_KEY}，要嘛梯形圖不再讀它"
     )
-    assert all("載體" in text for text in borrowed), (
-        f"身分來源的措辭變了，UI 上會是一串沒有意義的字：{set(borrowed)}"
+    # 值是**語言中性的 adapter 名稱**（`sbi` / `ngap`），不是一句話 ——
+    # i18n 之後句子由前端依當下語言組（"Identity from: sbi carrier" /
+    # 「身分來源：sbi 載體」）。這裡守的是「值必須是一個真的 adapter」，
+    # 否則前端組出來的句子會指向一個不存在的載體。
+    from telcoladder.adapters import adapters as _adapters
+    known = {a.NAME for a in _adapters()}
+    assert set(borrowed) <= known, (
+        f"身分來源的值不是已註冊的 adapter 名稱，UI 會組出一句指向不存在載體的話：{set(borrowed) - known}"
     )
 
 

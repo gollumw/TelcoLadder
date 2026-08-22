@@ -9,8 +9,10 @@
 
 ## 語言從哪裡來
 
-1. `activate()` —— CLI 的 `--lang`、web 的 `Accept-Language` 用它。
-   走 `contextvars`，所以 web 的每個請求可以各自不同，執行緒之間不會互相污染。
+1. `activate()` —— CLI 的 `--lang`、web 的每個請求（`?lang=` 或 `X-TelcoLadder-Lang`
+   標頭；**不看 `Accept-Language`**，理由同下）用它。走 `contextvars`，所以 web 的
+   每個請求可以各自不同，執行緒之間不會互相污染 —— 但注意 `ThreadingHTTPServer` 的
+   handler 執行緒**不繼承**主執行緒的 context，web 端要自己 `use()`。
 2. 環境變數 `TELCOLADDER_LANG`。
 3. 預設 `en`。
 
@@ -113,6 +115,14 @@ def from_accept_language(header: str | None) -> str | None:
     return None
 
 
+def N_(message: str) -> str:
+    """標記「這句要翻，但現在不翻」—— 給模組層級的 dict 用，那時語言還不知道。
+
+    使用端拿到值之後要再過一次 `_()`。gettext 的慣例名。
+    """
+    return message
+
+
 def _(message: str) -> str:
     """翻譯一句話。英文直接回原文；其他語言查表，查不到也回原文。"""
     lang = current()
@@ -133,6 +143,7 @@ __all__ = [
     "DEFAULT",
     "ENV_VAR",
     "HTML_LANG",
+    "N_",
     "SUPPORTED",
     "_",
     "activate",

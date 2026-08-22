@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from telcoladder.i18n import _
 from telcoladder.model import Endpoint, Flow, Message
 from telcoladder.nf import participant_rank
 
@@ -106,7 +107,7 @@ def render(
         dropped = total - len(messages)
         lines.append(
             f"    Note over {_participant_id(messages[0].src, assigned)}: "
-            f"{_escape(f'⚠ 已截斷：另有 {dropped} 則訊息未顯示（共 {total} 則）')}"
+            f"{_escape(_('⚠ Truncated: {dropped} more messages not shown ({total} in total)').format(dropped=dropped, total=total))}"
         )
 
     return RenderResult(text="\n".join(lines) + "\n", shown=len(messages), total=total)

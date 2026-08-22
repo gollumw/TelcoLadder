@@ -84,6 +84,7 @@ from typing import Protocol
 
 from typing import Any
 
+from telcoladder.i18n import _
 from telcoladder.extract import Frame
 from telcoladder.model import IdKey, Message
 from telcoladder.plugins import ADAPTER_GROUP, PluginError, load_group
@@ -122,8 +123,7 @@ def _validate(name: str, obj: object) -> Adapter:
     missing = [attr for attr in _REQUIRED_ATTRS if not hasattr(obj, attr)]
     if missing:
         raise PluginError(
-            f"外掛 adapter {name!r} 缺少必要屬性：{', '.join(missing)}。"
-            f"契約見 telcoladder/adapters/__init__.py。"
+            _('Plugin adapter {name!r} is missing required attributes: {attrs}. The contract is in telcoladder/adapters/__init__.py.').format(name=name, attrs=", ".join(missing))
         )
     return obj  # type: ignore[return-value]
 
@@ -214,10 +214,7 @@ def default_decode_as() -> tuple[str, ...]:
             previous = owner.get(selector)
             if previous is not None and rule not in seen:
                 raise PluginError(
-                    f"decode-as 撞號：{selector!r} 同時被 {previous!r} 與 "
-                    f"{adapter.NAME!r} 指向不同協定。tshark 只會採用其中一條，"
-                    f"另一個 adapter 會一格都收不到而且不報錯。"
-                    f"請改用 CLI 的 --decode-as 明確指定。"
+                    _("decode-as clash: {selector!r} is claimed by both {first!r} and {second!r} for different protocols. tshark will apply only one; the other adapter receives nothing and nothing reports it. Specify explicitly with the CLI's --decode-as.").format(selector=selector, first=previous, second=adapter.NAME)
                 )
             owner.setdefault(selector, adapter.NAME)
             seen.setdefault(rule, None)

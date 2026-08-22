@@ -42,7 +42,7 @@ def test_partial_iteration_via_break_is_clean(registration_pcap):
 
 
 def test_missing_file_reports_clearly(tmp_path):
-    with pytest.raises(ExtractError, match="找不到檔案"):
+    with pytest.raises(ExtractError, match="File not found"):
         list(read_frames(tmp_path / "nope.pcap"))
 
 

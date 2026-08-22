@@ -351,7 +351,7 @@ def parse(frame: Frame) -> list[Message]:
             # 讀者是 `viewer.callflow_json()`，會把它送到梯形圖的事件詳情列。
             # （2026-08-21 之前唯一的讀者是靜態報告的 tooltip；報告退場時
             # 這個鍵差點變成寫了沒人讀的死資料。）
-            detail[IDENTITY_SOURCE_KEY] = f"{carrier_adapter.NAME} 載體"
+            detail[IDENTITY_SOURCE_KEY] = carrier_adapter.NAME  # 語言中性；標籤由呈現層加
 
         # PDU Session 級的欄位。**有就記、沒有就不記** —— 這些只出現在
         # 少數幾則訊息裡（establishment accept 帶 IP／DNN／5QI／QFI），

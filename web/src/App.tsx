@@ -6,6 +6,7 @@
  * 不會碰到任何一個 View。
  */
 
+import { t, useLang } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
@@ -40,6 +41,7 @@ interface PacketStore {
 }
 
 export default function App() {
+  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [source] = useState<DataSource>(pickSource);
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -272,14 +274,14 @@ export default function App() {
         <div className="max-w-xl rounded-lg border border-rose-500/30 bg-rose-500/5 p-5">
           <div className="flex items-center gap-2 text-rose-300">
             <AlertTriangle className="h-4 w-4" />
-            <span className="text-sm font-semibold">讀不到資料</span>
+            <span className="text-sm font-semibold">{t("Could not load data")}</span>
           </div>
           {/* 講出實際原因，不要縮成「發生錯誤」—— 使用者要能據此判斷
               是自己弄錯了，還是工具還沒做到。 */}
           <p className="mt-2 text-sm leading-relaxed text-slate-300">{error.message}</p>
           <p className="mt-3 text-xs text-slate-500">
-            來源：{source.label}
-            {wantsApiSource() && "　·　拿掉網址的 ?source=api 可以看內建範例資料"}
+            {t("Source: {label}", { label: t(source.label) })}
+            {wantsApiSource() && t("　·　Remove ?source=api from the URL to see the built-in sample data")}
           </p>
         </div>
       </div>
@@ -291,7 +293,7 @@ export default function App() {
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <div className="flex items-center gap-2 text-sm text-slate-400">
           <Loader2 className="h-4 w-4 animate-spin" />
-          載入{source.label}……
+          {t("Loading {label}…", { label: t(source.label) })}
         </div>
       </div>
     );
@@ -303,7 +305,7 @@ export default function App() {
         // 與 coverage 是一組的：一個說「我沒看到什麼」，這個說「我為了
         // 看到它做了什麼」。只印前者，使用者不知道結果已經被調整過。
         <div className="border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs text-sky-200">
-          <p className="font-semibold">這份擷取檔的解碼方式經過自動調整</p>
+          <p className="font-semibold">{t("This capture's decoding was adjusted automatically")}</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
             {data.autoDecode.map((line) => (
               <li key={line}>{line}</li>
@@ -322,21 +324,19 @@ export default function App() {
         // 用 amber 不用 rose —— 這不是錯誤，是**證據的極限**。標紅會讓人
         // 以為網路出事了。
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
-          <p className="font-semibold">這份擷取檔有部分內容看得到、但看不進去</p>
+          <p className="font-semibold">{t("Parts of this capture are visible but cannot be read")}</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 leading-relaxed">
             {data.invisible.ciphered > 0 && (
               <li>
-                <b>{data.invisible.ciphered}</b> 則 NAS 訊息已加密（Security Mode
-                Command 之後），只看得到它的 NGAP 載體。
+                <b>{data.invisible.ciphered}</b>{t(" NAS messages are ciphered (after Security Mode Command); only their NGAP carrier is visible.")}
                 <span className="ml-1 opacity-80">
-                  失敗的程序可能藏在裡面 —— 上方的程序清單只列得出看得見的那些。
+                  {t("Failed procedures may be hidden in there - the procedure list above only shows what could be seen.")}
                 </span>
               </li>
             )}
             {data.invisible.protectedSuci > 0 && (
               <li>
-                <b>{data.invisible.protectedSuci}</b> 個 SUCI 以 ECIES 保護，
-                SUPI 原理上取不出來（不是解析失敗）。
+                <b>{data.invisible.protectedSuci}</b>{t(" SUCIs are ECIES-protected; the SUPI cannot be recovered even in principle (this is not a parsing failure).")}
               </li>
             )}
           </ul>
@@ -346,7 +346,7 @@ export default function App() {
         // 常駐橫幅，不是可關閉的提示 —— 使用者每一眼看到的畫面都少了東西，
         // 那件事不該只在載入時說一次。
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
-          {source.notice}
+          {t(source.notice)}
         </div>
       )}
       <SessionAnalyzer

@@ -62,6 +62,7 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
 
 #: 我們自己寫的檔，不在移植範圍 —— 入口、外層殼、資料來源層。
 _OURS = {
+    "src/i18n.ts",  # 介面語言（2026-08-22）
     "src/main.tsx",
     "src/App.tsx",
     "src/data/source.ts",
@@ -175,7 +176,7 @@ def test_the_app_shell_matches_the_dev_shell() -> None:
         idle_ttl=900.0,
     )
 
-    for fragment in ('lang="zh-Hant"', 'class="dark"', 'class="font-sans antialiased"', 'id="root"'):
+    for fragment in ('lang="en"', 'class="dark"', 'class="font-sans antialiased"', 'id="root"'):
         assert fragment in dev, f"開發外殼少了 {fragment}"
         assert fragment in shipped, f"出貨外殼少了 {fragment}"
 
@@ -344,7 +345,7 @@ def test_the_ui_reads_the_invisibility_counters() -> None:
 
     app = (_WEB / "src" / "App.tsx").read_text(encoding="utf-8")
     assert "invisible" in app, "App.tsx 沒有呈現 invisible"
-    assert "已加密" in app, "橫幅沒有講出「加密」這件事"
+    assert "ciphered" in app, "橫幅沒有講出「加密」這件事（i18n 之後原文是英文 key）"
 
 
 # ── 授權：打包進 app.js 的每個套件都要在 NOTICE 裡（轉 public 前置，2026-08-22）──
@@ -376,3 +377,77 @@ def test_every_bundled_dependency_is_credited_in_notice() -> None:
     # 授權全文要真的在，不是只有名字。
     assert "Permission is hereby granted, free of charge" in notice, "缺 MIT 全文"
     assert "Permission to use, copy, modify, and/or distribute" in notice, "缺 ISC 全文"
+
+
+# ── 介面語言：`t("…")` 的 key 與 `i18n.ts` 的翻譯表兩邊對得上（2026-08-22）───
+#
+# 與 `tests/test_i18n.py` 守 Python 那一半的邏輯相同：`t()` 找不到翻譯回原文、
+# 不炸，所以漏翻完全靜默 —— 那一句變成英文夾在中文介面裡，沒有任何一層會說話。
+
+_T_CALL = re.compile(r'\bt\(\s*"((?:[^"\\]|\\.)*)"')
+_CATALOG_ENTRY = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*:\s*"(?:[^"\\]|\\.)*"\s*,?\s*$', re.M)
+_CJK = re.compile(r"[㐀-鿿]")
+
+
+def _unescape(s: str) -> str:
+    return s.encode("utf-8").decode("unicode_escape").encode("latin-1").decode("utf-8") if "\\" in s else s
+
+
+def _web_t_keys() -> dict[str, set[str]]:
+    keys: dict[str, set[str]] = {}
+    for path in sorted((_WEB / "src").rglob("*.ts*")):
+        if path.name == "i18n.ts":
+            continue
+        for m in _T_CALL.finditer(path.read_text(encoding="utf-8")):
+            keys.setdefault(_unescape(m.group(1)), set()).add(str(path.relative_to(_WEB)))
+    return keys
+
+
+def _web_catalog_keys() -> set[str]:
+    src = (_WEB / "src" / "i18n.ts").read_text(encoding="utf-8")
+    body = src.split("const zh_TW", 1)[1]
+    return {_unescape(m.group(1)) for m in _CATALOG_ENTRY.finditer(body)}
+
+
+def test_every_web_t_key_has_a_translation() -> None:
+    keys = _web_t_keys()
+    assert len(keys) >= 60, f"只找到 {len(keys)} 個 t() —— regex 壞了，這條測試沒在驗東西"
+    catalog = _web_catalog_keys()
+    missing = {k: v for k, v in keys.items() if k not in catalog}
+    assert not missing, (
+        "這些 t() 的原文沒有中文翻譯：\n  "
+        + "\n  ".join(f"{k[:70]!r}  ← {', '.join(sorted(v))}" for k, v in missing.items())
+    )
+
+
+def test_every_web_translation_is_actually_used() -> None:
+    # 有些 key 不是字面量而是經由常數表（TIME_RANGES / SORT_LABELS / ORIGIN_META /
+    # PROCEDURE_LABEL / 資料來源的 label）在執行期送進 t() —— 那些字串以 `"…"` 常數
+    # 存在於原始碼裡，這裡一併當作「有人用」。
+    all_src = "\n".join(p.read_text(encoding="utf-8") for p in (_WEB / "src").rglob("*.ts*") if p.name != "i18n.ts")
+    stale = sorted(k for k in _web_catalog_keys() if k not in _web_t_keys() and f'"{k}"' not in all_src)
+    assert not stale, f"i18n.ts 有 {len(stale)} 條翻譯沒有任何程式碼在用：{stale}"
+
+
+def test_web_sources_render_no_chinese_outside_the_catalog() -> None:
+    """原始碼裡的字串常數與 JSX 文字不得含中文 —— 中文只能住在 `i18n.ts` 的翻譯表。
+
+    註解可以是中文（那是給改程式的人看的）；這裡先把註解剝掉再掃。
+    """
+    offenders: list[str] = []
+    # `lib/mock-data.ts` 是範例**資料**（模擬的訊息摘要、矩陣出處），不是介面字串 ——
+    # 比照 cause 表的 `plain`：內容的語言是另一個決定（CONTRIBUTING 有寫），不在這裡守。
+    content_files = {"i18n.ts", "mock-data.ts"}
+    for path in sorted((_WEB / "src").rglob("*.ts*")):
+        if path.name in content_files:
+            continue
+        src = path.read_text(encoding="utf-8")
+        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)       # 區塊註解（含 JSX 的 {/* */}）
+        src = re.sub(r"(?m)^\s*//.*$", "", src)                # 整行註解
+        src = re.sub(r"(?m)\s//\s.*$", "", src)               # 行尾註解
+        for line_no, line in enumerate(src.splitlines(), 1):
+            if _CJK.search(line):
+                offenders.append(f"{path.relative_to(_WEB)}:{line_no}: {line.strip()[:80]}")
+    # 語言切換鈕上的「中文」兩字是刻意的：語言名用它自己的語言寫。
+    offenders = [o for o in offenders if '"中文"' not in o]
+    assert not offenders, "這些地方把中文寫死在介面裡（應走 t()）：\n  " + "\n  ".join(offenders)

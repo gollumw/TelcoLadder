@@ -33,6 +33,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.prefilter import TimeWindow
 from telcoladder.tshark import Tshark, find_tshark
 
@@ -79,7 +80,7 @@ def _first_frame_epoch(pcap: Path, tshark: Tshark) -> float:
             return float(line.strip())
         except ValueError:
             continue
-    raise SliceError(f"讀不到第一格的時間戳，無法換算時間範圍：{pcap}")
+    raise SliceError(_("Could not read the first frame's timestamp, so the time range cannot be converted: {path}").format(path=pcap))
 
 
 def _iso(epoch: float) -> str:
@@ -130,7 +131,7 @@ def slice_capture(
     )
     if proc.returncode != 0 or not out.is_file():
         raise SliceError(
-            f"editcap 切片失敗（回傳 {proc.returncode}）：{proc.stderr.strip()[:200]}"
+            _('editcap slicing failed (exit {code}): {stderr}').format(code=proc.returncode, stderr=proc.stderr.strip()[:200])
         )
     return out
 

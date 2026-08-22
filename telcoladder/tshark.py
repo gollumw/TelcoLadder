@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from telcoladder.i18n import _
+
 import os
 import re
 import shutil
@@ -136,8 +138,7 @@ def find_tshark() -> Tshark:
             return found
         # 使用者明確指定卻不能用 —— 這是設定錯誤，不該默默退回去找別的。
         raise TsharkNotFound(
-            f"環境變數 {ENV_OVERRIDE} 指向 {override}，但該路徑不是可執行的 tshark。\n"
-            f"請修正該變數，或 unset 後讓 TelcoLadder 自動搜尋。"
+            _('{env} points at {path}, but that is not an executable tshark.\nFix the variable, or unset it and let TelcoLadder search on its own.').format(env=ENV_OVERRIDE, path=override)
         )
 
     on_path = shutil.which("tshark")
@@ -153,24 +154,9 @@ def find_tshark() -> Tshark:
             return found
 
     raise TsharkNotFound(
-        "找不到 tshark。TelcoLadder 需要它來解碼封包。\n"
-        "\n"
-        "  macOS   : brew install --cask wireshark\n"
-        "            （或從 https://www.wireshark.org/download.html 安裝 Wireshark.app）\n"
-        "  Windows : winget install WiresharkFoundation.Wireshark\n"
-        "            （或 choco install wireshark，或從上述網址下載安裝程式）\n"
-        "  Debian  : sudo apt install tshark\n"
-        "  Fedora  : sudo dnf install wireshark-cli\n"
-        "\n"
-        + (
-            "Windows 的安裝程式**預設不把 Wireshark 加進 PATH**，裝完仍找不到是正常的；\n"
-            "上面已經找過標準安裝目錄，若你裝在別處請用下面的環境變數指定。\n"
-            "\n"
-            if sys.platform == "win32"
-            else ""
-        )
-        + f"若已安裝但在非標準路徑，請設定 {ENV_OVERRIDE} 指向 tshark 執行檔。\n"
-        + f"已搜尋：PATH、{', '.join(fallbacks)}"
+        _('tshark not found. TelcoLadder needs it to decode packets.\n\n  macOS   : brew install --cask wireshark\n            (or install Wireshark.app from https://www.wireshark.org/download.html)\n  Windows : winget install WiresharkFoundation.Wireshark\n            (or choco install wireshark, or the installer from the URL above)\n  Debian  : sudo apt install tshark\n  Fedora  : sudo dnf install wireshark-cli\n\n')
+        + (_('The Windows installer **does not add Wireshark to PATH by default**, so not finding it after installing is normal;\nthe standard install directories were already searched - if you installed elsewhere, use the environment variable below.\n\n') if sys.platform == "win32" else "")
+        + _('If it is installed somewhere non-standard, set {env} to the tshark executable.\nSearched: PATH, {searched}').format(env=ENV_OVERRIDE, searched=", ".join(fallbacks))
     )
 
 
@@ -200,10 +186,10 @@ def shutdown(proc: subprocess.Popen[str], consumed_fully: bool) -> str:
         proc.terminate()
 
     try:
-        _, stderr = proc.communicate(timeout=15)
+        _unused, stderr = proc.communicate(timeout=15)
     except subprocess.TimeoutExpired:
         proc.kill()
-        _, stderr = proc.communicate()
+        _unused, stderr = proc.communicate()
     except ValueError:
         # stdout 已被我們關掉時 communicate 會抱怨，此時只需確保行程結束。
         proc.wait()

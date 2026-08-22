@@ -1,5 +1,6 @@
 "use client";
 
+import { t, useLang } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Filter, Link2, Search } from "lucide-react";
 import { cn, findSupiByTarget, formatTimeOffset, type DiscoveredSession } from "@/lib/utils";
@@ -120,6 +121,7 @@ export function DataMiningView({
   onRequestTree?: (frame: number) => void;
   onCorrelateSession: (supi: string, frame: number) => void;
 }) {
+  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [targetType, setTargetType] = useState<TargetType>("SUPI");
   const [targetValue, setTargetValue] = useState("");
@@ -217,7 +219,7 @@ export function DataMiningView({
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Left: Telecom Target Filter — precise identity search */}
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">電信身分精確搜尋</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("Subscriber identity search")}</p>
           <div className="flex flex-wrap gap-1.5">
             <select
               value={targetType}
@@ -239,7 +241,7 @@ export function DataMiningView({
                   setSearchResult(null);
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleTargetSearch()}
-                placeholder="例如 001010123456789 或 192.0.2.122"
+                placeholder={t("e.g. 001010123456789 or 192.0.2.122")}
                 className="w-full rounded border border-slate-700 bg-slate-950 py-1.5 pl-8 pr-2 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
               />
             </div>
@@ -248,17 +250,17 @@ export function DataMiningView({
               onClick={handleTargetSearch}
               className="rounded border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-sky-500 hover:text-sky-300"
             >
-              搜尋並關聯
+              {t("Search & correlate")}
             </button>
           </div>
-          {searchResult === "not-found" && <p className="mt-1.5 text-[11px] text-rose-400">查無符合此識別碼的用戶</p>}
+          {searchResult === "not-found" && <p className="mt-1.5 text-[11px] text-rose-400">{t("No subscriber matches this identifier")}</p>}
           {searchResult !== null && searchResult !== "not-found" && (
             <button
               type="button"
               onClick={() => jumpTo(searchResult.supi)}
               className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-sky-400 hover:text-sky-300"
             >
-              前往 Session Analysis（此用戶）
+              {t("Go to Session Analysis (this subscriber)")}
               <ArrowRight className="h-3 w-3" />
             </button>
           )}
@@ -266,14 +268,14 @@ export function DataMiningView({
 
         {/* Right: Wireshark Display Filter — protocol/field syntax */}
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">協定維度過濾 · Display Filter</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("Protocol filter · Display Filter")}</p>
           <div className="relative">
             <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={displayFilter}
               onChange={(e) => onDisplayFilterChange(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && onApplyDisplayFilter(displayFilter)}
-              placeholder="Wireshark display filter，按 Enter 套用（例如 ngap.procedureCode == 14）"
+              placeholder={t("Wireshark display filter, press Enter to apply (e.g. ngap.procedureCode == 14)")}
               className="w-full rounded border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
             />
           </div>
@@ -311,7 +313,7 @@ export function DataMiningView({
                 onChange={(e) => onOnlySessionFilterChange(e.target.checked)}
                 className="h-3 w-3 accent-emerald-500"
               />
-              只看此 Session
+              {t("Only this session")}
               {focusedSupi && <span className="font-mono text-emerald-400">（{focusedSupi}）</span>}
             </label>
             {(displayFilter || focusedSupi) && (
@@ -325,7 +327,7 @@ export function DataMiningView({
                 }}
                 className="rounded-full border border-slate-700 px-2.5 py-1 text-[11px] text-slate-500 hover:text-slate-300"
               >
-                清除
+                {t("Clear")}
               </button>
             )}
           </div>
@@ -334,17 +336,17 @@ export function DataMiningView({
               以前這裡寫「500 / 500 個封包」—— 兩個都是視窗大小，看起來就像
               這份擷取檔只有 500 格。 */}
           <p className="mt-1.5 text-[11px] text-slate-600">
-            符合 {matched.toLocaleString()} 列 · 已索引 {packetTotals.indexed.toLocaleString()}
-            {packetTotals.total !== null && ` / 檔案共 ${packetTotals.total.toLocaleString()}`} 格
+            {t("{matched} rows match · {indexed} indexed", { matched: matched.toLocaleString(), indexed: packetTotals.indexed.toLocaleString() })}
+            {packetTotals.total !== null && t(" / {total} in file", { total: packetTotals.total.toLocaleString() })}{t(" frames")}
           </p>
           {packetTotals.truncated && (
             <p className="mt-1 text-[11px] text-amber-400">
-              ⚠ 已達索引上限，後面的封包沒有被索引 —— 請用 display filter 縮小範圍再重新開啟
+              {t("⚠ Index limit reached; later packets were not indexed - narrow with a display filter and reopen")}
             </p>
           )}
           {packetTotals.infoUnavailable && (
             <p className="mt-1 text-[11px] text-amber-400">
-              ⚠ 這個 tshark 沒有提供 Info 欄，該欄會是空的（不是這份擷取檔沒有資料）
+              {t("⚠ This tshark provides no Info column; it will be empty (the capture is not missing data)")}
             </p>
           )}
         </div>
@@ -404,7 +406,7 @@ export function DataMiningView({
                 <th className="px-2 py-1.5 font-medium">Protocol</th>
                 <th className="px-2 py-1.5 font-medium">Length</th>
                 <th className="px-2 py-1.5 font-medium">Info</th>
-                <th className="px-2 py-1.5 font-medium text-right">關聯</th>
+                <th className="px-2 py-1.5 font-medium text-right">{t("Correlate")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -418,7 +420,7 @@ export function DataMiningView({
                   return (
                     <tr key={`gap-${index}`} style={{ height: ROW_H }}>
                       <td colSpan={8} className="px-2 text-slate-700">
-                        載入中……
+                        {t("Loading…")}
                       </td>
                     </tr>
                   );
@@ -443,8 +445,8 @@ export function DataMiningView({
                     )}
                   >
                     <td className="px-2 py-1 text-slate-500">
-                      {isFocusedSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" title="屬於目前聚焦的用戶" />}
-                      {isKnownOtherSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-400 align-middle" title="屬於其他已知會話" />}
+                      {isFocusedSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" title={t("Belongs to the focused session")} />}
+                      {isKnownOtherSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-400 align-middle" title={t("Belongs to another known session")} />}
                       {p.frameNumber}
                     </td>
                     <td className="px-2 py-1 text-slate-400">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
@@ -468,7 +470,7 @@ export function DataMiningView({
                             e.stopPropagation();
                             onCorrelateSession(p.correlatedSupi!, p.frameNumber);
                           }}
-                          title={`關聯信令 (Correlate Session) — ${p.correlatedSupi}`}
+                          title={t("Correlate session — {supi}", { supi: p.correlatedSupi })}
                           className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-sky-300"
                         >
                           <Link2 className="h-3 w-3" />
@@ -484,7 +486,7 @@ export function DataMiningView({
               {matched === 0 && (
                 <tr>
                   <td colSpan={8} className="px-2 py-6 text-center text-slate-600">
-                    沒有符合過濾條件的封包
+                    {t("No packet matches the filter")}
                   </td>
                 </tr>
               )}
@@ -502,10 +504,10 @@ export function DataMiningView({
               <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
             ) : (
               // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
-              <div className="p-3 text-xs text-slate-500">解碼樹尚未載入</div>
+              <div className="p-3 text-xs text-slate-500">{t("Decode tree not loaded yet")}</div>
             )
           ) : (
-            <p className="py-6 text-center text-xs text-slate-600">選一個封包以檢視解碼樹</p>
+            <p className="py-6 text-center text-xs text-slate-600">{t("Select a packet to view its decode tree")}</p>
           )}
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
@@ -516,10 +518,10 @@ export function DataMiningView({
             ) : (
               // 後端目前沒有 hex 輸出（GUI Phase 3 的待辦）。空白比假的好，
               // 但要說出是「還沒做」而不是「這格沒有位元組」。
-              <div className="p-3 text-xs text-slate-500">此來源尚未提供原始位元組</div>
+              <div className="p-3 text-xs text-slate-500">{t("This source does not provide raw bytes")}</div>
             )
           ) : (
-            <p className="py-6 text-center text-xs text-slate-600">選一個封包以檢視 Hex Dump</p>
+            <p className="py-6 text-center text-xs text-slate-600">{t("Select a packet to view the hex dump")}</p>
           )}
         </div>
       </div>

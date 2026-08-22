@@ -1,5 +1,6 @@
 "use client";
 
+import { t, useLang } from "../i18n";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Filter, Radar, X } from "lucide-react";
 import { cn, deriveSessionStatus, formatTimeOffset } from "@/lib/utils";
@@ -9,9 +10,9 @@ import type { SessionIdentity, SessionStatus } from "@/lib/types";
 type SortMode = "packetCount" | "firstSeen" | "errorFirst";
 
 const SORT_LABELS: Record<SortMode, string> = {
-  packetCount: "封包數",
-  firstSeen: "發生時間",
-  errorFirst: "僅顯示異常會話",
+  packetCount: "Packet count",
+  firstSeen: "First seen",
+  errorFirst: "Anomalies only",
 };
 
 const STATUS_META: Record<SessionStatus, { label: string; className: string }> = {
@@ -38,6 +39,7 @@ export function DiscoveredSessionsPanel({
   onFilterSupi: (supi: string | null) => void;
   onJumpToSession: (supi: string) => void;
 }) {
+  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("packetCount");
 
@@ -61,15 +63,15 @@ export function DiscoveredSessionsPanel({
       >
         <Radar className="h-3.5 w-3.5 text-sky-400" />
         <span className="text-sm text-slate-200">
-          偵測到 <span className="font-semibold text-white">{sessions.length}</span> 個活躍會話
-          {errorCount > 0 && <span className="text-rose-400"> （{errorCount} 個異常）</span>}
+          {t("Detected ")}<span className="font-semibold text-white">{sessions.length}</span>{t(" active session(s)")}
+          {errorCount > 0 && <span className="text-rose-400">{t(" ({n} with anomalies)", { n: errorCount })}</span>}
         </span>
         {focusedSupi && (
           <span className="ml-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-300">
-            目前聚焦：{focusedSupi}
+            {t("Focused: {supi}", { supi: focusedSupi })}
           </span>
         )}
-        <span className="ml-auto text-xs text-sky-400">展開清單 ▼</span>
+        <span className="ml-auto text-xs text-sky-400">{t("Expand list ▼")}</span>
       </button>
 
       {drawerOpen && (
@@ -79,7 +81,7 @@ export function DiscoveredSessionsPanel({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-800 p-4">
-              <h2 className="text-sm font-semibold text-slate-200">偵測到的會話 · Discovered Sessions</h2>
+              <h2 className="text-sm font-semibold text-slate-200">{t("Discovered Sessions")}</h2>
               <button type="button" onClick={() => setDrawerOpen(false)} className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-300">
                 <X className="h-4 w-4" />
               </button>
@@ -96,13 +98,13 @@ export function DiscoveredSessionsPanel({
                     sortMode === mode ? "border-sky-500 bg-sky-500/15 text-sky-300" : "border-slate-700 text-slate-400 hover:border-slate-600",
                   )}
                 >
-                  排序：{SORT_LABELS[mode]}
+                  {t("Sort: {label}", { label: t(SORT_LABELS[mode]) })}
                 </button>
               ))}
             </div>
 
             <div className="max-h-[60vh] space-y-2 overflow-y-auto p-3">
-              {sortedSessions.length === 0 && <p className="py-6 text-center text-xs text-slate-600">沒有符合條件的會話</p>}
+              {sortedSessions.length === 0 && <p className="py-6 text-center text-xs text-slate-600">{t("No session matches")}</p>}
               {sortedSessions.map((s) => {
                 const identity = identityBySupi.get(s.supi);
                 const status = deriveSessionStatus(s.hasError, identity?.captureStatus ?? "complete");
@@ -126,13 +128,13 @@ export function DiscoveredSessionsPanel({
                           5G-GUTI：<span className="font-mono text-slate-400">{identity?.guti ?? "Uncaptured / N/A"}</span>
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {s.packetCount} 個封包 ·{" "}
+                          {t("{n} packets · ", { n: s.packetCount })}
                           {/* 有些擷取檔沒有絕對時間戳（網元 trace 常見）。那時
                               `firstSeenEpoch` 是 NaN —— 照算會印出「T+0.000000s」，
                               一個看起來完全合理的謊。說出沒有比編一個好。 */}
                           {Number.isFinite(s.firstSeenEpoch)
-                            ? `首見於 T+${formatTimeOffset(s.firstSeenEpoch, baseEpoch)}s`
-                            : "這份擷取檔沒有絕對時間戳"}
+                            ? t("first seen at T+{t}s", { t: formatTimeOffset(s.firstSeenEpoch, baseEpoch) })
+                            : t("This capture has no absolute timestamps")}
                         </p>
                       </div>
                       <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", meta.className)}>{meta.label}</span>
@@ -147,7 +149,7 @@ export function DiscoveredSessionsPanel({
                         className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:border-sky-500 hover:text-sky-300"
                       >
                         <Filter className="h-3 w-3" />
-                        在 Data Mining 篩選
+                        {t("Filter in Data Mining")}
                       </button>
                       <button
                         type="button"
@@ -158,7 +160,7 @@ export function DiscoveredSessionsPanel({
                         className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:border-sky-500 hover:text-sky-300"
                       >
                         <ArrowUpRight className="h-3 w-3" />
-                        直達 Call Flow
+                        {t("Go to Call Flow")}
                       </button>
                     </div>
                   </div>

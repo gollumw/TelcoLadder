@@ -1,5 +1,6 @@
 "use client";
 
+import { t, useLang } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
 import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,12 +69,12 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
 //: （`PROCEDURE_LABEL[p.kind] ?? p.kind`）—— 引擎日後加 4G 的 attach /
 //: TAU 或 IMS 的 call setup 時，畫面不會靜默漏掉一段，只是標籤是英文的。
 const PROCEDURE_LABEL: Record<string, string> = {
-  registration: "註冊",
-  "pdu-session-establishment": "PDU 建立",
-  "pdu-session-release": "PDU 釋放",
-  "service-request": "服務請求",
-  deregistration: "去註冊",
-  "ue-context-release": "Context 釋放",
+  registration: "Registration",
+  "pdu-session-establishment": "PDU establishment",
+  "pdu-session-release": "PDU release",
+  "service-request": "Service request",
+  deregistration: "Deregistration",
+  "ue-context-release": "Context release",
 };
 
 //: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
@@ -190,6 +191,7 @@ export function SessionAnalysisView({
   onBackToDataMining: () => void;
   onViewInDataMining: (frame: number) => void;
 }) {
+  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [domain, setDomain] = useState<TelecomDomain | "ALL">("ALL");
   //: 選中的程序（`startFrame`，唯一）。null ＝ 全部，也就是切段前的行為。
   const [activeProcedure, setActiveProcedure] = useState<number | null>(null);
@@ -274,7 +276,7 @@ export function SessionAnalysisView({
       className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:border-sky-500 hover:text-sky-300"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
-      返回 Data Mining（全域封包）
+      {t("Back to Data Mining (all packets)")}
     </button>
   );
 
@@ -283,8 +285,8 @@ export function SessionAnalysisView({
       <div className="space-y-4">
         <div className="flex items-center justify-between">{backButton}</div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-10 text-center">
-          <p className="text-sm text-slate-500">尚未選擇要分析的用戶。</p>
-          <p className="mt-1 text-xs text-slate-600">請從 Data Mining 的 Packet List 點擊「關聯信令」，或從偵測到的會話中選擇一個用戶。</p>
+          <p className="text-sm text-slate-500">{t("No subscriber selected yet.")}</p>
+          <p className="mt-1 text-xs text-slate-600">{t("Click \"Correlate\" on a row in the Data Mining packet list, or pick one of the discovered sessions.")}</p>
         </div>
       </div>
     );
@@ -295,29 +297,29 @@ export function SessionAnalysisView({
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
         <span className="font-mono text-xs text-slate-500">
-          目前分析：<span className="text-slate-300">{supi}</span>
+          {t("Analysing: ")}<span className="text-slate-300">{supi}</span>
           {isMidStream && <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">Mid-stream</span>}
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 xl:col-span-3">
-          <h2 className="mb-1 text-sm font-semibold text-slate-200">信令時序梯形圖 · Call Flow Ladder Diagram</h2>
+          <h2 className="mb-1 text-sm font-semibold text-slate-200">{t("Call Flow Ladder Diagram")}</h2>
 
           {/* **模式必須講出來。** wire 模式下 SBI 夾帶的 NAS 會畫成
               AMF→SCP→SMF（那是它實際走的路），不知道模式的人會以為工具
               把 NAS 解錯了。 */}
           <p className="mb-3 text-[11px] text-slate-500">
             {ladderIsWireView
-              ? "照封包實際路徑繪製 —— SBI 夾帶的 NAS 會畫在 AMF↔SCP↔SMF 之間，而不是 UE↔AMF。要看協定語意版請以 --flow 開啟。"
-              : "照協定語意繪製 —— NAS 畫在 UE↔AMF，gNB 視為透明轉送。"}
+              ? t("Drawn along the actual packet path - NAS carried over SBI appears between AMF↔SCP↔SMF, not UE↔AMF. For the protocol-semantic view, open with --flow.")
+              : t("Drawn by protocol semantics - NAS appears UE↔AMF, the gNB is treated as a transparent relay.")}
           </p>
 
           {undrawable > 0 && (
             // 理論上不該發生（泳道就是從事件推出來的）。發生了要說，
             // 不要讓那幾支箭默默不見。
             <p className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
-              ⚠ 有 {undrawable} 則事件的端點排不進泳道，未繪出（不是這份擷取檔沒有它們）
+              {t("⚠ {n} event(s) have endpoints that fit no lane and were not drawn (the capture does contain them)", { n: undrawable })}
             </p>
           )}
 
@@ -327,8 +329,8 @@ export function SessionAnalysisView({
           {procedures.length > 0 && (
             <div className="mb-3 rounded border border-slate-800 bg-slate-950/40 p-2">
               <div className="mb-1.5 flex items-center gap-2 text-[11px] text-slate-500">
-                <span className="font-medium text-slate-400">程序 · Procedures</span>
-                <span>{procedures.length} 段</span>
+                <span className="font-medium text-slate-400">{t("Procedures")}</span>
+                <span>{t("{n} segment(s)", { n: procedures.length })}</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 <button
@@ -351,7 +353,7 @@ export function SessionAnalysisView({
                       : "border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300",
                   )}
                 >
-                  全部（{supiEvents.length} 則）
+                  {t("All ({n} events)", { n: supiEvents.length })}
                 </button>
                 {procedures.map((p) => (
                   <button
@@ -362,10 +364,10 @@ export function SessionAnalysisView({
                       // 完整資訊放 title —— 按鈕上只留一眼看得懂的部分。
                       [
                         `frame ${p.startFrame}–${p.endFrame}`,
-                        `${p.messages} 則訊息`,
-                        p.failures ? `${p.failures} 則失敗` : null,
+                        t("{n} messages", { n: p.messages }),
+                        p.failures ? t("{n} failed", { n: p.failures }) : null,
                         p.cause ? `cause：${p.cause}` : null,
-                        p.rootCause ? `起因：${p.rootCause}` : null,
+                        p.rootCause ? t("root cause: {cause}", { cause: p.rootCause }) : null,
                         p.note || null,
                       ].filter(Boolean).join("\n")
                     }
@@ -376,7 +378,7 @@ export function SessionAnalysisView({
                         : OUTCOME_STYLE[p.outcome],
                     )}
                   >
-                    <span>{PROCEDURE_LABEL[p.kind] ?? p.kind}</span>
+                    <span>{t(PROCEDURE_LABEL[p.kind] ?? p.kind)}</span>
                     {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
                     <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
                     <span className="ml-1 tabular-nums opacity-60">
@@ -391,7 +393,7 @@ export function SessionAnalysisView({
                 <p className="mt-2 text-[11px] text-rose-300">
                   ⚠ {current.cause}
                   {current.rootCause && (
-                    <span className="ml-2 text-amber-300">起因：{current.rootCause}</span>
+                    <span className="ml-2 text-amber-300">{t("Root cause: ")}{current.rootCause}</span>
                   )}
                 </p>
               )}
@@ -419,7 +421,7 @@ export function SessionAnalysisView({
               </button>
             ))}
           </div>
-          <p className="mb-2 text-xs text-slate-500">點擊任一信令事件連動下方 Decode Inspector；懸停可預覽該封包的擷取詮釋資料。</p>
+          <p className="mb-2 text-xs text-slate-500">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
 
           <div className="relative overflow-x-auto">
             {filteredEvents.length === 0 ? (
@@ -427,14 +429,12 @@ export function SessionAnalysisView({
               // 前者讓人放心，後者是一條該去追的線索。
               domain !== "ALL" && uncorrelatedDomains.includes(domain) ? (
                 <p className="py-10 text-center text-xs leading-relaxed text-amber-300/80">
-                  這份擷取檔裡有此 Domain 的訊息，但
-                  <strong className="font-semibold">沒有任何一則同時帶著它與這位訂戶的識別碼</strong>
-                  ，
-                  <br />
-                  所以無法證明那些訊息屬於他 —— 不是他沒有這段流程。
+                  {t("This capture has messages in this domain, but ")}
+                  <strong className="font-semibold">{t("none of them carries both the domain and this subscriber's identifier")}</strong>
+                  {t(", so they cannot be shown to belong to them - it does not mean the subscriber has no such flow.")}
                 </p>
               ) : (
-                <p className="py-10 text-center text-xs text-slate-600">此 Domain 目前沒有信令事件</p>
+                <p className="py-10 text-center text-xs text-slate-600">{t("No signalling events in this domain")}</p>
               )
             ) : (
               // **不用 `width="100%"`。** 那會把 viewBox 拉伸到容器寬度：
@@ -510,7 +510,7 @@ export function SessionAnalysisView({
                       fill="#fbbf24"
                       className="select-none"
                     >
-                      [ 預先建立狀態 (Pre-established Session) — 未擷取到 Registration/Attach ]
+                      {t("[ Pre-established session - no Registration/Attach captured ]")}
                     </text>
                   </g>
                 )}
@@ -616,7 +616,7 @@ export function SessionAnalysisView({
                 <p className="mb-1 font-mono text-sky-300">Frame #{hoveredPacket.frameNumber}</p>
                 <p className="text-slate-400">{hoveredPacket.timestamp}</p>
                 <p className="text-slate-400">
-                  協定：<span className="text-violet-300">{hoveredPacket.protocol}</span> · {hoveredPacket.length} bytes
+                  {t("Protocol: ")}<span className="text-violet-300">{hoveredPacket.protocol}</span> · {hoveredPacket.length} bytes
                 </p>
                 <p className="truncate text-slate-500">
                   {hoveredPacket.srcPort ? `${hoveredPacket.srcIp}:${hoveredPacket.srcPort}` : hoveredPacket.srcIp} → {hoveredPacket.dstPort ? `${hoveredPacket.dstIp}:${hoveredPacket.dstPort}` : hoveredPacket.dstIp}
@@ -629,7 +629,7 @@ export function SessionAnalysisView({
         <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 xl:col-span-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-200">
-              封包解碼與 IE 檢查器 · Protocol Decode &amp; IE Inspector
+              {t("Protocol Decode & IE Inspector")}
               {selectedEvent && <span className="ml-2 font-normal text-slate-500">— {selectedEvent.messageName}</span>}
             </h2>
             {selectedEvent && (
@@ -639,7 +639,7 @@ export function SessionAnalysisView({
                 className="flex items-center gap-1.5 rounded border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:border-sky-500 hover:text-sky-300"
               >
                 <ExternalLink className="h-3 w-3" />
-                在 Data Mining 中查看此封包
+                {t("View this packet in Data Mining")}
               </button>
             )}
           </div>
@@ -670,8 +670,8 @@ export function SessionAnalysisView({
                   {/* **身分是跟誰借的。** 這是本工具「講得出依據」與「只是猜」
                       的分界 —— 沒有它，使用者無法反駁工具的歸戶判斷。 */}
                   {selectedEvent.identitySource && (
-                    <span className="text-sky-400" title="這則訊息沒有自己的 UE ID，身分是跟載體借的">
-                      · 身分來源 {selectedEvent.identitySource}
+                    <span className="text-sky-400" title={t("This message has no UE ID of its own; its identity is borrowed from the carrier")}>
+                      {t("· identity from {carrier} carrier", { carrier: selectedEvent.identitySource })}
                     </span>
                   )}
                   {selectedEvent.causeText && <span className="text-rose-400">· {selectedEvent.causeText}</span>}
@@ -685,22 +685,22 @@ export function SessionAnalysisView({
                   // 以為工具壞了。
                   <div className="p-3 text-xs text-slate-500">
                     {selectedPacket
-                      ? "解碼樹尚未載入"
-                      : `Frame #${selectedEvent.frameNumber} 不在封包清單目前載入的範圍內 —— 到 Data Mining 捲到該格即可看到解碼內容。`}
+                      ? t("Decode tree not loaded yet")
+                      : t("Frame #{n} is outside the range the packet list has loaded - scroll to it in Data Mining to see the decode tree", { n: selectedEvent.frameNumber })}
                   </div>
                 )}
               </>
             ) : (
-              <p className="py-6 text-center text-xs text-slate-600">選一個信令事件以檢視解碼內容</p>
+              <p className="py-6 text-center text-xs text-slate-600">{t("Select a signalling event to view its decode")}</p>
             )}
           </div>
         </section>
       </div>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-200">多維度狀態關聯矩陣 · Correlation State Matrix</h2>
+        <h2 className="mb-2 text-sm font-semibold text-slate-200">{t("Correlation State Matrix")}</h2>
         {sessionEntries.length === 0 ? (
-          <p className="py-6 text-center text-xs text-slate-600">此用戶尚未建立 PDU Session，無關聯資料可顯示（註冊於信令階段即被拒絕）。</p>
+          <p className="py-6 text-center text-xs text-slate-600">{t("This subscriber established no PDU session; there is no correlation data to show (rejected at registration, during signalling).")}</p>
         ) : (
           <>
             {sessionEntries.length > 1 && (
@@ -727,9 +727,9 @@ export function SessionAnalysisView({
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="text-slate-500">
-                      <th className="pb-2 pr-2 font-medium">欄位</th>
-                      <th className="pb-2 pr-2 font-medium">值</th>
-                      <th className="pb-2 font-medium">來源介面</th>
+                      <th className="pb-2 pr-2 font-medium">{t("Field")}</th>
+                      <th className="pb-2 pr-2 font-medium">{t("Value")}</th>
+                      <th className="pb-2 font-medium">{t("Source interface")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">

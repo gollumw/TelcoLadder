@@ -129,7 +129,7 @@ def test_legitimate_reauth_is_suspected_not_confirmed(multi_imsi_pcap: Path) -> 
         assert event.certainty == "suspected", (
             f"{event.label}：NAS 重複無法與合法重試區分，不得標 confirmed"
         )
-        assert "疑似" in event.basis
+        assert "suspected" in event.basis
 
 
 # ── 未獲回應：切掉回應必須被抓到，沒切必須安靜 ───────────────────────
@@ -180,7 +180,7 @@ def test_tail_truncation_is_disclosed(e2e_pcap: Path, tmp_path: Path) -> None:
 
     events = _all_events(_table(truncated), "unanswered")
     if events:  # 截的位置未必剛好產生尾端請求 —— 有才驗措辭
-        tail_events = [e for e in events if "截到一半" in e.basis]
+        tail_events = [e for e in events if "cut off" in e.basis]
         assert tail_events or all("截到一半" not in e.basis for e in events)
 
 
@@ -230,7 +230,7 @@ def test_sessions_without_subscriber_keys_go_to_the_orphan_bucket(
     orphan = [s for s in table.subscribers if not s.grouped]
     assert len(orphan) <= 1
     if orphan:
-        assert "未歸戶" in orphan[0].title
+        assert "Unattributed" in orphan[0].title
         assert orphan[0].sessions
 
 

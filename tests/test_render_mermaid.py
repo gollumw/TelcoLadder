@@ -66,14 +66,14 @@ def test_truncation_is_announced_inside_the_diagram():
 
     assert result.truncated
     assert result.shown == 4 and result.total == 10
-    assert "截斷" in result.text
+    assert "Truncated" in result.text
     assert "6" in result.text  # 未顯示的則數
 
 
 def test_no_truncation_notice_when_everything_fits():
     result = render(_flow(_msg(1, "gNB", "AMF", "唯一一則")))
     assert not result.truncated
-    assert "截斷" not in result.text
+    assert "Truncated" not in result.text
 
 
 # ── 參與者 ─────────────────────────────────────────────────────────────

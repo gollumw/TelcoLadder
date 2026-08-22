@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark, shutdown
 
 # display filter 不再寫死在這裡 —— 它由各 adapter 宣告的片段聯集而來
@@ -247,7 +248,7 @@ def read_frames(
     網元 trace 沒有這個問題 —— 它的序號本來就是假的，沒有真正的重傳。
     """
     if not pcap.is_file():
-        raise ExtractError(f"找不到檔案：{pcap}")
+        raise ExtractError(_('File not found: {path}').format(path=pcap))
 
     if display_filter is None:
         # 函式內 import 是刻意的：adapter 模組需要本檔的 `Frame`，本檔需要
@@ -342,5 +343,5 @@ def read_frames(
         # 但提早中止時的非 0 是我們自己造成的，不能報成讀取失敗。
         if consumed_fully and proc.returncode != 0:
             raise ExtractError(
-                f"tshark 讀取 {pcap.name} 失敗（exit {proc.returncode}）：\n{stderr.strip()}"
+                _('tshark failed to read {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=proc.returncode, stderr=stderr.strip())
             )

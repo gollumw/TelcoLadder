@@ -437,7 +437,7 @@ def test_session_ids_are_not_guessable() -> None:
 def test_unknown_session_gives_a_human_error_not_a_traceback(server) -> None:
     status, body, _ = _request(server, "/app/does-not-exist")
     assert status == 404
-    assert "已過期" in body
+    assert "expired" in body
     assert "Traceback" not in body
     assert "web.py" not in body
 
@@ -448,7 +448,7 @@ def test_missing_path_on_open_is_a_readable_error(server) -> None:
         body=urllib.parse.urlencode({"path": "/nope/missing.pcap"}).encode(),
     )
     assert status == 400
-    assert "找不到這個檔案" in body
+    assert "No such file" in body
     assert "Traceback" not in body
 
 
@@ -587,7 +587,7 @@ def test_no_viewer_keeps_the_static_report_working() -> None:
         server = (srv.server_address[0], srv.server_address[1], srv)
         status, body, _ = _request(server, "/")
         assert status == 200
-        assert "把 pcap 拖進來" in body
+        assert "Drop a pcap here" in body
     finally:
         srv.shutdown()
         srv.server_close()

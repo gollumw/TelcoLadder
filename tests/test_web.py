@@ -354,7 +354,7 @@ def test_interrupted_upload_is_deleted_before_the_error_is_written(server, monke
 def test_missing_path_gives_a_readable_error_not_a_traceback(server):
     status, body = _post(server, "/open", b"path=/nope/does-not-exist.pcap")
     assert status == 400
-    assert "找不到這個檔案" in body
+    assert "No such file" in body
     assert "Traceback" not in body
     assert "web.py" not in body, "不該把伺服器的檔案結構漏出去"
 
@@ -372,6 +372,6 @@ def test_home_page_explains_how_to_fix_a_missing_tshark(server, monkeypatch):
     monkeypatch.setenv(ENV_OVERRIDE, "/nonexistent/tshark")
     status, body = _get(server, "/")
     assert status == 200
-    assert "找不到 tshark" in body
+    assert "tshark not found" in body
     assert ENV_OVERRIDE in body, "沒告訴使用者是哪個環境變數指錯了"
-    assert "請修正該變數" in body
+    assert "Fix the variable" in body

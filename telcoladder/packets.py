@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark, shutdown
 
 #: 要向 tshark 索取的欄位，**順序就是清單的欄位順序**。
@@ -237,7 +238,7 @@ def _ek_lines(
         bufsize=1,
     )
     if proc.stdout is None:  # pragma: no cover - Popen 契約保證不會發生
-        raise PacketColumnsUnavailable("tshark 沒有給我們 stdout")
+        raise PacketColumnsUnavailable(_('tshark gave us no stdout'))
 
     consumed_fully = False
     seen = 0
@@ -268,7 +269,7 @@ def _ek_lines(
         stderr = shutdown(proc, consumed_fully)
         if consumed_fully and proc.returncode != 0:
             raise PacketColumnsUnavailable(
-                f"tshark 讀取 {pcap.name} 失敗（exit {proc.returncode}）：\n{stderr.strip()}"
+                _('tshark failed to read {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=proc.returncode, stderr=stderr.strip())
             )
 
 
@@ -348,7 +349,7 @@ def total_packets(pcap: Path, *, tshark: Tshark | None = None) -> int | None:
         return None
     for line in out.stdout.splitlines():
         if "Number of packets" in line:
-            _, _, value = line.partition(":")
+            _unused, _unused, value = line.partition(":")
             count = _to_int(value.strip(), default=-1)
             return count if count >= 0 else None
     return None

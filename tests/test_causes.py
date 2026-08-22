@@ -54,12 +54,12 @@ def test_unknown_cause_is_reported_as_uncatalogued_not_as_unknown_error():
     知道該翻哪一份規範的哪一張表。
     """
     text = describe(CauseRef("nas_5gmm", 254))
-    assert "nas_5gmm" in text and "254" in text and "尚未收錄" in text
+    assert "nas_5gmm" in text and "254" in text and "not in this tool's cause table" in text
 
 
 def test_unknown_table_does_not_explode():
     assert lookup(CauseRef("不存在的表", 1)) is None
-    assert "尚未收錄" in describe(CauseRef("不存在的表", 1))
+    assert "not in this tool's cause table" in describe(CauseRef("不存在的表", 1))
 
 
 # ── 表格資料本身的完整性 ───────────────────────────────────────────────
@@ -131,5 +131,5 @@ def test_uncatalogued_failure_still_renders_without_inventing_a_clause():
     annotate([msg])
     text = render(Flow(messages=[msg])).text
 
-    assert "尚未收錄" in text
+    assert "not in this tool's cause table" in text
     assert "§" not in text.split("Registration reject")[-1], "未收錄卻印出了條號"

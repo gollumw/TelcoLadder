@@ -172,7 +172,7 @@ def test_wrong_imsi_lists_the_ones_that_are_present() -> None:
     analysis = analyse(require_capture("ki-mismatch/capture.pcap"))
     message = no_result_explanation(analysis, "460001234567890")
     assert "001011234567895" in message, "沒有把實際有的 SUPI 列出來"
-    assert "沒有符合" in message
+    assert "No identity" in message
 
 
 def test_ecies_protected_suci_says_it_is_unobtainable_not_absent() -> None:
@@ -184,7 +184,7 @@ def test_ecies_protected_suci_says_it_is_unobtainable_not_absent() -> None:
     """
     analysis = Analysis(flows=[], ciphered=0, protected_suci=3)
     message = no_result_explanation(analysis, "any")
-    assert "原理上取不出來" in message
+    assert "cannot be recovered" in message
     assert "NGAP UE ID" in message, "沒有告訴使用者改用什麼搜"
     assert "沒找到" not in message.replace("不是「沒找到」", "")
 
@@ -199,13 +199,13 @@ def test_the_three_no_result_reasons_are_distinguishable() -> None:
     ecies = no_result_explanation(Analysis(flows=[], ciphered=0, protected_suci=2), "x")
     empty = no_result_explanation(Analysis(flows=[], ciphered=0, protected_suci=0), "x")
     assert len({wrong, ecies, empty}) == 3, "三種原因講出了重複的話"
-    assert "原理上" in ecies and "原理上" not in wrong
+    assert "in principle" in ecies and "in principle" not in wrong
 
 
 def test_ciphered_capture_suggests_the_registration_may_predate_it() -> None:
     analysis = Analysis(flows=[], ciphered=9, protected_suci=0)
     message = no_result_explanation(analysis, "x")
-    assert "加密" in message
+    assert "ciphered" in message
     assert "NGAP UE ID" in message
 
 

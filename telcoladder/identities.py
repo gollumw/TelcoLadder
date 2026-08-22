@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from telcoladder.i18n import N_, _
 from telcoladder.model import Flow, IdKey, IdKind
 from telcoladder.pipeline import Analysis
 
@@ -65,12 +66,12 @@ KIND_LABELS: dict[IdKind, str] = {
 
 #: 為什麼這個類別現在搜不到。UI 直接顯示這句話，不要自己另寫。
 UNAVAILABLE_REASONS: dict[IdKind, str] = {
-    IdKind.IMPI: "需要 IMS adapter（尚未實作）",
-    IdKind.IMPU: "需要 IMS adapter（尚未實作）",
-    IdKind.MSISDN: "需要 IMS adapter（尚未實作）—— MSISDN 來自 IMS/Diameter，不在 5G 核網信令裡",
-    IdKind.SIP_CALL_ID: "需要 SIP adapter（尚未實作）",
-    IdKind.DIAMETER_SESSION_ID: "需要 Diameter adapter（尚未實作）",
-    IdKind.GTP_TEID: "需要 GTP adapter（尚未實作）",
+    IdKind.IMPI: N_('Needs the IMS adapter (not implemented yet)'),
+    IdKind.IMPU: N_('Needs the IMS adapter (not implemented yet)'),
+    IdKind.MSISDN: N_('Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling'),
+    IdKind.SIP_CALL_ID: N_('Needs the SIP adapter (not implemented yet)'),
+    IdKind.DIAMETER_SESSION_ID: N_('Needs the Diameter adapter (not implemented yet)'),
+    IdKind.GTP_TEID: N_('Needs the GTP adapter (not implemented yet)'),
 }
 
 
@@ -122,7 +123,7 @@ def _split_scope(raw: str) -> tuple[str, str | None]:
     """
     if "/" not in raw:
         return raw, None
-    scope, _, value = raw.rpartition("/")
+    scope, _unused, value = raw.rpartition("/")
     return value, scope
 
 
@@ -256,7 +257,7 @@ def availability(analysis: Analysis) -> list[dict]:
             "label": KIND_LABELS.get(kind, kind.value),
             "implemented": implemented,
             "is_subscriber": kind.is_subscriber,
-            "reason": None if implemented else UNAVAILABLE_REASONS.get(kind, "尚未實作"),
+            "reason": None if implemented else _(UNAVAILABLE_REASONS.get(kind, N_('Not implemented yet'))),
             "values": [h.to_json() for h in found],
         })
     return out
@@ -272,31 +273,21 @@ def no_result_explanation(analysis: Analysis, needle: str) -> str:
 
     if analysis.protected_suci and not supis:
         return (
-            f"這份擷取裡有 {analysis.protected_suci} 個 SUCI 用了 ECIES 保護 —— "
-            "**SUPI / IMSI 在原理上取不出來**，不是「沒找到」。"
-            "MSIN 根本不在封包裡，再怎麼搜都不會有結果。"
-            "請改用 NGAP UE ID 搜尋，或對照 AMF 日誌。"
+            _('{n} SUCIs in this capture are ECIES-protected - **the SUPI / IMSI cannot be recovered, even in principle**; that is not "not found". The MSIN is simply not on the wire, so no search will hit. Search by NGAP UE ID instead, or check the AMF log.').format(n=analysis.protected_suci)
         )
     if analysis.protected_suci:
-        listed = "、".join(h.value for h in supis[:5])
-        return (
-            f"沒有符合「{needle}」的身分。這份擷取裡另有 {analysis.protected_suci} 個 "
-            "SUCI 用了 ECIES 保護，那些用戶的 IMSI 取不出來 —— "
-            f"你要找的可能是其中之一。已能識別的 SUPI：{listed}"
-        )
+        listed = _(", ").join(h.value for h in supis[:5])
+        return _('No identity matches "{needle}". {n} further SUCI(s) in this capture are ECIES-protected and those subscribers\' IMSIs cannot be recovered - the one you want may be among them. SUPIs that could be identified: {listed}').format(needle=needle, n=analysis.protected_suci, listed=listed)
     if supis:
-        listed = "、".join(h.value for h in supis[:5])
-        more = f"（共 {len(supis)} 個）" if len(supis) > 5 else ""
-        return f"這份擷取裡沒有符合「{needle}」的身分。已收錄的 SUPI：{listed}{more}"
+        listed = _(", ").join(h.value for h in supis[:5])
+        more = _(' ({n} in total)').format(n=len(supis)) if len(supis) > 5 else ""
+        return _('No identity in this capture matches "{needle}". SUPIs on record: {listed}{more}').format(needle=needle, listed=listed, more=more)
     if analysis.ciphered:
         return (
-            f"這份擷取裡沒有任何可識別的 SUPI，而且有 {analysis.ciphered} 則 NAS 已加密。"
-            "註冊流程可能發生在擷取開始之前 —— 那時 SUCI 不會再出現。"
-            "請改用 NGAP UE ID 搜尋。"
+            _('No identifiable SUPI in this capture, and {n} NAS messages are ciphered. Registration may have happened before the capture started - the SUCI does not appear again after that. Search by NGAP UE ID instead.').format(n=analysis.ciphered)
         )
     return (
-        "這份擷取裡沒有抽出任何用戶身分。"
-        "可能是它只含網路層訊息（NGSetup、NF 管理），或註冊流程不在擷取範圍內。"
+        _('No subscriber identity could be extracted from this capture. It may contain only network-level messages (NGSetup, NF management), or the registration falls outside the captured range.')
     )
 
 

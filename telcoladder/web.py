@@ -49,7 +49,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from telcoladder import i18n
 from telcoladder.chrome import CHROME_CSS, esc
+from telcoladder.i18n import _
 from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache, DecodeError
 from telcoladder.decodeas import (
@@ -113,8 +115,7 @@ def _remove_upload(tmp: Path) -> None:
         except PermissionError:
             time.sleep(0.05 * (attempt + 1))
     print(
-        f"⚠ 刪不掉上傳的暫存檔：{tmp}\n"
-        f"  那是你剛才上傳的擷取檔，請手動刪除。",
+        _('⚠ Could not delete the uploaded temp file: {path}\n  That is the capture you just uploaded; please remove it by hand.').format(path=tmp),
         flush=True,
     )
 
@@ -132,14 +133,14 @@ class _Handler(BaseHTTPRequestHandler):
     def _rejected_by_origin_checks(self) -> bool:
         """`Host` 與 `Origin` 都對才放行。不對就 403 並且**不解釋細節**。"""
         if (self.headers.get("Host") or "").lower() not in self._allowed_hosts():
-            self._send_html(_error_page("拒絕：Host 標頭不是本機位址。"), HTTPStatus.FORBIDDEN)
+            self._send_html(_error_page(_('Refused: the Host header is not a loopback address.')), HTTPStatus.FORBIDDEN)
             return True
 
         # `Origin: null` 一律拒絕：那代表請求來自沙箱化的 context，
         # 而惡意網站用 sandbox iframe 打過來就長這樣。
         origin = self.headers.get("Origin")
         if origin and urlsplit(origin).netloc.lower() not in self._allowed_hosts():
-            self._send_html(_error_page("拒絕：跨來源請求。"), HTTPStatus.FORBIDDEN)
+            self._send_html(_error_page(_('Refused: cross-origin request.')), HTTPStatus.FORBIDDEN)
             return True
         return False
 
@@ -149,7 +150,35 @@ class _Handler(BaseHTTPRequestHandler):
     # 新增路由時忘記這件事，那條路由就是沒有守衛的；
     # `test_every_route_enforces_host_and_origin` 會把整張路由表跑一遍抓這件事。
 
+    # ── 語言 ──────────────────────────────────────────────────────
+    #
+    # 每個請求各自決定：`?lang=` ＞ `X-TelcoLadder-Lang` 標頭（React 的切換鈕送的）
+    # ＞ 伺服器啟動時的語言（CLI `--lang` / 環境變數）。**刻意不看 `Accept-Language`**
+    # —— 跟 `i18n.py` 不看系統 locale 同一個理由：同一個網址在兩台機器上長得不一樣，
+    # 而使用者不知道為什麼。
+    #
+    # 一定要在 handler 裡設而不是靠繼承：`ThreadingHTTPServer` 的 handler 執行緒
+    # **不繼承**主執行緒的 contextvars，`serve()` 裡 activate 的語言到不了這裡。
+
+    def _request_language(self) -> str:
+        query = parse_qs(urlsplit(self.path).query)
+        explicit = (query.get("lang") or [""])[0] or self.headers.get("X-TelcoLadder-Lang")
+        return i18n.normalize(explicit) or getattr(self.server, "lang", None) or i18n.DEFAULT
+
+    def _explicit_language(self) -> str | None:
+        """使用者在這個請求裡**明說**的語言（不含伺服器預設）—— 轉送到下一頁用。"""
+        query = parse_qs(urlsplit(self.path).query)
+        return i18n.normalize((query.get("lang") or [""])[0] or self.headers.get("X-TelcoLadder-Lang"))
+
+    def _app_url(self, sid: str) -> str:
+        lang = self._explicit_language()
+        return f"/app/{sid}" + (f"?lang={lang}" if lang else "")
+
     def do_GET(self) -> None:  # noqa: N802 —— BaseHTTPRequestHandler 的命名慣例
+        with i18n.use(self._request_language()):
+            self._do_get()
+
+    def _do_get(self) -> None:
         if self._rejected_by_origin_checks():
             return
         route = urlsplit(self.path).path
@@ -162,9 +191,13 @@ class _Handler(BaseHTTPRequestHandler):
         elif route.startswith("/api/") and self._viewer_enabled():
             self._route_api(route[len("/api/"):])
         else:
-            self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
+            self._send_html(_error_page(_('No such page.')), HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        with i18n.use(self._request_language()):
+            self._do_post()
+
+    def _do_post(self) -> None:
         if self._rejected_by_origin_checks():
             return
         route = urlsplit(self.path).path
@@ -177,7 +210,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif route.startswith("/api/") and self._viewer_enabled():
             self._route_api(route[len("/api/"):], post=True)
         else:
-            self._send_html(_error_page("找不到這個頁面。"), HTTPStatus.NOT_FOUND)
+            self._send_html(_error_page(_('No such page.')), HTTPStatus.NOT_FOUND)
 
     # ── 互動檢視器 ────────────────────────────────────────────────
 
@@ -196,7 +229,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         found = static_body(name)
         if found is None:
-            self._send_html(_error_page("找不到這個資源。"), HTTPStatus.NOT_FOUND)
+            self._send_html(_error_page(_('No such resource.')), HTTPStatus.NOT_FOUND)
             return
         payload, content_type = found
         self.send_response(HTTPStatus.OK)
@@ -223,8 +256,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 過期是正常的（閒置逾時就是這樣），所以給人話而不是 traceback。
             self._send_html(
                 _error_page(
-                    "此工作階段已過期或已釋放。",
-                    hint="回首頁重新開啟擷取檔即可。上傳的複本會在閒置逾時後自動刪除。",
+                    _('This session has expired or been released.'),
+                    hint=_('Go back to the home page and open the capture again. Uploaded copies are deleted automatically after the idle timeout.'),
                 ),
                 HTTPStatus.NOT_FOUND,
             )
@@ -248,10 +281,10 @@ class _Handler(BaseHTTPRequestHandler):
         服務跑在不同 port，任何一個都能讀寫我們的 cookie。放路徑同時也讓
         這個 capability token 不出現在 query string 裡。
         """
-        sid, _, action = rest.partition("/")
+        sid, _unused, action = rest.partition("/")
         session = self._store.get(sid)
         if session is None:
-            self._send_json({"error": "此工作階段已過期或已釋放。"}, HTTPStatus.NOT_FOUND)
+            self._send_json({"error": _('This session has expired or been released.')}, HTTPStatus.NOT_FOUND)
             return
 
         query = parse_qs(urlsplit(self.path).query)
@@ -268,7 +301,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif not post and action == "decode":
             frame = self._int_param(query, "frame", 0)
             if frame <= 0:
-                self._send_json({"error": "frame 參數不正確。"}, HTTPStatus.BAD_REQUEST)
+                self._send_json({"error": _('Invalid frame parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
             try:
                 self._send_json(decode_json(session, frame))
@@ -277,7 +310,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif not post and action == "bytes":
             frame = self._int_param(query, "frame", 0)
             if frame <= 0:
-                self._send_json({"error": "frame 參數不正確。"}, HTTPStatus.BAD_REQUEST)
+                self._send_json({"error": _('Invalid frame parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
             try:
                 self._send_json(bytes_json(session, frame))
@@ -296,7 +329,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             if not supi:
-                self._send_json({"error": "缺少 supi 參數。"}, HTTPStatus.BAD_REQUEST)
+                self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
             payload = callflow_json(session, supi)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
@@ -322,12 +355,12 @@ class _Handler(BaseHTTPRequestHandler):
                 # 取消身分不等於取消 display filter —— 後者還在。
                 self._send_json({"matched": effective_matched(session), "identity": None})
                 return
-            kind, _, raw = ident.partition(":")
+            kind, _unused, raw = ident.partition(":")
             self._send_json(select_identity(session, kind, raw))
         elif post and action == "refilter":
             self._handle_refilter(session)
         else:
-            self._send_json({"error": "沒有這個 API。"}, HTTPStatus.NOT_FOUND)
+            self._send_json({"error": _('No such API.')}, HTTPStatus.NOT_FOUND)
 
     @staticmethod
     def _int_param(query: dict[str, list[str]], name: str, default: int) -> int:
@@ -359,7 +392,7 @@ class _Handler(BaseHTTPRequestHandler):
 
             known = load_shipped_rules()
             fresh = tuple(
-                _Rule(rule=r, origin="shipped", note=f"自 {session.display_name} 自動偵測後收編")
+                _Rule(rule=r, origin="shipped", note=_('adopted after auto-detection on {name}').format(name=session.display_name))
                 for r in promote
                 if r not in {k.rule for k in known}
             )
@@ -370,9 +403,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # 不要只說「失敗」—— 使用者要據此判斷該改用自己的規則。
                 self._send_json(
                     {
-                        "error": f"寫不進出貨清單（{shipped_path()}）：{exc}。"
-                        "這份程式若是安裝上去的，那個檔通常是唯讀的 —— "
-                        "請改把規則加在「你設定的」那一區。"
+                        "error": _('Could not write the shipped rule list ({path}): {error}. If this program was pip-installed that file is usually read-only - add the rule under "your rules" instead.').format(path=shipped_path(), error=exc)
                     },
                     HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
@@ -393,7 +424,7 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             # 這個要擋 —— 使用者以為存好了，下次開檔卻沒有那條規則。
             self._send_json(
-                {"error": f"規則存檔失敗：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR
+                {"error": _('Could not save the rules: {error}').format(error=exc)}, HTTPStatus.INTERNAL_SERVER_ERROR
             )
             return
 
@@ -462,7 +493,7 @@ class _Handler(BaseHTTPRequestHandler):
         # **送去 React 介面，不是舊檢視器。** 兩個入口都改了 —— 在此之前
         # `/app/<sid>` 沒有任何一條路從畫面走得到，只能手打網址。
         # 舊的 `/v/<sid>` 仍然可用（對照組），由 app 頁面上的連結進入。
-        self._send_redirect(f"/app/{session.sid}")
+        self._send_redirect(self._app_url(session.sid))
 
     def _handle_open_upload(self) -> None:
         """上傳開檢視器。檔案會**留下來**直到釋放或閒置逾時。
@@ -473,12 +504,11 @@ class _Handler(BaseHTTPRequestHandler):
         """
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
-            self._send_json({"error": "沒有收到檔案內容。"}, HTTPStatus.BAD_REQUEST)
+            self._send_json({"error": _('No file content received.')}, HTTPStatus.BAD_REQUEST)
             return
         if length > MAX_UPLOAD_BYTES:
             self._send_json(
-                {"error": f"檔案超過 {MAX_UPLOAD_BYTES >> 20} MB 的上傳上限。"
-                          "改用「貼上路徑」——不搬檔、不落地。"},
+                {"error": _('The file exceeds the {mb} MB upload limit. Use "paste a path" instead - no copy, nothing written to disk.').format(mb=MAX_UPLOAD_BYTES >> 20)},
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
             )
             return
@@ -504,12 +534,12 @@ class _Handler(BaseHTTPRequestHandler):
                 # 上傳中斷 —— 半份客戶封包沒有留下的理由。
                 _remove_upload(tmp)
         if not ok:
-            self._send_json({"error": "上傳中斷，檔案不完整。"}, HTTPStatus.BAD_REQUEST)
+            self._send_json({"error": _('Upload interrupted; the file is incomplete.')}, HTTPStatus.BAD_REQUEST)
             return
 
         session = self._store.create(tmp, name, owns_file=True, wire=wire)
         start_index(session)
-        self._send_json({"sid": session.sid, "name": name, "url": f"/app/{session.sid}"})
+        self._send_json({"sid": session.sid, "name": name, "url": self._app_url(session.sid)})
 
     def _handle_release(self) -> None:
         form = self._read_form()
@@ -553,14 +583,14 @@ class _Handler(BaseHTTPRequestHandler):
         # 從檔案總管拖到輸入框常常會帶上引號，直接吃掉而不是叫使用者自己修。
         raw = raw.strip("'\"")
         if not raw:
-            self._send_html(_error_page("請貼上擷取檔的路徑。"), HTTPStatus.BAD_REQUEST)
+            self._send_html(_error_page(_('Please paste the path of a capture file.')), HTTPStatus.BAD_REQUEST)
             return None
 
         pcap = Path(os.path.expanduser(raw))
         if not pcap.is_file():
             # 只回顯使用者自己給的字串，不透露其他檔案系統資訊。
             self._send_html(
-                _error_page(f"找不到這個檔案：{raw}", hint="路徑要是這台機器上的絕對路徑。"),
+                _error_page(_('No such file: {path}').format(path=raw), hint=_('The path must be an absolute path on this machine.')),
                 HTTPStatus.BAD_REQUEST,
             )
             return None
@@ -603,8 +633,6 @@ _EXTRA_CSS = """
 }
 .or { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--faint); font-size: 12px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-/* 收窄範圍那一區。**選擇器要夠specific** —— form.path 是 flex 容器，
-   它的 `input[type=text] { flex: 1 1 320px }` 會直接把這裡的巢狀輸入撐爆。 */
 form.path fieldset.narrow {
   flex-basis: 100%; margin: 4px 0 0; padding: 10px 12px 12px;
   border: 1px solid var(--border); border-radius: 8px;
@@ -675,7 +703,7 @@ form.path .opt {
 def _shell(title: str, body: str) -> str:
     return (
         "<!doctype html>\n"
-        '<html lang="zh-Hant"><head><meta charset="utf-8">'
+        f'<html lang="{i18n.HTML_LANG[i18n.current()]}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{esc(title)}</title>"
         f"<style>{CHROME_CSS}{_EXTRA_CSS}</style></head><body><div class='wrap'>"
@@ -690,7 +718,7 @@ def _error_page(message: str, *, hint: str = "", detail: str = "") -> str:
         body.append(f"<p>{esc(hint)}</p>")
     if detail:
         body.append(f"<pre>{esc(detail)}</pre>")
-    body.append('</div><a class="back" href="/">← 回到首頁</a>')
+    body.append(f'</div><a class="back" href="/">{esc(_('← Back to the home page'))}</a>')
     return _shell("TelcoLadder", "".join(body))
 
 
@@ -701,7 +729,7 @@ def _tshark_banner() -> str:
     except TsharkNotFound as exc:
         return (
             '<div class="err" style="margin-bottom:20px">'
-            "<h2>找不到 tshark —— 現在還不能分析</h2>"
+            f"<h2>{esc(_('tshark not found - analysis is not possible yet'))}</h2>"
             f"<pre>{esc(str(exc))}</pre></div>"
         )
     return (
@@ -710,38 +738,49 @@ def _tshark_banner() -> str:
     )
 
 
+def _language_switch() -> str:
+    current = i18n.current()
+    links = " · ".join(
+        f'<a href="/?lang={code}"{" class=on" if code == current else ""}>{label}</a>'
+        for code, label in (("en", "English"), ("zh_TW", "中文"))
+    )
+    return f'<p class="lang" style="text-align:right;margin:-6px 0 10px">{esc(_('Language'))}: {links}</p>'
+
+
+# 首頁樣式與腳本的設計筆記（原本寫在 CSS／JS 註解裡，會隨頁面送到瀏覽器 ——
+# 英文版首頁裡夾著中文註解，所以搬到這裡）：
+#
+# * 收窄範圍那一區的 CSS 選擇器要夠 specific：`form.path` 是 flex 容器，它的
+#   `input[type=text] { flex: 1 1 320px }` 會直接把巢狀輸入撐爆。
+# * 這頁的 JS 只做兩件事：拖放與上傳進度。貼路徑那條是普通的 form，關掉 JS
+#   照樣能用 —— 而那正是大檔要走的路。
+# * 上傳一律走互動檢視器。這裡原本有個預設不勾的核取方塊決定要不要進互動介面，
+#   不勾就悄悄送去舊的靜態報告 —— 那是個陷阱：使用者拖檔進來，拿到的是他沒要的
+#   版本，而畫面上沒有任何地方說發生了什麼。靜態報告已於 Phase 4 退場。
 def _home_page() -> str:
-    body = f"""{_tshark_banner()}
+    body = f"""{_language_switch()}{_tshark_banner()}
 <div class="drop" id="drop">
-  <h2>把 pcap 拖進來</h2>
-  <p>或點下面的按鈕選檔。上限 {MAX_UPLOAD_BYTES >> 20} MB。</p>
-  <label class="pick">選擇檔案<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
-  <p class="fine">上傳的複本會<b>保留</b>到你按釋放或閒置逾時 —— 逐封包解碼要跨請求讀同一份檔。</p>
+  <h2>{esc(_('Drop a pcap here'))}</h2>
+  <p>{esc(_('Or pick a file with the button below. Limit {mb} MB.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
+  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
+  <p class="fine">{_('An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.')}</p>
 </div>
 
-<div class="or">或</div>
+<div class="or">{esc(_('or'))}</div>
 
 <form class="path" method="post" action="/open">
-  <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="擷取檔路徑">
-  <button type="submit">開啟</button>
+  <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="{esc(_('Capture file path'))}">
+  <button type="submit">{esc(_('Open'))}</button>
   <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
-    流程視圖 —— 一則訊息一列，NAS 畫在 UE↔AMF（預設是一格封包一列的線路視圖）</label>
+    {esc(_('Flow view - one row per message, NAS drawn UE↔AMF (the default is the wire view, one row per packet)'))}</label>
 </form>
 <p class="hint">
-  <b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 ——
-  把幾百 MB 透過 HTTP 傳給同一台機器上的伺服器沒有意義。<br>
-  兩條路都會開在互動介面裡（可過濾、逐封包看解碼與位元組、看梯形圖與關聯矩陣）。
-  封包清單邊索引邊出，第一頁很快就能看；<b>訂戶身分、梯形圖與關聯矩陣要等完整解剖跑完</b>。<br>
-  要靜態報告（零 JavaScript、可寄給別人）請用 CLI：<code>telcoladder analyze &lt;pcap&gt; --html</code>，
-  它同時支援時間範圍、訂戶收窄與 tshark filter。
+  {_('<b>Use this one for large files.</b> Pasting a path copies nothing, writes nothing, starts immediately - pushing hundreds of MB over HTTP to a server on the same machine buys you nothing.<br>Both routes open the interactive interface (filter, per-packet decode and bytes, ladder, correlation matrix). The packet list appears while indexing, so the first page is quick; <b>subscriber identities, the ladder and the matrix wait for the full dissection</b>.<br>For a text diagram you can paste into a document, use the CLI: <code>telcoladder analyze &lt;pcap&gt;</code> - it also takes a time range, a subscriber, and a tshark filter.')}
 </p>
 
-<div class="spinner" id="spin">分析中……</div>
+<div class="spinner" id="spin">{esc(_('Analysing…'))}</div>
 
 <script>
-// 這頁的 JS 只做兩件事：拖放與上傳進度。
-// 貼路徑那條是普通的 form，關掉 JS 照樣能用 —— 而那正是大檔要走的路。
-// 產出的報告本身是零 JS 的，這裡的腳本不會進到報告裡。
 (function () {{
   var drop = document.getElementById('drop');
   var file = document.getElementById('file');
@@ -752,10 +791,6 @@ def _home_page() -> str:
     spin.classList.add('on');
     var flow = document.getElementById('flow');
     var q = flow && flow.checked ? '?flow=1' : '';
-    // **一律走檢視器。** 這裡原本有個預設不勾的核取方塊決定要不要進互動
-    // 介面，不勾就悄悄送去舊的靜態報告 —— 那是個陷阱：使用者拖檔進來，
-    // 拿到的是他沒要的那個版本，而畫面上沒有任何地方說發生了什麼。
-    // 舊報告仍然存在，改由 CLI 的 `--html` 提供（它本來就是那條路的正主）。
     fetch('/open-upload' + q, {{
       method: 'POST',
       headers: {{ 'X-TelcoLadder-Filename': encodeURIComponent(f.name) }},
@@ -769,7 +804,7 @@ def _home_page() -> str:
       }})
       .catch(function (e) {{
         spin.classList.remove('on');
-        alert('上傳失敗：' + e);
+        alert({json.dumps(_('Upload failed: '))} + e);
       }});
   }}
 
@@ -811,6 +846,7 @@ def make_server(
     # 沒有 daemon_threads 的話，還在跑的請求會擋住關閉 —— Windows 上尤其
     # 容易變成「關不掉還噴執行緒例外」（tshark.shutdown 才踩過同類問題）。
     server.daemon_threads = True
+    server.lang = i18n.current()  # type: ignore[attr-defined]  —— handler 執行緒不繼承 contextvars
     server.store = SessionStore(idle_ttl=idle_ttl) if viewer else None  # type: ignore[attr-defined]
     return server
 
@@ -866,12 +902,12 @@ def serve(
 ) -> int:
     server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer)
     bound_host, bound_port = server.server_address[:2]
-    print(f"TelcoLadder → http://{bound_host}:{bound_port}   （Ctrl-C 結束）")
+    print(_('TelcoLadder → http://{host}:{port}   (Ctrl-C to stop)').format(host=bound_host, port=bound_port))
     try:
         find_tshark()
     except TsharkNotFound as exc:
         # 不擋啟動 —— 網頁上會顯示同一則訊息，而那則訊息本身就是修復指示。
-        print(f"\n⚠ 找不到 tshark，現在還不能分析：\n{exc}\n")
+        print(_('\n⚠ tshark not found - analysis is not possible yet:\n{error}\n').format(error=exc))
 
     if viewer:
         # 前一次執行若被 kill -9，沒有任何清理程式跑得到。**回報而不自動刪** ——
@@ -879,16 +915,16 @@ def serve(
         # 的檔案比留著它更糟。使用者看到清單就能自己決定。
         strays = sweep_stray_files()
         if strays:
-            print(f"\n⚠ 找到 {len(strays)} 個前次執行留下的暫存擷取檔（超過一天）：")
+            print(_('\n⚠ Found {n} temp capture file(s) left by a previous run (older than a day):').format(n=len(strays)))
             for path in strays:
                 print(f"    {path}")
-            print("  那是客戶封包。確認不需要之後請自行刪除 —— 本工具不會替你刪。\n")
+            print(_('  Those are customer captures. Delete them yourself once you are sure - this tool will not.\n'))
 
     with _sigterm_as_keyboard_interrupt():
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("\n收工。")
+            print(_('\nDone.'))
         finally:
             server.shutdown()
             # **先清工作階段再關 socket。** 這是唯一保證會跑到的清理點 ——

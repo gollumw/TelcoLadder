@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from importlib import resources
 
+from telcoladder import i18n
+from telcoladder.i18n import _
 from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
 from telcoladder.identities import (
@@ -185,7 +187,7 @@ def decode_json(session: Session, frame: int) -> dict:
         session.decode.put(trees)
         cached = session.decode.get(frame)
     if cached is None:
-        return {"frame": frame, "tree": [], "error": f"擷取檔裡沒有 frame {frame}。"}
+        return {"frame": frame, "tree": [], "error": _('No frame {frame} in the capture.').format(frame=frame)}
     return {"frame": frame, "tree": [n.to_json() for n in cached]}
 
 
@@ -215,7 +217,7 @@ def bytes_json(session: Session, frame: int) -> dict:
         session.frame_bytes.put(found)
         cached = session.frame_bytes.get(frame)
     if cached is None:
-        return {"frame": frame, "hex": "", "error": f"擷取檔裡沒有 frame {frame}。"}
+        return {"frame": frame, "hex": "", "error": _('No frame {frame} in the capture.').format(frame=frame)}
     return {"frame": frame, "hex": cached}
 
 
@@ -267,16 +269,16 @@ def select_identity(session: Session, kind_value: str, raw: str) -> dict:
     with session.lock:
         analysis = session.analysis
     if analysis is None:
-        return {"error": "完整解剖還沒跑完，身分資訊尚未可用。"}
+        return {"error": _('Full dissection has not finished; identity information is not available yet.')}
     try:
         kind = IdKind(kind_value)
     except ValueError:
-        return {"error": f"未知的身分類別：{kind_value}"}
+        return {"error": _('Unknown identity kind: {kind}').format(kind=kind_value)}
 
     # 流程層級，不是「訊息裡有寫這個號碼」—— 見 `session_frames` 的說明。
     frames = session_frames(analysis, kind, raw)
     if not frames:
-        return {"error": f"這個身分沒有對應的封包：{raw}"}
+        return {"error": _('No packets correspond to this identity: {value}').format(value=raw)}
     with session.lock:
         session.identity_frames = set(frames)
         session.selected_identity = f"{kind_value}:{raw}"
@@ -292,17 +294,24 @@ def _table_for(session: Session) -> "FlowTable | None":
 
     analysis 在 session 生命週期內不可變，表算一次就定案 ——
     每次請求重算是純浪費（真實檔案上是 O(訊息數) 的聚合）。
+
+    **快取按語言分。** 表裡的 `basis` 與紅綠燈理由是在 `build_table()` 時用
+    當下語言算出來的字串；只留一份的話，第一個請求的語言會綁死整個 session
+    —— 使用者切到英文，表還是中文，而沒有任何一層會說話。
     """
+    lang = i18n.current()
     with session.lock:
         analysis = session.analysis
         cached = session.flowtable
     if analysis is None:
         return None
-    if cached is not None:
-        return cached
+    if isinstance(cached, dict) and lang in cached:
+        return cached[lang]
     table = build_table(analysis)
     with session.lock:
-        session.flowtable = table
+        store = session.flowtable if isinstance(session.flowtable, dict) else {}
+        store[lang] = table
+        session.flowtable = store
     return table
 
 
@@ -401,7 +410,7 @@ def flows_json(
     }
     if not table.abs_time_available and (since is not None or until is not None):
         payload["note"] = (
-            "這份擷取檔沒有絕對時間戳，時間過濾不可用 —— 已忽略範圍、顯示全部。"
+            _('This capture has no absolute timestamps, so time filtering is unavailable - range ignored, showing everything.')
         )
     return payload
 
@@ -442,7 +451,7 @@ def callflow_json(session: Session, supi: str) -> dict:
 
     flows = find_flows(analysis, IdKind.SUPI, supi)
     if not flows:
-        return {"error": f"這個訂戶沒有對應的流程：{supi}"}
+        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi)}
 
     # 「落在擷取結尾附近」的判定以**整份擷取檔**為準（理由見
     # `procedures.capture_end`）。走那個函式而不是在這裡再算一次 ——
@@ -663,7 +672,7 @@ def app_page(session: Session, *, idle_ttl: float) -> str:
     """
     del idle_ttl
     return f"""<!doctype html>
-<html lang="zh-Hant" class="dark">
+<html lang="{i18n.HTML_LANG[i18n.current()]}" class="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

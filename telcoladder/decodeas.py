@@ -68,6 +68,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark
 
 
@@ -234,13 +235,12 @@ def validate(rule: str, pcap: Path, *, tshark: Tshark | None = None) -> None:
         # 這一項是我們自己判的，因為 tshark 對格式錯誤的 `-d` 有時只是
         # 沉默地忽略 —— 而沉默地忽略正是這個專案最不能接受的失敗方式。
         raise DecodeAsError(
-            f"規則格式不對：{rule!r}。應該長得像 `tcp.port==8080,http2` "
-            "——「選擇器==值,要解成的協定」。"
+            _('Malformed rule: {rule!r}. Expected something like `tcp.port==8080,http2` - "selector==value,protocol".').format(rule=rule)
         )
     tshark = tshark or find_tshark()
     out = tshark.run(["-r", str(pcap), "-d", rule, "-c", "1", "-T", "fields", "-e", "frame.number"])
     if out.returncode != 0:
-        raise DecodeAsError(out.stderr.strip() or f"tshark 不接受這條規則：{rule}")
+        raise DecodeAsError(out.stderr.strip() or _('tshark rejected this rule: {rule}').format(rule=rule))
 
 
 def effective(

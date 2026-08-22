@@ -48,6 +48,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from telcoladder.i18n import _
 from telcoladder.model import Flow, IdKind, Message
 from telcoladder.pipeline import Analysis
 
@@ -184,9 +185,7 @@ def _pfcp_retrans(messages: list[Message]) -> list[StatusEvent]:
             frames=tuple(m.frame for m in group),
             label=label,
             basis=(
-                f"同方向（{direction[0]} → {direction[1]}）、同訊息、"
-                f"同 PFCP sequence number（{seqno}）出現 {len(group)} 次 —— "
-                "PFCP 重送沿用同一序號，這是確定的重傳。"
+                _('Same direction ({src} → {dst}), same message, same PFCP sequence number ({seqno}), seen {n} times - PFCP retransmits reuse the sequence number, so this is a confirmed retransmission.').format(src=direction[0], dst=direction[1], seqno=seqno, n=len(group))
             ),
         ))
     return events
@@ -219,9 +218,7 @@ def _nas_suspected_retrans(messages: list[Message]) -> list[StatusEvent]:
                 frames=tuple(m.frame for m in run),
                 label=label,
                 basis=(
-                    f"同方向、同 NAS 訊息在 {RETRANS_WINDOW:.0f} 秒內重複 "
-                    f"{len(run)} 次 —— NAS 定時器重送會長這樣，"
-                    "但合法的重新嘗試也會；分不開，所以標「疑似」。"
+                    _('Same direction, same NAS message repeated {n} times within {window:.0f} s - NAS timer retransmissions look like this, but so do legitimate retries; they cannot be told apart, so this is marked "suspected".').format(n=len(run), window=RETRANS_WINDOW)
                 ),
             ))
     return events
@@ -229,7 +226,7 @@ def _nas_suspected_retrans(messages: list[Message]) -> list[StatusEvent]:
 
 def _tail_note(msg: Message, capture_end_rel: float) -> str:
     if capture_end_rel - msg.ts <= TAIL_SLACK:
-        return "（該請求落在擷取結束前不到 2 秒 —— 可能只是截到一半，不是真的沒回）"
+        return _(' (the request falls within 2 s of the end of the capture - it may simply be cut off, not actually unanswered)')
     return ""
 
 
@@ -248,7 +245,7 @@ def _sbi_unanswered(
     訊息就判「沒回應」，8/8 全是誤報。看不見 ≠ 沒有，判不準就不判。
     """
     by_stream: dict[object, list[Message]] = defaultdict(list)
-    undecoded_raw = {raw for _, raw in undecoded_streams}
+    undecoded_raw = {raw for _unused, raw in undecoded_streams}
     for msg in messages:
         if msg.protocol != "sbi":
             continue
@@ -271,7 +268,7 @@ def _sbi_unanswered(
                 frames=(req.frame,),
                 label=req.label,
                 basis=(
-                    "同一條 HTTP/2 stream 在擷取範圍內未見任何回應"
+                    _('No response seen on this HTTP/2 stream within the capture')
                     + _tail_note(req, capture_end_rel)
                 ),
             ))
@@ -305,8 +302,7 @@ def _pfcp_unanswered(
             frames=tuple(m.frame for m in group),
             label=req.label,
             basis=(
-                f"PFCP sequence number {seqno} 只有 Request、"
-                "擷取範圍內沒有對應的 Response"
+                _('PFCP sequence number {seqno} has a Request but no matching Response within the capture').format(seqno=seqno)
                 + _tail_note(req, capture_end_rel)
             ),
         ))
@@ -333,7 +329,7 @@ def analysis_events(analysis: Analysis) -> dict[int, list[StatusEvent]]:
                 certainty="confirmed",
                 frames=(msg.frame,),
                 label=msg.label,
-                basis="adapter 判定為失敗/拒絕類訊息（cause 或狀態碼），詳見該列的 cause 說明。",
+                basis=_('The adapter classified this as a failure/reject message (cause or status code); see the cause column for details.'),
             ))
     events += _pfcp_retrans(all_messages)
     events += _nas_suspected_retrans(all_messages)
@@ -359,15 +355,15 @@ def analysis_events(analysis: Analysis) -> dict[int, list[StatusEvent]]:
 def _light(failures: int, retrans: int, unanswered: int) -> tuple[str, str]:
     """紅綠燈與理由。規則是確定性的：紅 ⟺ 有失敗；黃 = 無失敗但有異常。"""
     if failures:
-        return "red", f"{failures} 則失敗"
+        return "red", _('{n} failed').format(n=failures)
     if retrans or unanswered:
         parts = []
         if retrans:
-            parts.append(f"{retrans} 組重傳")
+            parts.append(_('{n} retransmission group(s)').format(n=retrans))
         if unanswered:
-            parts.append(f"{unanswered} 則未獲回應")
-        return "amber", "、".join(parts)
-    return "green", "無異常"
+            parts.append(_('{n} unanswered').format(n=unanswered))
+        return "amber", _(", ").join(parts)
+    return "green", _('no anomalies')
 
 
 def _session_row(
@@ -387,7 +383,7 @@ def _session_row(
     return SessionRow(
         flow_id=flow_id,
         title=flow.describe_identity(),
-        kinds=sorted({k.value for k, _ in flow.identity_keys}),
+        kinds=sorted({k.value for k, _unused in flow.identity_keys}),
         start=min((m.abs_ts for m in flow.messages), default=0.0),
         end=max((m.abs_ts for m in flow.messages), default=0.0),
         start_rel=min((m.ts for m in flow.messages), default=0.0),
@@ -499,7 +495,7 @@ def build_table(analysis: Analysis) -> FlowTable:
     if orphans:
         subscribers.append(SubscriberRow(
             # 誠實的名字：接不上訂戶不代表是雜訊，但也不假裝知道它屬於誰。
-            title="未歸戶 session（無訂戶識別碼可接）",
+            title=_('Unattributed sessions (no subscriber identifier to join on)'),
             grouped=False,
             sessions=orphans,
         ))

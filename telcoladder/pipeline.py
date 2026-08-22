@@ -249,7 +249,7 @@ def _extract(
 def _port_of(rule: str) -> int | None:
     """`tcp.port==8080,http2` → 8080。不是埠選擇器就回 None（不過濾它）。"""
     selector = rule.rsplit(",", 1)[0]
-    field, _, value = selector.partition("==")
+    field, _unused, value = selector.partition("==")
     if not field.endswith(".port") or not value.isdigit():
         return None
     return int(value)

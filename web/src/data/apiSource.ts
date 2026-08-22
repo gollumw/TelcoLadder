@@ -27,6 +27,7 @@
  * （真 tshark），`focusIdentity` 走 `/select`，兩者在後端疊加。
  */
 
+import { langHeader, t } from "../i18n";
 import type { ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
 
 import {
@@ -66,10 +67,10 @@ export class NotConnectedError extends Error {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+  const response = await fetch(path, { headers: langHeader() });
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok || body.error) {
-    throw new NotConnectedError(body.error ?? `${path} 回了 HTTP ${response.status}`);
+    throw new NotConnectedError(body.error ?? t("{path} returned HTTP {status}", { path, status: response.status }));
   }
   return body;
 }
@@ -84,14 +85,14 @@ async function postForm<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", ...langHeader() },
     body: new URLSearchParams(fields).toString(),
   });
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok || body.error) {
     // display filter 的語法錯誤走這條路，訊息是 tshark 自己的輸出（含 caret）。
     // **原樣往上丟** —— 我們不改寫也不簡化，那是使用者要據以修正的東西。
-    throw new NotConnectedError(body.error ?? `${path} 回了 HTTP ${response.status}`);
+    throw new NotConnectedError(body.error ?? t("{path} returned HTTP {status}", { path, status: response.status }));
   }
   return body;
 }
@@ -115,14 +116,14 @@ interface IndexResponse {
  */
 async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<string[]> {
   for (;;) {
-    if (signal?.aborted) throw new NotConnectedError("已取消");
+    if (signal?.aborted) throw new NotConnectedError(t("Cancelled"));
     const progress = await getJson<{
       stage: string;
       error: string | null;
       auto_decode?: string[];
     }>(`/api/${sid}/progress`);
     if (progress.stage === "error") {
-      throw new NotConnectedError(progress.error ?? "解剖失敗，原因不明");
+      throw new NotConnectedError(progress.error ?? t("Dissection failed; reason unknown"));
     }
     // **等到 done 為止。** 解剖跑完後若 probe 調整過解碼方式，後端會用新
     // 參數重建封包清單並把 stage 退回 `index` —— 在那之前就去取，拿到的
@@ -144,7 +145,7 @@ export function apiSource(sid: string | null): DataSource {
   function need(): string {
     if (!sid) {
       throw new NotConnectedError(
-        "沒有工作階段 —— 網址裡缺 sid，或這一頁不是由 telcoladder serve 送出的。",
+        t("No session - the URL has no sid, or this page was not served by telcoladder serve."),
       );
     }
     return sid;
@@ -168,10 +169,10 @@ export function apiSource(sid: string | null): DataSource {
   }
 
   return {
-    label: sid ? `工作階段 ${sid.slice(0, 8)}…` : "（無工作階段）",
+    label: sid ? t("Session {sid}…", { sid: sid.slice(0, 8) }) : t("(no session)"),
 
     notice:
-      "整個介面已接上真實資料。矩陣裡標成「Uncaptured / N/A」的欄位是這份擷取檔裡真的沒觀測到，不是還沒接 —— 每一格看得到的值都附有出處（哪一則訊息、第幾格）。",
+      "Everything on this page is real data. Matrix cells marked 'Uncaptured / N/A' were genuinely not observed in this capture, not left unwired - every value you can see cites where it came from (which message, which frame).",
 
     async load(): Promise<Dataset> {
       const autoDecode = await waitForAnalysis(need());

@@ -8,6 +8,8 @@ SIP / Diameter / GTP —— Phase 2 只會新增 adapter 與新的 `IdKind` 成�
 
 from __future__ import annotations
 
+from telcoladder.i18n import _
+
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -127,7 +129,7 @@ IdKey = tuple[IdKind, str]
 #: 若沒有一併接到梯形圖，這個鍵就會變成「寫了沒人讀」—— 引擎照算，而使用者
 #: 再也看不到歸戶的依據。由 test_carrier_polymorphism 的
 #: test_the_ladder_says_where_a_borrowed_identity_came_from 釘住。
-IDENTITY_SOURCE_KEY = "身分來源"
+IDENTITY_SOURCE_KEY = "identity_source"
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,4 +257,4 @@ class Flow:
                 # 範圍前綴（`<SMF 位址>/<ref>`）對讀的人是雜訊，只留 ref。
                 value = str(by_kind[kind]).rpartition("/")[2]
                 return f"PDU session {value}"
-        return "未識別的流程"
+        return _('Unidentified flow')
