@@ -143,7 +143,25 @@ telcoladder analyze capture.pcapng --no-frames         # drop packet numbers
 ```
 
 The diagram goes to stdout and the summary to stderr, so
-`telcoladder analyze x.pcapng > flow.mmd` gives you a clean file. GitHub, GitLab,
+`telcoladder analyze x.pcapng > flow.mmd` gives you a clean file.
+
+### Language
+
+Everything the tool says — `--help`, the analysis summary, error messages, the
+browser interface — is English by default and available in Traditional Chinese:
+
+```bash
+telcoladder analyze capture.pcapng --lang zh_TW
+export TELCOLADDER_LANG=zh_TW                    # or set it once
+```
+
+In the browser there is an **EN / 中文** switch in the header; the choice is
+remembered per browser. The tool deliberately ignores the system locale and the
+browser's `Accept-Language`: the same command on two machines should print the
+same words, because the output gets pasted into tickets.
+
+The Mermaid diagram itself is language-independent — cause names are the spec's
+own English, and clause citations are clause citations. GitHub, GitLab,
 Obsidian and Notion render Mermaid inline, so the `.mmd` pastes straight into an
 issue or an RCA document; `telcoladder serve` shows it rendered right now.
 

@@ -108,17 +108,32 @@ child process and is skipped on Windows.
 
 ## Language
 
+Everything a user sees is **English by default, with a Traditional Chinese
+translation**: `--help`, the CLI's runtime summaries, API error strings, the
+landing page, and the browser interface. `--lang zh_TW`, `TELCOLADDER_LANG`,
+or the EN / 中文 switch in the browser header select it.
+
 `CLAUDE.md` and `docs/plugin-contract.md` are in Traditional Chinese — they are
-the maintainer's working notes and the place where design decisions are
-recorded with their reasons. `README.md`, this file and `--help` are in English.
+the maintainer's working notes and the place where design decisions are recorded
+with their reasons. Issues and pull requests in either language are fine.
 
-**Two user-facing surfaces are still Chinese**: the runtime summaries `analyze`
-prints (coverage, auto-decode, ciphered-NAS warnings) and the browser interface.
-That is a known inconsistency, not a choice — see `T-I18N` in `TODOS.md`. If it
-is the thing stopping you from using the tool, say so in an issue; that is the
-signal that would move it up the list.
+### Adding or changing a user-facing string
 
-Issues and pull requests in either language are fine.
+- **Python**: write the English text inside `_()` from `telcoladder.i18n`, and
+  add the Chinese to `telcoladder/translations/zh_tw.py`. Use `str.format`
+  placeholders (`_("Written to {path}").format(path=...)`) — **never an
+  f-string inside `_()`**, it expands before the lookup and the key never
+  matches. Never reuse `_` as a throw-away variable in a module that imports it
+  (`sid, _, action = ...` silently replaces the translation function with a
+  string). `tests/test_i18n.py` enforces all of this.
+- **Frontend**: write the English text inside `t()` from `web/src/i18n.ts`, add
+  the Chinese to the `zh_TW` table in the same file, and call `useLang()` in any
+  component that renders `t()` so a language switch re-renders it.
+  `tests/test_web_assets.py` enforces the catalog and rejects Chinese literals
+  outside the table.
+- Cause explanations (`plain`, `common_causes` in `data/causes/*.yaml`) are
+  **content**, not interface strings, and are currently Chinese — see
+  "Adding a cause code" above.
 
 ## Reporting a vulnerability
 
