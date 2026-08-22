@@ -230,7 +230,7 @@ def test_delete_refuses_a_file_without_the_session_prefix() -> None:
     victim.write_bytes(b"x")
     try:
         bogus = Session(sid="x", pcap=victim, display_name="x", owns_file=True)
-        with pytest.raises(RuntimeError, match="拒絕動它"):
+        with pytest.raises(RuntimeError, match="Refusing to delete"):
             session_mod._delete_if_ours(bogus)
         assert victim.exists()
     finally:
@@ -247,7 +247,7 @@ def test_delete_guard_is_a_prefix_check_not_a_substring_check() -> None:
     victim.write_bytes(b"x")
     try:
         bogus = Session(sid="x", pcap=victim, display_name="x", owns_file=True)
-        with pytest.raises(RuntimeError, match="拒絕動它"):
+        with pytest.raises(RuntimeError, match="Refusing to delete"):
             session_mod._delete_if_ours(bogus)
         assert victim.exists(), "子字串比對讓使用者的檔案被刪掉了"
     finally:

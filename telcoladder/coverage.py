@@ -42,6 +42,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.packets import total_packets
 from telcoladder.tshark import Tshark, TsharkNotFound, find_tshark
 
@@ -303,36 +304,28 @@ def describe(coverage: Coverage) -> list[str]:
 
     pct = round((1 - coverage.ratio) * 100)
     lines = [
-        f"ℹ 這份擷取檔共 {coverage.total} 格，我解讀了 {coverage.parsed} 格，"
-        f"其餘 {missed} 格（{pct}%）不在支援的協定裡。"
+        _("ℹ This capture has {total} frames; I decoded {parsed}. The other {missed} ({pct}%) are not in a supported protocol.").format(total=coverage.total, parsed=coverage.parsed, missed=missed, pct=pct)
     ]
 
     for conv in coverage.unclaimed[:3]:
         if conv.protocol == "data":
-            where = f"（TCP 埠 {conv.port}）" if conv.port else ""
+            where = _(" (TCP port {port})").format(port=conv.port) if conv.port else ""
             lines.append(
-                f"  · {conv.frames} 格是 tshark 也認不出來的 TCP 載荷{where}。"
+                _("  · {frames} frames are TCP payload that tshark could not identify either{where}.").format(frames=conv.frames, where=where)
             )
             if hint := conv.decode_as_hint():
                 lines.append(
-                    f"    若那是 SBI，試： telcoladder analyze <檔> {hint}"
+                    _("    If that is SBI, try: telcoladder analyze <file> {hint}").format(hint=hint)
                 )
             elif conv.already_decoded:
                 lines.append(
-                    "    那個埠已經被要求解成 HTTP/2 了，仍然讀不出來 —— "
-                    "通常代表**擷取起點晚於 TCP 連線建立**，tshark 沒看到 "
-                    "HTTP/2 的標頭表就無法重組。加 --decode-as 沒有用，"
-                    "要改的是擷取方式（在連線建立前就開始抓）。"
+                    _("    That port is already being decoded as HTTP/2 and still cannot be read - usually the capture started **after the TCP connection was established**, so tshark never saw the HTTP/2 header table and cannot reassemble. --decode-as will not help; change how you capture (start before the connection comes up).")
                 )
         else:
-            lines.append(f"  · {conv.frames} 格是 {conv.protocol}。")
+            lines.append(_("  · {frames} frames are {protocol}.").format(frames=conv.frames, protocol=conv.protocol))
 
     if coverage.looks_n2_only:
         lines.append(
-            "  · 判定出來的網元只有 "
-            + "、".join(sorted(coverage.roles_found))
-            + " —— 這可能是 N2-only 的擷取（SMF/UPF 需要 N4 的 PFCP 或 SBI 流量），"
-            "也可能是上面那些未解碼的載荷其實就是 SBI。兩者的處置不同：前者要換擷取點，"
-            "後者加 --decode-as 就看得到。"
+            _("  · The only network functions identified are {roles} - this may be an N2-only capture (SMF/UPF need N4 PFCP or SBI traffic), or the undecoded payload above may actually be SBI. The two call for different action: the first means a different capture point, the second means --decode-as.").format(roles=_(", ").join(sorted(coverage.roles_found)))
         )
     return lines

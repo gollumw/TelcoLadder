@@ -56,6 +56,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.tshark import Tshark, find_tshark
 
 #: 可能帶著訂戶識別碼的欄位。**每一個都要在執行期驗證存在**：
@@ -136,9 +137,9 @@ class TimeWindow:
 
     def __post_init__(self) -> None:
         if self.since is not None and self.since < 0:
-            raise PrefilterError("起始秒數不能是負的")
+            raise PrefilterError(_("The start offset cannot be negative"))
         if self.since is not None and self.until is not None and self.until < self.since:
-            raise PrefilterError(f"時間範圍反了：{self.since} > {self.until}")
+            raise PrefilterError(_("Time range is reversed: {since} > {until}").format(since=self.since, until=self.until))
 
     def is_empty(self) -> bool:
         return self.since is None and self.until is None
@@ -179,18 +180,14 @@ class Narrowing:
     def describe(self) -> list[str]:
         if not self.found():
             return [
-                f"擷取檔裡找不到 {self.value} —— 沒有收窄，照全檔分析。"
-                "（識別碼可能根本不在這份擷取裡，也可能它只出現在加密的訊息內。）"
+                _("{value} not found in the capture - no narrowing; analysing the whole file. (The identifier may not be in this capture at all, or it may only appear inside ciphered messages.)").format(value=self.value)
             ]
         lines = [
-            f"{self.value}：{self.direct_frames} 格直接帶著它，"
-            f"已擴展到它所在的 {len(self.tcp_streams)} 條 TCP 串流"
-            f"與 {len(self.sctp_assocs)} 個 SCTP association。"
+            _("{value}: {direct} frames carry it directly; expanded to the {tcp} TCP streams and {sctp} SCTP associations they belong to.").format(value=self.value, direct=self.direct_frames, tcp=len(self.tcp_streams), sctp=len(self.sctp_assocs))
         ]
         for what, frames in self.excluded:
             lines.append(
-                f"**{frames} 格的 {what} 沒有納入** —— 那條路上從未出現這個識別碼，"
-                "沒有任何欄位可以把它接上。要看那半邊就不要用識別碼收窄。"
+                _("**{frames} frames of {what} were left out** - that transport never carried this identifier and no field can tie it in. To see that side, do not narrow by identifier.").format(frames=frames, what=what)
             )
         return lines
 
@@ -225,7 +222,7 @@ def narrow_to_identity(
     """
     if not _DIGITS.match(value):
         raise PrefilterError(
-            f"識別碼要是 5–20 位數字（IMSI 15 碼、MSISDN 依國碼），收到：{value!r}"
+            _("The identifier must be 5–20 digits (IMSI is 15; MSISDN depends on the country code); got {value!r}").format(value=value)
         )
     tshark = tshark or find_tshark()
 
@@ -261,7 +258,7 @@ def narrow_to_identity(
             value=value,
             direct_frames=direct,
             expanded_filter="",
-            excluded=(("（對話數過多，未收窄）", len(tcp) + len(sctp)),),
+            excluded=((_("(too many conversations; not narrowed)"), len(tcp) + len(sctp)),),
         )
 
     expanded = " || ".join(

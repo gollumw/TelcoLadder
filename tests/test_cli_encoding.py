@@ -42,10 +42,10 @@ def _require_tshark():
         pytest.skip("本機沒有 tshark")
 
 
-def _run(args: list[str], codepage: str) -> subprocess.CompletedProcess[bytes]:
+def _run(args: list[str], codepage: str, *, lang: str = "en") -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [sys.executable, "-m", "telcoladder", *args],
-        env={**os.environ, "PYTHONIOENCODING": codepage},
+        env={**os.environ, "PYTHONIOENCODING": codepage, "TELCOLADDER_LANG": lang},
         capture_output=True,  # bytes，刻意不解碼
     )
 
@@ -70,7 +70,9 @@ def test_analyze_warning_survives_a_non_utf8_console(codepage):
     「圖上看起來正常，但你可能正在看一個失敗的流程」。變成 `\\u26a0`
     加一串 `\\uXXXX` 的話，這個警告等於沒有發出。
     """
-    proc = _run(["analyze", str(FIXTURES / "unknown-dnn" / "capture.pcap")], codepage)
+    # 跑 zh_TW：中文整行都編不出 cp1252，是比 ⚠ 更嚴的案例。預設英文那條路
+    # 只剩 ⚠ 與破折號是非 ASCII，由下一條測試另外守。
+    proc = _run(["analyze", str(FIXTURES / "unknown-dnn" / "capture.pcap")], codepage, lang="zh_TW")
     assert proc.returncode == 0
     stderr = proc.stderr.decode("utf-8")
     assert "⚠" in stderr

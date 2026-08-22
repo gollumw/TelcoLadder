@@ -100,9 +100,9 @@ def test_never_suggests_a_decode_as_that_is_already_in_effect():
     assert data.decode_as_hint() is None
 
     text = "\n".join(describe(cov))
-    assert "--decode-as" not in text.split("加 --decode-as 沒有用")[0], \
+    assert "--decode-as" not in text.split("--decode-as will not help")[0], \
         "在說明它沒有用之前就先建議了它"
-    assert "擷取起點晚於" in text
+    assert "after the TCP connection was established" in text
 
 
 def test_suggests_decode_as_when_the_port_is_genuinely_unhandled():
@@ -151,7 +151,7 @@ def test_n2_only_diagnosis_admits_the_other_explanation():
     assert cov.looks_n2_only
     text = "\n".join(describe(cov))
     assert "N2-only" in text
-    assert "也可能是" in text, "沒有承認另一種解釋"
+    assert "or the undecoded payload above may actually be SBI" in text, "沒有承認另一種解釋"
 
 
 def test_full_role_set_is_not_called_n2_only():

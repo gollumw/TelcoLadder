@@ -55,9 +55,9 @@ def test_time_window_becomes_a_filter():
 
 def test_a_backwards_window_is_rejected_at_construction():
     """錯的範圍要在最前面就擋掉，不要讓它跑完一整趟才回一張空圖。"""
-    with pytest.raises(PrefilterError, match="反了"):
+    with pytest.raises(PrefilterError, match="reversed"):
         TimeWindow(100, 50)
-    with pytest.raises(PrefilterError, match="負"):
+    with pytest.raises(PrefilterError, match="negative"):
         TimeWindow(-1, 5)
 
 
@@ -156,7 +156,7 @@ def test_the_excluded_transports_are_named(multi_imsi_pcap: Path):
     )
     said = " ".join(narrowing.describe())
     assert "NGAP" in said, "N2 那半邊接不上是這個功能最重要的限制，一定要講"
-    assert "不要用識別碼收窄" in said, "要告訴使用者怎麼看到那半邊"
+    assert "do not narrow by identifier" in said, "要告訴使用者怎麼看到那半邊"
 
 
 def test_narrowing_expands_beyond_the_literal_matches(multi_imsi_pcap: Path):
@@ -182,7 +182,7 @@ def test_an_absent_identifier_does_not_narrow(multi_imsi_pcap: Path):
     """
     narrowing = narrow_to_identity(multi_imsi_pcap, "999999999999999")
     assert not narrowing.found()
-    assert "找不到" in " ".join(narrowing.describe())
+    assert "not found" in " ".join(narrowing.describe())
 
     result = analyse(
         multi_imsi_pcap,
@@ -193,7 +193,7 @@ def test_an_absent_identifier_does_not_narrow(multi_imsi_pcap: Path):
 
 
 def test_a_non_numeric_identifier_is_rejected():
-    with pytest.raises(PrefilterError, match="數字"):
+    with pytest.raises(PrefilterError, match="digits"):
         narrow_to_identity(Path("/nonexistent.pcap"), "not-an-imsi")
 
 

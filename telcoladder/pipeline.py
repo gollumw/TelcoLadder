@@ -35,6 +35,7 @@ from telcoladder.coverage import Coverage, measure
 from telcoladder.extract import read_frames
 from telcoladder.model import Flow, Message
 from telcoladder.nf import apply_roles
+from telcoladder.i18n import _
 from telcoladder.prefilter import Narrowing, TimeWindow, combine, narrow_to_identity
 from telcoladder.probe import CaptureShape, inspect
 from telcoladder.slicer import SliceError, discard, slice_capture
@@ -95,14 +96,14 @@ class PrefilterReport:
     def describe(self) -> list[str]:
         lines: list[str] = []
         if not self.window.is_empty():
-            since = "檔案開頭" if self.window.since is None else f"{self.window.since}s"
-            until = "檔案結尾" if self.window.until is None else f"{self.window.until}s"
-            how = "已先用 editcap 切出這一段再分析" if self.sliced else "以 display filter 過濾"
-            lines.append(f"時間範圍 {since} – {until}（{how}）。")
+            since = _("start of file") if self.window.since is None else f"{self.window.since}s"
+            until = _("end of file") if self.window.until is None else f"{self.window.until}s"
+            how = _("sliced out with editcap first") if self.sliced else _("filtered with a display filter")
+            lines.append(_("Time range {since} – {until} ({how}).").format(since=since, until=until, how=how))
         if self.slice_note:
             lines.append(self.slice_note)
         if self.display_filter:
-            lines.append(f"另外套用了你給的 filter：{self.display_filter}")
+            lines.append(_("Your display filter was applied as well: {filter}").format(filter=self.display_filter))
         if self.narrowing is not None:
             lines.extend(self.narrowing.describe())
         return lines
@@ -136,21 +137,17 @@ class AutoDecode:
         lines: list[str] = []
         if self.relaxed_seq:
             lines.append(
-                f"這份擷取檔有 {self.synthetic_directions} 個傳輸方向的 TCP 序號"
-                "從頭到尾沒有前進過 —— 那是網元匯出的 trace，不是線路側錄。"
-                "tshark 會把那些封包當成重傳而略過，已關閉序號分析重跑。"
+                _("{n} transport directions in this capture have TCP sequence numbers that never advance - this is a trace exported by a network element, not a wire capture. tshark would treat those packets as retransmissions and skip them; sequence analysis was disabled and the capture re-read.").format(n=self.synthetic_directions)
             )
         if self.decode_as:
             ports = ", ".join(
                 rule.split("==")[1].split(",")[0] for rule in self.decode_as
             )
             lines.append(
-                f"TCP 埠 {ports} 上有沒被任何 dissector 認領的載荷，"
-                "試著解成 HTTP/2 之後讀得出 SBI 訊息，已納入。"
+                _("TCP port(s) {ports} carry payload no dissector claimed; decoding as HTTP/2 yields SBI messages, so it was included.").format(ports=ports)
             )
         lines.append(
-            f"訊息數 {self.messages_before} → {self.messages_after}。"
-            "不想要這個行為就加 --no-auto-decode。"
+            _("Message count {before} → {after}. Add --no-auto-decode to turn this off.").format(before=self.messages_before, after=self.messages_after)
         )
         return lines
 
@@ -302,13 +299,12 @@ def analyse(
             sliced = slice_capture(pcap, prefilter.window)
             if sliced is None:
                 slice_note = (
-                    "找不到 editcap（Wireshark 隨附），改用 display filter 過濾 —— "
-                    "答案一樣，只是 tshark 仍要讀完整個檔。"
+                    _("editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.")
                 )
         except SliceError as exc:
             # 切片失敗**不能讓整個分析失敗** —— 它只是加速手段，
             # 退回 display filter 得到的答案完全相同。
-            slice_note = f"切片沒成功（{exc}），改用 display filter 過濾。"
+            slice_note = _("Slicing failed ({error}); filtering with a display filter instead.").format(error=exc)
 
     try:
         return _analyse_within(

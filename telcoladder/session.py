@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telcoladder.i18n import _
 from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache
 from telcoladder.decodeas import load_user_rules
@@ -360,7 +361,7 @@ class SessionStore:
             try:
                 self.sweep()
             except Exception as exc:  # noqa: BLE001 —— 見 _ensure_reaper 的說明
-                print(f"  工作階段回收失敗：{exc}", flush=True)
+                print(_("  Session reaper failed: {error}").format(error=exc), flush=True)
 
 
 # ── 索引 worker ───────────────────────────────────────────────────────
@@ -393,7 +394,7 @@ def start_index(session: Session, *, on_done=None) -> threading.Thread:
                 try:
                     on_done(session)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"  索引後續處理失敗：{exc}", flush=True)
+                    print(_("  Post-index processing failed: {error}").format(error=exc), flush=True)
 
     thread = threading.Thread(
         target=run, name=f"telcoladder-index-{session.sid[:8]}", daemon=True
@@ -536,7 +537,7 @@ def _delete_if_ours(session: Session) -> None:
     # 它自己不能有洞。
     if not session.pcap.name.startswith(SESSION_PREFIX):
         raise RuntimeError(
-            f"要刪的檔案沒有工作階段前綴，拒絕動它：{session.pcap}"
+            _("Refusing to delete a file without the session prefix: {path}").format(path=session.pcap)
         )
     _unlink_with_retry(session.pcap)
 
@@ -557,9 +558,9 @@ def _unlink_with_retry(path: Path, attempts: int = 5) -> None:
                 break
             time.sleep(0.05 * (attempt + 1))
         except OSError as exc:
-            print(f"  刪不掉暫存檔 {path}：{exc}", flush=True)
+            print(_("  Could not delete temp file {path}: {error}").format(path=path, error=exc), flush=True)
             return
-    print(f"  刪不掉暫存檔，請自行刪除：{path}", flush=True)
+    print(_("  Could not delete temp file; please remove it yourself: {path}").format(path=path), flush=True)
 
 
 def make_session_file() -> tuple[int, Path]:
