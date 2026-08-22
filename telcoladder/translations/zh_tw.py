@@ -313,4 +313,58 @@ CATALOG: dict[str, str] = {
         '列舉 {group} 的 entry point 失敗（{error}）—— 外掛提供的協定這次不會被載入，內建協定不受影響。',
     'Plugin {name!r} (group {group}, from {value}) failed to load: {error}\nThe protocol it provides will not be parsed at all. Fix it or remove the package - ignoring it would make results look merely "shorter" rather than failing.':
         '外掛 {name!r}（group {group}，來自 {value}）載入失敗：{error}\n這個外掛提供的協定將完全無法解析。請修好它，或移除該套件 —— 忽略它會讓分析結果看起來只是「比較短」，而不是報錯。',
+
+    # ── summary：給 agent 讀的診斷摘要（2026-08-23）────────────────────────
+    "Signalling summary: {source}": "信令摘要：{source}",
+    "Frames: {decoded} decoded of {total}; {messages} messages in {flows} flows; protocols: {protocols}.":
+        "封包：{total} 格中解出 {decoded} 格；{messages} 則訊息、{flows} 條流程；協定：{protocols}。",
+    "(total unknown)": "（總數未知）",
+    "Signalling span: {span}s from the first to the last decoded message.":
+        "信令跨度：第一則到最後一則解出的訊息相隔 {span} 秒。",
+    "First message at {iso} (UTC).": "第一則訊息於 {iso}（UTC）。",
+    "No absolute timestamps in this capture.": "這份擷取檔沒有絕對時間戳。",
+    "Not visible to this tool": "這個工具看不見的",
+    "{n} NAS messages are ciphered; their contents (including any reject) cannot be read.":
+        "{n} 則 NAS 訊息已加密，內容（包括任何 reject）讀不出來。",
+    "{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.":
+        "{n} 個 SUCI 受 ECIES 保護，那些訂戶的 SUPI 從線路上還原不出來。",
+    "{n} of {total} frames were not decoded into any supported protocol.":
+        "{total} 格中有 {n} 格沒有解成任何支援的協定。",
+    "{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.":
+        "{n} 條 HTTP/2 stream 的標頭 tshark 解不出來（HPACK 缺口），上面的訊息看不見。",
+    "Everything decoded; nothing was narrowed or adjusted.": "全部解開了；沒有收窄，也沒有自動調整。",
+    "Network elements": "網元",
+    "Role": "角色",
+    "Address": "位址",
+    "Ports": "埠",
+    "Messages": "訊息數",
+    "(unknown)": "（判不出）",
+    "Subscribers": "訂戶",
+    "Flows": "流程數",
+    "Failures": "失敗",
+    "Other identifiers": "其他識別碼",
+    "PDU sessions": "PDU session",
+    "No subscriber identity could be extracted.": "抽不出任何訂戶身分。",
+    "Identities not linked to a SUPI": "接不到 SUPI 的身分",
+    "Procedures": "程序",
+    "Procedure": "程序",
+    "Outcome": "結局",
+    "Frames": "封包範圍",
+    "Duration": "耗時",
+    "Cause / note": "cause／但書",
+    "No procedure could be segmented (no NAS/NGAP opener seen).": "切不出任何程序（沒看到 NAS／NGAP 的開段訊息）。",
+    "No failure message in this capture. That does not prove success - see the section above for what could not be read.":
+        "這份擷取檔沒有失敗訊息。這不證明成功 —— 看不見的東西列在上一節。",
+    "Causes across the capture": "整份擷取檔的 cause 彙總",
+    "Cause": "cause",
+    "Count": "次數",
+    "SUPIs": "SUPI",
+    "recovered after {n} failure(s)": "中途 {n} 次失敗後成功",
+    "(explained above)": "（說明見上）",
+    # ── cli：summarize ──────────────────────────────────────────────────
+    "One-page diagnostic summary for an AI agent or a ticket: what the capture contains, what could not be read, network elements, subscribers, procedures, every failure with its 3GPP cause reference":
+        "一頁診斷摘要，給 AI agent 或工單用：擷取檔裡有什麼、看不見什麼、網元、訂戶、程序、每一個失敗與它的 3GPP cause 出處",
+    "write the summary here (default: stdout)": "摘要寫入檔案（預設印到 stdout）",
+    "Emit JSON instead of Markdown. Same facts, stable field set; summary_version changes only on breaking changes. Byte-for-byte reproducible for the same capture.":
+        "輸出 JSON 而不是 Markdown。同一組事實、固定的欄位集合；summary_version 只在破壞性變更時遞增。同一份擷取檔的輸出逐位元組可重現。",
 }

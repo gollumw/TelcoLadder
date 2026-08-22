@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from telcoladder.pipeline import Prefilter, analyse
 from telcoladder.prefilter import PrefilterError, TimeWindow
 from telcoladder.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
 from telcoladder.session import IDLE_TTL
+from telcoladder import summary as summary_mod
 from telcoladder.web import DEFAULT_HOST, DEFAULT_PORT, serve
 from telcoladder.tshark import TsharkNotFound, find_tshark
 
@@ -63,20 +65,16 @@ def _missing_dissectors(tshark) -> list[str]:
     return [name for name in required if name not in available]
 
 
-def _cmd_analyze(args: argparse.Namespace) -> int:
-    if args.no_ue_lifeline and not args.flow:
-        # 靜默忽略一個使用者明確給的旗標是不可以的（Rule 12）——
-        # 線路視圖本來就把 NAS 畫在實際封包端點上，這個旗標無事可做。
-        print(
-            _("Note: --no-ue-lifeline has no effect in the default wire view (NAS is already drawn at the actual packet endpoints). It is meant for --flow."),
-            file=sys.stderr,
-        )
+def _guarded_analyse(args: argparse.Namespace, **kwargs):
+    """跑 `analyse()` 並把例外翻成人話與結束碼。回傳 Analysis，或失敗時的結束碼。
+
+    `analyze` 與 `summarize` 共用 —— 收窄選項與錯誤處理只能有一份，兩份的症狀
+    是同一個壞掉的 `--since` 在一邊報錯、另一邊靜默吃掉。
+    """
     try:
-        result = analyse(
+        return analyse(
             args.pcap,
             decode_as=args.decode_as or (),
-            nas_from_ue=not args.no_ue_lifeline,
-            wire=not args.flow,
             auto_decode=not args.no_auto_decode,
             prefilter=Prefilter(
                 window=TimeWindow(args.since, args.until),
@@ -84,6 +82,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
                 display_filter=args.filter or "",
                 slice_first=not args.no_slice,
             ),
+            **kwargs,
         )
     except PrefilterError as exc:
         # 使用者給的條件本身有問題 —— 錯在輸入不在擷取檔，訊息要指向輸入。
@@ -92,6 +91,38 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     except (ExtractError, TsharkNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+
+
+def _cmd_summarize(args: argparse.Namespace) -> int:
+    """一頁診斷摘要。**空結果也照樣輸出**：「0 格解出、N 格沒解」本身就是
+    agent 要的答案，比結束碼 1 有用 —— 它會把「看不見什麼」那一節一起帶走。"""
+    result = _guarded_analyse(args)
+    if isinstance(result, int):
+        return result
+    doc = summary_mod.build(result, source_name=args.pcap.name)
+    text = (
+        json.dumps(doc, ensure_ascii=False, indent=2) + "\n" if args.json
+        else summary_mod.render_markdown(doc)
+    )
+    if args.output:
+        args.output.write_text(text, encoding="utf-8")
+        print(_("Written to {path}").format(path=args.output), file=sys.stderr)
+    else:
+        print(text, end="")
+    return 0
+
+
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    if args.no_ue_lifeline and not args.flow:
+        # 靜默忽略一個使用者明確給的旗標是不可以的（Rule 12）——
+        # 線路視圖本來就把 NAS 畫在實際封包端點上，這個旗標無事可做。
+        print(
+            _("Note: --no-ue-lifeline has no effect in the default wire view (NAS is already drawn at the actual packet endpoints). It is meant for --flow."),
+            file=sys.stderr,
+        )
+    result = _guarded_analyse(args, nas_from_ue=not args.no_ue_lifeline, wire=not args.flow)
+    if isinstance(result, int):
+        return result
 
     flows, ciphered = result.flows, result.ciphered
     if not flows:
@@ -172,6 +203,42 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     )
 
 
+def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
+    """`analyze` 與 `summarize` 共用的解碼與收窄選項。一份定義，兩個子指令。"""
+    parser.add_argument(
+        "--decode-as", action="append", metavar=_("RULE"),
+        help=_("Force a port to decode as a protocol, e.g. tcp.port==5062,sip. Needed when signalling runs on non-standard ports - tshark's heuristics change between versions. Repeatable."),
+    )
+    narrow = parser.add_argument_group(
+        _("Narrowing the capture first (much faster on large files)"),
+        _("A time range is the only condition that pushes straight down to the packet layer. A subscriber identifier expands in two steps, because most packets carry no identifier at all (ciphered NAS, already-registered UEs) and filtering on it directly would drop the whole N2 interface. The tool tells you which traffic was left out."),
+    )
+    narrow.add_argument(
+        "--since", type=float, metavar=_("SECONDS"),
+        help=_("Only packets from this many seconds after the first frame (relative time)"),
+    )
+    narrow.add_argument(
+        "--until", type=float, metavar=_("SECONDS"),
+        help=_("Only packets up to this many seconds after the first frame"),
+    )
+    narrow.add_argument(
+        "--subscriber", metavar="IMSI",
+        help=_("Only this subscriber (IMSI / MSISDN, digits only). Finds the packets that carry it directly, then expands to the TCP streams and SCTP associations those packets belong to. Transports it could not reach are listed explicitly - never silently dropped."),
+    )
+    narrow.add_argument(
+        "--filter", metavar=_("EXPR"),
+        help=_("A tshark display filter applied as-is, e.g. 'ngap || http2' or 'ip.addr==10.1.2.3'. Not validated - you know better than we do what you are looking for."),
+    )
+    narrow.add_argument(
+        "--no-slice", action="store_true",
+        help=_("With a time range, do not pre-slice with editcap. Slicing is the default: -Y only saves dissection, tshark still reads the whole file; slicing saves the read. The slice is a temp file, deleted afterwards."),
+    )
+    parser.add_argument(
+        "--no-auto-decode", action="store_true",
+        help=_("Do not probe the capture's shape first. By default one pass detects network-element traces (synthetic TCP sequence numbers) and unclaimed TCP ports, reruns with adjusted settings, and keeps the result only if the message count actually went up - saying so in the summary. Skipping it saves one pass; the cost is that an element trace decodes as NGAP only."),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     # `--lang` 掛在一個 parent 上，主指令與每個子指令都收 —— 使用者寫在
     # 子指令後面（`analyze x.pcap --lang zh_TW`）也要能用。真正生效的時機在
@@ -204,10 +271,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=_("Messages per flow before the diagram is truncated; truncation is stated inside the diagram (default {n})").format(n=DEFAULT_MAX_MESSAGES),
     )
     analyze.add_argument(
-        "--decode-as", action="append", metavar=_("RULE"),
-        help=_("Force a port to decode as a protocol, e.g. tcp.port==5062,sip. Needed when signalling runs on non-standard ports - tshark's heuristics change between versions. Repeatable."),
-    )
-    analyze.add_argument(
         "--no-frames", action="store_true", help=_("Omit frame numbers from the arrows")
     )
     analyze.add_argument(
@@ -218,35 +281,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-ue-lifeline", action="store_true",
         help=_("(with --flow) Draw NAS gNB<->AMF as captured instead of UE<->AMF"),
     )
-    narrow = analyze.add_argument_group(
-        _("Narrowing the capture first (much faster on large files)"),
-        _("A time range is the only condition that pushes straight down to the packet layer. A subscriber identifier expands in two steps, because most packets carry no identifier at all (ciphered NAS, already-registered UEs) and filtering on it directly would drop the whole N2 interface. The tool tells you which traffic was left out."),
-    )
-    narrow.add_argument(
-        "--since", type=float, metavar=_("SECONDS"),
-        help=_("Only packets from this many seconds after the first frame (relative time)"),
-    )
-    narrow.add_argument(
-        "--until", type=float, metavar=_("SECONDS"),
-        help=_("Only packets up to this many seconds after the first frame"),
-    )
-    narrow.add_argument(
-        "--subscriber", metavar="IMSI",
-        help=_("Only this subscriber (IMSI / MSISDN, digits only). Finds the packets that carry it directly, then expands to the TCP streams and SCTP associations those packets belong to. Transports it could not reach are listed explicitly - never silently dropped."),
-    )
-    narrow.add_argument(
-        "--filter", metavar=_("EXPR"),
-        help=_("A tshark display filter applied as-is, e.g. 'ngap || http2' or 'ip.addr==10.1.2.3'. Not validated - you know better than we do what you are looking for."),
-    )
-    narrow.add_argument(
-        "--no-slice", action="store_true",
-        help=_("With a time range, do not pre-slice with editcap. Slicing is the default: -Y only saves dissection, tshark still reads the whole file; slicing saves the read. The slice is a temp file, deleted afterwards."),
-    )
-    analyze.add_argument(
-        "--no-auto-decode", action="store_true",
-        help=_("Do not probe the capture's shape first. By default one pass detects network-element traces (synthetic TCP sequence numbers) and unclaimed TCP ports, reruns with adjusted settings, and keeps the result only if the message count actually went up - saying so in the summary. Skipping it saves one pass; the cost is that an element trace decodes as NGAP only."),
-    )
+    _add_analysis_options(analyze)
     analyze.set_defaults(func=_cmd_analyze)
+
+    summarize = sub.add_parser(
+        "summarize",
+        help=_("One-page diagnostic summary for an AI agent or a ticket: what the capture contains, what could not be read, network elements, subscribers, procedures, every failure with its 3GPP cause reference"),
+        parents=[lang_parent],
+    )
+    summarize.add_argument("pcap", type=Path, help=_("pcap / pcapng file"))
+    summarize.add_argument(
+        "-o", "--output", type=Path, help=_("write the summary here (default: stdout)")
+    )
+    summarize.add_argument(
+        "--json", action="store_true",
+        help=_("Emit JSON instead of Markdown. Same facts, stable field set; summary_version changes only on breaking changes. Byte-for-byte reproducible for the same capture."),
+    )
+    _add_analysis_options(summarize)
+    summarize.set_defaults(func=_cmd_summarize)
 
     check = sub.add_parser("check", help=_("Verify that tshark and its dissectors are ready"), parents=[lang_parent])
     check.set_defaults(func=_cmd_check)

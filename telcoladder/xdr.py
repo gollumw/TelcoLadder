@@ -31,7 +31,8 @@ from telcoladder.procedures import Procedure, segment
 XDR_VERSION = 1
 
 
-def _procedure_record(p: Procedure) -> dict:
+def procedure_record(p: Procedure) -> dict:
+    """一段程序的 xDR 列。`summary` 也用同一份 —— 兩邊各寫一次必然漂移。"""
     return {
         "procedure": p.kind,
         "supi": p.supi,
@@ -49,7 +50,7 @@ def _procedure_record(p: Procedure) -> dict:
     }
 
 
-def _cause_rollup(analysis: Analysis) -> list[dict]:
+def cause_rollup(analysis: Analysis) -> list[dict]:
     """跨訂戶的失敗原因彙總 ——「這份擷取檔的 top 失敗原因」。
 
     以**全部**失敗訊息為母體，不只切進程序段的那些：加密或孤兒流程裡的
@@ -85,13 +86,13 @@ def build(analysis: Analysis, *, source_name: str) -> dict:
     return {
         "xdr_version": XDR_VERSION,
         "source": source_name,
-        "procedures": [_procedure_record(p) for p in procedures],
+        "procedures": [procedure_record(p) for p in procedures],
         # **未指派不是丟掉。** 心跳、NGSetup、歸不了戶的 SBI 交換都在這裡 ——
         # 消費端要能對帳:assigned + unassigned == total。
         "messages_total": total,
         "messages_in_procedures": total - unassigned,
         "messages_unassigned": unassigned,
-        "cause_rollup": _cause_rollup(analysis),
+        "cause_rollup": cause_rollup(analysis),
     }
 
 
@@ -101,4 +102,4 @@ def dumps(analysis: Analysis, *, source_name: str) -> str:
                       ensure_ascii=False, indent=2) + "\n"
 
 
-__all__ = ["XDR_VERSION", "build", "dumps"]
+__all__ = ["XDR_VERSION", "build", "cause_rollup", "dumps", "procedure_record"]
