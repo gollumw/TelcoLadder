@@ -194,6 +194,12 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_mcp(_args: argparse.Namespace) -> int:
+    from telcoladder import mcp
+
+    return mcp.serve()
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     return serve(
         host=args.host,
@@ -327,6 +333,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=_("Disable the interactive viewer entirely. The viewer keeps uploaded copies in the temp directory for a while; use this if you do not want that."),
     )
     serve_cmd.set_defaults(func=_cmd_serve)
+
+    mcp_cmd = sub.add_parser(
+        "mcp",
+        help=_("Run as an MCP server on stdin/stdout so an AI agent can call summarize_capture, list_subscribers, get_subscriber_callflow and diagnose_failures as tools. Local only: the client spawns this process; there is no network listener. Register with: claude mcp add telcoladder -- telcoladder mcp"),
+        parents=[lang_parent],
+    )
+    mcp_cmd.set_defaults(func=_cmd_mcp)
 
     return parser
 

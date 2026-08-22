@@ -367,4 +367,8 @@ CATALOG: dict[str, str] = {
     "write the summary here (default: stdout)": "摘要寫入檔案（預設印到 stdout）",
     "Emit JSON instead of Markdown. Same facts, stable field set; summary_version changes only on breaking changes. Byte-for-byte reproducible for the same capture.":
         "輸出 JSON 而不是 Markdown。同一組事實、固定的欄位集合；summary_version 只在破壞性變更時遞增。同一份擷取檔的輸出逐位元組可重現。",
+    "Run as an MCP server on stdin/stdout so an AI agent can call summarize_capture, list_subscribers, get_subscriber_callflow and diagnose_failures as tools. Local only: the client spawns this process; there is no network listener. Register with: claude mcp add telcoladder -- telcoladder mcp":
+        "以 MCP 伺服器模式跑在 stdin/stdout 上，讓 AI agent 把 summarize_capture、list_subscribers、get_subscriber_callflow、diagnose_failures 當工具呼叫。只在本機：由客戶端 spawn 這個行程，沒有任何網路監聽。註冊：claude mcp add telcoladder -- telcoladder mcp",
+    "TelcoLadder MCP server ready on stdio ({n} tools). Diagnostics go to stderr.":
+        "TelcoLadder MCP 伺服器已在 stdio 上就緒（{n} 個工具）。診斷訊息一律走 stderr。",
 }
