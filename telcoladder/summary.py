@@ -137,6 +137,8 @@ def _not_visible(analysis: Analysis) -> dict:
         # 「改擷取方式」是相反的處置；只給一個數字，agent 會建議錯的那一個。
         # （2026-08-23 複審：我自己列的第一個不放心，外部複審 判為可省 —— 不對，
         # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
+        "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
+        "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
         "undecoded_traffic": [
             {
                 "protocol": conv.protocol,
@@ -152,8 +154,6 @@ def _not_visible(analysis: Analysis) -> dict:
             line.strip().lstrip("ℹ·").strip()
             for line in (describe_coverage(coverage) if coverage is not None else ())
         ],
-        "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
-        "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
     }
 
 
@@ -342,9 +342,13 @@ def render_markdown(doc: dict) -> str:
         items.append(_("{n} of {total} frames were not decoded into any supported protocol.").format(n=nv["frames_not_decoded"], total=total))
     if nv["sbi_streams_with_undecoded_headers"]:
         items.append(_("{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.").format(n=nv["sbi_streams_with_undecoded_headers"]))
-    # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過；留下的是
-    # 每個埠的細節與處置（要不要 --decode-as、還是得改擷取方式）。
-    items += nv["coverage_notes"][1:] + nv["narrowed"] + nv["auto_decode"]
+    # 順序與 CLI 相同（cli._cmd_analyze 的三段註解）：收窄 → 自動調整 → 覆蓋率。
+    # **自動調整一定要排在覆蓋率之前。** ne-trace 實測：auto_decode 把埠 7070 解成
+    # HTTP/2（37 → 182 則），而覆蓋率講的是解完之後**剩下的** 36 格「已經在解卻仍
+    # 讀不出來」。兩句反過來排，讀的人會先看到「--decode-as 沒用」再看到
+    # 「decode-as 有用」—— 兩句都對，但順序錯了就像互相矛盾。
+    # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過，略去。
+    items += nv["narrowed"] + nv["auto_decode"] + nv["coverage_notes"][1:]
     out += [f"- {line}" for line in items] or [f'- {_("Everything decoded; nothing was narrowed or adjusted.")}']
 
     # ── 網元 ──

@@ -275,6 +275,23 @@ def test_undecoded_traffic_says_whether_decode_as_would_help(e2e) -> None:
     assert "--decode-as will not help" in md
 
 
+def test_auto_decode_is_told_before_what_is_still_unreadable() -> None:
+    """ne-trace：auto_decode 把埠 7070 解成 HTTP/2（37 → 182），覆蓋率講的是解完
+    之後剩下的 36 格。順序反了會讀成「--decode-as 沒用」再「decode-as 有用」——
+    兩句都對，但像互相矛盾。與 CLI 的三段順序相同：收窄 → 自動調整 → 覆蓋率。
+    """
+    analysis = analyse(FIXTURES / "ne-trace" / "capture.pcap")
+    doc = summary.build(analysis, source_name="x")
+    assert doc["not_visible"]["auto_decode"], "這份 fixture 應該觸發自動調整"
+    md = summary.render_markdown(doc)
+    helped = md.index("yields SBI messages, so it was included")
+    residue = md.index("already being decoded as HTTP/2 and still cannot be read")
+    assert helped < residue
+    # JSON 的鍵序也要一樣 —— 讀 JSON 的 agent 照樣是由上往下讀。
+    keys = list(doc["not_visible"])
+    assert keys.index("auto_decode") < keys.index("coverage_notes")
+
+
 def test_no_coverage_means_empty_lists_not_missing_keys() -> None:
     doc = summary.build(_synthetic(), source_name="x")
     assert doc["not_visible"]["undecoded_traffic"] == []
