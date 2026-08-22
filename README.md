@@ -288,7 +288,8 @@ claude mcp add telcoladder -- telcoladder mcp   # or mount it as tools
 `summarize` is the same analysis as `analyze` and `serve`, written as one page an
 agent can read without hallucinating a state machine: what the capture contains,
 **what could not be read** (ciphered NAS, ECIES-protected SUCIs, frames no
-dissector claimed, narrowing, automatic decode adjustments), the network elements
+dissector claimed — per port, and whether `--decode-as` would help or the capture
+has to be retaken — narrowing, automatic decode adjustments), the network elements
 and their roles, every subscriber with its PDU sessions, every procedure with its
 outcome and duration, and every failure with its 3GPP cause — table, value, name,
 spec and clause, all from the hand-checked table. `--json` gives the same facts

@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 
 from telcoladder import xdr
 from telcoladder.causes import lookup
+from telcoladder.coverage import describe as describe_coverage
 from telcoladder.i18n import _
 from telcoladder.identities import enumerate_identities, find_flows
 from telcoladder.model import Flow, IdClass, IdKind, Message
@@ -130,7 +131,27 @@ def _not_visible(analysis: Analysis) -> dict:
         "ecies_protected_suci": analysis.protected_suci,
         "frames_not_decoded": undecoded,
         "sbi_streams_with_undecoded_headers": len(analysis.sbi_undecoded),
+        # **沒解碼的那些格是什麼、加參數救不救得回來。** 5gc-e2e 的 449 格裡有 212 格
+        # 是埠 7777 的 TCP payload，而那個埠**已經**在解 HTTP/2 了 —— 讀不出來是因為
+        # 擷取起點晚於連線建立，HPACK 標頭表從沒被看到。「加 --decode-as」與
+        # 「改擷取方式」是相反的處置；只給一個數字，agent 會建議錯的那一個。
+        # （2026-08-23 複審：我自己列的第一個不放心，外部複審 判為可省 —— 不對，
+        # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
+        "undecoded_traffic": [
+            {
+                "protocol": conv.protocol,
+                "frames": conv.frames,
+                "port": conv.port,
+                "already_decoded": conv.already_decoded,
+                "decode_as_hint": conv.decode_as_hint(),
+            }
+            for conv in (coverage.unclaimed if coverage is not None else ())
+        ],
         # 下面三組是既有 describe() 的句子 —— 同一件事只有一份措辭。
+        "coverage_notes": [
+            line.strip().lstrip("ℹ·").strip()
+            for line in (describe_coverage(coverage) if coverage is not None else ())
+        ],
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
         "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
     }
@@ -321,7 +342,9 @@ def render_markdown(doc: dict) -> str:
         items.append(_("{n} of {total} frames were not decoded into any supported protocol.").format(n=nv["frames_not_decoded"], total=total))
     if nv["sbi_streams_with_undecoded_headers"]:
         items.append(_("{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.").format(n=nv["sbi_streams_with_undecoded_headers"]))
-    items += nv["narrowed"] + nv["auto_decode"]
+    # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過；留下的是
+    # 每個埠的細節與處置（要不要 --decode-as、還是得改擷取方式）。
+    items += nv["coverage_notes"][1:] + nv["narrowed"] + nv["auto_decode"]
     out += [f"- {line}" for line in items] or [f'- {_("Everything decoded; nothing was narrowed or adjusted.")}']
 
     # ── 網元 ──

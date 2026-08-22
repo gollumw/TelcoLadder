@@ -87,7 +87,8 @@ CAPTURE_FIELDS = {
 }
 NOT_VISIBLE_FIELDS = {
     "ciphered_nas", "ecies_protected_suci", "frames_not_decoded",
-    "sbi_streams_with_undecoded_headers", "narrowed", "auto_decode",
+    "sbi_streams_with_undecoded_headers", "undecoded_traffic", "coverage_notes",
+    "narrowed", "auto_decode",
 }
 
 
@@ -253,6 +254,31 @@ def test_e2e_says_what_it_could_not_read(e2e) -> None:
     assert "6 NAS messages are ciphered" in md
     assert "449 of 626 frames were not decoded" in md
     assert "HPACK gap" in md
+
+
+def test_undecoded_traffic_says_whether_decode_as_would_help(e2e) -> None:
+    """5gc-e2e：449 格沒解碼裡有 212 格是埠 7777，而那個埠**已經**在解 HTTP/2。
+
+    「加 --decode-as」與「改擷取方式」是相反的處置。只給 449 這個數字，agent 會
+    建議錯的那一個 —— 所以每個埠要帶 already_decoded 與 hint（已在解就是 None）。
+    """
+    doc = summary.build(e2e, source_name="x")
+    traffic = doc["not_visible"]["undecoded_traffic"]
+    port_7777 = [c for c in traffic if c["port"] == 7777]
+    assert port_7777, f"沒列出埠 7777：{traffic}"
+    assert port_7777[0]["already_decoded"] is True
+    assert port_7777[0]["decode_as_hint"] is None, "已經在解的埠不該再建議 --decode-as"
+    assert port_7777[0]["frames"] == 212
+    md = summary.render_markdown(doc)
+    assert "7777" in md
+    assert "change how you capture" in md
+    assert "--decode-as will not help" in md
+
+
+def test_no_coverage_means_empty_lists_not_missing_keys() -> None:
+    doc = summary.build(_synthetic(), source_name="x")
+    assert doc["not_visible"]["undecoded_traffic"] == []
+    assert doc["not_visible"]["coverage_notes"] == []
 
 
 def test_narrowing_is_carried_into_the_summary(tmp_path) -> None:
