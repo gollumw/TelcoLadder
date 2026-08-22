@@ -116,12 +116,21 @@ on it.
 - **Speaks English or Traditional Chinese** — `--lang zh_TW`, or the EN / 中文
   switch in the browser. Deliberately not the system locale; see
   [Language](#language).
-- **Two ways to look at it**: `analyze` writes Mermaid — a text file you can
-  version-control, diff, and paste into GitHub — or `serve` opens an
-  interactive browser view of the same capture (packet list with real tshark
-  display filters, per-frame decode tree, the call-flow ladder, a
-  PDU-session correlation matrix). There is no third format — see the note
-  on the retired `--html` report below.
+- **Summarises a capture for an AI agent, or for a ticket** (`summarize`):
+  one page of deterministic facts — frames decoded, **what could not be read**,
+  network elements, subscribers, procedures with outcomes, every failure with
+  its 3GPP cause reference. Markdown or JSON, byte-for-byte reproducible.
+  Nothing in it is generated: unobserved fields are `null`, not estimates.
+- **Runs as an MCP server** (`telcoladder mcp`) so Claude Code, Cursor or any
+  MCP client can call `summarize_capture`, `list_subscribers`,
+  `get_subscriber_callflow` and `diagnose_failures` as tools. Stdio only, no
+  network listener, no extra dependencies.
+- **Three ways to look at it**: `analyze` writes Mermaid — a text file you can
+  version-control, diff, and paste into GitHub; `serve` opens an interactive
+  browser view of the same capture (packet list with real tshark display
+  filters, per-frame decode tree, the call-flow ladder, a PDU-session
+  correlation matrix); `summarize` writes the one-page summary above. There is
+  no rendered report format — see the note on the retired `--html` report below.
 
 ## Install
 
@@ -163,6 +172,8 @@ telcoladder analyze capture.pcapng --flow              # one row per message
 telcoladder analyze capture.pcapng --max-messages 80
 telcoladder analyze capture.pcapng --no-frames         # drop packet numbers
 telcoladder analyze capture.pcapng --xdr flows.json    # procedure records for scripts
+telcoladder summarize capture.pcapng                   # one-page summary (Markdown)
+telcoladder summarize capture.pcapng --json            # same facts as JSON
 ```
 
 On a large capture, narrow it before you draw it:
@@ -266,6 +277,32 @@ the large-capture path works with scripting turned off.
 > could not be read, above everything else — because a clean-looking procedure
 > list is indistinguishable from one where the failure is inside a message we
 > could not open. Not seeing a failure is not the same as there not being one.
+
+### For an AI agent
+
+```bash
+telcoladder summarize capture.pcapng            # paste into the prompt, or into the ticket
+claude mcp add telcoladder -- telcoladder mcp   # or mount it as tools
+```
+
+`summarize` is the same analysis as `analyze` and `serve`, written as one page an
+agent can read without hallucinating a state machine: what the capture contains,
+**what could not be read** (ciphered NAS, ECIES-protected SUCIs, frames no
+dissector claimed, narrowing, automatic decode adjustments), the network elements
+and their roles, every subscriber with its PDU sessions, every procedure with its
+outcome and duration, and every failure with its 3GPP cause — table, value, name,
+spec and clause, all from the hand-checked table. `--json` gives the same facts
+with a pinned field set; both are byte-for-byte reproducible.
+
+The MCP server exposes the same facts as four tools over stdio. It is spawned by
+the client on the same machine and runs `tshark` on the paths it is handed, so
+there is deliberately no HTTP transport. One analysis per file is cached in
+memory for the session; nothing is copied or written to disk.
+
+Two honest gaps: the cause explanations and common root causes in the table are
+currently written in Traditional Chinese only (the spec names and clause numbers
+are language-neutral); and the summary lists only identifiers the adapters
+actually extract — there is no 5G-GUTI/TMSI field, because nothing reads one yet.
 
 ## Where this is going
 
