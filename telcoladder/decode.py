@@ -65,7 +65,39 @@ class DecodeNode:
     """Wireshark 樹上顯示的那行字（PDML 的 `showname`，缺就退回 `name`）。"""
 
     value: str
-    """原始位元組的 hex。空字串代表這個節點沒有對應的位元組。"""
+    """原始位元組的 hex。空字串代表這個節點沒有對應的位元組。
+
+    **這是給 hex 面板用的原始真相，不是給樹用的。** 樹上顯示 hex 曾經是預設
+    行為，但 Wireshark 不那樣做 —— 它的樹只有 `showname`，位元組在下面的
+    hex 面板，選欄位時高亮。我們已經有那個連動（`pos`/`size` → `byteRange`），
+    所以樹上再放一次 hex 只是把 `detail` 這個欄位浪費掉。"""
+
+    detail: str = ""
+    """**解讀後的值**，而且只在它講出 `label` 沒講的事時才有內容。
+
+    PDML 每個欄位有三個屬性，這裡三個都用得到、但用途不同：
+
+    | 屬性 | 例（`json.object`） | 去哪 |
+    |---|---|---|
+    | `showname` | `Object` | → `label` |
+    | `show` | `{"nrLocation":{"tai":…}}` | → **本欄** |
+    | `value` | `7b226e724c6f…` | → `value`（hex 面板） |
+
+    在 `show` 之前，樹上那一列是「`Object` ＋ 一長串 hex」—— 而 hex 解出來
+    就是 `show`。使用者看得到位元組，卻看不到內容。
+
+    判準是三條，都是實測逼出來的（`5gc-e2e` frame 20，210 個節點）：
+
+    1. **不是 `showname` 的子字串** —— 多數欄位的 showname 已經含了值
+       （`Member with value: mcc:001`），再顯示一次是噪音。
+    2. **比 `showname` 長** —— 少了這條會放行一堆「把話換成機器格式」的重複：
+       `RST: Absent → False`、`Reserved bit: Not set → False`、
+       `Header checksum status: Unverified → 2`。它們不是子字串，但也不是新資訊。
+    3. **不是位元組傾印** —— `TCP payload (237 bytes)` 的 `show` 是
+       `00:00:e4:00:…`，那就是 hex 換個分隔符。把它放回樹上等於沒改。
+
+    三條一起，210 個節點命中 9 個、796 字元 —— 而原本無條件送的 hex 是 6,842
+    字元。**更有用而且更小。**"""
 
     pos: int | None = None
     size: int | None = None
@@ -87,6 +119,9 @@ class DecodeNode:
             "value": self.value,
             "children": [c.to_json() for c in self.children],
         }
+        # 多數節點沒有額外的解讀值，省掉那個 key（一棵樹幾百個節點）。
+        if self.detail:
+            payload["detail"] = self.detail
         # 只在有值時才放進去 —— null 與「這個欄位不存在」在前端是同一件事，
         # 但少送兩個 key 讓回應小一些（一棵樹幾百個節點）。
         if self.pos is not None:
@@ -108,12 +143,29 @@ def _int_attr(el: ET.Element, name: str) -> int | None:
         return None
 
 
+#: `show` 本身就是位元組傾印的樣子（`00:00:e4:…`）。把它當「解讀值」放回樹上
+#: 等於沒有移除 hex —— 只是換了個分隔符。
+_BYTE_DUMP = re.compile(r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2})+$")
+
+
+def _adds_information(show: str, label: str) -> bool:
+    """這個解讀值有沒有講出 label 沒講的事。判準與實測數字見 `DecodeNode.detail`。"""
+    if not show or show in label or len(show) <= len(label):
+        return False
+    return not _BYTE_DUMP.match(show)
+
+
 def _node(el: ET.Element) -> DecodeNode:
     name = el.get("name") or ""
+    showname = el.get("showname") or ""
+    show = el.get("show") or ""
+    label = showname or show or name
     return DecodeNode(
         name=name,
         # showname 是給人看的那行；沒有的話退回 filter 名稱，不要留空。
-        label=el.get("showname") or el.get("show") or name,
+        label=label,
+        # 只有在解讀值講出 label 沒講的事時才帶 —— 判準與理由見 DecodeNode.detail。
+        detail=show if _adds_information(show, label) else "",
         value=el.get("value") or "",
         pos=_int_attr(el, "pos"),
         size=_int_attr(el, "size"),

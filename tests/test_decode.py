@@ -22,6 +22,7 @@ import pytest
 from telcoladder.decode import (
     DecodeError,
     DecodeNode,
+    _adds_information,
     _frame_filter,
     decode_frames,
     window_around,
@@ -285,3 +286,76 @@ def test_missing_byte_range_is_none_not_zero(e2e_pcap) -> None:
     assert node.size is None
     assert "pos" not in node.to_json()
     assert "size" not in node.to_json()
+
+
+# ── detail 是解讀後的值，不是 hex（2026-08-23）────────────────────────
+#
+# 這棵樹原本把 PDML 的 `value`（原始 hex）當 detail 顯示，而註解寫著
+# 「Wireshark 也這樣」—— **那句話是錯的**。Wireshark 的樹只有 showname；
+# 位元組在下方的 hex 面板、選欄位時高亮，而那個連動我們早就有
+# （`pos`/`size` → `byteRange` → `HexDump.highlightRange`）。
+#
+# 症狀是使用者看得到位元組，卻看不到內容：SBI 的 JSON 物件在樹上是
+# `Object` ＋ 一長串 `7b226e724c6f…`，而那串 hex 解出來就是 PDML 早就給了的
+# `show` 屬性。
+
+def test_json_objects_show_their_content_not_their_hex(e2e_pcap) -> None:
+    """SBI 的 JSON 物件節點要帶得出實際內容。
+
+    這是使用者回報的那個症狀：`Object` 那一列只有 hex，讀不出裡面是什麼。
+    """
+    frame = _first_frame_matching(e2e_pcap, "json")
+    trees = decode_frames(e2e_pcap, [frame])
+    objects = [n for n in _walk(trees[frame]) if n.name == "json.object"]
+    assert objects, f"frame {frame} 沒有 json.object —— 這條測試選錯 fixture 了"
+
+    with_content = [n for n in objects if n.detail]
+    assert with_content, (
+        "所有 json.object 都沒有 detail —— 使用者只看得到 hex，"
+        "看不到 JSON 內容，正是這條測試要擋的回歸"
+    )
+    top = max(with_content, key=lambda n: len(n.detail))
+    assert top.detail.startswith("{"), f"detail 不是 JSON 而是 {top.detail[:40]!r}"
+    # hex 仍然存在（hex 面板要用），只是不再是樹上顯示的東西。
+    assert top.value and top.value != top.detail, "原始 hex 不該消失，它是 hex 面板的來源"
+
+
+def test_detail_stays_silent_when_the_label_already_said_it() -> None:
+    """label 已經講過的事不要再講一次 —— 否則樹上一半是重複資訊。
+
+    三條判準各自釘住，因為它們各自擋掉一類噪音（見 `DecodeNode.detail`）。
+    """
+    # ① show 是 showname 的子字串
+    assert not _adds_information("mcc:001", "Member with value: mcc:001")
+    # ② show 比 showname 短 —— 「把話換成機器格式」的重複
+    assert not _adds_information("False", "..0. .... = RST: Absent")
+    assert not _adds_information("2", "Header checksum status: Unverified")
+    # ③ show 本身就是位元組傾印。
+    #    **這裡的長度要真的比 label 長**，否則規則 ② 會先擋掉它，
+    #    這條斷言就測不到 ③ —— 變異驗證抓到過這件事（第一版正是如此）。
+    dump = ":".join(["00"] * 40)           # 119 字元
+    assert len(dump) > len("TCP payload")  # 前提：規則 ② 攔不住它
+    assert not _adds_information(dump, "TCP payload")
+    # 真正該顯示的：label 是容器名，show 才有內容
+    assert _adds_information('{"mcc":"001","mnc":"01"}', "Object")
+
+
+def _walk(nodes):
+    for n in nodes:
+        yield n
+        yield from _walk(n.children)
+
+
+def _first_frame_matching(pcap, display_filter: str) -> int:
+    """第一格符合 display filter 的 frame 編號。
+
+    **不寫死格號** —— fixture 重新產生時格號會變，而寫死的話那時紅的會是
+    「找不到 json.object」，看起來像功能壞了。
+    """
+    out = subprocess.run(
+        [str(find_tshark().path), "-r", str(pcap), "-Y", display_filter,
+         "-T", "fields", "-e", "frame.number"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    assert out, f"這份 fixture 沒有符合 {display_filter!r} 的封包"
+    return int(out[0])

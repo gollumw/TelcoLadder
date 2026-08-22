@@ -61,8 +61,9 @@
     },
     "src/components/ProtocolTree.tsx": {
       "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
-      "current_sha256": "a84776d5d5b5a5eb4dde89c3ee576e92cadc1358ebb6c0a4f3b77ed045f91f5d",
-      "reason": "預設全部收合（比照 Wireshark）。移植過來時預設展開兩層 —— 那在 mock 的小樹上剛好，真實封包的解碼樹動輒上百節點，兩層就把面板灌滿。`selectedId` 的祖先鏈仍然強制展開（自動聚焦 Cause IE 的功能），並補一個 effect 讓換選節點時重新展開。"
+      "current_sha256": "c07c1f9fa0486f5dcf6cecbf746b39c68f3ccf7f283cf1d37790caa28c6cd56d",
+      "reason": "預設全部收合（比照 Wireshark）。移植過來時預設展開兩層 —— 那在 mock 的小樹上剛好，真實封包的解碼樹動輒上百節點，兩層就把面板灌滿。`selectedId` 的祖先鏈仍然強制展開（自動聚焦 Cause IE 的功能），並補一個 effect 讓換選節點時重新展開。",
+      "what_changed": "；2026-08-23：解碼樹不再把原始 hex 當 detail 顯示。**那一欄改成 PDML 的 `show`**（解讀後的值），而且只在它講出 label 沒講的事時才有內容（後端 `decode.py` 的 `_adds_information` 判定）。原本的註解寫著「Wireshark 也這樣」—— 那句話是錯的：Wireshark 的樹只有 showname，位元組在下方 hex 面板、選欄位時高亮，而那個連動（`byteRange` → `HexDump.highlightRange`）我們早就有。症狀是 JSON 內容被擠成一串 `2276616c…` 讀不出來。同時：選中的那一列改成攤開（`items-start` ＋ `break-all`），未選中維持單行可掃 —— 值再長也讀得完，而樹不會整片變高。"
     }
   }
 }

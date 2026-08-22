@@ -357,7 +357,10 @@ export function toCorrelationEntry(row: PduSessionJson): CorrelationEntry {
 export interface DecodeNodeJson {
   name: string;
   label: string;
+  /** 原始位元組的 hex。**給 hex 面板用的，不是給樹用的**（見 `toProtocolNodes`）。 */
   value: string;
+  /** 解讀後的值，只在它講出 `label` 沒講的事時才存在（後端判定）。 */
+  detail?: string;
   /** 這個節點在整格封包裡的位元組區間。PDML 沒給時這兩個鍵不存在。 */
   pos?: number;
   size?: number;
@@ -387,10 +390,15 @@ export function toProtocolNodes(
     return {
       id: `f${frame}-${here}`,
       label: node.label,
-      // `value` 是這個欄位的原始 hex。當 detail 顯示是有用的（Wireshark 也這樣），
-      // 但空字串代表「這個節點沒有對應的位元組」—— 那時不給 detail，
-      // 免得樹上出現一排空白的冒號。
-      detail: node.value || undefined,
+      // **解讀後的值，不是 hex。** 後端只在它講出 label 沒講的事時才送
+      // （`decode.py` 的 `_adds_information`），所以多數節點沒有這個 key。
+      //
+      // 這裡原本吃 `node.value`（原始 hex），註解還寫著「Wireshark 也這樣」——
+      // **那句話是錯的**。Wireshark 的樹只有 showname；位元組在下方的 hex
+      // 面板，選欄位時高亮。我們早就有那個連動（`byteRange` → HexDump 的
+      // `highlightRange`），所以樹上再放一次 hex 只是把這一欄浪費掉，
+      // 還把 JSON 內容擠成一串 `2276616c…`。
+      detail: node.detail || undefined,
       byteRange:
         node.pos !== undefined && node.size !== undefined
           ? ([node.pos, node.pos + node.size] as [number, number])
