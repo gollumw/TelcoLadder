@@ -135,6 +135,24 @@ with their reasons. Issues and pull requests in either language are fine.
   **content**, not interface strings, and are currently Chinese — see
   "Adding a cause code" above.
 
+## Licensing of contributions
+
+**There is no CLA to sign.** Apache-2.0 §5 already covers this: a contribution
+you intentionally submit for inclusion is under the same Apache-2.0 terms as the
+rest of the project, without any additional agreement. Nothing here asks you for
+more than that.
+
+What we do ask, because §5 does not cover it: **only submit work you have the
+right to submit.** Your own work, or work under a licence that permits
+redistribution under Apache-2.0 — not code from an employer's internal
+repository, not a vendor's proprietary parser, not something an NDA covers.
+If you are contributing in the course of employment, that is between you and
+your employer; say so in the PR if a name other than yours should appear in the
+copyright line.
+
+This applies to captures as much as to code. A fixture must be self-generated
+or carry an explicit redistribution licence — see "Adding a protocol adapter".
+
 ## Reporting a vulnerability
 
 Not here — see [`SECURITY.md`](SECURITY.md).
