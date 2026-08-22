@@ -58,17 +58,19 @@ telcoladder serve            # → http://localhost:3005, drop a capture on the 
 
 > 中文使用指南（面向真實封包的操作與能力邊界）：[docs/使用指南.md](docs/使用指南.md)
 
-**Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, and PFCP are each exercised
-against real testbed captures, including one that carries all three from a single
-registration. What that capture does *not* contain is the long tail — see
-[Honest limitations](#honest-limitations) before you rely on it.
+**Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, N4 (PFCP), and N3 (GTP-U) are
+each exercised against real testbed captures, including one that carries N2, SBI
+and N4 from a single registration, and one where the N3 tunnel endpoint is
+byte-for-byte the one NGAP promised. What those captures do *not* contain is
+the long tail — see [Honest limitations](#honest-limitations) before you rely
+on it.
 
 ---
 
 ## What it does today
 
-- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, and PFCP from `pcap` / `pcapng` via
-  `tshark`.
+- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP, and GTP-U from `pcap` / `pcapng`
+  via `tshark` — control plane and user plane in the same timeline.
 - **Names the network functions** instead of showing IP addresses, and shows
   the IP when the evidence is ambiguous rather than guessing. Roles a test
   capture has actually produced: `gNB`, `AMF`, `SCP`, `AUSF`, `UDM`, `UDR`,
@@ -102,6 +104,18 @@ registration. What that capture does *not* contain is the long tail — see
   on millisecond rhythms, so a hole that big is a timer waiting.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
+- **Splits a subscriber's traffic into procedures** — registration, PDU session
+  establishment, service request, deregistration — each with its own outcome,
+  cause, root cause and duration. A long capture of one subscriber is three
+  attaches, not one undifferentiated flow, and the question engineers actually
+  ask is "why did the *second* one fail".
+- **Exports procedure records as JSON** (`--xdr`), one object per procedure:
+  who, which procedure, outcome, cause and root cause, duration. Byte-for-byte
+  reproducible for the same capture, so `jq` can answer "what is the failure
+  rate across this batch" without anyone reading a diagram.
+- **Speaks English or Traditional Chinese** — `--lang zh_TW`, or the EN / 中文
+  switch in the browser. Deliberately not the system locale; see
+  [Language](#language).
 - **Two ways to look at it**: `analyze` writes Mermaid — a text file you can
   version-control, diff, and paste into GitHub — or `serve` opens an
   interactive browser view of the same capture (packet list with real tshark
@@ -119,9 +133,13 @@ brew install --cask wireshark                       # macOS
 sudo apt install tshark                             # Debian/Ubuntu
 winget install WiresharkFoundation.Wireshark        # Windows
 
-pip install telcoladder
+pip install git+https://github.com/gollumw/TelcoLadder
 telcoladder check                  # verifies tshark and dissectors
 ```
+
+> **Not on PyPI yet.** Install from git until the first tagged release. There
+> is no build step: the browser interface is committed as a built bundle, so
+> you do not need Node.
 
 **Neither the macOS nor the Windows installer puts `tshark` on your `PATH`** —
 macOS hides it inside `Wireshark.app`, and the Windows installer leaves the
@@ -144,7 +162,22 @@ telcoladder analyze capture.pcapng -o flow.mmd         # write Mermaid to a file
 telcoladder analyze capture.pcapng --flow              # one row per message
 telcoladder analyze capture.pcapng --max-messages 80
 telcoladder analyze capture.pcapng --no-frames         # drop packet numbers
+telcoladder analyze capture.pcapng --xdr flows.json    # procedure records for scripts
 ```
+
+On a large capture, narrow it before you draw it:
+
+```bash
+telcoladder analyze big.pcapng --subscriber 001011234567895
+telcoladder analyze big.pcapng --since 120 --until 180
+telcoladder analyze big.pcapng --filter 'ngap || http2'
+```
+
+Narrowing by subscriber expands in two steps — the packets that carry the
+identifier, then the TCP streams and SCTP associations those belong to —
+because most packets carry no identifier at all and filtering on it directly
+would drop the whole N2 interface. **Whatever it could not reach is listed
+explicitly**, never silently dropped.
 
 The diagram goes to stdout and the summary to stderr, so
 `telcoladder analyze x.pcapng > flow.mmd` gives you a clean file.
@@ -228,10 +261,11 @@ The server binds `127.0.0.1` only and checks the `Host` header. It runs
 Drag-and-drop needs JavaScript; the paste-a-path form does not — which means
 the large-capture path works with scripting turned off.
 
-> A flow is only badged **正常 / normal** when nothing was hidden from us.
-> If the capture contains ciphered NAS, the badge reads **未見失敗 /
-> no failure seen** instead — because not seeing a failure is not the same
-> as there not being one.
+> **When something was hidden from us, the page says so.** A capture with
+> ciphered NAS or ECIES-protected SUCIs gets a banner counting exactly what
+> could not be read, above everything else — because a clean-looking procedure
+> list is indistinguishable from one where the failure is inside a message we
+> could not open. Not seeing a failure is not the same as there not being one.
 
 ## Where this is going
 
@@ -296,12 +330,13 @@ N4, captured at three disjoint points and merged) were both produced on a local
 Open5GS + UERANSIM testbed, so they carry this repo's licence and no third-party
 constraints.
 
-**What the green badge does and does not mean.** CI runs the full suite on Python
-3.11/3.12/3.13 (Linux) plus 3.13 on macOS and Windows — five jobs, three operating
-systems, and whatever tshark each of them ships. No skips, so the cross-checks
-above genuinely run. It does **not** cover IMS, TLS-protected SBI, ECIES-protected
-SUCIs, or any deployment other than the one Open5GS topology the fixtures came from.
-Those gaps are real and are named in `.github/workflows/ci.yml`.
+**What the badge does and does not mean.** Every push runs the full suite on
+Python 3.11/3.12/3.13 on Linux; macOS and Windows (3.13) run weekly and on
+demand. The cross-checks above genuinely run there — the fixtures are in the
+repo, so nothing is skipped for want of a capture. It does **not** cover IMS,
+TLS-protected SBI, ECIES-protected SUCIs, or any deployment other than the one
+Open5GS topology the fixtures came from. Those gaps are real and are named at
+the top of `.github/workflows/ci.yml`.
 
 ## Honest limitations
 
@@ -336,7 +371,8 @@ Those gaps are real and are named in `.github/workflows/ci.yml`.
   synthetic ones — see `tests/fixtures/`, where each scenario ships the
   core-network log that independently confirms the cause code. What is *not*
   covered is the long tail: the cause table holds the codes we have actually
-  seen, and anything else prints "尚未收錄" rather than a guess.
+  seen, and anything else prints "not in this tool's cause table yet" rather
+  than a guess.
 - **GTP-U joins the subscriber, but carries no KPIs yet.** The `gtp` adapter
   (2026-08-21) keys each packet on (destination address, TEID) — the same
   `gtp_tunnel()` the signalling side emits — so user-plane packets land in the
