@@ -10,6 +10,7 @@ stdout 的潔淨是硬約束：多一行不是 JSON-RPC 的東西，客戶端就
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -158,12 +159,31 @@ def test_unknown_tool_is_a_json_rpc_error() -> None:
     assert response["error"]["code"] == -32602
 
 
-def test_language_switches_the_markdown_but_not_the_facts() -> None:
+def test_language_switches_the_prose_but_not_the_facts() -> None:
+    """語言換的是**散文**，不是事實。
+
+    2026-08-23 之前這條斷言兩邊的 `failures` 完全相同 —— 那時 cause 的白話
+    只有中文，所以英文 agent 拿到的也是中文（T-CAUSE-EN 要修的正是這件事）。
+    現在白話會跟著語言換，而 cause 的出處（表名／號碼／規範名稱／條號）
+    語言中性，兩邊必須逐字相同。
+    """
     en = _call("summarize_capture", pcap_path=str(KI))["result"]
     zh = _call("summarize_capture", pcap_path=str(KI), lang="zh_TW")["result"]
     assert en["content"][0]["text"].startswith("# Signalling summary")
     assert zh["content"][0]["text"].startswith("# 信令摘要")
-    assert en["structuredContent"]["failures"] == zh["structuredContent"]["failures"]
+
+    en_failures = en["structuredContent"]["failures"]
+    zh_failures = zh["structuredContent"]["failures"]
+    # 事實：一模一樣。
+    assert [f["cause"] for f in en_failures] == [f["cause"] for f in zh_failures]
+    assert [f["frame"] for f in en_failures] == [f["frame"] for f in zh_failures]
+    # 散文：不一樣，而且英文那邊真的是英文。
+    assert [f["explanation"] for f in en_failures] != [f["explanation"] for f in zh_failures]
+    assert "out of sync" in en_failures[0]["explanation"]
+    assert not re.search(r"[一-鿿]", " ".join(
+        [f["explanation"] for f in en_failures]
+        + [c for f in en_failures for c in f["common_causes"]]
+    )), "英文摘要的 cause 白話裡還有中文 —— T-CAUSE-EN 沒修乾淨"
 
 
 # ── 快取 ────────────────────────────────────────────────────────────────

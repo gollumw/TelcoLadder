@@ -89,8 +89,10 @@ def test_failure_records_both_final_and_root_cause() -> None:
     assert stray == 0
     assert _by_kind(procs) == [("001011234567895", "registration", "failure")]
     p = procs[0]
-    assert p.cause and "協定錯誤" in p.cause
-    assert p.root_cause and "SQN" in p.root_cause
+    # 英文是原文（T-CAUSE-EN，2026-08-23）—— `Procedure.cause` 走 `detail`，
+    # 而 `detail` 刻意不存翻譯，否則會被 MCP 的跨語言快取汙染。
+    assert p.cause and "Protocol error" in p.cause
+    assert p.root_cause and "out of sync" in p.root_cause
 
 
 def test_recovered_failure_is_a_success() -> None:

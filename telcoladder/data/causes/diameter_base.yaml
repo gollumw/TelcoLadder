@@ -33,9 +33,9 @@
 # 逐條加 `clause:`（`causes.py` 已支援選用）。
 #
 # 欄位與 `nas_5gmm.yaml` 相同：
-#   name          規範裡的正式名稱，逐字照抄
-#   plain         給人看的白話，講「實際上發生了什麼」
-#   common_causes 現場最常見的根因，由實務經驗整理，不是規範內容
+#   name                        規範裡的正式名稱，逐字照抄，不翻
+#   plain / common_causes       給人看的白話與現場根因，**英文是原文**
+#   plain_zh / common_causes_zh 中文（理由見 `causes.py` 的 `CauseInfo.plain_zh`）
 #
 # plain 與 common_causes 一律寫**純文字** —— 會被原樣畫進 Mermaid 標籤與網頁，
 # 兩邊都不解析 markdown。
@@ -46,106 +46,165 @@ spec: "RFC 6733"
 causes:
   2001:
     name: "DIAMETER_SUCCESS"
-    plain: "請求成功。這是唯一代表「完全成功」的基礎結果碼。"
+    plain: 'The request succeeded. This is the only base result code that means outright success.'
+    plain_zh: '請求成功。這是唯一代表「完全成功」的基礎結果碼。'
 
   3002:
     name: "DIAMETER_UNABLE_TO_DELIVER"
-    plain: "收到請求的節點沒辦法把它送到目的地 —— 通常是中繼（DRA）找不到下一跳。"
+    plain: 'The node that received the request could not deliver it onward - usually a relay (DRA) with no next hop for it.'
+    plain_zh: '收到請求的節點沒辦法把它送到目的地 —— 通常是中繼（DRA）找不到下一跳。'
     common_causes:
+      - 'Destination-Host points at a node that does not exist or is down'
+      - 'The DRA''s routing table has no next hop for that realm'
+      - 'The Diameter connection to the destination dropped and the DRA has not converged yet'
+    common_causes_zh:
       - "Destination-Host 指向一台不存在或已下線的節點"
       - "DRA 的路由表沒有這個 realm 的下一跳"
       - "目的節點的 Diameter 連線斷了，DRA 還沒收斂"
 
   3003:
     name: "DIAMETER_REALM_NOT_SERVED"
-    plain: "收到請求的節點不服務 Destination-Realm 指的那個 realm。"
+    plain: 'The node that received the request does not serve the realm named in Destination-Realm.'
+    plain_zh: '收到請求的節點不服務 Destination-Realm 指的那個 realm。'
     common_causes:
+      - 'A roaming partner''s realm was never configured in the DRA or HSS'
+      - 'Destination-Realm is misspelt, or carries the wrong MCC/MNC'
+    common_causes_zh:
       - "漫遊夥伴的 realm 沒設進 DRA 或 HSS"
       - "Destination-Realm 拼錯，或帶了錯的 MCC/MNC"
 
   3004:
     name: "DIAMETER_TOO_BUSY"
-    plain: "對端暫時過載，請重試或改送別台。這是暫時性錯誤，不是設定問題。"
+    plain: 'The peer is temporarily overloaded - retry, or send it elsewhere. This is transient, not a configuration problem.'
+    plain_zh: '對端暫時過載，請重試或改送別台。這是暫時性錯誤，不是設定問題。'
     common_causes:
+      - 'The HSS or PCRF is being hammered at a traffic peak'
+      - 'Many UEs re-attaching at once (an attach storm after an outage)'
+    common_causes_zh:
       - "HSS/PCRF 在流量尖峰被打爆"
       - "大量 UE 同時重新附著（網路故障後的 attach storm）"
 
   3005:
     name: "DIAMETER_LOOP_DETECTED"
-    plain: "訊息在中繼之間繞回自己 —— Route-Record 裡出現了本節點。"
+    plain: 'The message came back round to this node through the relays - its own identity appeared in a Route-Record.'
+    plain_zh: '訊息在中繼之間繞回自己 —— Route-Record 裡出現了本節點。'
     common_causes:
+      - 'Two DRAs each pointing at the other as the next hop'
+      - 'Realm routing configured into a loop'
+    common_causes_zh:
       - "兩台 DRA 互指對方當下一跳"
       - "realm 路由設定成環"
 
   3007:
     name: "DIAMETER_APPLICATION_UNSUPPORTED"
-    plain: "對端不支援這則訊息宣告的 Application-Id。連線建得起來，但這個介面談不成。"
+    plain: 'The peer does not support the Application-Id this message declares. The connection is up, but this interface cannot be spoken.'
+    plain_zh: '對端不支援這則訊息宣告的 Application-Id。連線建得起來，但這個介面談不成。'
     common_causes:
+      - 'CER/CEA never negotiated this application (one side has it, the other does not)'
+      - 'Wrong interface: an S6a request sent to a node that only serves Cx'
+      - 'A release gap - the new interface does not exist on the older node yet'
+    common_causes_zh:
       - "CER/CEA 沒有協商到這個 application（一邊有、一邊沒有）"
       - "打錯介面：把 S6a 的請求送到只開 Cx 的節點"
       - "版本落差，新介面對舊節點還不存在"
 
   3010:
     name: "DIAMETER_UNKNOWN_PEER"
-    plain: "對端不認得這個發起者 —— 它的 Origin-Host 不在對方的 peer 表裡。"
+    plain: 'The peer does not recognise the sender - its Origin-Host is not in the peer table on the other side.'
+    plain_zh: '對端不認得這個發起者 —— 它的 Origin-Host 不在對方的 peer 表裡。'
     common_causes:
+      - 'A new node was configured on one side only'
+      - 'Origin-Host does not match the configured string (case, or the FQDN suffix)'
+    common_causes_zh:
       - "新增節點時只在一邊設了 peer"
       - "Origin-Host 與對方設定的字串不一致（大小寫、FQDN 尾綴）"
 
   4001:
     name: "DIAMETER_AUTHENTICATION_REJECTED"
-    plain: "鑑權被拒。**注意這是基礎結果碼**，3GPP 的鑑權失敗多半走 Experimental-Result-Code。"
+    plain: 'Authentication was rejected. Note this is the base result code - 3GPP authentication failures normally arrive as an Experimental-Result-Code instead.'
+    plain_zh: '鑑權被拒。**注意這是基礎結果碼**，3GPP 的鑑權失敗多半走 Experimental-Result-Code。'
 
   4002:
     name: "DIAMETER_OUT_OF_SPACE"
-    plain: "對端沒有空間存這筆資料（多見於計費）。暫時性。"
+    plain: 'The peer has no room to store this record (usually charging). Transient.'
+    plain_zh: '對端沒有空間存這筆資料（多見於計費）。暫時性。'
 
   5001:
     name: "DIAMETER_AVP_UNSUPPORTED"
-    plain: "訊息裡有一個對方不認得、但被標成必要（M 旗標）的 AVP，所以整則被拒。"
+    plain: 'The message carries an AVP the peer does not recognise but which is flagged mandatory (the M bit), so the whole message was rejected.'
+    plain_zh: '訊息裡有一個對方不認得、但被標成必要（M 旗標）的 AVP，所以整則被拒。'
     common_causes:
+      - 'The two ends run different 3GPP releases and the new AVP does not exist on the older one'
+      - 'A vendor-specific AVP sent to another vendor''s equipment with the M bit set'
+      - 'The wrong Vendor-Id, so the peer cannot find the AVP''s definition'
+    common_causes_zh:
       - "兩端的 3GPP release 版本不同，新 AVP 對舊節點不存在"
       - "廠商自訂 AVP 標了 M 旗標送給別家設備"
       - "Vendor-Id 帶錯，對方查不到那個 AVP 的定義"
 
   5002:
     name: "DIAMETER_UNKNOWN_SESSION_ID"
-    plain: "對方不認得這個 Session-Id —— 那個工作階段在它那邊已經不存在了。"
+    plain: 'The peer does not recognise this Session-Id - that session no longer exists on its side.'
+    plain_zh: '對方不認得這個 Session-Id —— 那個工作階段在它那邊已經不存在了。'
     common_causes:
+      - 'The PCRF or HSS restarted and lost its session state while the peer still uses the old Session-Id'
+      - 'A termination message (STR / CCR-T) already closed it and something was sent afterwards'
+      - 'The two ends disagree about the session''s lifetime'
+    common_causes_zh:
       - "PCRF/HSS 重啟後 session 狀態沒了，而對端還在用舊的 Session-Id"
       - "先前的終止訊息（STR/CCR-T）已經把它關掉了，之後又送了一則"
       - "兩端對 session 生命週期的認知不同步"
 
   5003:
     name: "DIAMETER_AUTHORIZATION_REJECTED"
-    plain: "使用者身分沒問題，但這個服務不允許他用。**這是授權被拒，不是鑑權失敗。**"
+    plain: 'The user''s identity is fine, but this service is not allowed for them. This is authorisation refused, not authentication failure.'
+    plain_zh: '使用者身分沒問題，但這個服務不允許他用。**這是授權被拒，不是鑑權失敗。**'
     common_causes:
+      - 'The subscription does not include this service'
+      - 'Policy (the PCRF) explicitly refused this IP-CAN session'
+    common_causes_zh:
       - "簽約資料裡沒開這個服務"
       - "策略（PCRF）明確拒絕了這條 IP-CAN session"
 
   5004:
     name: "DIAMETER_INVALID_AVP_VALUE"
-    plain: "某個 AVP 的值不合法 —— 型別對、內容不對。回覆通常會用 Failed-AVP 指出是哪一個。"
+    plain: 'One AVP holds an illegal value - right type, wrong content. The answer usually names it in Failed-AVP.'
+    plain_zh: '某個 AVP 的值不合法 —— 型別對、內容不對。回覆通常會用 Failed-AVP 指出是哪一個。'
     common_causes:
+      - 'An encoding bug (a length field disagreeing with the content, a string not padded)'
+      - 'An enumerated value outside the range the spec defines'
+      - 'An IMSI or MSISDN with non-digits, or the wrong length'
+    common_causes_zh:
       - "編碼錯誤（長度欄與內容不符、字串沒補齊）"
       - "列舉值超出規範定義的範圍"
       - "IMSI/MSISDN 帶了非數字或長度不對"
 
   5005:
     name: "DIAMETER_MISSING_AVP"
-    plain: "少了一個規範要求必須有的 AVP。回覆的 Failed-AVP 會指出缺哪一個。"
+    plain: 'An AVP the spec requires is missing. The Failed-AVP in the answer names which one.'
+    plain_zh: '少了一個規範要求必須有的 AVP。回覆的 Failed-AVP 會指出缺哪一個。'
     common_causes:
+      - 'An implementation omits a conditional AVP (some fields are only mandatory in certain situations)'
+      - 'A release gap: a newer version made that AVP mandatory'
+    common_causes_zh:
       - "實作漏帶條件性 AVP（某些欄位只在特定情境必要）"
       - "release 落差：新版把某個 AVP 改成必要"
 
   5009:
     name: "DIAMETER_AVP_OCCURS_TOO_MANY_TIMES"
-    plain: "某個 AVP 出現次數超過規範允許的上限。"
+    plain: 'An AVP appears more times than the spec allows.'
+    plain_zh: '某個 AVP 出現次數超過規範允許的上限。'
 
   5012:
     name: "DIAMETER_UNABLE_TO_COMPLY"
-    plain: "對方看得懂這則請求，但就是做不到 —— 而且沒有更精確的碼可用。這是資訊量最低的一個永久失敗，接近「內部錯誤」。"
+    plain: 'The peer understood the request and simply could not carry it out - and had no more precise code to send. This is the least informative permanent failure there is, close to an internal error.'
+    plain_zh: '對方看得懂這則請求，但就是做不到 —— 而且沒有更精確的碼可用。這是資訊量最低的一個永久失敗，接近「內部錯誤」。'
     common_causes:
+      - 'An internal exception on the peer (a database it cannot reach, a back-end service that is down)'
+      - 'A legal request that lands in a situation the peer never implemented'
+      - 'Incomplete configuration - the peer would rather refuse the whole thing than do half of it'
+      - 'When you see 5012 the answer is almost certainly in the peer''s logs, not in the packet'
+    common_causes_zh:
       - "對端內部例外（資料庫連不上、後端服務掛了）"
       - "請求本身合法但落在對端沒實作的情境"
       - "設定不完整，對端寧可整則拒絕也不部分執行"
@@ -153,4 +212,5 @@ causes:
 
   5017:
     name: "DIAMETER_NO_COMMON_SECURITY"
-    plain: "CER/CEA 協商不出雙方都支援的安全機制，連線建不起來。"
+    plain: 'CER/CEA could not agree on a security mechanism both sides support, so the connection cannot be established.'
+    plain_zh: 'CER/CEA 協商不出雙方都支援的安全機制，連線建不起來。'

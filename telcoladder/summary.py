@@ -21,11 +21,12 @@ ECIES 的 SUCI、沒解碼的格、收窄過的範圍、自動調整過的解碼
 **③ 逐位元組可重現。** 不蓋產生時間戳，所有集合都排序。同一份擷取檔跑兩次
 輸出相同 —— 可 diff、可進版控、可當測試的 golden。與 `.mmd`／xDR 同一條原則。
 
-## 已知的語言缺口（明講）
+## 語言
 
-cause 表的 `plain` 與 `common_causes` 目前只有中文（它們不在 i18n 的目錄裡）。
-所以 `explanation` 欄在 `--lang en` 下仍是中文；規範名稱（`name`）是英文原文，
-條號（`spec`／`clause`）語言中性。摘要以後者為主，前者原樣附上。
+cause 表的白話與常見根因**英文是原文、中文是翻譯**，兩者並排放在 YAML 的同一個
+條目裡（見 `causes.CauseInfo.plain_zh`）。選語言發生在這裡，**不在 `annotate()`**
+—— 那裡的結果會被 MCP 跨語言快取。規範名稱（`name`）是規範原文不翻，
+條號（`spec`／`clause`）語言中性。
 """
 
 from __future__ import annotations
@@ -90,9 +91,10 @@ def _failure_record(msg: Message, supi: str | None) -> dict:
         "message": msg.label,
         "supi": supi,
         "cause": _cause_ref(msg),
-        # 白話與常見根因來自 cause 表，原樣附上（語言見檔頭）。
-        "explanation": info.plain if info and info.plain else None,
-        "common_causes": list(info.common_causes) if info else [],
+        # 白話與常見根因來自 cause 表。**在這裡選語言，不在 `annotate()`** ——
+        # 那裡的結果會被 MCP 跨語言快取（見 `causes.annotate` 的說明）。
+        "explanation": info.plain_text() if info and info.plain else None,
+        "common_causes": list(info.common_causes_text()) if info else [],
     }
 
 

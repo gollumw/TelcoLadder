@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 import yaml
 
@@ -142,3 +144,102 @@ def test_uncatalogued_failure_still_renders_without_inventing_a_clause():
 
     assert "not in this tool's cause table" in text
     assert "§" not in text.split("Registration reject")[-1], "未收錄卻印出了條號"
+
+
+# ── 雙語（T-CAUSE-EN，2026-08-23）────────────────────────────────────────
+#
+# cause 的白話與常見根因原本只有中文，於是 `--lang en` 的摘要與 MCP 回給
+# 英文 agent 的 `explanation` 仍是中文 —— 它拿得到條號，拿不到現場經驗。
+# 現在英文是原文、中文是翻譯，兩者並排在同一個 YAML 條目裡。
+
+_CJK = re.compile(r"[一-鿿]")
+
+
+@pytest.mark.parametrize("path", sorted(DATA_DIR.glob("*.yaml")), ids=lambda p: p.name)
+def test_every_entry_is_bilingual(path) -> None:
+    """英文與中文必須成對出現，而且 `common_causes` 兩邊**條數相同**。
+
+    條數不同的話，讀中文的人會少看到一條現場根因 —— 而畫面上完全看不出來。
+    """
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for value, body in (raw.get("causes") or {}).items():
+        assert body.get("plain"), f"{path.name} #{value} 沒有英文 plain"
+        assert body.get("plain_zh"), f"{path.name} #{value} 沒有中文 plain_zh"
+        commons = body.get("common_causes") or []
+        commons_zh = body.get("common_causes_zh") or []
+        assert len(commons) == len(commons_zh), (
+            f"{path.name} #{value}：common_causes 英文 {len(commons)} 條、"
+            f"中文 {len(commons_zh)} 條 —— 有一邊會少看到東西"
+        )
+
+
+@pytest.mark.parametrize("path", sorted(DATA_DIR.glob("*.yaml")), ids=lambda p: p.name)
+def test_the_english_side_is_actually_english(path) -> None:
+    """英文欄位不得含中日韓字元。
+
+    **這條擋的是「忘了翻」**：漏掉一條的話 `plain` 會留著中文，而英文 agent
+    拿到的還是中文 —— 正是這件工作要修的東西，靜默地沒修好。
+    """
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    offenders = []
+    for value, body in (raw.get("causes") or {}).items():
+        for text in [body.get("plain", "")] + list(body.get("common_causes") or []):
+            if _CJK.search(text):
+                offenders.append(f"#{value}: {text[:40]}")
+    assert not offenders, f"{path.name} 的英文欄位裡有中文：\n  " + "\n  ".join(offenders)
+
+
+@pytest.mark.parametrize("path", sorted(DATA_DIR.glob("*.yaml")), ids=lambda p: p.name)
+def test_the_chinese_side_is_actually_chinese(path) -> None:
+    """反方向：中文欄位必須真的是中文，不能是英文照抄。
+
+    照抄會通過上面那條，而讀中文的人會拿到英文 —— 沒有人會發現。
+    """
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    offenders = [
+        f"#{value}: {body['plain_zh'][:40]}"
+        for value, body in (raw.get("causes") or {}).items()
+        if not _CJK.search(body.get("plain_zh", ""))
+    ]
+    assert not offenders, f"{path.name} 的 plain_zh 沒有中文：\n  " + "\n  ".join(offenders)
+
+
+def test_the_language_is_chosen_at_read_time_not_at_load_time() -> None:
+    """`_load_tables()` 是 `lru_cache` 的 —— 在載入時選語言的話，第一次載入
+    的語言會被烤進整張表，之後換語言完全沒反應。"""
+    from telcoladder import i18n
+
+    info = lookup(CauseRef("nas_5gmm", 21))
+    with i18n.use("en"):
+        english = info.plain_text()
+    with i18n.use("zh_TW"):
+        chinese = info.plain_text()
+    with i18n.use("en"):
+        again = info.plain_text()
+
+    assert "out of sync" in english
+    assert _CJK.search(chinese)
+    assert again == english, "換過語言之後回不去 —— 語言被烤進表裡了"
+
+
+def test_annotate_stores_the_source_language_not_the_translation() -> None:
+    """**`detail` 存英文原文，不存翻譯。**
+
+    `annotate()` 跑在 `analyse()` 裡，而 `Analysis` 會被 MCP 跨語言快取
+    （`mcp._Cache`）。在那裡選語言的話，先用 zh 問過的檔再用 en 問就會拿到
+    中文 —— 而且完全不會報錯。翻譯留給呈現層。
+    """
+    from telcoladder import i18n
+
+    def annotated(lang: str) -> str:
+        message = Message(
+            frame=1, ts=0.0, protocol="nas-5gs",
+            src=Endpoint("10.0.0.1"), dst=Endpoint("10.0.0.2"),
+            label="Registration reject", cause=CauseRef("nas_5gmm", 21), is_failure=True,
+        )
+        with i18n.use(lang):
+            annotate([message])
+        return message.detail["cause_plain"]
+
+    assert annotated("en") == annotated("zh_TW"), "annotate() 的結果隨語言變 —— 會被快取跨語言汙染"
+    assert not _CJK.search(annotated("zh_TW"))

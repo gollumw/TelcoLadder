@@ -322,10 +322,11 @@ and whatever was narrowed is always reported back in `not_visible` — the answe
 silently describes a subset. Narrowing by subscriber is deliberately *not* exposed:
 it drops the whole N2 interface, and that trade-off should not be made implicitly.
 
-Two honest gaps: the cause explanations and common root causes in the table are
-currently written in Traditional Chinese only (the spec names and clause numbers
-are language-neutral); and the summary lists only identifiers the adapters
-actually extract — there is no 5G-GUTI/TMSI field, because nothing reads one yet.
+One honest gap: the summary lists only identifiers the adapters actually extract —
+there is no 5G-GUTI/TMSI field, because nothing reads one yet. The cause
+explanations and common root causes are bilingual — English is the source, Chinese
+the translation, side by side in the same YAML entry — while the spec names and
+clause numbers are language-neutral and never translated.
 
 ## Where this is going
 

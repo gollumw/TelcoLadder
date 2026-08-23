@@ -284,5 +284,7 @@ def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
     flow = callflow_json(session, _a_supi(session))
     failed = [p for p in flow["procedures"] if p["outcome"] == "failure"]
     assert failed, "ki-mismatch 應該要有失敗的段"
-    assert failed[0]["cause"] and "協定錯誤" in failed[0]["cause"]
-    assert failed[0]["root_cause"] and "SQN" in failed[0]["root_cause"]
+    # **英文** —— `Procedure.cause` 來自 `detail["cause_plain"]`，那裡存的是原文，
+    # 不是翻譯（見 `causes.annotate` 與 test_causes 的跨語言快取那條）。
+    assert failed[0]["cause"] and "Protocol error" in failed[0]["cause"]
+    assert failed[0]["root_cause"] and "out of sync" in failed[0]["root_cause"]

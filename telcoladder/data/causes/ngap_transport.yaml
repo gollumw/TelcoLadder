@@ -1,15 +1,24 @@
 # NGAP CauseTransport —— TS 38.413 §9.3.1.2。群組完整（只有兩個值）。
+#
+# `plain` / `common_causes` 是**英文原文**，`plain_zh` / `common_causes_zh` 是中文，
+# 兩者並排（理由見 `causes.py` 的 `CauseInfo.plain_zh`）。`name` 是規範原文，不翻。
 table: ngap_transport
 spec: "3GPP TS 38.413"
 clause: "§9.3.1.2"
 causes:
   0:
     name: "transport-resource-unavailable"
-    plain: "傳輸資源不可用 —— SCTP 或底層 IP 傳輸出了問題。"
+    plain: "Transport resources are unavailable - something is wrong with SCTP or the IP transport underneath it."
+    plain_zh: "傳輸資源不可用 —— SCTP 或底層 IP 傳輸出了問題。"
     common_causes:
+      - "The SCTP association dropped or is being re-established"
+      - "Transport network congestion, or a routing problem"
+    common_causes_zh:
       - "SCTP 連線中斷或重建中"
       - "傳輸網路擁塞或路由問題"
   1:
     name: "unspecified"
-    plain: "傳輸層問題，未指明。"
+    plain: "A transport-layer problem the sender did not specify further."
+    plain_zh: "傳輸層問題，未指明。"
     common_causes: []
+    common_causes_zh: []

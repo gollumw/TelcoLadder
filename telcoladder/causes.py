@@ -47,7 +47,38 @@ class CauseInfo:
     spec: str
     clause: str
     plain: str
+    """白話說明，**英文是原文**（與專案 §7 的「原文英文、中文是翻譯」一致）。"""
+
     common_causes: tuple[str, ...]
+    """現場最常見的根因。同樣以英文為原文。"""
+
+    plain_zh: str = ""
+    common_causes_zh: tuple[str, ...] = ()
+    """中文版。**與英文並排放在同一個 YAML 條目裡**，不走 i18n 的翻譯目錄 ——
+    那本目錄是給介面字串用的，一句一行、按英文原文查表。cause 的白話是**內容**，
+    審閱時要能一眼看到兩種語言講的是不是同一件事；拆到兩個檔會讓那件事變成
+    「跳著檔案比對」，而漂移不會報錯（§7 當初刻意不把它放進目錄，就是這個理由）。"""
+
+    def plain_text(self) -> str:
+        """依**現在**的語言選白話。
+
+        **不能在載入時選** —— `_load_tables()` 是 `lru_cache` 的，第一次載入時的
+        語言會被烤進整張表，之後換語言完全沒反應。
+        """
+        from telcoladder import i18n
+
+        if i18n.current() == "zh_TW" and self.plain_zh:
+            return self.plain_zh
+        return self.plain
+
+    def common_causes_text(self) -> tuple[str, ...]:
+        """同上。缺中文時退回英文 —— 少一句翻譯只是不方便，空白會讓人以為
+        這個 cause 沒有常見根因可講。"""
+        from telcoladder import i18n
+
+        if i18n.current() == "zh_TW" and self.common_causes_zh:
+            return self.common_causes_zh
+        return self.common_causes
 
     def one_line(self) -> str:
         """畫在圖上的一行說明。
@@ -115,6 +146,8 @@ def _entries(raw: dict) -> dict[int, CauseInfo]:
             clause=clause,
             plain=body.get("plain", ""),
             common_causes=tuple(body.get("common_causes") or ()),
+            plain_zh=body.get("plain_zh", ""),
+            common_causes_zh=tuple(body.get("common_causes_zh") or ()),
         )
         for value, body in (raw.get("causes") or {}).items()
     }
@@ -148,6 +181,10 @@ def annotate(messages: list) -> list:
         msg.detail["cause_note"] = describe(msg.cause)
         info = lookup(msg.cause)
         if info and info.plain:
+            # **存英文原文，不存翻譯。** `annotate()` 跑在 `analyse()` 裡，而
+            # `Analysis` 會被 MCP 跨語言快取 —— 在這裡選語言的話，先用 zh 問過
+            # 的檔再用 en 問就會拿到中文，而且完全不會報錯。翻譯留給呈現層
+            # （`summary` 與 `callflow`），那裡才知道這一次要講哪種語言。
             msg.detail["cause_plain"] = info.plain
         if info and info.common_causes:
             # detail 的型別是 dict[str, str]，所以用換行串起來由 renderer 拆。

@@ -21,30 +21,48 @@ clause: "§9.11.3.2"
 causes:
   3:
     name: "Illegal UE"
-    plain: "網路認為這個用戶身分不合法，鑑權沒過或該 SUPI 根本不被承認。"
+    plain: 'The network considers this subscriber identity illegal - authentication failed, or the SUPI is simply not recognised.'
+    plain_zh: '網路認為這個用戶身分不合法，鑑權沒過或該 SUPI 根本不被承認。'
     common_causes:
+      - 'The SUPI is not in the UDM/UDR (never provisioned, or a test SIM never written into the database)'
+      - 'The authentication vectors do not match - K or OPc is configured wrongly'
+      - 'SUCI decryption failed and resolved to a user that does not exist'
+    common_causes_zh:
       - "UDM/UDR 裡沒有這個 SUPI（沒開通、或測試 SIM 沒寫進資料庫）"
       - "鑑權向量算出來對不上，K/OPc 設定錯誤"
       - "SUCI 解密失敗，歸戶到不存在的用戶"
 
   5:
     name: "PEI not accepted"
-    plain: "網路不接受這台設備的識別碼（IMEI）。"
+    plain: 'The network will not accept this device''s identifier (the IMEI).'
+    plain_zh: '網路不接受這台設備的識別碼（IMEI）。'
     common_causes:
+      - 'The IMEI is blacklisted'
+      - 'The EIR check did not pass'
+    common_causes_zh:
       - "IMEI 落在黑名單"
       - "EIR 檢查未通過"
 
   6:
     name: "Illegal ME"
-    plain: "設備本身被網路擋下，通常是 IMEI 進了黑名單。"
+    plain: 'The equipment itself is barred, usually because the IMEI is blacklisted.'
+    plain_zh: '設備本身被網路擋下，通常是 IMEI 進了黑名單。'
     common_causes:
+      - 'The device was reported lost or stolen'
+      - 'The EIR blacklist is misconfigured'
+    common_causes_zh:
       - "設備遭掛失／盜報"
       - "EIR 黑名單設定錯誤"
 
   7:
     name: "5GS services not allowed"
-    plain: "這個用戶沒有訂閱 5GS 服務。"
+    plain: 'This subscriber has no subscription for 5GS services.'
+    plain_zh: '這個用戶沒有訂閱 5GS 服務。'
     common_causes:
+      - 'The SUPI is not in the UDM/UDR at all - the SIM was never provisioned. The most common one in practice; the core log says `Cannot find SUPI [404]` (seen in tests/fixtures/supi-not-provisioned)'
+      - '5G access is not enabled in the subscription'
+      - 'An access restriction in the UDM blocks 3GPP access'
+    common_causes_zh:
       - "該 SUPI 根本不在 UDM/UDR 裡 —— SIM 從未開通。實務上最常見的一種，
          核網日誌會寫 `Cannot find SUPI [404]`
          （tests/fixtures/supi-not-provisioned 實測）"
@@ -53,181 +71,275 @@ causes:
 
   9:
     name: "UE identity cannot be derived by the network"
-    plain: "網路認不出這個 UE 是誰，通常是它用了網路端已經失效的暫時識別碼。"
+    plain: 'The network cannot work out who this UE is, usually because it used a temporary identity the network no longer holds.'
+    plain_zh: '網路認不出這個 UE 是誰，通常是它用了網路端已經失效的暫時識別碼。'
     common_causes:
+      - 'The AMF restarted and lost the UE context while the UE still registers with its old 5G-GUTI'
+      - 'Context transfer between AMFs failed'
+    common_causes_zh:
       - "AMF 重啟後遺失 UE context，而 UE 仍拿舊的 5G-GUTI 來註冊"
       - "AMF 之間 context 轉移失敗"
 
   10:
     name: "Implicitly de-registered"
-    plain: "網路早已把這個 UE 隱含地登出，UE 卻還以為自己在線上。"
+    plain: 'The network deregistered this UE implicitly a while ago, but the UE still thinks it is attached.'
+    plain_zh: '網路早已把這個 UE 隱含地登出，UE 卻還以為自己在線上。'
     common_causes:
+      - 'The UE went too long without a periodic registration update and the network timer expired'
+    common_causes_zh:
       - "UE 長時間沒有週期性註冊更新，網路端計時器到期"
 
   11:
     name: "PLMN not allowed"
-    plain: "這張 SIM 不准用這個網路。"
+    plain: 'This SIM is not allowed on this network.'
+    plain_zh: '這張 SIM 不准用這個網路。'
     common_causes:
+      - 'No roaming agreement covers this PLMN'
+      - 'The MCC/MNC in a test setup does not match what is written on the SIM'
+    common_causes_zh:
       - "漫遊協議未涵蓋此 PLMN"
       - "測試環境的 MCC/MNC 與 SIM 寫的不一致"
 
   12:
     name: "Tracking area not allowed"
-    plain: "這個追蹤區不開放給該用戶。"
+    plain: 'This tracking area is not open to this subscriber.'
+    plain_zh: '這個追蹤區不開放給該用戶。'
     common_causes:
+      - 'A regional restriction in the subscription'
+    common_causes_zh:
       - "簽約資料的區域限制"
 
   13:
     name: "Roaming not allowed in this tracking area"
-    plain: "該用戶在這個追蹤區不得漫遊。"
+    plain: 'This subscriber may not roam in this tracking area.'
+    plain_zh: '該用戶在這個追蹤區不得漫遊。'
     common_causes:
+      - 'A roaming restriction'
+    common_causes_zh:
       - "漫遊限制設定"
 
   15:
     name: "No suitable cells in tracking area"
-    plain: "此追蹤區內沒有這個 UE 可以用的細胞。"
+    plain: 'There is no cell in this tracking area the UE can use.'
+    plain_zh: '此追蹤區內沒有這個 UE 可以用的細胞。'
     common_causes:
+      - 'The cell is barred'
+      - 'An access class restriction'
+    common_causes_zh:
       - "細胞禁止存取（cell barred）"
       - "存取類別限制"
 
   20:
     name: "MAC failure"
-    plain: "UE 驗不過網路送來的鑑權訊息完整性 —— UE 認為對方不是它的家網。"
+    plain: 'The UE could not verify the integrity of the authentication message - as far as the UE is concerned, that was not its home network.'
+    plain_zh: 'UE 驗不過網路送來的鑑權訊息完整性 —— UE 認為對方不是它的家網。'
     common_causes:
+      - 'The K on the SIM does not match the one in the HSS/UDM (the most common one in test setups)'
+      - 'OPc and OP mixed up, or OPc computed wrongly'
+    common_causes_zh:
       - "SIM 的 K 與 HSS/UDM 裡的不一致（測試環境最常見）"
       - "OPc 與 OP 搞混，或 OPc 算錯"
 
   21:
     name: "Synch failure"
-    plain: "SQN 序號不同步，UE 要求網路重新同步。"
+    plain: 'The sequence number is out of sync; the UE is asking the network to resynchronise.'
+    plain_zh: 'SQN 序號不同步，UE 要求網路重新同步。'
     common_causes:
+      - 'The same SIM in use on two core networks at once'
+      - 'A UDM database rollback that moved SQN backwards'
+    common_causes_zh:
       - "同一張 SIM 同時在兩套核網上使用"
       - "UDM 資料庫回滾導致 SQN 倒退"
 
   22:
     name: "Congestion"
-    plain: "網路過載，暫時擋下這次請求。通常會附帶 back-off 計時器。"
+    plain: 'The network is overloaded and is holding this request off for now. Usually comes with a back-off timer.'
+    plain_zh: '網路過載，暫時擋下這次請求。通常會附帶 back-off 計時器。'
     common_causes:
+      - 'AMF or SMF overload protection kicked in'
+      - 'Many UEs re-registering at once (an avalanche after an outage is fixed)'
+    common_causes_zh:
       - "AMF/SMF 過載保護啟動"
       - "大量 UE 同時重新註冊（例如網路故障恢復後的雪崩）"
 
   23:
     name: "UE security capabilities mismatch"
-    plain: "UE 回報的安全能力，與網路先前收到的對不上。"
+    plain: 'The security capabilities the UE reports do not match what the network received earlier.'
+    plain_zh: 'UE 回報的安全能力，與網路先前收到的對不上。'
     common_causes:
+      - 'Tampering in the middle, or a box on the path that rewrites NAS messages'
+    common_causes_zh:
       - "中間人竄改，或轉送路徑上有設備改寫了 NAS 訊息"
 
   24:
     name: "Security mode rejected, unspecified"
-    plain: "安全模式程序被拒，沒有進一步原因。"
+    plain: 'The security mode procedure was rejected with no further reason.'
+    plain_zh: '安全模式程序被拒，沒有進一步原因。'
     common_causes:
+      - 'The UE and the network have no algorithm in common'
+    common_causes_zh:
       - "UE 與網路支援的演算法沒有交集"
 
   27:
     name: "N1 mode not allowed"
-    plain: "不允許這個用戶使用 N1 模式（也就是 5G SA）。"
+    plain: 'This subscriber may not use N1 mode - that is, 5G standalone.'
+    plain_zh: '不允許這個用戶使用 N1 模式（也就是 5G SA）。'
     common_causes:
+      - 'The subscription restricts them to EPS'
+      - 'Network policy steers this subscriber back to 4G'
+    common_causes_zh:
       - "簽約限制只准 EPS"
       - "網路政策把該用戶導回 4G"
 
   28:
     name: "Restricted service area"
-    plain: "UE 位於受限服務區，只能做部分程序。"
+    plain: 'The UE is in a restricted service area and can only run some procedures.'
+    plain_zh: 'UE 位於受限服務區，只能做部分程序。'
     common_causes:
+      - 'A service-area restriction in the subscription'
+    common_causes_zh:
       - "簽約的服務區域限制"
 
   31:
     name: "Redirection to EPC required"
-    plain: "網路要求 UE 改走 EPC（4G）。"
+    plain: 'The network wants the UE to go to the EPC (4G) instead.'
+    plain_zh: '網路要求 UE 改走 EPC（4G）。'
     common_causes:
+      - 'Policy for this subscriber or this area is to steer 5G back to 4G'
+    common_causes_zh:
       - "該用戶或該區域的政策是 5G 導回 4G"
 
   43:
     name: "LADN not available"
-    plain: "本地資料網路（LADN）目前不可用。"
+    plain: 'The local area data network (LADN) is not available right now.'
+    plain_zh: '本地資料網路（LADN）目前不可用。'
     common_causes:
+      - 'The UE is outside that LADN''s service area'
+    common_causes_zh:
       - "UE 不在該 LADN 的服務區內"
 
   65:
     name: "Maximum number of PDU sessions reached"
-    plain: "這個 UE 的 PDU session 數量已達上限。"
+    plain: 'This UE has hit its maximum number of PDU sessions.'
+    plain_zh: '這個 UE 的 PDU session 數量已達上限。'
     common_causes:
+      - 'Old sessions that were never released properly have piled up'
+    common_causes_zh:
       - "舊 session 沒有正常釋放而累積"
 
   72:
     name: "Non-3GPP access to 5GCN not allowed"
-    plain: "不允許經由非 3GPP 存取（例如 Wi-Fi）接入 5G 核網。"
+    plain: 'Access to the 5G core over non-3GPP access (Wi-Fi, for example) is not allowed.'
+    plain_zh: '不允許經由非 3GPP 存取（例如 Wi-Fi）接入 5G 核網。'
     common_causes:
+      - 'Non-3GPP access is not enabled in the subscription - a common source of VoWiFi problems'
+    common_causes_zh:
       - "簽約未開通非 3GPP 存取 —— VoWiFi 相關問題常見於此"
 
   73:
     name: "Serving network not authorized"
-    plain: "服務網路未獲授權。"
+    plain: 'The serving network is not authorised.'
+    plain_zh: '服務網路未獲授權。'
     common_causes:
+      - 'A misconfigured SNPN or roaming partner relationship'
+    common_causes_zh:
       - "SNPN 或漫遊夥伴關係設定錯誤"
 
   90:
     name: "Payload was not forwarded"
-    plain: "NAS 傳輸訊息裡的內容沒有被轉送出去。"
+    plain: 'The payload inside the NAS transport message was not forwarded on.'
+    plain_zh: 'NAS 傳輸訊息裡的內容沒有被轉送出去。'
     common_causes:
+      - 'The target NF is unreachable, or refused it'
+    common_causes_zh:
       - "目標 NF 不可達或拒收"
 
   91:
     name: "DNN not supported or not subscribed in the slice"
-    plain: "這個切片不支援該 DNN，或用戶沒訂閱。"
+    plain: 'This slice does not support that DNN, or the subscriber has not subscribed to it.'
+    plain_zh: '這個切片不支援該 DNN，或用戶沒訂閱。'
     common_causes:
+      - 'The DNN is misspelt'
+      - 'The S-NSSAI and DNN combination does not exist in the subscription'
+    common_causes_zh:
       - "DNN 拼寫錯誤"
       - "簽約資料裡的 S-NSSAI 與 DNN 組合不存在"
 
   95:
     name: "Semantically incorrect message"
-    plain: "訊息語意不正確。"
+    plain: 'The message is semantically incorrect.'
+    plain_zh: '訊息語意不正確。'
     common_causes:
+      - 'Incompatible implementations, or the message was tampered with on the way'
+    common_causes_zh:
       - "實作不相容，或訊息被中途竄改"
 
   96:
     name: "Invalid mandatory information"
-    plain: "必要資訊元素的內容無效。"
+    plain: 'A mandatory information element holds an invalid value.'
+    plain_zh: '必要資訊元素的內容無效。'
     common_causes:
+      - 'An encoding bug'
+      - 'A version difference that changes a mandatory IE''s format'
+    common_causes_zh:
       - "編碼錯誤"
       - "版本差異導致必要 IE 格式不同"
 
   97:
     name: "Message type non-existent or not implemented"
-    plain: "收到的訊息型別不存在，或對方沒實作。"
+    plain: 'The message type does not exist, or the peer never implemented it.'
+    plain_zh: '收到的訊息型別不存在，或對方沒實作。'
     common_causes:
+      - 'A 3GPP release gap between the UE and the network'
+    common_causes_zh:
       - "UE 與網路的 3GPP release 版本落差"
 
   98:
     name: "Message type not compatible with the protocol state"
-    plain: "訊息型別與當下的協定狀態不相容。"
+    plain: 'The message type does not fit the protocol state the receiver is in.'
+    plain_zh: '訊息型別與當下的協定狀態不相容。'
     common_causes:
+      - 'The state machines are out of step, usually after a lost or retransmitted message'
+    common_causes_zh:
       - "狀態機不同步，常見於前一則訊息遺失或重傳"
 
   99:
     name: "Information element non-existent or not implemented"
-    plain: "某個資訊元素不存在或未實作。"
+    plain: 'An information element does not exist, or is not implemented.'
+    plain_zh: '某個資訊元素不存在或未實作。'
     common_causes:
+      - 'A release gap'
+    common_causes_zh:
       - "版本落差"
 
   100:
     name: "Conditional IE error"
-    plain: "條件式資訊元素有誤 —— 該帶的沒帶，或不該帶的帶了。"
+    plain: 'A conditional information element is wrong - one that should be there is missing, or one that should not be there was sent.'
+    plain_zh: '條件式資訊元素有誤 —— 該帶的沒帶，或不該帶的帶了。'
     common_causes:
+      - 'The two implementations read the condition differently'
+    common_causes_zh:
       - "實作對條件判斷的解讀不一致"
 
   101:
     name: "Message not compatible with the protocol state"
-    plain: "訊息與當下協定狀態不相容。"
+    plain: 'The message does not fit the protocol state.'
+    plain_zh: '訊息與當下協定狀態不相容。'
     common_causes:
+      - 'The state machines are out of step'
+    common_causes_zh:
       - "狀態機不同步"
 
   111:
     name: "Protocol error, unspecified"
-    plain: >-
-      協定錯誤，規範未指明細節。這是最沒有資訊量的 cause —— 它的意思接近
-      「對方看不懂這則訊息，但說不出哪裡不對」。
+    plain: 'Protocol error; the spec does not say more than that. This is the least informative cause there is - it means roughly "I cannot make sense of this message, but I cannot tell you what is wrong with it".'
+    plain_zh: '協定錯誤，規範未指明細節。這是最沒有資訊量的 cause —— 它的意思接近 「對方看不懂這則訊息，但說不出哪裡不對」。'
     common_causes:
+      - 'An authentication key mismatch: when Ki or OPc disagree, the UE answers Synch failure (#21) first, the AUTS it computes cannot be used by the network to resynchronise, and the network ends up rejecting with this cause. A #21 immediately followed by #111 is almost always a key problem (seen in tests/fixtures/ki-mismatch)'
+      - 'Encode/decode incompatibility, common when equipment from different vendors interconnects'
+      - 'A mandatory IE missing, or a length field computed wrongly'
+      - 'A 3GPP release gap where an older peer refuses a newer IE'
+    common_causes_zh:
       - "鑑權金鑰不符：Ki 或 OPc 兩邊不一致時，UE 會先回 Synch failure(#21)，
          而它算出的 AUTS 網路無法用來重同步，最後就以本 cause 拒絕。
          看到 #21 緊接 #111 幾乎必然是金鑰問題

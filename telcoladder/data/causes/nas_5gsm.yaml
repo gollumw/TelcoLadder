@@ -8,164 +8,250 @@ clause: "§9.11.4.2"
 causes:
   8:
     name: "Operator determined barring"
-    plain: "營運商政策直接擋下這個 PDU session。"
+    plain: 'Operator policy blocks this PDU session outright.'
+    plain_zh: '營運商政策直接擋下這個 PDU session。'
     common_causes:
+      - 'Service suspended for non-payment'
+      - 'The value-added service was switched off'
+    common_causes_zh:
       - "欠費停話"
       - "加值服務被關閉"
 
   26:
     name: "Insufficient resources"
-    plain: "網路資源不足，建不起這個 session。"
+    plain: 'The network does not have the resources to set this session up.'
+    plain_zh: '網路資源不足，建不起這個 session。'
     common_causes:
+      - 'The UPF has run out of resources'
+      - 'The SMF has hit its session limit'
+    common_causes_zh:
       - "UPF 資源耗盡"
       - "SMF 達到 session 數上限"
 
   27:
     name: "Missing or unknown DNN"
-    plain: "沒帶 DNN，或帶的 DNN 網路不認得。"
+    plain: 'No DNN was supplied, or the one supplied is not known to the network.'
+    plain_zh: '沒帶 DNN，或帶的 DNN 網路不認得。'
     common_causes:
+      - 'The APN/DNN configured on the UE is misspelt'
+      - 'The SMF has no configuration for this DNN'
+      - 'The subscription does not include this DNN'
+    common_causes_zh:
       - "UE 的 APN/DNN 設定拼錯"
       - "SMF 沒設定這個 DNN"
       - "簽約資料裡沒有這個 DNN"
 
   28:
     name: "Unknown PDU session type"
-    plain: "要求的 PDU session 型別網路不認得。"
+    plain: 'The requested PDU session type is not one the network recognises.'
+    plain_zh: '要求的 PDU session 型別網路不認得。'
     common_causes:
+      - 'The UE asked for a type the network does not support'
+    common_causes_zh:
       - "UE 要求了網路未支援的型別"
 
   29:
     name: "User authentication or authorization failed"
-    plain: "次級鑑權／授權沒過（DN-AAA 那一段）。"
+    plain: 'Secondary authentication or authorisation failed (the DN-AAA step).'
+    plain_zh: '次級鑑權／授權沒過（DN-AAA 那一段）。'
     common_causes:
+      - 'The external AAA server refused'
+      - 'Wrong credentials or certificate'
+    common_causes_zh:
       - "外部 AAA 伺服器拒絕"
       - "憑證或帳密錯誤"
 
   31:
     name: "Request rejected, unspecified"
-    plain: "請求被拒，未說明原因。"
+    plain: 'The request was rejected with no reason given.'
+    plain_zh: '請求被拒，未說明原因。'
     common_causes:
+      - 'An internal SMF policy refused it'
+    common_causes_zh:
       - "SMF 內部策略拒絕"
 
   32:
     name: "Service option not supported"
-    plain: "網路不支援這個服務選項。"
+    plain: 'The network does not support this service option.'
+    plain_zh: '網路不支援這個服務選項。'
     common_causes:
+      - 'The feature is not enabled'
+    common_causes_zh:
       - "功能未開通"
 
   33:
     name: "Requested service option not subscribed"
-    plain: "用戶沒有訂閱這個服務選項。"
+    plain: 'The subscriber has not subscribed to this service option.'
+    plain_zh: '用戶沒有訂閱這個服務選項。'
     common_causes:
+      - 'The subscription does not include that service'
+    common_causes_zh:
       - "簽約資料未包含該服務"
 
   36:
     name: "Regular deactivation"
-    plain: "正常釋放，不是錯誤。看到這個不必追。"
+    plain: 'A normal release, not an error. Nothing to chase here.'
+    plain_zh: '正常釋放，不是錯誤。看到這個不必追。'
     common_causes:
+      - 'The UE closed the session itself'
+      - 'An idle timeout'
+    common_causes_zh:
       - "UE 主動關閉 session"
       - "閒置逾時"
 
   38:
     name: "Network failure"
-    plain: "網路端出錯。"
+    plain: 'Something went wrong on the network side.'
+    plain_zh: '網路端出錯。'
     common_causes:
+      - 'A PFCP procedure between the SMF and the UPF failed'
+      - 'The UPF is unreachable'
+    common_causes_zh:
       - "SMF 與 UPF 之間的 PFCP 程序失敗"
       - "UPF 不可達"
 
   39:
     name: "Reactivation requested"
-    plain: "網路要求 UE 重新啟用這個 session。"
+    plain: 'The network is asking the UE to re-activate this session.'
+    plain_zh: '網路要求 UE 重新啟用這個 session。'
     common_causes:
+      - 'The context on the network side needs rebuilding'
+    common_causes_zh:
       - "網路端 context 需要重建"
 
   43:
     name: "Invalid PDU session identity"
-    plain: "PDU session 識別碼無效。"
+    plain: 'The PDU session identity is not valid.'
+    plain_zh: 'PDU session 識別碼無效。'
     common_causes:
+      - 'The UE and the network disagree about the session numbering'
+    common_causes_zh:
       - "UE 與網路對 session 編號的認知不同步"
 
   46:
     name: "Out of LADN service area"
-    plain: "UE 離開了該 LADN 的服務範圍。"
+    plain: 'The UE has moved outside the service area of that LADN.'
+    plain_zh: 'UE 離開了該 LADN 的服務範圍。'
     common_causes:
+      - 'It moved out of the LADN''s coverage'
+    common_causes_zh:
       - "移動到 LADN 涵蓋範圍外"
 
   50:
     name: "PDU session type IPv4 only allowed"
-    plain: "只准 IPv4。UE 要了 IPv6 或 IPv4v6。"
+    plain: 'IPv4 only. The UE asked for IPv6 or IPv4v6.'
+    plain_zh: '只准 IPv4。UE 要了 IPv6 或 IPv4v6。'
     common_causes:
+      - 'The DNN is configured for IPv4 only'
+    common_causes_zh:
       - "DNN 只設定了 IPv4"
 
   51:
     name: "PDU session type IPv6 only allowed"
-    plain: "只准 IPv6。"
+    plain: 'IPv6 only.'
+    plain_zh: '只准 IPv6。'
     common_causes:
+      - 'The DNN is configured for IPv6 only'
+    common_causes_zh:
       - "DNN 只設定了 IPv6"
 
   54:
     name: "PDU session does not exist"
-    plain: "要操作的 session 在網路端不存在。"
+    plain: 'The session being operated on does not exist on the network side.'
+    plain_zh: '要操作的 session 在網路端不存在。'
     common_causes:
+      - 'The session was already released and the UE is still using the old identity'
+    common_causes_zh:
       - "session 已被釋放，UE 還在用舊的識別碼"
 
   57:
     name: "PDU session type IPv4v6 only allowed"
-    plain: "只准雙堆疊。"
+    plain: 'Dual-stack only.'
+    plain_zh: '只准雙堆疊。'
     common_causes:
+      - 'A DNN configuration restriction'
+    common_causes_zh:
       - "DNN 設定限制"
 
   67:
     name: "Insufficient resources for specific slice and DNN"
-    plain: "這個切片加上這個 DNN 的組合資源不足。"
+    plain: 'Not enough resources for this slice combined with this DNN.'
+    plain_zh: '這個切片加上這個 DNN 的組合資源不足。'
     common_causes:
+      - 'The slice quota is used up'
+    common_causes_zh:
       - "切片配額用盡"
 
   68:
     name: "Not supported SSC mode"
-    plain: "不支援要求的 SSC 模式。"
+    plain: 'The requested SSC mode is not supported.'
+    plain_zh: '不支援要求的 SSC 模式。'
     common_causes:
+      - 'The SSC mode the UE asked for is not implemented in the network'
+    common_causes_zh:
       - "UE 要求的 SSC mode 網路未實作"
 
   69:
     name: "Insufficient resources for specific slice"
-    plain: "該切片資源不足。"
+    plain: 'Not enough resources on that slice.'
+    plain_zh: '該切片資源不足。'
     common_causes:
+      - 'The slice quota is used up'
+    common_causes_zh:
       - "切片配額用盡"
 
   70:
     name: "Missing or unknown DNN in a slice"
-    plain: "在這個切片裡找不到該 DNN。"
+    plain: 'That DNN cannot be found within this slice.'
+    plain_zh: '在這個切片裡找不到該 DNN。'
     common_causes:
+      - 'The S-NSSAI and DNN combination was never configured'
+    common_causes_zh:
       - "S-NSSAI 與 DNN 的組合沒設定"
 
   82:
     name: "Maximum data rate per UE for user-plane integrity protection is too low"
-    plain: "UE 支援的使用者面完整性保護速率太低，達不到網路要求。"
+    plain: 'The user-plane integrity protection rate the UE supports is too low for what the network requires.'
+    plain_zh: 'UE 支援的使用者面完整性保護速率太低，達不到網路要求。'
     common_causes:
+      - 'An older UE that only supports 64 kbps integrity protection while the network asks for full rate'
+    common_causes_zh:
       - "較舊的 UE 只支援 64 kbps 完整性保護，而網路要求全速率"
 
   95:
     name: "Semantically incorrect message"
-    plain: "訊息語意不正確。"
+    plain: 'The message is semantically incorrect.'
+    plain_zh: '訊息語意不正確。'
     common_causes:
+      - 'Incompatible implementations'
+    common_causes_zh:
       - "實作不相容"
 
   96:
     name: "Invalid mandatory information"
-    plain: "必要資訊元素內容無效。"
+    plain: 'A mandatory information element holds an invalid value.'
+    plain_zh: '必要資訊元素內容無效。'
     common_causes:
+      - 'An encoding bug'
+    common_causes_zh:
       - "編碼錯誤"
 
   97:
     name: "Message type non-existent or not implemented"
-    plain: "訊息型別不存在或未實作。"
+    plain: 'The message type does not exist, or is not implemented.'
+    plain_zh: '訊息型別不存在或未實作。'
     common_causes:
+      - 'A release gap'
+    common_causes_zh:
       - "版本落差"
 
   111:
     name: "Protocol error, unspecified"
-    plain: "協定錯誤，規範未指明細節。"
+    plain: 'Protocol error; the spec does not say more than that.'
+    plain_zh: '協定錯誤，規範未指明細節。'
     common_causes:
+      - 'Encode/decode incompatibility, common when two vendors interconnect'
+      - 'A mandatory IE is missing'
+    common_causes_zh:
       - "編碼／解碼不相容，常見於跨廠商互連"
       - "必要 IE 缺漏"

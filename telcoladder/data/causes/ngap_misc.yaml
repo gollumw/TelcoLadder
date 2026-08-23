@@ -1,34 +1,54 @@
 # NGAP CauseMisc —— TS 38.413 §9.3.1.2。群組完整。
+#
+# `plain` / `common_causes` 是**英文原文**，`plain_zh` / `common_causes_zh` 是中文
+# （理由見 `causes.py` 的 `CauseInfo.plain_zh`）。`name` 是規範原文，不翻。
 table: ngap_misc
 spec: "3GPP TS 38.413"
 clause: "§9.3.1.2"
 causes:
   0:
     name: "control-processing-overload"
-    plain: "控制面處理過載。"
+    plain: "The control plane is overloaded."
+    plain_zh: "控制面處理過載。"
     common_causes:
+      - "A signalling storm - for example many UEs re-registering at once"
+    common_causes_zh:
       - "訊令風暴，例如大量 UE 同時重新註冊"
   1:
     name: "not-enough-user-plane-processing-resources"
-    plain: "使用者面處理資源不足。"
+    plain: "Not enough user-plane processing resources."
+    plain_zh: "使用者面處理資源不足。"
     common_causes:
+      - "The UPF or the base station has run out of user-plane capacity"
+    common_causes_zh:
       - "UPF 或基地台的使用者面容量耗盡"
   2:
     name: "hardware-failure"
-    plain: "硬體故障。"
+    plain: "A hardware failure."
+    plain_zh: "硬體故障。"
     common_causes:
+      - "A faulty board or interface"
+    common_causes_zh:
       - "板卡或介面異常"
   3:
     name: "om-intervention"
-    plain: "維運人員介入 —— 有人手動做了操作。"
+    plain: "Operations and maintenance stepped in - somebody did this by hand."
+    plain_zh: "維運人員介入 —— 有人手動做了操作。"
     common_causes:
+      - "Planned maintenance, or a manual block"
+    common_causes_zh:
       - "計畫性維護或手動封鎖"
   4:
     name: "unknown-PLMN-or-SNPN"
-    plain: "不認得這個 PLMN 或 SNPN。"
+    plain: "This PLMN or SNPN is not recognised."
+    plain_zh: "不認得這個 PLMN 或 SNPN。"
     common_causes:
+      - "The PLMN the gNB broadcasts is not configured in the AMF"
+    common_causes_zh:
       - "gNB 廣播的 PLMN 未在 AMF 設定"
   5:
     name: "unspecified"
-    plain: "其他原因，未指明。"
+    plain: "Some other reason the sender did not specify."
+    plain_zh: "其他原因，未指明。"
     common_causes: []
+    common_causes_zh: []

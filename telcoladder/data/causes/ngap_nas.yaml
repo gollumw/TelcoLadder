@@ -1,28 +1,44 @@
 # NGAP CauseNas —— TS 38.413 §9.3.1.2。群組完整。
+#
+# `plain` / `common_causes` 是**英文原文**，`plain_zh` / `common_causes_zh` 是中文
+# （理由見 `causes.py` 的 `CauseInfo.plain_zh`）。`name` 是規範原文，不翻。
 table: ngap_nas
 spec: "3GPP TS 38.413"
 clause: "§9.3.1.2"
 causes:
   0:
     name: "normal-release"
-    plain: "正常釋放，不是錯誤。"
+    plain: "A normal release. Not an error."
+    plain_zh: "正常釋放，不是錯誤。"
     common_causes: []
+    common_causes_zh: []
   1:
     name: "authentication-failure"
-    plain: "鑑權失敗。真正的原因要看 NAS 層的 5GMM cause。"
+    plain: "Authentication failed. The real reason is in the NAS 5GMM cause, not here."
+    plain_zh: "鑑權失敗。真正的原因要看 NAS 層的 5GMM cause。"
     common_causes:
+      - "The SIM's K/OPc does not match what the UDM holds"
+      - "SQN out of sync"
+    common_causes_zh:
       - "SIM 的 K/OPc 與 UDM 不一致"
       - "SQN 不同步"
   2:
     name: "deregister"
-    plain: "因登出而釋放。"
+    plain: "Released because the UE deregistered."
+    plain_zh: "因登出而釋放。"
     common_causes: []
+    common_causes_zh: []
   3:
     name: "unspecified"
-    plain: "NAS 層原因，未指明。"
+    plain: "A NAS-layer reason the sender did not specify further."
+    plain_zh: "NAS 層原因，未指明。"
     common_causes: []
+    common_causes_zh: []
   4:
     name: "ue-not-in-plmn-serving-area"
-    plain: "UE 不在此 PLMN 的服務區內。"
+    plain: "The UE is outside this PLMN's serving area."
+    plain_zh: "UE 不在此 PLMN 的服務區內。"
     common_causes:
+      - "Roaming or regional restrictions"
+    common_causes_zh:
       - "漫遊或區域限制"

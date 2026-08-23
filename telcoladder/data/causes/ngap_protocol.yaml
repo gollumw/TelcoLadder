@@ -1,42 +1,67 @@
 # NGAP CauseProtocol —— TS 38.413 §9.3.1.2。群組完整。
 # 這一組幾乎都指向「兩端實作對不上」，跨廠商互連時最常見。
+#
+# `plain` / `common_causes` 是**英文原文**，`plain_zh` / `common_causes_zh` 是中文
+# （理由見 `causes.py` 的 `CauseInfo.plain_zh`）。`name` 是規範原文，不翻。
 table: ngap_protocol
 spec: "3GPP TS 38.413"
 clause: "§9.3.1.2"
 causes:
   0:
     name: "transfer-syntax-error"
-    plain: "傳輸語法錯誤 —— ASN.1 PER 編碼解不開。"
+    plain: "Transfer syntax error - the ASN.1 PER encoding could not be decoded."
+    plain_zh: "傳輸語法錯誤 —— ASN.1 PER 編碼解不開。"
     common_causes:
+      - "A bug in the sender's encoder"
+      - "The message was truncated in transit"
+    common_causes_zh:
       - "編碼器實作錯誤"
       - "訊息在傳輸途中被截斷"
   1:
     name: "abstract-syntax-error-reject"
-    plain: "抽象語法錯誤，直接拒絕。"
+    plain: "Abstract syntax error; the message was rejected outright."
+    plain_zh: "抽象語法錯誤，直接拒絕。"
     common_causes:
+      - "A mandatory IE is missing, or has the wrong type"
+    common_causes_zh:
       - "必要 IE 缺漏或型別不符"
   2:
     name: "abstract-syntax-error-ignore-and-notify"
-    plain: "抽象語法錯誤，忽略該部分並通知對方。"
+    plain: "Abstract syntax error; the offending part was ignored and the sender told."
+    plain_zh: "抽象語法錯誤，忽略該部分並通知對方。"
     common_causes:
+      - "An optional IE the receiver does not recognise"
+    common_causes_zh:
       - "收到不認得的選用 IE"
   3:
     name: "message-not-compatible-with-receiver-state"
-    plain: "訊息與接收端當下狀態不相容。"
+    plain: "The message does not fit the state the receiver is in."
+    plain_zh: "訊息與接收端當下狀態不相容。"
     common_causes:
+      - "The two state machines are out of step, usually because an earlier message was lost"
+    common_causes_zh:
       - "狀態機不同步，常見於前一則訊息遺失"
   4:
     name: "semantic-error"
-    plain: "語意錯誤 —— 格式對，但內容講不通。"
+    plain: "Semantic error - the format is fine, but the content does not make sense."
+    plain_zh: "語意錯誤 —— 格式對，但內容講不通。"
     common_causes:
+      - "Parameters that contradict each other"
+    common_causes_zh:
       - "參數組合互相矛盾"
   5:
     name: "abstract-syntax-error-falsely-constructed-message"
-    plain: "訊息結構本身就是錯的 —— 不是內容有誤，是組裝方式違反規範。"
+    plain: "The message structure itself is wrong - not the values, the way it was assembled violates the spec."
+    plain_zh: "訊息結構本身就是錯的 —— 不是內容有誤，是組裝方式違反規範。"
     common_causes:
+      - "A defect in the sender's implementation"
+    common_causes_zh:
       - "發送端實作缺陷"
   6:
     name: "unspecified"
-    plain: "協定錯誤，未指明。"
+    plain: "A protocol error the sender did not specify further."
+    plain_zh: "協定錯誤，未指明。"
     common_causes:
+      - "A release-version gap between two vendors"
+    common_causes_zh:
       - "跨廠商 release 版本落差"

@@ -54,29 +54,42 @@ causes:
   # ── 成功（Cx/Dx 用 Experimental-Result 表達成功，這是它與別的介面不同的地方）──
   2001:
     name: "DIAMETER_FIRST_REGISTRATION"
-    plain: "第一次註冊成功。HSS 認可這個 IMPU，並要求 S-CSCF 下載使用者資料。注意這個 2001 在 Experimental-Result-Code 裡，與基礎的 Result-Code 2001（單純的成功）不是同一件事。"
+    plain: 'First registration succeeded. The HSS accepted this IMPU and wants the S-CSCF to download the user profile. Note this 2001 is in Experimental-Result-Code and is a different thing from base Result-Code 2001 (plain success).'
+    plain_zh: '第一次註冊成功。HSS 認可這個 IMPU，並要求 S-CSCF 下載使用者資料。注意這個 2001 在 Experimental-Result-Code 裡，與基礎的 Result-Code 2001（單純的成功）不是同一件事。'
 
   2002:
     name: "DIAMETER_SUBSEQUENT_REGISTRATION"
-    plain: "後續註冊成功（re-registration）。使用者已經註冊在同一台 S-CSCF 上，不需要重新下載資料。"
+    plain: 'A subsequent registration succeeded (a re-registration). The user is already registered on the same S-CSCF, so no profile download is needed.'
+    plain_zh: '後續註冊成功（re-registration）。使用者已經註冊在同一台 S-CSCF 上，不需要重新下載資料。'
 
   2003:
     name: "DIAMETER_UNREGISTERED_SERVICE"
-    plain: "使用者沒有註冊，但有未註冊狀態的服務（例如來電轉接），所以仍要指派一台 S-CSCF。這是成功，不是錯誤。"
+    plain: 'The user is not registered but has services for the unregistered state (call forwarding, for example), so an S-CSCF still has to be assigned. This is a success, not an error.'
+    plain_zh: '使用者沒有註冊，但有未註冊狀態的服務（例如來電轉接），所以仍要指派一台 S-CSCF。這是成功，不是錯誤。'
 
   # ── 暫時性 ──
   4181:
     name: "DIAMETER_AUTHENTICATION_DATA_UNAVAILABLE"
-    plain: "HSS 這次拿不到鑑權向量，請稍後再試。暫時性，不代表用戶有問題。"
+    plain: 'The HSS could not obtain authentication vectors this time - try again shortly. Transient; it does not mean anything is wrong with the subscriber.'
+    plain_zh: 'HSS 這次拿不到鑑權向量，請稍後再試。暫時性，不代表用戶有問題。'
     common_causes:
+      - 'The AuC behind the HSS is busy, or the link to it is failing'
+      - 'The vector generation service is temporarily unavailable'
+    common_causes_zh:
       - "HSS 後端的 AuC 忙碌或連線異常"
       - "向量產生服務暫時不可用"
 
   # ── 永久失敗：身分類（Cx/Dx 與 S6a 共用） ──
   5001:
     name: "DIAMETER_ERROR_USER_UNKNOWN"
-    plain: "HSS 裡沒有這個用戶。身分本身不存在，不是設定錯或權限不足。"
+    plain: 'The HSS has no such user. The identity itself does not exist - this is not a misconfiguration or a permission problem.'
+    plain_zh: 'HSS 裡沒有這個用戶。身分本身不存在，不是設定錯或權限不足。'
     common_causes:
+      - 'The IMSI/IMPI was never provisioned, or is provisioned on a different HSS'
+      - 'A test SIM that was never written into the database'
+      - 'The IMPI derivation rule does not match what the HSS stores (the realm spelling in IMSI@realm)'
+      - 'The subscriber was deleted while the MME or S-CSCF still holds an old context'
+    common_causes_zh:
       - "IMSI/IMPI 沒開通，或開通在另一套 HSS 上"
       - "測試 SIM 沒寫進資料庫"
       - "IMPI 的推導規則與 HSS 裡存的不一致（IMSI@realm 的 realm 拼法）"
@@ -84,47 +97,70 @@ causes:
 
   5002:
     name: "DIAMETER_ERROR_IDENTITIES_DONT_MATCH"
-    plain: "請求裡的 IMPI 與 IMPU 在 HSS 裡不屬於同一個用戶。兩個身分各自存在，但兜不起來。"
+    plain: 'The IMPI and IMPU in the request do not belong to the same user in the HSS. Both identities exist, but they do not go together.'
+    plain_zh: '請求裡的 IMPI 與 IMPU 在 HSS 裡不屬於同一個用戶。兩個身分各自存在，但兜不起來。'
     common_causes:
+      - 'The IMPU belongs to a different IMPI (a provisioning mix-up)'
+      - 'The P-CSCF or UE derived the IMPI from the IMSI while the HSS stores a different one'
+    common_causes_zh:
       - "IMPU 屬於別的 IMPI（設定錯置）"
       - "P-CSCF 或 UE 送出的 IMPI 是從 IMSI 推導的，而 HSS 存的是另一組"
 
   5003:
     name: "DIAMETER_ERROR_IDENTITY_NOT_REGISTERED"
-    plain: "這個身分目前沒有註冊。**不是「不存在」**（那是 5001），是「存在但現在沒上線」。"
+    plain: 'This identity is not registered right now. Not the same as it not existing (that is 5001) - it exists, it is just not online.'
+    plain_zh: '這個身分目前沒有註冊。**不是「不存在」**（那是 5001），是「存在但現在沒上線」。'
     common_causes:
+      - 'Querying an IMPU that has not completed IMS registration yet'
+      - 'The registration timed out and the HSS cleared it while the querying side still thought it was up'
+    common_causes_zh:
       - "查詢一個尚未完成 IMS 註冊的 IMPU"
       - "註冊已逾時被 HSS 清掉，而查詢端還以為它在線上"
 
   5004:
     name: "DIAMETER_ERROR_ROAMING_NOT_ALLOWED"
-    plain: "這個用戶不被允許在目前的網路漫遊。身分沒問題，位置有問題。"
+    plain: 'This user is not allowed to roam on the network they are currently on. The identity is fine; the location is not.'
+    plain_zh: '這個用戶不被允許在目前的網路漫遊。身分沒問題，位置有問題。'
     common_causes:
+      - 'Roaming restrictions in the subscription (a forbidden-PLMN list)'
+      - 'No roaming agreement between the visited and the home network'
+      - 'The wrong Visited-PLMN-Id was sent'
+    common_causes_zh:
       - "簽約資料裡的漫遊限制（禁止的 PLMN 清單）"
       - "拜訪網路與家網路之間沒有漫遊協議"
       - "Visited-PLMN-Id 帶錯"
 
   5005:
     name: "DIAMETER_ERROR_IDENTITY_ALREADY_REGISTERED"
-    plain: "這個身分已經註冊在別的地方了，而目前的請求不允許覆蓋。"
+    plain: 'This identity is already registered somewhere else, and the current request is not allowed to override that.'
+    plain_zh: '這個身分已經註冊在別的地方了，而目前的請求不允許覆蓋。'
     common_causes:
+      - 'A previous registration was never torn down properly (stale state in the S-CSCF or HSS)'
+      - 'The same IMPU registering from two places at once'
+    common_causes_zh:
       - "前一次註冊沒有正常解除（S-CSCF 或 HSS 殘留狀態）"
       - "同一個 IMPU 同時從兩個地方註冊"
 
   5006:
     name: "DIAMETER_ERROR_AUTH_SCHEME_NOT_SUPPORTED"
-    plain: "請求指定的鑑權方式（Digest-AKAv1、Digest-MD5…）HSS 不支援。"
+    plain: 'The HSS does not support the authentication scheme the request asked for (Digest-AKAv1, Digest-MD5, and so on).'
+    plain_zh: '請求指定的鑑權方式（Digest-AKAv1、Digest-MD5…）HSS 不支援。'
     common_causes:
+      - 'The S-CSCF and the HSS are configured for different authentication schemes'
+      - 'The SIM supports a different scheme from the one the network requires'
+    common_causes_zh:
       - "S-CSCF 與 HSS 設定的鑑權方式不一致"
       - "SIM 卡支援的方式與網路要求的不同"
 
   5007:
     name: "DIAMETER_ERROR_IN_ASSIGNMENT_TYPE"
-    plain: "SAR 的 Server-Assignment-Type 與 HSS 認知的用戶狀態互相矛盾。"
+    plain: 'The Server-Assignment-Type in the SAR contradicts the user state the HSS holds.'
+    plain_zh: 'SAR 的 Server-Assignment-Type 與 HSS 認知的用戶狀態互相矛盾。'
 
   5011:
     name: "DIAMETER_ERROR_FEATURE_UNSUPPORTED"
-    plain: "請求要求的功能（Feature-List）對端不支援。"
+    plain: 'The peer does not support a feature the request asked for (in Feature-List).'
+    plain_zh: '請求要求的功能（Feature-List）對端不支援。'
 
   # ── 永久失敗：Rx（AF ↔ PCRF，TS 29.214 用到的那幾個）──
   #
@@ -136,99 +172,142 @@ causes:
   # 查到就查到，不查就是「未收錄」。
   5061:
     name: "INVALID_SERVICE_INFORMATION"
-    plain: "AF 送來的服務資訊不合法，PCRF 無法據以產生策略規則。"
+    plain: 'The service information the AF sent is not valid, so the PCRF cannot turn it into policy rules.'
+    plain_zh: 'AF 送來的服務資訊不合法，PCRF 無法據以產生策略規則。'
 
   5062:
     name: "FILTER_RESTRICTIONS"
-    plain: "服務資訊裡的流量描述（filter）不符合這個網路允許的形式。"
+    plain: 'The traffic description (the filter) in the service information is not in a form this network allows.'
+    plain_zh: '服務資訊裡的流量描述（filter）不符合這個網路允許的形式。'
     common_causes:
+      - 'The media description negotiated over SDP falls outside what policy permits'
+      - 'A wildcard or address form the network does not support'
+    common_causes_zh:
       - "SDP 協商出的媒體描述超出策略允許的範圍"
       - "使用了網路不支援的萬用字元或位址形式"
 
   5063:
     name: "REQUESTED_SERVICE_NOT_AUTHORIZED"
-    plain: "這個用戶沒有被授權使用所請求的服務。"
+    plain: 'This user is not authorised to use the service that was requested.'
+    plain_zh: '這個用戶沒有被授權使用所請求的服務。'
 
   5065:
     name: "IP-CAN_SESSION_NOT_AVAILABLE"
-    plain: "PCRF 找不到對應的 IP-CAN session —— AF 要綁的那條資料連線在 PCRF 這邊不存在。"
+    plain: 'The PCRF cannot find the matching IP-CAN session - the data connection the AF wants to bind to does not exist on the PCRF side.'
+    plain_zh: 'PCRF 找不到對應的 IP-CAN session —— AF 要綁的那條資料連線在 PCRF 這邊不存在。'
     common_causes:
+      - 'The Rx AAR arrived before the Gx CCR-I (a signalling race)'
+      - 'The IP-CAN session was already terminated and the AF is still using the old binding'
+      - 'The UE''s IP address does not line up between the PCRF and the AF (NAT, or address reuse)'
+    common_causes_zh:
       - "Rx 的 AAR 早於 Gx 的 CCR-I 抵達（訊令競態）"
       - "IP-CAN session 已經被終止，而 AF 還在用舊的綁定"
       - "UE 的 IP 位址在 PCRF 與 AF 之間對不起來（NAT、位址重用）"
 
   5066:
     name: "UNAUTHORIZED_NON_EMERGENCY_SESSION"
-    plain: "這條 IP-CAN session 只允許緊急服務，而請求的是非緊急服務。"
+    plain: 'This IP-CAN session is for emergency service only, and a non-emergency service was requested.'
+    plain_zh: '這條 IP-CAN session 只允許緊急服務，而請求的是非緊急服務。'
 
   # ── 永久失敗：Gx（PCEF ↔ PCRF，TS 29.212 用到的那幾個，號碼在 5140 之後）──
   5140:
     name: "DIAMETER_ERROR_INITIAL_PARAMETERS"
-    plain: "CCR-I 帶來的初始參數 PCRF 無法接受，IP-CAN session 建不起來。"
+    plain: 'The PCRF cannot accept the initial parameters in the CCR-I, so the IP-CAN session cannot be established.'
+    plain_zh: 'CCR-I 帶來的初始參數 PCRF 無法接受，IP-CAN session 建不起來。'
     common_causes:
+      - 'Initial information such as APN, RAT-Type or IP address is missing or self-contradictory'
+      - 'The PCRF has no policy configuration for this APN'
+    common_causes_zh:
       - "APN／RAT-Type／IP 位址等初始資訊缺漏或互相矛盾"
       - "PCRF 端沒有這個 APN 的策略設定"
 
   5141:
     name: "DIAMETER_ERROR_TRIGGER_EVENT"
-    plain: "PCEF 回報的事件觸發（Event-Trigger）PCRF 不認得或不接受。"
+    plain: 'The PCRF does not recognise or will not accept the Event-Trigger the PCEF reported.'
+    plain_zh: 'PCEF 回報的事件觸發（Event-Trigger）PCRF 不認得或不接受。'
 
   5142:
     name: "DIAMETER_PCC_RULE_EVENT"
-    plain: "PCC 規則安裝或啟用失敗 —— PCEF 裝不上 PCRF 下發的規則。回覆會帶 Charging-Rule-Report 指出是哪一條。"
+    plain: 'Installing or activating a PCC rule failed - the PCEF could not apply what the PCRF sent. The answer carries a Charging-Rule-Report naming which one.'
+    plain_zh: 'PCC 規則安裝或啟用失敗 —— PCEF 裝不上 PCRF 下發的規則。回覆會帶 Charging-Rule-Report 指出是哪一條。'
     common_causes:
+      - 'The rule refers to a predefined rule name the PCEF does not have (Charging-Rule-Base-Name)'
+      - 'QoS parameters beyond what the bearer can provide'
+    common_causes_zh:
       - "規則引用了 PCEF 沒有的預設規則名稱（Charging-Rule-Base-Name）"
       - "QoS 參數超出承載能提供的範圍"
 
   5143:
     name: "DIAMETER_ERROR_BEARER_NOT_AUTHORIZED"
-    plain: "請求的承載（bearer）沒有被授權。"
+    plain: 'The requested bearer was not authorised.'
+    plain_zh: '請求的承載（bearer）沒有被授權。'
 
   5144:
     name: "DIAMETER_ERROR_TRAFFIC_MAPPING_INFO_REJECTED"
-    plain: "UE 請求的流量對應資訊（TFT）被 PCRF 拒絕。"
+    plain: 'The traffic mapping information (the TFT) the UE asked for was refused by the PCRF.'
+    plain_zh: 'UE 請求的流量對應資訊（TFT）被 PCRF 拒絕。'
 
   5147:
     name: "DIAMETER_ERROR_CONFLICTING_REQUEST"
-    plain: "這個請求與同一 session 上進行中的另一個請求衝突。"
+    plain: 'This request conflicts with another one already in progress on the same session.'
+    plain_zh: '這個請求與同一 session 上進行中的另一個請求衝突。'
   # 5146 在 tshark 的表裡與 5144 同名；TS 29.230 Table 8.1.4 寫的是 `reserved` —— **不收**，查到會是「未收錄」。
 
   # ── 永久失敗：Zh/Zn（GBA 鑑權，TS 29.109）—— 第一版標成「IMS 身分」，
   #    TS 29.230 Table 8.1.4 的出處欄寫的是 29.109。不在這一輪的三個介面裡。──
   5401:
     name: "DIAMETER_ERROR_IMPI_UNKNOWN"
-    plain: "HSS 不認得這個 IMPI（私有身分）。"
+    plain: 'The HSS does not recognise this IMPI (the private identity).'
+    plain_zh: 'HSS 不認得這個 IMPI（私有身分）。'
 
   5402:
     name: "DIAMETER_ERROR_NOT_AUTHORIZED"
-    plain: "請求者沒有被授權做這件事 —— 是對「請求方」的拒絕，不是對用戶的拒絕。"
+    plain: 'The requester is not authorised to do this - a refusal aimed at the requesting node, not at the subscriber.'
+    plain_zh: '請求者沒有被授權做這件事 —— 是對「請求方」的拒絕，不是對用戶的拒絕。'
 
   # ── 永久失敗：S6a/S6d 專屬（TS 29.272 用到的那幾個，號碼在 5420 之後） ──
   5420:
     name: "DIAMETER_ERROR_UNKNOWN_EPS_SUBSCRIPTION"
-    plain: "HSS 裡有這個用戶，但他沒有 EPS 簽約資料 —— 也就是「有這個人，但沒開 4G/LTE 數據」。與 5001（根本沒這個人）是兩回事。"
+    plain: 'The HSS has this user but they have no EPS subscription - the person exists, 4G/LTE data was never enabled for them. A different thing from 5001 (no such person at all).'
+    plain_zh: 'HSS 裡有這個用戶，但他沒有 EPS 簽約資料 —— 也就是「有這個人，但沒開 4G/LTE 數據」。與 5001（根本沒這個人）是兩回事。'
     common_causes:
+      - 'Only a 2G/3G circuit-switched subscription was provisioned, with no EPS'
+      - 'The subscription has no APN configured at all'
+      - 'The subscriber was just created and the EPS part has not synchronised yet'
+    common_causes_zh:
       - "只開通了 2G/3G 的 circuit-switched 簽約，沒開 EPS"
       - "簽約資料裡沒有任何 APN 設定"
       - "用戶剛建立，EPS 的部分還沒同步過來"
 
   5421:
     name: "DIAMETER_ERROR_RAT_NOT_ALLOWED"
-    plain: "這個用戶不被允許使用目前的無線接取技術。人與簽約都沒問題，接取方式有問題。"
+    plain: 'This user is not allowed on the radio access technology they are currently using. The person and the subscription are fine; the access is not.'
+    plain_zh: '這個用戶不被允許使用目前的無線接取技術。人與簽約都沒問題，接取方式有問題。'
     common_causes:
+      - 'The subscription restricts them to certain RATs (NB-IoT only, for example)'
+      - 'The RAT-Type the MME reported is not one the subscription allows'
+    common_causes_zh:
       - "簽約限制只允許特定 RAT（例如只准 NB-IoT）"
       - "MME 回報的 RAT-Type 與簽約允許的不符"
 
   5422:
     name: "DIAMETER_ERROR_EQUIPMENT_UNKNOWN"
-    plain: "EIR 不認得這台設備的 IMEI，或它被列入禁用清單。這是對**設備**的拒絕，不是對用戶。"
+    plain: 'The EIR does not recognise this device''s IMEI, or it is on a barred list. This refuses the equipment, not the subscriber.'
+    plain_zh: 'EIR 不認得這台設備的 IMEI，或它被列入禁用清單。這是對**設備**的拒絕，不是對用戶。'
     common_causes:
+      - 'The IMEI is blacklisted (reported lost, or stolen)'
+      - 'The EIR has no record of this IMEI and policy is set to block anything unknown'
+    common_causes_zh:
       - "IMEI 在黑名單（掛失、贓機）"
       - "EIR 裡沒有這個 IMEI 而策略設成「不認得就擋」"
 
   5423:
     name: "DIAMETER_ERROR_UNKNOWN_SERVING_NODE"
-    plain: "HSS 不認得這台服務節點（MME/SGSN）—— 它送來的 Origin-Host 不在 HSS 的認知裡。"
+    plain: 'The HSS does not recognise this serving node (MME/SGSN) - the Origin-Host it sent is not one the HSS knows about.'
+    plain_zh: 'HSS 不認得這台服務節點（MME/SGSN）—— 它送來的 Origin-Host 不在 HSS 的認知裡。'
     common_causes:
+      - 'A new MME was never provisioned on the HSS'
+      - 'The Origin-Host string does not match what the HSS has configured'
+    common_causes_zh:
       - "新的 MME 沒有在 HSS 上開通"
       - "Origin-Host 字串與 HSS 設定的不一致"
