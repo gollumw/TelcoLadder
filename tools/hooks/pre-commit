@@ -16,7 +16,13 @@
 #   · 15-digit identifiers outside the E.212 test network (00101…)
 #   · capture filenames that look exported from a real network
 #   · absolute paths in pcapng section headers
+#   · home-directory paths, which carry the developer's account name
+#   · phone-number shapes: tel:/sip: URIs and bare E.164 (VoLTE captures)
 #   · the no-real-data warning being removed from issue/PR templates
+#
+# The hook runs the whole guard file, so a net added there is enforced here
+# without touching this script. Keep this list in step with it anyway — it is
+# what a developer reads when the commit is refused.
 #
 # Installed by tools/install-hooks.sh. To bypass once: git commit --no-verify
 #

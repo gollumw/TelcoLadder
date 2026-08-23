@@ -543,3 +543,136 @@ def test_no_home_directory_path_in_any_tracked_text_file() -> None:
         "文字檔裡帶著個人目錄路徑：\n  " + "\n  ".join(offenders)
         + "\n\n改成相對路徑。帳號名不該出現在版控裡。"
     )
+
+
+# ── 第七道網：電話號碼（T1，2026-08-23）──────────────────────────────
+#
+# 前六道網**零條涵蓋電話號碼**（動手前實測 `grep -c` = 0）。那在 5G 核網的
+# 世界裡不痛 —— NAS/NGAP 上沒有 MSISDN。但 VoLTE 的擷取檔滿地都是：
+# SIP 的 `To:` / `From:` 是 `sip:+886…@`、`P-Asserted-Identity` 是 `tel:+886…`、
+# Diameter 的 `Subscription-Id-Data` 帶 MSISDN。
+#
+# **這道網刻意在 SIP adapter 之前補**（scope review 2026-08-23 的 F6）。前六道
+# 每一道都是事發之後才補的 —— 這是第一道趕在載體落地前先到位的。
+#
+# ## 為什麼分成「有 scheme」與「裸號碼」兩種形狀
+#
+# `tel:` / `sip:` 的 scheme 本身就是錨點，所以裡面允許 RFC 3966 的視覺分隔符
+# （`tel:` 後面接 `+1-201-555-0123` 是合法寫法）。**裸的 `+886…` 沒有錨點**，放寬分隔符
+# 會開始匹配表格裡不相干的數字，所以只認連續數字。
+#
+# ## 這道網守不住什麼，講明白
+#
+# * **國內格式的裸號碼過得去**（`0912345678`）。要擋它就得擋所有 10 位數字，
+#   而時間戳、埠號、流水號全是那個形狀 —— 誤判會多到讓人把整條測試關掉。
+# * **加了分隔符的裸號碼過得去**（`+886 912 345 678`）。同上，放寬會失控。
+# * 這兩個是**已知缺口，不是疏漏**。與第二道網的「全小寫檔名過得去」同一種取捨。
+
+#: 有 scheme 的：`tel:` / `sip:` / `sips:`，使用者部分是電話號碼形狀。
+#: scheme 是錨點，所以允許 RFC 3966 的視覺分隔符。
+_PHONE_URI = re.compile(r"\b(?:tel|sips?):(\+?[\d][\d\s.()-]{5,20}\d)")
+
+#: 裸的 E.164。**沒有錨點，所以只認連續數字** —— 8 位是「短到不像電話」與
+#: 「長到不像別的東西」之間的分界（國碼 1–3 位 ＋ 用戶號至少 5 位）。
+_PHONE_E164 = re.compile(r"\+(\d{8,15})(?!\d)")
+
+#: ITU-T E.212 保留給測試網的 MCC/MNC。IMPU 是從 IMSI 推導的
+#: （`sip:<IMSI>@ims.mnc…`，TS 23.003 §13.4），所以測試網的 IMSI 推出來的
+#: IMPU 一律放行 —— 與第一道網同一個豁免，同一個理由。
+_TEST_NETWORK_PREFIX = _TEST_NETWORK  # "00101"
+
+#: 明確捏造的電話號碼。**加一筆等於在說「這是我編的」** —— 比照 `_INVENTED`。
+#: 判準相同：尾巴看得出規律。今天是空的，那不是漏了，是版控裡真的一個都沒有
+#: （加這道網時實測三種形狀全部零命中）。
+_INVENTED_NUMBERS: dict[str, str] = {}
+
+
+def _phone_digits(raw: str) -> str:
+    """把視覺分隔符拿掉，只留數字（前導 `+` 也去掉）。"""
+    return re.sub(r"\D", "", raw)
+
+
+def _phone_numbers(text: str) -> set[str]:
+    """文字裡看起來像電話號碼的東西。回傳**去掉分隔符的數字串**。
+
+    測試網推導出來的（`00101…`）直接放行，不回傳 —— 那與第一道網的豁免同源。
+    """
+    found: set[str] = set()
+    for match in _PHONE_URI.finditer(text):
+        digits = _phone_digits(match.group(1))
+        if digits and not digits.startswith(_TEST_NETWORK_PREFIX):
+            found.add(digits)
+    for match in _PHONE_E164.finditer(text):
+        digits = match.group(1)
+        if not digits.startswith(_TEST_NETWORK_PREFIX):
+            found.add(digits)
+    return found
+
+
+def test_the_phone_shape_is_the_one_volte_captures_carry() -> None:
+    """形狀要認得 VoLTE 擷取檔裡真的會出現的寫法，也要放過不是電話的東西。"""
+    # 範例用串接組出來 —— 這個檔自己也在被掃的名單上，直接寫會被自己抓到。
+    # 數字本身也要切開 —— 只切 scheme 不夠，裸 E.164 那條樣式一樣會咬到自己。
+    tw = "+" + "12015550123"
+    assert _phone_numbers("tel:" + tw) == {"12015550123"}
+    assert _phone_numbers("sip:" + tw + "@ims.example") == {"12015550123"}
+    # RFC 3966 允許視覺分隔符，scheme 是錨點所以放寬是安全的。
+    assert _phone_numbers("tel:" + "+1-201-555-0123") == {"12015550123"}
+    # 裸的 E.164 也要認得。
+    assert _phone_numbers("call " + tw + " now") == {"12015550123"}
+
+    # 測試網推導的 IMPU 放行（與第一道網同一個豁免）。
+    assert _phone_numbers("sip:" + "001011234567895" + "@ims.mnc001.mcc001.3gppnetwork.org") == set()
+    # 不是電話的東西不要抓。
+    assert _phone_numbers("version " + "+1" + " and offset " + "+42") == set()
+    assert _phone_numbers("frame.time_relative >= 0 && x <= 5") == set()
+    assert _phone_numbers("2026-08-23T14:22:00Z") == set()
+
+
+def test_no_phone_number_in_any_tracked_text_file() -> None:
+    """版控裡的文字檔不得出現真實的電話號碼。
+
+    紅了代表某個 MSISDN／SIP URI 被貼了進來 —— 最可能的來源是 VoLTE 擷取檔的
+    輸出、`scenario.md` 的實測紀錄，或測試裡的斷言。修法與第一道網相同：
+
+      · 真的是真實號碼 → 拿掉，別想著之後再清（進了歷史就要 filter-repo）
+      · 你編的         → 加進 `_INVENTED_NUMBERS`，並寫下為什麼看得出是捏造的
+    """
+    files = _tracked_text_files()
+    assert len(files) > 50, "掃到的檔案少得不合理 —— git ls-files 可能壞了"
+
+    offenders: list[str] = []
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for digits in sorted(_phone_numbers(text)):
+            if digits in _INVENTED_NUMBERS:
+                continue
+            # 只印前四碼 —— 記錄洩漏的動作本身不該再製造一次洩漏
+            # （`_INVENTED` 上面那段的同一個陷阱）。
+            offenders.append(f"{path.relative_to(REPO)} → {digits[:4]}…（{len(digits)} 位）")
+
+    assert not offenders, (
+        "文字檔裡出現電話號碼形狀：\n  " + "\n  ".join(offenders)
+        + "\n\n真實號碼請移除；自己編的請加進 _INVENTED_NUMBERS 並寫明理由。"
+    )
+
+
+def test_the_invented_numbers_list_is_actually_used() -> None:
+    """白名單裡的每一筆都要真的還在版控裡出現。
+
+    留著用不到的豁免，等於在放寬一道沒有人在看的網 —— 第二道網的
+    `_KNOWN_CAPTURES` 有同一條測試，同一個理由。
+    """
+    if not _INVENTED_NUMBERS:
+        return  # 今天是空的：加這道網時實測三種形狀零命中
+    present: set[str] = set()
+    for path in _tracked_text_files():
+        try:
+            present |= _phone_numbers(path.read_text(encoding="utf-8"))
+        except UnicodeDecodeError:
+            continue
+    stale = sorted(set(_INVENTED_NUMBERS) - present)
+    assert not stale, f"這些白名單項目已經沒有出現在版控裡，請刪掉：{[s[:4] + '…' for s in stale]}"
