@@ -23,7 +23,7 @@ import pytest
 from telcoladder.adapters import diameter
 from telcoladder.causes import lookup
 from telcoladder.identity import globally_unique
-from telcoladder.model import CauseRef, IdKind
+from telcoladder.model import CauseRef, IdKind, Message
 from telcoladder.pipeline import Analysis, analyse
 from telcoladder.tshark import TsharkNotFound, find_tshark
 
@@ -149,10 +149,10 @@ def test_diameter_causes_cite_a_spec_but_no_clause() -> None:
 
 
 def test_every_diameter_frame_became_exactly_one_message(messages) -> None:
-    """26 格、26 則。少一則就是漏抽，而圖看起來完全正常。"""
-    assert len(messages) == 26
+    """30 格、30 則。少一則就是漏抽，而圖看起來完全正常。"""
+    assert len(messages) == 30
     assert all(m.protocol == "diameter" for m in messages)
-    assert len({m.frame for m in messages}) == 26
+    assert len({m.frame for m in messages}) == 30
 
 
 def test_labels_appear_in_tsharks_info_column() -> None:
@@ -224,13 +224,20 @@ def test_application_ids_match_wiresharks_registry() -> None:
 # ── 結果碼：選對表 ──────────────────────────────────────────────────────
 
 
-def test_the_three_failures_are_found_with_the_right_tables(messages) -> None:
-    """三則失敗，兩張表。**這是整個 adapter 的重點測試。**"""
+def test_the_failures_are_found_with_the_right_tables(messages) -> None:
+    """五則失敗訊息、兩張表。**這是整個 adapter 的重點測試。**
+
+    frame 27/28 是**同一則**失敗在轉送路徑上被看到兩次 —— 訊息層如實記兩則
+    （線路上就是兩格），收成一次失敗是程序層的事，見
+    `test_a_relayed_failure_is_counted_once_not_twice`。
+    """
     failures = [m for m in messages if m.is_failure]
     assert [(m.frame, m.cause.table, m.cause.value) for m in failures] == [
         (16, "diameter_3gpp", 5420),   # S6a ULA：沒有 EPS 簽約
         (18, "diameter_3gpp", 5001),   # Cx MAA：HSS 裡沒這個用戶
         (20, "diameter_base", 5012),   # Gx CCA：基礎的「做不到」
+        (27, "diameter_3gpp", 5420),   # 經 DRA 轉送的同一則失敗，上行腿
+        (28, "diameter_3gpp", 5420),   # 同上，下行腿
     ]
     # 而且解釋要真的查得到 —— 查不到的話畫面上會是「未收錄」。
     assert all(lookup(m.cause) is not None for m in failures)
@@ -446,8 +453,132 @@ def test_the_relay_does_not_get_a_network_function_role(messages) -> None:
     畫面上會多出一台不存在的 HSS。
     """
     relayed = [m for m in messages if "198.51.100.61" in (m.src.ip, m.dst.ip)]
-    assert len(relayed) == 4, "fixture 的 DRA 應該有四格（兩段各一來一回）"
+    assert len(relayed) == 8, "fixture 有兩筆經 DRA 的交易，各四格"
     assert {e.role for m in relayed for e in (m.src, m.dst)} == {"MME", "HSS", "DRA"}
+
+
+# ── 程序切段（T-DIAM-PROC，2026-08-23）────────────────────────────────
+
+
+def test_procedures_are_cut_by_session_id(analysis) -> None:
+    """Diameter 的段界由 **Session-Id** 決定，不是 NAS 那套視窗判定。
+
+    RFC 6733 §8：一個 session 就是共用同一個 Session-Id 的一串訊息 ——
+    **協定自己把邊界標在線路上了**。對 S6a 這種無狀態介面它自然退化成
+    「一次交易一段」，因為那正是協定的行為。
+    """
+    from telcoladder.procedures import segment
+
+    procedures, unassigned = segment(analysis)
+    assert [(p.kind, p.outcome) for p in procedures] == [
+        ("diameter-authentication-information", "success"),
+        ("diameter-update-location", "success"),
+        ("diameter-credit-control", "success"),
+        ("diameter-user-authorization", "success"),
+        ("diameter-multimedia-auth", "success"),
+        ("diameter-server-assignment", "success"),
+        ("diameter-update-location", "failure"),
+        ("diameter-multimedia-auth", "failure"),
+        ("diameter-credit-control", "failure"),
+        ("diameter-authentication-information", "success"),
+        ("diameter-update-location", "failure"),
+    ]
+    # 每一段都要指得回一個訂戶，而且失敗段要帶得出 cause。
+    for p in procedures:
+        assert p.supi, p.kind
+        if p.outcome == "failure":
+            assert p.cause, p.kind
+
+
+def test_peer_maintenance_is_not_a_procedure(analysis) -> None:
+    """CER / DWR 規範上就不帶 Session-Id —— 它們是連線維護，不是程序。
+
+    留在未指派堆是**誠實的分類**，不是漏掉。硬把它們切成段的話，一份
+    有心跳的長擷取檔會被塞滿沒有意義的「程序」。
+    """
+    from telcoladder.procedures import segment
+
+    _procedures, unassigned = segment(analysis)
+    assert unassigned == 4, "CER/CEA/DWR/DWA 這四格應該留在未指派堆"
+
+
+def test_a_relayed_failure_is_counted_once_not_twice(analysis) -> None:
+    """**這條是 `_distinct` 存在的唯一理由。**
+
+    同一則失敗回應在轉送路徑上被看到兩次（HSS→DRA、DRA→MME）。
+    RFC 6733 §6.2：中繼配新的 Hop-by-Hop，但 End-to-End 原樣保留 ——
+    所以去重必須用 end。用 hop 的話這裡會是 2，而「這個用戶失敗了兩次」
+    是一個看起來完全合理的錯誤結論。
+    """
+    from telcoladder.procedures import segment
+
+    procedures, _unassigned = segment(analysis)
+    relayed = [p for p in procedures if p.messages == 4]
+    assert len(relayed) == 2, "fixture 有兩筆經 DRA 轉送的交易"
+    failed = [p for p in relayed if p.outcome == "failure"]
+    assert len(failed) == 1
+    assert failed[0].failures == 1, "一次失敗被算成兩次 —— 去重的鍵用錯了"
+    # 而 `messages` 記的是**原始觀測筆數** —— 兩個基準不同是刻意的。
+    assert failed[0].messages == 4
+
+
+def test_a_relayed_procedure_spans_the_whole_path(analysis) -> None:
+    """轉送的一段涵蓋四格、耗時是端到端的，不是單腿的。"""
+    from telcoladder.procedures import segment
+
+    procedures, _unassigned = segment(analysis)
+    [relayed] = [p for p in procedures
+                 if p.messages == 4 and p.outcome == "success"]
+    assert (relayed.start_frame, relayed.end_frame) == (21, 24)
+    assert relayed.duration == pytest.approx(0.022, abs=1e-6)
+
+
+def test_diameter_and_nas_segmenters_do_not_interfere() -> None:
+    """混合擷取檔裡兩套判準必須各走各的。
+
+    合著跑的話，一則 Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗
+    吸進去 —— 那一段的耗時與訊息數因此變成錯的，**而且看起來完全合理**。
+    """
+    from telcoladder.model import Endpoint, Flow
+    from telcoladder.procedures import segment_flow
+
+    ue, amf = Endpoint("10.0.0.1", 1, "UE"), Endpoint("10.0.0.2", 2, "AMF")
+    mme, hss = Endpoint("10.0.0.3", 3, "MME"), Endpoint("10.0.0.4", 4, "HSS")
+
+    def nas(frame, ts, label):
+        return Message(frame=frame, ts=ts, protocol="nas-5gs", src=ue, dst=amf, label=label)
+
+    def dia(frame, ts, label, session):
+        return Message(frame=frame, ts=ts, protocol="diameter", src=mme, dst=hss,
+                       label=label, detail={"session-id": session, "end-to-end-id": str(frame)})
+
+    flow = Flow(messages=[
+        nas(1, 0.0, "Registration request"),
+        dia(2, 0.1, "3GPP-Update-Location Request", "s1"),   # 夾在中間
+        dia(3, 0.2, "3GPP-Update-Location Answer", "s1"),
+        nas(4, 0.3, "Registration accept"),
+    ])
+    procedures, unassigned = segment_flow(flow, capture_end=1.0)
+    kinds = {p.kind: p for p in procedures}
+    assert set(kinds) == {"registration", "diameter-update-location"}
+    # NAS 那段**不能**把中間兩則 Diameter 吸進去。
+    assert kinds["registration"].messages == 2
+    assert kinds["diameter-update-location"].messages == 2
+    assert not unassigned
+
+
+def test_the_summary_now_reports_diameter_procedures(analysis) -> None:
+    """`summarize` 原本對 Diameter 印「切不出任何程序」（T-DIAM-PROC）。"""
+    from telcoladder import summary
+
+    doc = summary.build(analysis, source_name="x")
+    assert len(doc["procedures"]) == 11
+    md = summary.render_markdown(doc)
+    assert "No procedure could be segmented" not in md
+    assert "diameter-update-location" in md
+    # 失敗的段要帶得出 3GPP 出處。
+    failed = [p for p in doc["procedures"] if p["outcome"] == "failure"]
+    assert {p["cause_ref"]["value"] for p in failed} == {5420, 5001, 5012}
 
 
 # ── 呈現層接得上 ────────────────────────────────────────────────────────

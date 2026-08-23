@@ -327,6 +327,14 @@ def parse(frame: Frame) -> list[Message]:
         if session:
             detail["session-id"] = str(session)
 
+        end_to_end = _to_int(first(block.get("diameter_diameter_endtoendid")))
+        if end_to_end is not None:
+            # **同一則訊息在轉送路徑上會被看到好幾次。** RFC 6733 §6.2：中繼
+            # 配新的 Hop-by-Hop，但 End-to-End 原樣保留 —— 所以 end 才是
+            # 「這是同一則訊息」的身分，hop 是逐段的配對。`procedures.py`
+            # 靠它避免把一次失敗算成兩次。
+            detail["end-to-end-id"] = str(end_to_end)
+
         messages.append(
             Message(
                 frame=frame.number,

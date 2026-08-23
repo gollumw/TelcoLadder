@@ -10,11 +10,11 @@ S6a／Cx／Gx 擷取檔一律含真實訂戶資料，依 CLAUDE.md §2.1 不得�
 
 ## 交叉驗證
 
-`tshark` 的 Diameter 解剖器認得每一格（26/26），且命令名稱與 Application-Id
+`tshark` 的 Diameter 解剖器認得每一格（30/30），且命令名稱與 Application-Id
 與 `make.py` 寫進去的一致 —— 兩個獨立實作對同一份位元組達成一致，
 這就是這份 fixture 的 oracle。
 
-## 內容（26 格，7 條 TCP 連線）
+## 內容（30 格，7 條 TCP 連線）
 
 | 介面 | App-Id | 交換 | 結果 |
 |---|---|---|---|
@@ -26,6 +26,7 @@ S6a／Cx／Gx 擷取檔一律含真實訂戶資料，依 CLAUDE.md §2.1 不得�
 | Cx | 16777216 | MAR/MAA（IMPI …892@ims…） | **Experimental-Result-Code 5001** |
 | Gx | 16777238 | CCR/CCA（IMSI …892） | **Result-Code 5012**（E 旗標） |
 | S6a 經 DRA | 16777251 | AIR/AIA（IMSI …895），MME → DRA → HSS 兩段 | Result-Code 2001；DRA 轉送的那一腿帶 **Route-Record** |
+| S6a 經 DRA | 16777251 | ULR/ULA（IMSI …891），同樣兩段 | **Experimental 5420** —— 同一則失敗被看到兩次，程序層必須收成一次 |
 
 三種失敗是刻意挑的，因為它們踩在**同一個號碼在兩張表裡意思完全不同**的線上：
 
@@ -50,7 +51,11 @@ Cause 是 CHOICE，五個群組各自從 0 編號）同一類的陷阱。所以�
   `Subscription-Data`（巢狀十幾層），那條路沒被測到。
 * **沒有 SCTP** —— 全部走 TCP 3868。真實 EPC 的 Diameter 多半在 SCTP 上。
 * **沒有分段與重組** —— 每則訊息剛好一個 TCP segment。
-* **DRA 只有一段、只走 Route-Record 這條證據。** 第一版沒有 DRA；2026-08-23 加了
+* **DRA 的兩筆刻意一成一敗。** 成功那筆驗不出「去重對不對」（失敗次數兩邊
+  都是 0），所以另加一筆失敗的 —— 那條路徑上同一則回應被看到兩次，
+  `Procedure.failures` 必須是 1。轉送腿照 RFC 6733 §6.2 配**新的 Hop-by-Hop、
+  保留 End-to-End**，所以拿 hop 當去重鍵會當場算錯。
+* **DRA 只走 Route-Record 這條證據。** 第一版沒有 DRA；2026-08-23 加了
   MME → DRA → HSS 的四格，而且實測 `Destination-Host` 比對在它身上**找不到**中繼
   （代理保留原始 `Origin-Host`）。所以這份檔驗得了 Route-Record 那條路，驗不了
   redirect agent、多級中繼、或 answer-only 的擷取（answer 不帶 Route-Record）。

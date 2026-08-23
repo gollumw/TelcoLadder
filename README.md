@@ -426,10 +426,13 @@ the top of `.github/workflows/ci.yml`.
   The fixture is written byte by byte from RFC 6733 rather than captured — it
   has no SCTP, no message reassembly and invented timing; see
   `tests/fixtures/diameter-epc-ims/scenario.md`.
-- **Diameter procedures are not segmented yet.** `procedures.py` recognises NAS
-  and NGAP openers only, so a Diameter capture reports its failures and its
-  subscribers but no per-procedure outcome or duration. It says so rather than
-  showing an empty list.
+- **Diameter procedures are cut by `Session-Id`**, not by the window heuristic the
+  5G side uses — RFC 6733 already marks the boundary on the wire. On a stateless
+  interface like S6a that means one transaction per procedure, which is what the
+  protocol actually does. Messages with no Session-Id (`CER`, `DWR`, `DPR`) are peer
+  maintenance and stay out of the procedure list rather than padding it. A request
+  relayed through a DRA is seen twice; it is counted as one failure, keyed on the
+  End-to-End Identifier that RFC 6733 §6.2 requires a relay to preserve.
 - **PFCP carries no cause explanations.** The adapter reads message types and
   SEIDs and marks failures, but TS 29.244's cause table has not been
   transcribed yet, so a failed N4 message is highlighted without a clause

@@ -30,6 +30,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 ALL_FIXTURES = [
     "5gc-e2e", "5gc-registration", "ki-mismatch", "multi-imsi",
     "ne-trace", "supi-not-provisioned", "unknown-dnn", "userplane",
+    # Diameter 走另一套切段（Session-Id），守恆等式對它一樣要成立。
+    "diameter-epc-ims",
 ]
 
 

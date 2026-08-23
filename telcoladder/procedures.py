@@ -10,7 +10,15 @@ xDR）以程序為單位就是這個原因。
 本模組是 `Analysis` 之上的純函式（與 `flowtable` 同一個理由：判讀會迭代、
 會被反駁，放在資料契約外面）。
 
-## 切段規則 —— 從真實 fixture 逼出來的三個判定
+## 兩套切段規則，依協定分家（2026-08-23）
+
+NAS／NGAP 用下面那套視窗判定；**Diameter 用 Session-Id**，因為 RFC 6733 §8
+已經把邊界標在線路上了 —— 協定自己說得出來的東西不必用推的（見
+`_diameter_segments`）。兩套先分家再各自跑：混著跑的話，一則 Diameter 訊息
+落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那一段的耗時與訊息數
+會因此變成錯的，**且看起來完全合理**。
+
+## 切段規則（NAS／NGAP）—— 從真實 fixture 逼出來的三個判定
 
 **① 開段只認 NAS／NGAP 標籤，不認 SBI 路徑。** SBI 的請求（如
 `POST …/sm-contexts/2/release`）常落在歸不了戶的孤兒流程裡，拿它開段會把
@@ -199,6 +207,126 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     )
 
 
+#: Diameter 的訊息在 `Message.detail` 上帶的兩把鑰匙。字串各寫一次就是等著漂移，
+#: 所以從 adapter import。
+_DIAMETER = "diameter"
+
+
+def _command_slug(label: str) -> str:
+    """`"3GPP-Update-Location Request"` → `"diameter-update-location"`。
+
+    去掉 `Request`／`Answer` 後綴與 `3GPP-` 前綴 —— 前者是方向不是程序，
+    後者對每個 3GPP 命令都一樣，留著只是雜訊。認不得的命令會是
+    `diameter-command-999`，那是誠實的「我不知道這是什麼」。
+    """
+    name = label.rsplit(" ", 1)[0]
+    if name.upper().startswith("3GPP-"):
+        name = name[5:]
+    return "diameter-" + name.lower().replace(" ", "-")
+
+
+def _distinct(messages: list[Message]) -> list[Message]:
+    """把轉送路徑上重複觀測到的同一則訊息收成一則。
+
+    **RFC 6733 §6.2：中繼配新的 Hop-by-Hop，但 End-to-End 原樣保留。**
+    所以 `(End-to-End Id, 是不是請求)` 才是「這是同一則訊息」的身分 ——
+    用 hop 去重會把轉送的兩腿當成兩則不同的訊息，於是一次失敗被算成兩次。
+
+    取不到 End-to-End Id 的訊息一律各自保留：**寧可多算，也不要把兩則
+    真的不同的訊息併掉**（併掉會讓一次失敗消失，那是更糟的方向）。
+    """
+    seen: set[tuple[str, bool]] = set()
+    out: list[Message] = []
+    for msg in messages:
+        end_to_end = msg.detail.get("end-to-end-id")
+        if end_to_end is None:
+            out.append(msg)
+            continue
+        key = (end_to_end, msg.label.endswith(" Request"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(msg)
+    return out
+
+
+def _diameter_segments(messages: list[Message], supi: str | None,
+                       capture_end: float) -> tuple[list[Procedure], list[Message]]:
+    """Diameter 以 **Session-Id** 為單位切段，不用 NAS 那套視窗判定。
+
+    ## 為什麼是 Session-Id
+
+    RFC 6733 §8：一個 Diameter session 就是「共用同一個 Session-Id 的一串相關
+    訊息」—— **協定自己已經把邊界標在線路上了**，不必從訊息順序推。這比 5G 那邊
+    的視窗判定簡單也可靠得多（那裡沒有這種標記，只能靠開段訊息與安靜期）。
+
+    對無狀態的介面（S6a 的 `Auth-Session-State = NO_STATE_MAINTAINED`）它自然
+    退化成「一次交易一段」，因為那正是協定的行為；對 Gx 這種長命 session
+    （CCR-I … CCR-U … CCR-T 共用一個 Session-Id）它會正確地收成一段。
+
+    ## 三件在這裡處理掉的事
+
+    * **沒有 Session-Id 的不是程序。** CER / DWR / DPR 是端點之間的連線維護，
+      規範上就不帶 Session-Id —— 它們留在未指派堆，那是誠實的分類，不是漏掉。
+    * **轉送的重複觀測要收成一則**（見 `_distinct`），否則一次失敗算兩次。
+    * **`messages` 記原始筆數、`failures` 記去重後的筆數。** 兩個基準不同是
+      刻意的：前者回答「我看到幾則」（4 格就是 4 格），後者回答「失敗幾次」
+      （一次）。混用任何一邊都會有一個數字是錯的。
+    """
+    groups: dict[str, list[Message]] = {}
+    unassigned: list[Message] = []
+    for msg in messages:
+        session = msg.detail.get("session-id")
+        if not session:
+            unassigned.append(msg)
+            continue
+        groups.setdefault(session, []).append(msg)
+
+    procedures: list[Procedure] = []
+    for window in groups.values():
+        window.sort(key=lambda m: m.frame)
+        distinct = _distinct(window)
+        requests = [m for m in distinct if m.label.endswith(" Request")]
+        answers = [m for m in distinct if not m.label.endswith(" Request")]
+        failed = [m for m in answers if m.is_failure]
+
+        # 段名取**開段的那個命令**。同一個 session 上有多種命令時（Gx 的
+        # CCR-I/U/T 其實都是 272）第一個請求就是它的身分。
+        opener = requests[0] if requests else distinct[0]
+        kind = _command_slug(opener.label)
+
+        if failed:
+            outcome = "failure"
+            cause = _cause_text(failed[-1])
+            first = _cause_text(failed[0])
+            root = first if first != cause else None
+        elif answers:
+            outcome, cause, root = "success", None, None
+        else:
+            outcome, cause, root = "incomplete", None, None
+
+        note = ""
+        if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
+            note = _('Near the end of the capture - may simply be cut off')
+
+        procedures.append(Procedure(
+            kind=kind,
+            supi=supi,
+            outcome=outcome,
+            cause=cause,
+            root_cause=root,
+            pdu_session_id=None,
+            start_frame=window[0].frame,
+            end_frame=window[-1].frame,
+            messages=len(window),
+            failures=len(failed),
+            duration=window[-1].ts - window[0].ts,
+            protocols=tuple(sorted({m.protocol for m in window})),
+            note=note,
+        ))
+    return procedures, unassigned
+
+
 def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], list[Message]]:
     """把一條流程切成程序段。回傳 (段, 未指派的訊息)。
 
@@ -207,8 +335,13 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     這條由測試釘住；切段規則怎麼改，這個等式都不准破。
     """
     supi = _flow_supi(flow)
-    procedures: list[Procedure] = []
-    unassigned: list[Message] = []
+
+    # **先按協定分家，再各自切段。** 兩套判準互不干擾 —— 混著跑的話，一則
+    # Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那個
+    # 視窗的耗時與訊息數會因此變成錯的（而且看起來完全合理）。
+    diameter = [m for m in flow.messages if m.protocol == _DIAMETER]
+    others = [m for m in flow.messages if m.protocol != _DIAMETER]
+    procedures, unassigned = _diameter_segments(diameter, supi, capture_end)
 
     active_kind: _Kind | None = None
     window: list[Message] = []
@@ -224,7 +357,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
         assert active_kind is not None
         return any(any(s in m.label for s in active_kind.success) for m in window)
 
-    for msg in flow.messages:
+    for msg in others:
         # **結局之後的安靜期＝這段結束。** 沒有這一段，一份擷取檔的最後一段
         # 會吸收到檔尾，`duration` 因此嚴重灌水（見檔頭規則 ②）。
         if active_kind is not None and window and _outcome_seen():
@@ -246,6 +379,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
         else:
             unassigned.append(msg)
     close()
+    procedures.sort(key=lambda p: p.start_frame)
     return procedures, unassigned
 
 

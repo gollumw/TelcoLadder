@@ -301,6 +301,11 @@ def build_messages() -> list[Exchange]:
     # 主機名會同時對到兩個位址。那是對的：解析表的值本來就是集合。
     session_relayed = f"{MME[1]};1000;10;{IMSI_OK}"
     hop += 1
+    # **RFC 6733 §6.2：中繼轉送時配一個新的 Hop-by-Hop，但 End-to-End 原樣保留。**
+    # 兩者的分工就是這樣定的 —— hop 是逐段的請求／回應配對，end 是整條路徑上
+    # 「這是同一則訊息」的身分。所以去重必須用 end，用 hop 會把轉送的兩腿
+    # 當成兩則不同的訊息。這份 fixture 刻意把兩者拆開，讓那條判斷有東西可踩。
+    relay_hop = hop + 500
     relayed_request = message(318, APP_S6A, base_avps(session_relayed, MME, REALM_EPC, HSS) + [
         vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
         avp(A_USER_NAME, utf8(IMSI_OK)),
@@ -309,17 +314,49 @@ def build_messages() -> list[Exchange]:
         vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
         avp(A_RESULT_CODE, u32(2001)),
     ], request=False, hop=hop, end=hop)
+    # DRA 送出的那兩腿：新的 hop、同一個 end。
+    forwarded_answer = message(318, APP_S6A, base_avps(session_relayed, HSS, REALM_EPC, MME) + [
+        vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
+        avp(A_RESULT_CODE, u32(2001)),
+    ], request=False, hop=relay_hop, end=hop)
     # DRA 轉送出去的那一段附上 Route-Record（RFC 6733 §6.7.1：內容是它
     # **收到這則請求的那個 peer** 的身分）。這是中繼留在線路上的簽名。
     forwarded_request = message(318, APP_S6A, base_avps(session_relayed, MME, REALM_EPC, HSS) + [
         vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
         avp(A_USER_NAME, utf8(IMSI_OK)),
         avp(A_ROUTE_RECORD, utf8(MME[1])),
-    ], request=True, hop=hop, end=hop)
+    ], request=True, hop=relay_hop, end=hop)
     out.append((3.600, MME, DRA, relayed_request))
     out.append((3.604, DRA, HSS, forwarded_request))
-    out.append((3.618, HSS, DRA, relayed_answer))
+    out.append((3.618, HSS, DRA, forwarded_answer))
     out.append((3.622, DRA, MME, relayed_answer))
+
+    # ── 經 DRA 轉送、而且**失敗**的一筆 ──
+    #
+    # 上面那筆轉送是成功的，所以「去重對不對」在它身上看不出來。這一筆讓
+    # 那條判斷有東西可踩：同一則失敗回應在線路上被看到兩次（HSS→DRA、
+    # DRA→MME），**失敗次數必須是 1 不是 2**。
+    session_relay_fail = f"{MME[1]};1000;11;{IMSI_NO_SUB}"
+    hop += 1
+    relay_fail_hop = hop + 500
+    fail_request = message(316, APP_S6A, base_avps(session_relay_fail, MME, REALM_EPC, HSS) + [
+        vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
+        avp(A_USER_NAME, utf8(IMSI_NO_SUB)),
+    ], request=True, hop=hop, end=hop)
+    fail_forwarded = message(316, APP_S6A, base_avps(session_relay_fail, MME, REALM_EPC, HSS) + [
+        vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)),
+        avp(A_USER_NAME, utf8(IMSI_NO_SUB)), avp(A_ROUTE_RECORD, utf8(MME[1])),
+    ], request=True, hop=relay_fail_hop, end=hop)
+    fail_answer_upstream = message(316, APP_S6A, base_avps(session_relay_fail, HSS, REALM_EPC, MME) + [
+        vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)), experimental(5420),
+    ], request=False, hop=relay_fail_hop, end=hop)
+    fail_answer_down = message(316, APP_S6A, base_avps(session_relay_fail, HSS, REALM_EPC, MME) + [
+        vendor_app(APP_S6A), avp(A_AUTH_SESSION_STATE, u32(1)), experimental(5420),
+    ], request=False, hop=hop, end=hop)
+    out.append((3.700, MME, DRA, fail_request))
+    out.append((3.704, DRA, HSS, fail_forwarded))
+    out.append((3.731, HSS, DRA, fail_answer_upstream))
+    out.append((3.735, DRA, MME, fail_answer_down))
 
     # ── Base：心跳（收尾） ──
     hop += 1
