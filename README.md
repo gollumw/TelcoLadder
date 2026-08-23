@@ -302,7 +302,7 @@ dissector claimed — per port, and whether `--decode-as` would help or the capt
 has to be retaken — narrowing, automatic decode adjustments), the network elements
 and their roles, every subscriber with its PDU sessions, every procedure with its
 outcome and duration, and every failure with its 3GPP cause — table, value, name,
-spec and clause, all from the hand-checked table. `--json` gives the same facts
+spec and — where a human has transcribed it — clause, all from the hand-checked table. `--json` gives the same facts
 with a pinned field set; both are byte-for-byte reproducible.
 
 The MCP server exposes the same facts as four tools over stdio. It is spawned by
@@ -367,7 +367,8 @@ pytest
 - Message counts must match `tshark -Y ngap -T fields -e frame.number | wc -l`.
 - Procedure-code and NAS message-type names are compared against `tshark`'s own
   info column, so a typo in the spec tables fails the build.
-- Every cause table entry must declare a spec and clause.
+- Every cause table entry must declare its spec; the clause is there when a
+  human has transcribed it, and absent otherwise (the Diameter tables, today).
 - The multi-message frame case is pinned with a real capture where one frame
   carries four HTTP/2 streams.
 

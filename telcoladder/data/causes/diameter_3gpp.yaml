@@ -37,9 +37,9 @@
 #
 # ## 收錄範圍
 #
-# 目前只收 **S6a/S6d、Cx/Dx、Gx** 這三個介面會用到的號碼（2026-08-23 的
-# 裁定：先窄後寬，其餘介面等真實封包出現再加）。其他介面的號碼一律落到
-# 「未收錄」，那是誠實的輸出，不是缺陷。
+# 目前收 **S6a/S6d、Cx/Dx、Gx** 這三個介面會用到的號碼（2026-08-23 的
+# 裁定：先窄後寬），外加 Rx 的六個（號碼與名稱已釘住，留著無害）。
+# 其他介面的號碼一律落到「未收錄」，那是誠實的輸出，不是缺陷。
 
 table: diameter_3gpp
 spec: "3GPP TS 29.230"
@@ -120,7 +120,14 @@ causes:
     name: "DIAMETER_ERROR_FEATURE_UNSUPPORTED"
     plain: "請求要求的功能（Feature-List）對端不支援。"
 
-  # ── 永久失敗：Gx / PCC 策略類（TS 29.212 會用到的那幾個） ──
+  # ── 永久失敗：Rx（AF ↔ PCRF，TS 29.214 用到的那幾個）──
+  #
+  # **這六個不是 Gx 的。** 第一版把它們標成「Gx / TS 29.212」—— 號碼與名稱都對
+  # （oracle 釘住），只有介面歸屬標錯；複審引用 TS 29.214 時才對出來。Gx 自己的
+  # 號碼在 5140 之後（下一段）。規格書原本寫的「Gx 5065 INITIAL_PARAMETERS /
+  # 5066 TRIGGER_EVENT」是**名字對、號碼錯**：那兩個名字住在 5140／5141。
+  # Rx 不在這一輪的三個介面裡，沒有角色推論；號碼留著是因為空間是平的，
+  # 查到就查到，不查就是「未收錄」。
   5061:
     name: "INVALID_SERVICE_INFORMATION"
     plain: "AF 送來的服務資訊不合法，PCRF 無法據以產生策略規則。"
@@ -147,6 +154,38 @@ causes:
   5066:
     name: "UNAUTHORIZED_NON_EMERGENCY_SESSION"
     plain: "這條 IP-CAN session 只允許緊急服務，而請求的是非緊急服務。"
+
+  # ── 永久失敗：Gx（PCEF ↔ PCRF，TS 29.212 用到的那幾個，號碼在 5140 之後）──
+  5140:
+    name: "DIAMETER_ERROR_INITIAL_PARAMETERS"
+    plain: "CCR-I 帶來的初始參數 PCRF 無法接受，IP-CAN session 建不起來。"
+    common_causes:
+      - "APN／RAT-Type／IP 位址等初始資訊缺漏或互相矛盾"
+      - "PCRF 端沒有這個 APN 的策略設定"
+
+  5141:
+    name: "DIAMETER_ERROR_TRIGGER_EVENT"
+    plain: "PCEF 回報的事件觸發（Event-Trigger）PCRF 不認得或不接受。"
+
+  5142:
+    name: "DIAMETER_PCC_RULE_EVENT"
+    plain: "PCC 規則安裝或啟用失敗 —— PCEF 裝不上 PCRF 下發的規則。回覆會帶 Charging-Rule-Report 指出是哪一條。"
+    common_causes:
+      - "規則引用了 PCEF 沒有的預設規則名稱（Charging-Rule-Base-Name）"
+      - "QoS 參數超出承載能提供的範圍"
+
+  5143:
+    name: "DIAMETER_ERROR_BEARER_NOT_AUTHORIZED"
+    plain: "請求的承載（bearer）沒有被授權。"
+
+  5144:
+    name: "DIAMETER_ERROR_TRAFFIC_MAPPING_INFO_REJECTED"
+    plain: "UE 請求的流量對應資訊（TFT）被 PCRF 拒絕。"
+
+  5147:
+    name: "DIAMETER_ERROR_CONFLICTING_REQUEST"
+    plain: "這個請求與同一 session 上進行中的另一個請求衝突。"
+  # 5146 在 tshark 的表裡與 5144 同名 —— oracle 自己有疑點，**不收**，查到會是「未收錄」。
 
   # ── 永久失敗：IMS 身分 ──
   5401:

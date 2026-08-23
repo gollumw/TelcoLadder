@@ -269,6 +269,29 @@ def test_a_non_3gpp_vendor_is_a_failure_without_a_cause() -> None:
     assert failed is True, "但它仍然是一則失敗 —— 不給解釋不等於不報告"
 
 
+def test_a_foreign_vendor_in_the_group_is_not_rescued_by_the_flattened_field() -> None:
+    """**這才是拆群組必要性的直接證明。** 攤平的 `Vendor-Id` 清單裡有 10415
+    （來自 Vendor-Specific-Application-Id），但群組 AVP 裡的 vendor 是別家的。
+    讀攤平欄位的實作會誤判成 3GPP 的號碼；讀群組的會正確地不給 cause。
+    （複審建議補的 —— fixture 裡兩個 vendor 都是 10415，原本那條測試證明不了這件事。）
+    """
+    from telcoladder.adapters.diameter import _result
+
+    def grouped(vendor: int, code: int) -> str:
+        body = (b"\x00\x00\x01\x0a\x40\x00\x00\x0c" + vendor.to_bytes(4, "big")
+                + b"\x00\x00\x01\x2a\x40\x00\x00\x0c" + code.to_bytes(4, "big"))
+        return ":".join(f"{b:02x}" for b in body)
+
+    block = {
+        "diameter_diameter_Vendor-Id": ["10415", "13019"],   # 攤平：兩個都在
+        "diameter_diameter_Experimental-Result-Code": "5001",  # 攤平：號碼也在
+        "diameter_diameter_Experimental-Result": grouped(13019, 5001),  # 群組：ETSI
+    }
+    cause, failed = _result(block)
+    assert failed is True
+    assert cause is None, "群組裡的 vendor 是 13019，不得因為攤平欄位裡有 10415 就查 3GPP 表"
+
+
 def test_the_vendor_comes_from_the_grouped_avp_not_the_flattened_field(messages) -> None:
     """`-T ek` 把一則訊息裡所有 Vendor-Id 攤成清單，分不出誰是誰。
 
