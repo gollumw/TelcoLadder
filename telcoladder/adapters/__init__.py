@@ -186,6 +186,37 @@ def display_filter() -> str:
     return " || ".join(f"({a.DISPLAY_FILTER})" for a in adapters())
 
 
+def protocol_filters(present: "set[str] | frozenset[str]") -> list[dict[str, str]]:
+    """給 UI 的協定快篩清單：`[{"name", "label", "filter"}, …]`。
+
+    **只列這份擷取檔裡真的有的協定**，而且 `filter` 直接取 adapter 自己宣告的
+    `DISPLAY_FILTER` —— 前端不再自己維護一份「SBI 其實要打 http2」的對照表。
+
+    那份對照表本來寫死在 `web/src/components/DataMiningView.tsx` 裡（四個 5G
+    協定），Diameter adapter 落地之後它就過期了 —— 而症狀是「Diameter 的封包
+    在清單上看得到，但沒有一個快篩鈕點得出來」。這與 `identities.py` 開頭那條
+    「不要硬寫 kind 清單」是同一個教訓：**硬寫的清單不會自己知道有人加了協定。**
+
+    `label` 用 adapter 名的大寫形式，只有慣用寫法與它不同的才特別列出來 ——
+    外掛加進來的協定不必為了好看而改核心程式碼。
+    """
+    labels = {"ngap": "NGAP / NAS", "nas-5gs": "NGAP / NAS", "sbi": "SBI",
+              "pfcp": "PFCP", "gtp": "GTP-U", "diameter": "Diameter"}
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for adapter in adapters():
+        if adapter.NAME not in present:
+            continue
+        label = labels.get(adapter.NAME, adapter.NAME.upper())
+        if label in seen:
+            # NGAP 與 NAS-5GS 共用一個鈕（NAS 一定包在 NGAP 裡）。
+            continue
+        seen.add(label)
+        out.append({"name": adapter.NAME, "label": label,
+                    "filter": adapter.DISPLAY_FILTER})
+    return out
+
+
 def _decode_as_selector(rule: str) -> str:
     """`"tcp.port==7777,http2"` → `"tcp.port==7777"`。
 

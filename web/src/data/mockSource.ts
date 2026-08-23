@@ -68,6 +68,25 @@ export function mockSource(): DataSource {
         autoDecode: [],
         // mock 是編譯期常數 —— 沒有加密這回事，也沒有東西看不到。
         invisible: { ciphered: 0, protectedSuci: 0 },
+        // mock 是編譯期常數，沒有 adapter 也沒有身分引擎 —— 所以這兩份由
+        // 引擎供應的清單在這裡是寫死的 5G 樣貌。**真實資料那邊不可以這樣**
+        // （見 `Dataset.protocolFilters`）。
+        protocolFilters: [
+          { name: "ngap", label: "NGAP / NAS", filter: "ngap" },
+          { name: "sbi", label: "SBI", filter: "http2" },
+          { name: "pfcp", label: "PFCP", filter: "pfcp" },
+        ],
+        identityKinds: [
+          {
+            kind: "supi",
+            label: "SUPI / IMSI",
+            values: mockData.sessionIdentities.map((identity) => ({
+              value: identity.supi,
+              raw: identity.supi,
+              supis: [identity.supi],
+            })),
+          },
+        ],
         // mock 的封包陣列**就是**全母體，所以就地聚合在這裡是對的 ——
         // 真實資料那邊不行（視窗只有幾百格），改由 `/flows` 供應。
         discoveredSessions: computeDiscoveredSessions(mockData.rawPackets),

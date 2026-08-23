@@ -468,6 +468,50 @@ def test_the_ladder_puts_diameter_in_its_own_domain(analysis) -> None:
     assert '"CORE_DIAMETER"' in types_ts, "前端的 TelecomDomain 聯集沒有這個值"
 
 
+def test_the_gui_offers_a_diameter_protocol_filter(analysis) -> None:
+    """封包清單看得到 Diameter，快篩鈕就必須點得出來。
+
+    這兩份清單原本寫死在前端（四個 5G 協定、五個 5G 身分類別），Diameter
+    adapter 落地之後就過期了 —— 而症狀是**畫面完全正常，只是少了東西**。
+    現在由引擎依 adapter 自己宣告的 `DISPLAY_FILTER` 產生。
+    """
+    from telcoladder.adapters import default_decode_as
+    from telcoladder.session import Session, _index_into
+    from telcoladder.viewer import flows_json
+
+    session = Session(sid="d", pcap=FIXTURE, display_name=FIXTURE.name,
+                      owns_file=False, wire=True)
+    session.decode_as = default_decode_as()
+    _index_into(session)
+    protocols = flows_json(session)["protocols"]
+    assert protocols == [{"name": "diameter", "label": "Diameter", "filter": "diameter"}]
+
+    # 前端不得再自己維護一份對照表 —— 那正是這次的缺口。
+    view = (Path(__file__).parent.parent / "web" / "src" / "components"
+            / "DataMiningView.tsx").read_text(encoding="utf-8")
+    assert "QUICK_FILTERS" not in view and "TARGET_TYPES" not in view
+
+
+def test_diameter_identities_are_searchable_and_point_at_their_subscriber(analysis) -> None:
+    """IMPI／IMPU／Session-Id 抽得出來，就必須搜得到，而且要指得出是誰。
+
+    `supis` 由引擎給 —— 「這個 IMPI 屬於誰」是關聯的結果。前端拿身分清單
+    自己湊，等於在瀏覽器裡重寫一次 union-find。
+    """
+    from telcoladder.identities import availability
+
+    groups = {g["kind"]: g for g in availability(analysis) if g["values"]}
+    assert {"supi", "impi", "impu", "diameter_session_id"} <= set(groups)
+    for kind in ("impi", "impu"):
+        for hit in groups[kind]["values"]:
+            assert hit["supis"], f"{kind} {hit['value']} 接不到任何訂戶"
+            # 這份 fixture 裡每個身分只屬於一個人 —— 兩個以上代表關聯把兩個
+            # 訂戶併在一起了，而畫面會完全正常。
+            assert len(hit["supis"]) == 1, hit
+            assert hit["value"].startswith(hit["supis"][0]) or hit["value"].startswith(
+                f"sip:{hit['supis'][0]}")
+
+
 def test_the_interface_comes_from_the_application_id(analysis) -> None:
     """Application-Id 是線路上寫著的事實，比從網元角色反推可靠。"""
     from telcoladder import callflow

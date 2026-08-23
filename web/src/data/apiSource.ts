@@ -54,6 +54,7 @@ import type {
   DecodeAsRule,
   DecodeAsState,
   PacketPage,
+  ProtocolFilter,
 } from "./source";
 
 /** 後端 `/index` 的上限。要更多列得分頁，不是把這個數字調大。 */
@@ -178,11 +179,20 @@ export function apiSource(sid: string | null): DataSource {
       const autoDecode = await waitForAnalysis(need());
 
       const [flows, identities, correlation] = await Promise.all([
-        getJson<{ subscribers: FlowSubscriber[]; abs_time_available: boolean }>(
+        getJson<{
+          subscribers: FlowSubscriber[];
+          abs_time_available: boolean;
+          protocols?: ProtocolFilter[];
+        }>(
           `/api/${need()}/flows`,
         ),
         getJson<{
-          groups: { kind: string; values: { value: string }[] }[];
+          groups: {
+            kind: string;
+            label: string;
+            implemented: boolean;
+            values: { value: string; raw: string; supis?: string[] }[];
+          }[];
           ciphered?: number;
           protected_suci?: number;
         }>(
@@ -228,6 +238,20 @@ export function apiSource(sid: string | null): DataSource {
         ),
         firstFrameBySupi: firstFrameBySupi(subscribers),
         sessionIdentities,
+        // 協定快篩與身分類別都由引擎供應 —— 前端不再自己維護一份 5G 清單
+        // （見 `Dataset.protocolFilters` 的說明）。
+        protocolFilters: flows.protocols ?? [],
+        identityKinds: (identities.groups ?? [])
+          .filter((group) => group.implemented && group.values.length > 0)
+          .map((group) => ({
+            kind: group.kind,
+            label: group.label,
+            values: group.values.map((hit) => ({
+              value: hit.value,
+              raw: hit.raw,
+              supis: hit.supis ?? [],
+            })),
+          })),
         correlationEntries: (correlation.sessions ?? []).map(toCorrelationEntry),
         // 梯形圖是懶載入的（切到某個訂戶才取）—— 空陣列在這裡代表
         // 「還沒去拿」，見 `loadCallFlow`。

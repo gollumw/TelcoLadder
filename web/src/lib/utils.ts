@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { IdentityKind } from "@/data/source";
 import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, SessionStatus, TargetType } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -118,31 +119,34 @@ export function deriveSessionStatus(hasError: boolean, captureStatus: SessionIde
 }
 
 /**
- * Resolves the Telecom Target Filter (dropdown + value) to a SUPI. SUPI/MSISDN/IMEI/GUTI
- * are looked up against the identity registry; UE IP is per-PDU-session, so it's looked
- * up against correlationEntries instead — a single SessionIdentity can't carry it.
+ * 把身分搜尋（下拉 ＋ 值）解析成一個 SUPI。
+ *
+ * **類別清單與「這個值屬於誰」都來自引擎**（`Dataset.identityKinds`）——
+ * 這裡不再有 5G 專屬的 switch。原本那份 switch 認得 SUPI/MSISDN/IMEI/GUTI，
+ * 於是 Diameter 的 IMPI／IMPU／Session-Id 抽得出來卻搜不到。
+ *
+ * UE IP 是唯一的例外：它掛在 PDU session 上而不是身分登錄表上，
+ * 所以查關聯矩陣。
  */
 export function findSupiByTarget(
-  identities: SessionIdentity[],
+  identityKinds: IdentityKind[],
   correlationEntries: CorrelationEntry[],
-  targetType: TargetType,
+  targetType: string,
   value: string,
 ): string | null {
   const v = value.trim();
   if (!v) return null;
-  const lower = v.toLowerCase();
-  switch (targetType) {
-    case "SUPI":
-      return identities.find((i) => i.supi.toLowerCase().includes(lower))?.supi ?? null;
-    case "MSISDN":
-      return identities.find((i) => i.msisdn?.includes(v))?.supi ?? null;
-    case "IMEI":
-      return identities.find((i) => i.imei?.includes(v))?.supi ?? null;
-    case "GUTI":
-      return identities.find((i) => i.guti?.toLowerCase().includes(lower))?.supi ?? null;
-    case "UE_IP":
-      return correlationEntries.find((e) => e.ueIp === v)?.supi ?? null;
-    default:
-      return null;
+  if (targetType === "UE_IP") {
+    return correlationEntries.find((e) => e.ueIp === v)?.supi ?? null;
   }
+  const lower = v.toLowerCase();
+  const group = identityKinds.find((k) => k.kind === targetType);
+  const hit = group?.values.find(
+    (candidate) =>
+      candidate.value.toLowerCase().includes(lower) ||
+      candidate.raw.toLowerCase().includes(lower),
+  );
+  // **關聯到兩個以上的訂戶時不挑一個。** 那代表引擎把兩個人併在一起了，
+  // 呈現層自己挑會把一個關聯錯誤藏成一個正常畫面（見 `IdentityHit.supis`）。
+  return hit && hit.supis.length === 1 ? hit.supis[0] : null;
 }

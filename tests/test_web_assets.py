@@ -49,6 +49,15 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
     歸因於建置管線的唯一理由。
     """
     manifest = _manifest()
+    # **清單空掉時這條會靜默通過** —— 迴圈跑零次，測試永遠綠。
+    # 2026-08-23 真的空了（最後一個 `lib/utils.ts` 因為 Diameter 的身分搜尋
+    # 而分岔）。那不一定是壞事，但它是一個要有人**寫下來**的狀態變化：
+    # 從此「兩邊是同一份」對任何一個檔都不再成立，畫面差異也就不能再歸因於
+    # 建置管線。所以要求 manifest 明講。
+    assert manifest["files"] or manifest.get("all_diverged_note"), (
+        "PORTED.json 的 `files` 空了，而沒有 `all_diverged_note` 說明為什麼。"
+        "這條測試會因此變成空跑 —— 請寫下來再讓它通過。"
+    )
     drifted = []
     for rel, expected in manifest["files"].items():
         actual = hashlib.sha256((_WEB / rel).read_bytes()).hexdigest()

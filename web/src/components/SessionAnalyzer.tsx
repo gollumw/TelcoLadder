@@ -209,6 +209,8 @@ export default function SessionAnalyzer({
             discoveredSessions={data.discoveredSessions}
             firstFrameBySupi={data.firstFrameBySupi}
             identities={sessionIdentities}
+            identityKinds={data.identityKinds}
+            protocolFilters={data.protocolFilters}
             correlationEntries={correlationEntries}
             displayFilter={displayFilter}
             onDisplayFilterChange={setDisplayFilter}

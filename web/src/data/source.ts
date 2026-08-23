@@ -117,6 +117,42 @@ export interface Dataset {
    * 工具的判斷 —— 而工具的判斷會錯。空陣列代表預設解碼就夠了。
    */
   autoDecode: string[];
+  /**
+   * 這份擷取檔裡**真的有**的協定，連同各自的 display filter。
+   *
+   * 原本是 `DataMiningView` 裡一份寫死的四個 5G 協定清單，還自帶
+   * 「SBI 其實要打 http2」這種對照。Diameter adapter 落地之後它就過期了 ——
+   * 而症狀是**封包清單上看得到 Diameter，卻沒有任何一個快篩鈕點得出來**。
+   *
+   * 現在由後端依 adapter 自己宣告的 `DISPLAY_FILTER` 產生（`/flows`）。
+   * 加一個 adapter 不必再改前端；沒有那個協定的擷取檔也不會出現空鈕。
+   */
+  protocolFilters: ProtocolFilter[];
+  /**
+   * 這份擷取檔裡**真的有**的身分類別，以及每個值屬於哪個訂戶。
+   *
+   * 同一個教訓的另一半：身分搜尋的下拉選單原本寫死五個 5G 類別
+   * （含一個永遠是 N/A 的 5G-GUTI），於是 Diameter 的 IMPI／IMPU／Session-Id
+   * 抽得出來卻搜不到。
+   *
+   * `supis` 由引擎給 —— 「這個 IMPI 屬於誰」是關聯的結果，前端拿身分清單
+   * 自己湊等於在瀏覽器裡重寫一次 union-find。
+   */
+  identityKinds: IdentityKind[];
+}
+
+/** 一個協定的快篩鈕。`filter` 是 adapter 自己宣告的 tshark display filter。 */
+export interface ProtocolFilter {
+  name: string;
+  label: string;
+  filter: string;
+}
+
+/** 一個身分類別，以及這份擷取檔裡它的值。 */
+export interface IdentityKind {
+  kind: string;
+  label: string;
+  values: Array<{ value: string; raw: string; supis: string[] }>;
 }
 
 /** 梯形圖的一條泳道。順序由後端依 `nf.PARTICIPANT_ORDER` 排好。 */

@@ -56,6 +56,9 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.AMF_UE_NGAP_ID: "AMF UE NGAP ID",
     IdKind.SBI_STREAM: "SBI HTTP/2 stream",
     IdKind.PFCP_SEID: "PFCP SEID",
+    # 2026-08-23 補：身分搜尋的下拉選單改由這張表驅動之後，沒有標籤的
+    # 類別會直接把 enum 值印在畫面上（`sm_context_ref`）。
+    IdKind.SM_CONTEXT_REF: "SM Context Ref",
     IdKind.IMPI: "IMPI",
     IdKind.IMPU: "IMPU",
     IdKind.MSISDN: "MSISDN",
@@ -98,6 +101,18 @@ class IdentityHit:
     flows: int
     failures: int
 
+    supis: tuple[str, ...] = ()
+    """與這個身分**落在同一條流程裡**的 SUPI。
+
+    存在的理由是呈現層的一個真實需求：使用者用 IMPI 搜尋，畫面要跳到那個
+    **訂戶**。「這個 IMPI 屬於誰」是關聯的結果，只有引擎知道 —— 讓前端拿
+    身分清單自己湊，等於在瀏覽器裡重寫一次 union-find，而且它只看得到
+    自己拿到的那份清單。
+
+    通常是 0 或 1 個。**2 個以上代表關聯把兩個訂戶併在一起了** ——
+    呈現層不該自己挑一個，那會把一個關聯錯誤藏成一個正常畫面。
+    """
+
     @property
     def key(self) -> IdKey:
         return (self.kind, self.raw)
@@ -111,6 +126,7 @@ class IdentityHit:
             "messages": self.messages,
             "flows": self.flows,
             "failures": self.failures,
+            "supis": list(self.supis),
         }
 
 
@@ -145,10 +161,15 @@ def enumerate_identities(analysis: Analysis) -> list[IdentityHit]:
     # 就不該是 0 個失敗」。）
     counts: dict[IdKey, dict[str, int]] = {}
     flow_counts: dict[IdKey, int] = {}
+    supis: dict[IdKey, set[str]] = {}
     for flow in analysis.flows:
         keys = {k for m in flow.messages for k in m.identity_keys}
         failures = sum(1 for m in flow.messages if m.is_failure)
+        # 這條流程上的 SUPI。**在同一個迴圈裡算**，不另外再走一遍 flows ——
+        # 兩份走訪會漂移，而症狀是「搜尋 IMPI 跳到別人身上」。
+        flow_supis = {v for k, v in keys if k is IdKind.SUPI}
         for key in keys:
+            supis.setdefault(key, set()).update(flow_supis)
             bucket = counts.setdefault(key, {"messages": 0, "failures": 0})
             bucket["messages"] += len(flow.messages)
             bucket["failures"] += failures
@@ -161,6 +182,7 @@ def enumerate_identities(analysis: Analysis) -> list[IdentityHit]:
             kind=kind, value=value, scope=scope, raw=raw,
             messages=bucket["messages"], failures=bucket["failures"],
             flows=flow_counts.get((kind, raw), 0),
+            supis=tuple(sorted(supis.get((kind, raw), ()))),
         ))
     hits.sort(key=lambda h: (not h.kind.is_subscriber, h.kind.value, -h.messages, h.value))
     return hits

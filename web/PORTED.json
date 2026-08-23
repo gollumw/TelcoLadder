@@ -9,9 +9,7 @@
     "app/globals.css": "web/src/globals.css（逐位元組相同，只是換位置）",
     "app/page.tsx": "web/src/main.tsx"
   },
-  "files": {
-    "src/lib/utils.ts": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e"
-  },
+  "files": {},
   "diverged": {
     "src/components/HexDump.tsx": {
       "original_sha256": "95bfb27b125cfd7f4ce430c466ba26deee8b8819f3092590ac7e2bc0adbf8b55",
@@ -23,9 +21,9 @@
     },
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "d75021d9ed1a2e6a9d80f0329ac33222a3f64db51ddc40a18547df442d4e8d05",
+      "current_sha256": "64e1552106c48071f9a7f855a1f1eff234b2ede46b5a8397a8c4b8bb53de6b88",
       "since": "2026-08-19（GUI Phase 2）",
-      "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。",
+      "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。"
     },
@@ -46,9 +44,9 @@
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "24c9e74823109889910d6d3a23a1f7d268eb4a59fc76774e14f05f6db235514f",
+      "current_sha256": "69d2f5769f430986b0478dc7a4935e6ae9cf30094012033a2fe8b781a93d9655",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
-      "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。",
+      "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。協定快篩鈕與身分搜尋的下拉選單改由引擎供應（`Dataset.protocolFilters` / `identityKinds`），拿掉兩份寫死的 5G 清單（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
       "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。"
     },
@@ -71,6 +69,15 @@
       "current_sha256": "5082b1f0cdd406bda9a06572a5600189b493c5c732c6d00eeff129e207b7e1ee",
       "reason": "預設全部收合（比照 Wireshark）。移植過來時預設展開兩層 —— 那在 mock 的小樹上剛好，真實封包的解碼樹動輒上百節點，兩層就把面板灌滿。`selectedId` 的祖先鏈仍然強制展開（自動聚焦 Cause IE 的功能），並補一個 effect 讓換選節點時重新展開。",
       "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：樹節點 hover 與選取高亮更新為 signal palette 語意色。行為未變。；2026-08-23：解碼樹不再把原始 hex 當 detail 顯示。**那一欄改成 PDML 的 `show`**（解讀後的值），而且只在它講出 label 沒講的事時才有內容（後端 `decode.py` 的 `_adds_information` 判定）。原本的註解寫著「Wireshark 也這樣」—— 那句話是錯的：Wireshark 的樹只有 showname，位元組在下方 hex 面板、選欄位時高亮，而那個連動（`byteRange` → `HexDump.highlightRange`）我們早就有。症狀是 JSON 內容被擠成一串 `2276616c…` 讀不出來。同時：選中的那一列改成攤開（`items-start` ＋ `break-all`），未選中維持單行可掃 —— 值再長也讀得完，而樹不會整片變高。"
+    },
+    "src/lib/utils.ts": {
+      "original_sha256": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e",
+      "current_sha256": "0c6da92a35502a583a6bb3a2c86cfcd037ab8fd4938263f56e5bd5a8733699fe",
+      "since": "2026-08-23",
+      "what_changed": "findSupiByTarget 從 5G 專屬的 switch（SUPI/MSISDN/IMEI/GUTI）改成吃引擎給的身分類別清單",
+      "why_it_is_ok": "原本那個 switch 認得的四種都是 5G 的，於是 Diameter 的 IMPI／IMPU／Session-Id 抽得出來卻搜不到 —— 硬寫的清單不會自己知道有人加了協定。改成由 `Dataset.identityKinds` 供應，並且「一個值對到兩個以上訂戶時不挑一個」（那代表關聯把兩個人併了，挑一個會把錯誤藏成正常畫面）。",
+      "reason": "Diameter adapter 落地（2026-08-23）"
     }
-  }
+  },
+  "all_diverged_note": "2026-08-23：`files` 空了 —— 九個移植檔全部有意分岔，最後一個是 `lib/utils.ts`（身分搜尋改吃引擎給的類別清單，因為 Diameter 的 IMPI／IMPU／Session-Id 在 5G 專屬的 switch 底下搜不到）。後果講明白：從此沒有任何一個檔還與 TelcoShark-Sandbox 逐位元組相同，所以**畫面差異不能再歸因於建置管線** —— 那個對照基準沒了。`diverged` 的雜湊紀律因此變成唯一的防線，一個都不能鬆。"
 }

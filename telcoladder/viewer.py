@@ -32,6 +32,7 @@ from telcoladder.identities import (
     lookup,
     no_result_explanation,
 )
+from telcoladder.adapters import protocol_filters
 from telcoladder.packets import COLUMN_TITLES
 from telcoladder.flowtable import FlowTable, build_table
 from telcoladder.chrome import esc
@@ -390,8 +391,13 @@ def flows_json(
             "sessions": [_row_json(r, analysis) for r in rows],
         })
 
+    # **這份擷取檔裡有哪些協定**，連同各自的 display filter。前端的協定快篩鈕
+    # 靠它產生 —— 硬寫在前端的話，每加一個 adapter 就多一個「封包看得到、
+    # 但沒有鈕點得出來」的靜默缺口（Diameter 落地時就發生了）。
+    present = {m.protocol for f in analysis.flows for m in f.messages}
     payload = {
         "ready": True,
+        "protocols": protocol_filters(present),
         "abs_time_available": table.abs_time_available,
         "capture_start": table.capture_start,
         "capture_end": table.capture_end,

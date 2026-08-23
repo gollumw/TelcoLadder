@@ -266,3 +266,18 @@ def test_lookup_matches_partial_imsi() -> None:
     assert [h.value for h in lookup(analysis, "567895")] == ["001011234567895"]
     assert lookup(analysis, "") == []
     assert lookup(analysis, "999999999") == []
+
+
+def test_every_identity_kind_has_a_human_label() -> None:
+    """沒有標籤的類別會把 enum 值直接印在畫面上。
+
+    2026-08-23 之前這只影響左欄；身分搜尋的下拉選單改由 `availability()` 驅動
+    之後，缺標籤就是使用者選單裡的一列 `sm_context_ref`。加一個 `IdKind`
+    而忘了加標籤不會報錯 —— 這條讓它報錯。
+    """
+    from telcoladder.identities import KIND_LABELS
+    from telcoladder.model import IdKind
+
+    missing = sorted(k.value for k in IdKind if k not in KIND_LABELS)
+    assert not missing, f"這些 IdKind 沒有給人看的標籤：{missing}"
+

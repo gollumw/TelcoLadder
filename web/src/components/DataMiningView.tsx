@@ -9,22 +9,17 @@ import { DecodeAsPanel } from "./DecodeAsPanel";
 import { ProtocolTree } from "./ProtocolTree";
 import { HexDump } from "./HexDump";
 import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
-import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TargetType } from "@/lib/types";
+import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
+import type { IdentityKind, ProtocolFilter } from "@/data/source";
 
-const TARGET_TYPES: Array<{ id: TargetType; label: string }> = [
-  { id: "SUPI", label: "SUPI / IMSI" },
-  { id: "MSISDN", label: "MSISDN" },
-  { id: "IMEI", label: "IMEI / PEI" },
-  { id: "UE_IP", label: "UE IPv4/IPv6" },
-  { id: "GUTI", label: "5G-GUTI" },
-];
+// 協定快篩與身分類別**都由引擎供應**（`Dataset.protocolFilters` /
+// `identityKinds`）。這裡原本各寫死一份 5G 清單，Diameter adapter 落地之後
+// 就過期了 —— 症狀是封包清單看得到 Diameter、卻沒有鈕點得出來，以及
+// IMPI／IMPU 抽得出來卻搜不到。清單寫死就不會自己知道有人加了協定。
 
-const QUICK_FILTERS = [
-  { label: "NGAP / NAS", expr: "ngap" },
-  { label: "SBI", expr: "http2" },
-  { label: "PFCP", expr: "pfcp" },
-  { label: "GTP-U", expr: "gtp-u" },
-];
+//: UE IP 不是一種「身分」—— 它掛在 PDU session 上，所以查的是關聯矩陣
+//: 而不是身分登錄表。保留成一個特別的選項 id。
+const UE_IP_TARGET = "UE_IP";
 
 const STATUS_DOT: Record<RawPacket["status"], string> = {
   SUCCESS: "bg-signal-mint",
@@ -63,6 +58,8 @@ export function DataMiningView({
   discoveredSessions,
   firstFrameBySupi,
   identities,
+  identityKinds,
+  protocolFilters,
   correlationEntries,
   displayFilter,
   onDisplayFilterChange,
@@ -91,6 +88,10 @@ export function DataMiningView({
   discoveredSessions: DiscoveredSession[];
   firstFrameBySupi: Record<string, number>;
   identities: SessionIdentity[];
+  /** 這份擷取檔真的有的身分類別，含每個值屬於哪個訂戶。見 `source.ts`。 */
+  identityKinds: IdentityKind[];
+  /** 這份擷取檔真的有的協定與各自的 display filter。見 `source.ts`。 */
+  protocolFilters: ProtocolFilter[];
   correlationEntries: CorrelationEntry[];
   displayFilter: string;
   onDisplayFilterChange: (value: string) => void;
@@ -123,7 +124,16 @@ export function DataMiningView({
 }) {
   useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [targetType, setTargetType] = useState<TargetType>("SUPI");
+  // 下拉選單＝這份檔真的有的類別，加上 UE IP（只有在有 PDU session 時才有意義）。
+  const targetOptions = [
+    ...identityKinds.map((k) => ({ id: k.kind, label: k.label })),
+    ...(correlationEntries.some((e) => e.ueIp)
+      ? [{ id: UE_IP_TARGET, label: t("UE IPv4/IPv6") }]
+      : []),
+  ];
+  const [targetType, setTargetType] = useState<string>("");
+  // 預設選第一個 —— 清單是非同步來的，第一次渲染時可能還是空的。
+  const activeTarget = targetType || targetOptions[0]?.id || "";
   const [targetValue, setTargetValue] = useState("");
   const [searchResult, setSearchResult] = useState<{ supi: string } | "not-found" | null>(null);
 
@@ -191,7 +201,7 @@ export function DataMiningView({
   }
 
   function handleTargetSearch() {
-    const supi = findSupiByTarget(identities, correlationEntries, targetType, targetValue);
+    const supi = findSupiByTarget(identityKinds, correlationEntries, activeTarget, targetValue);
     if (supi) {
       onFocusSupi(supi);
       onOnlySessionFilterChange(true);
@@ -222,13 +232,13 @@ export function DataMiningView({
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">{t("Subscriber identity search")}</p>
           <div className="flex flex-wrap gap-1.5">
             <select
-              value={targetType}
-              onChange={(e) => setTargetType(e.target.value as TargetType)}
+              value={activeTarget}
+              onChange={(e) => setTargetType(e.target.value)}
               className="rounded border border-border bg-surface-2 px-2.5 py-1.5 text-xs text-fg-muted focus:border-signal-cyan focus:outline-none transition-colors"
             >
-              {TARGET_TYPES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
+              {targetOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -287,17 +297,17 @@ export function DataMiningView({
             </pre>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {QUICK_FILTERS.map((qf) => (
+            {protocolFilters.map((qf) => (
               <button
-                key={qf.label}
+                key={qf.name}
                 type="button"
                 onClick={() => {
-                  onDisplayFilterChange(qf.expr);
-                  onApplyDisplayFilter(qf.expr);
+                  onDisplayFilterChange(qf.filter);
+                  onApplyDisplayFilter(qf.filter);
                 }}
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
-                  displayFilter === qf.expr
+                  displayFilter === qf.filter
                     ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
                     : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                 )}
