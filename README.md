@@ -69,8 +69,9 @@ on it.
 
 ## What it does today
 
-- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP, and GTP-U from `pcap` / `pcapng`
-  via `tshark` — control plane and user plane in the same timeline.
+- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP, GTP-U and Diameter from
+  `pcap` / `pcapng` via `tshark` — 5G control plane, user plane, and the
+  EPC/IMS signalling that sits beside them, in the same timeline.
 - **Names the network functions** instead of showing IP addresses, and shows
   the IP when the evidence is ambiguous rather than guessing. Roles a test
   capture has actually produced: `gNB`, `AMF`, `SCP`, `AUSF`, `UDM`, `UDR`,
@@ -104,6 +105,15 @@ on it.
   on millisecond rhythms, so a hole that big is a timer waiting.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
+- **Reads Diameter** — S6a/S6d, Cx/Dx and Gx today, plus the base protocol
+  (`CER`, `DWR`, `DPR`). It names the network functions from *who initiates
+  which command* — that is the only way to tell an I-CSCF from an S-CSCF,
+  since their addresses look identical — spots a **DRA** from the
+  `Route-Record` it is required to leave behind, and joins one subscriber's
+  S6a, Gx and Cx exchanges into a single flow. Two separate cause tables,
+  because `Result-Code 5001` (*AVP unsupported*) and
+  `Experimental-Result-Code 5001` (*user unknown*) are different questions
+  with the same number.
 - **Splits a subscriber's traffic into procedures** — registration, PDU session
   establishment, service request, deregistration — each with its own outcome,
   cause, root cause and duration. A long capture of one subscriber is three
@@ -392,6 +402,21 @@ the top of `.github/workflows/ci.yml`.
   address falls back to an unlabelled IP. That is the correct failure direction,
   but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
   `Origin-Host`, and it signs its own passage with a `Route-Record`.
+- **Diameter covers three interfaces, and no clause numbers.** S6a/S6d, Cx/Dx
+  and Gx have network-function roles and curated causes; the other twenty-odd
+  3GPP applications decode and display their Application-Id but get no role
+  inference and no cause lookup — an honest "not done yet" rather than a guess.
+  The cause **names** are pinned against `tshark`'s own tables by a test; the
+  **clause numbers are not transcribed**, so a Diameter cause prints its spec
+  (`3GPP TS 29.230`, `RFC 6733`) without a section. No clause in this repo is
+  machine-generated, and an absent one is better than a wrong one.
+  The fixture is written byte by byte from RFC 6733 rather than captured — it
+  has no SCTP, no message reassembly and invented timing; see
+  `tests/fixtures/diameter-epc-ims/scenario.md`.
+- **Diameter procedures are not segmented yet.** `procedures.py` recognises NAS
+  and NGAP openers only, so a Diameter capture reports its failures and its
+  subscribers but no per-procedure outcome or duration. It says so rather than
+  showing an empty list.
 - **PFCP carries no cause explanations.** The adapter reads message types and
   SEIDs and marks failures, but TS 29.244's cause table has not been
   transcribed yet, so a failed N4 message is highlighted without a clause
