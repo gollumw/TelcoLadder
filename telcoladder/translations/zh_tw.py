@@ -227,8 +227,6 @@ CATALOG: dict[str, str] = {
         '需要 SIP adapter（尚未實作）',
     'Needs the Diameter adapter (not implemented yet)':
         '需要 Diameter adapter（尚未實作）',
-    'Needs the S1AP adapter (not implemented yet)':
-        '需要 S1AP adapter（尚未實作）',
     'Needs the GTPv2-C adapter (not implemented yet) - control-plane TEIDs are a separate number space from the user-plane ones':
         '需要 GTPv2-C adapter（尚未實作）—— 控制面的 TEID 與使用者面是不同的號碼空間',
     'Not implemented yet':

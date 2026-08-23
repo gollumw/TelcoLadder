@@ -56,6 +56,33 @@ SBI_SERVICE_TO_NF: dict[str, str] = {
     "nnef-eventexposure": "NEF",
 }
 
+#: S1-MME 介面上 MME 固定監聽的 SCTP 埠（TS 36.412）。
+S1AP_PORT = 36412
+
+#: S1AP 的角色階梯：**程序碼 → (發起方, 回應方)**（TS 36.413）。
+#:
+#: 鍵是程序碼而不是訊息名，理由與 Diameter 那張表相同：名字是顯示字串，
+#: 而**這裡最容易錯的正是名字看起來很像的兩個不同程序** ——
+#: `UEContextReleaseRequest`（18，eNB 發起的請求）與
+#: `UEContextReleaseCommand`（23，MME 下的令）是兩回事，
+#: 而 `UEContextReleaseComplete` 回的是後者。第一版用「去掉後綴再加 Request」
+#: 猜，結果把 Complete 配到了 18，兩端投出互相矛盾的票 ——
+#: 症狀是**整張圖的網元全部退回顯示 IP**（`vote()` 遇到衝突就放棄，
+#: 那是刻意的：寧可不說，也不要說錯）。
+#:
+#: **回話不必另外列** —— 回應走的是相反方向，所以查到之後對調即可。
+#: 只收方向沒有疑義的那幾個；不在表上的一律不投票。
+_S1AP_ROLES: dict[int, tuple[str, str]] = {
+    9: ("MME", "eNB"),    # InitialContextSetup
+    10: ("MME", "eNB"),   # Paging
+    11: ("MME", "eNB"),   # downlinkNASTransport
+    12: ("eNB", "MME"),   # initialUEMessage
+    13: ("eNB", "MME"),   # uplinkNASTransport
+    17: ("eNB", "MME"),   # S1Setup
+    18: ("eNB", "MME"),   # UEContextReleaseRequest
+    23: ("MME", "eNB"),   # UEContextRelease（Command 是 MME 下的令）
+}
+
 #: 只有 gNB 會主動發起的 NGAP 程序。收到方必為 AMF。
 _GNB_INITIATED = {"NGSetup", "InitialUEMessage", "RANConfigurationUpdate", "UERadioCapabilityInfoIndication"}
 #: 只有 AMF 會主動發起的 NGAP 程序。
@@ -200,6 +227,18 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
                 vote(initiator, "AMF")
                 vote(responder, "gNB")
 
+        # ── S1AP：程序碼決定兩方是誰，回應方向相反 ──
+        if msg.protocol == "s1ap":
+            code = msg.detail.get("procedure-code")
+            roles = _S1AP_ROLES.get(int(code)) if code is not None else None
+            if roles is not None:
+                initiator_role, responder_role = roles
+                is_reply = msg.detail.get("outcome", "initiating") != "initiating"
+                initiator = dst_ip if is_reply else src_ip
+                responder = src_ip if is_reply else dst_ip
+                vote(initiator, initiator_role)
+                vote(responder, responder_role)
+
         # ── Diameter：(Application-Id, Command-Code) 決定兩方是誰 ──
         if msg.protocol == "diameter":
             _diameter_vote(msg, vote, src_ip, dst_ip)
@@ -214,6 +253,10 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
                 vote(dst_ip, "AMF")
             if msg.src.port == NGAP_PORT:
                 vote(src_ip, "AMF")
+        # S1AP **不能**照 NGAP 那樣用埠號判。實測 Open5GS 與本專案的 fixture：
+        # eNB 與 MME 的 src/dst 都是 36412（與 PFCP 的 8805 同一種情況），
+        # 照 dst 埠判會讓 eNB 也收到一票 MME。36412 只證明「這是 S1AP」。
+        # 角色一律交給上面那條發起方向的規則。
         # PFCP **不能**用埠號判角色：8805 是 N4 兩端共用的埠（實測 Open5GS，
         # SMF 與 UPF 的 src/dst 全是 8805），與 NGAP 的 38412 只有 AMF 側在聽
         # 完全不同。照 dst 埠判會讓 SMF 同時收到 SMF 與 UPF 兩票而互相抵銷，

@@ -8,6 +8,7 @@
   "adapters.nas5gs",
   "adapters.ngap",
   "adapters.pfcp",
+  "adapters.s1ap",
   "adapters.sbi",
   "callflow",
   "causes",

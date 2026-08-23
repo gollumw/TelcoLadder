@@ -50,9 +50,9 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     # （實測 userplane fixture：`gtp_teid` 有值）。掃描範圍已擴及 `identity.py`。
     IdKind.MSISDN,
     IdKind.SIP_CALL_ID,
-    # 4G 控制面（T3 建的資料模型，adapter 在 T4／T6）
-    IdKind.ENB_UE_S1AP_ID,
-    IdKind.MME_UE_S1AP_ID,
+    # ENB/MME_UE_S1AP_ID **已於 2026-08-24 移出** —— `adapters/s1ap.py` 落地，
+    # 開始產生它們。抓到這件事的正是同步測試（T3 就預告過「T4 落地那天會紅」）。
+    # GTP_TEID_C 還留著：GTPv2-C adapter 是 T6。
     IdKind.GTP_TEID_C,
 )
 
@@ -84,8 +84,6 @@ UNAVAILABLE_REASONS: dict[IdKind, str] = {
     IdKind.MSISDN: N_('Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling'),
     IdKind.SIP_CALL_ID: N_('Needs the SIP adapter (not implemented yet)'),
     IdKind.DIAMETER_SESSION_ID: N_('Needs the Diameter adapter (not implemented yet)'),
-    IdKind.ENB_UE_S1AP_ID: N_('Needs the S1AP adapter (not implemented yet)'),
-    IdKind.MME_UE_S1AP_ID: N_('Needs the S1AP adapter (not implemented yet)'),
     IdKind.GTP_TEID_C: N_('Needs the GTPv2-C adapter (not implemented yet) - control-plane TEIDs are a separate number space from the user-plane ones'),
 }
 

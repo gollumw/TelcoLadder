@@ -69,7 +69,11 @@ def test_unimplemented_kinds_stay_in_sync_with_the_adapters() -> None:
     sources = list(ADAPTER_DIR.glob("*.py")) + [ADAPTER_DIR.parent / "identity.py"]
     produced: set[IdKind] = set()
     for path in sources:
-        for name in re.findall(r"IdKind\.([A-Z_]+)", path.read_text(encoding="utf-8")):
+        # **字元類要含數字。** `IdKind\.([A-Z_]+)` 遇到 `ENB_UE_S1AP_ID`
+        # 會在 `S` 之後斷掉，回一個不存在的 `ENB_UE_S` —— 2026-08-24 的 T4
+        # 就是這樣炸出 KeyError 的。與 `GTP_TEID` 那次同一類：靜態掃描的
+        # 漏看，而漏看的東西不會自己說話。
+        for name in re.findall(r"IdKind\.([A-Z0-9_]+)", path.read_text(encoding="utf-8")):
             produced.add(IdKind[name])
 
     expected = set(IdKind) - produced

@@ -106,9 +106,14 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
     `5gc-e2e` 刻意四種信令協定都含（N2 的 NGAP 與內嵌 NAS、SBI、N4 的
     PFCP）；GTP-U 只存在於 `userplane`（信令 fixture 產生時 N3 不在擷取
     範圍）；Diameter 只存在於 `diameter-epc-ims`（它是 EPC/IMS 的協定，
-    不會出現在 5G 核網的擷取檔裡）。三份合起來，每個內建 adapter 都有一份
+    不會出現在 5G 核網的擷取檔裡）；S1AP 同理，只存在於 `s1ap-eps-attach`
+    —— 那是 4G 的 S1-MME 介面。四份合起來，每個內建 adapter 都有一份
     **已知含它協定**的檔案 —— 「零命中」因此一定是 adapter 壞了，
     不是擷取檔不對。
+
+    **加新 adapter 的人一定要把它的擷取檔加進下面那串。** 忘了加的症狀就是
+    這條測試變紅，而訊息會直接指向 `DISPLAY_FILTER` —— 那是刻意的，
+    因為那才是真正常見的原因。
     """
     counts = {a.NAME: 0 for a in BUILTIN_ADAPTERS}
     fixtures = e2e_pcap.parent.parent
@@ -116,7 +121,9 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
                  fixtures / "userplane" / "capture.pcap",
                  # Diameter 不存在於任何 5G 擷取檔裡（2026-08-23）——
                  # 它是 EPC/IMS 的協定，所以要自己那一份。
-                 fixtures / "diameter-epc-ims" / "capture.pcap"):
+                 fixtures / "diameter-epc-ims" / "capture.pcap",
+                 # S1AP 是 4G 的 S1-MME，同樣不會出現在 5G 擷取檔裡（2026-08-24）。
+                 fixtures / "s1ap-eps-attach" / "capture.pcap"):
         for frame in read_frames(pcap):
             for message in parse_frame(frame):
                 counts[message.protocol] = counts.get(message.protocol, 0) + 1
