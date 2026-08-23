@@ -1,0 +1,188 @@
+# 3GPP 的 Experimental-Result-Code —— 3GPP TS 29.230 定義的號碼空間。
+#
+# ## 這個空間是**平的**，不是每個介面各編一套
+#
+# 這一點與直覺相反，而且弄反了會很傷。S6a、Cx、Gx、SWx… 共用同一組號碼，
+# 由 TS 29.230（「3GPP specific codes and identifiers」）統一配發；各介面的
+# 規範（29.272、29.229、29.212…）只是說明自己會用到哪幾個。
+#
+# 所以：**5001 就是 DIAMETER_ERROR_USER_UNKNOWN，不管它出現在哪個介面上。**
+# 而 S6a 專屬的那幾個（EPS 簽約、RAT、設備）住在 5420 之後，不是 5003–5005。
+#
+# ## 選表的依據是 AVP 與 Vendor-Id，不是 Application-Id
+#
+#     Result-Code 5001              = DIAMETER_AVP_UNSUPPORTED          （diameter_base）
+#     Experimental-Result-Code 5001 = DIAMETER_ERROR_USER_UNKNOWN       （本表）
+#
+# 而 `Experimental-Result` 是**群組 AVP**：裡面的 `Vendor-Id` 才決定這個號碼
+# 屬於誰。10415 是 3GPP（本表）；ETSI 等廠商有自己的空間，那些**不查本表**。
+# 判定寫在 `adapters/diameter.py`，它從群組 AVP 的原始位元組讀 Vendor-Id ——
+# 因為 tshark 的 `-T ek` 會把一則訊息裡的多個 `Vendor-Id` 攤成一個清單，
+# 從那個攤平的欄位分不出哪個是誰的。
+#
+# ## 名稱的出處
+#
+# `name` 逐字取自 tshark 自己的 `diameter.Experimental-Result-Code` 值表
+# （`tshark -G values`），它源自 Wireshark 的 Diameter 字典，字典裡標著
+# 「3GPP TS 29.230 version 13.0.0」。`tests/test_adapter_diameter.py` 逐條比對。
+#
+# **已知邊界**：那份字典是 Rel-13 時期的快照，之後新增的號碼不在裡面，
+# 查無收錄時輸出「未收錄」而不猜（`causes.describe()`）。
+#
+# ## 為什麼沒有 clause
+#
+# 上面那個 oracle 給得出名稱，給不出節號。專案 CLAUDE.md §2.3：AI 不得生成
+# 3GPP 條號。**少一個節號只是不方便，多一個錯的節號會被當真。**
+# 要補請人工核對 TS 29.230 後逐條加 `clause:`（`causes.py` 已支援選用）。
+#
+# ## 收錄範圍
+#
+# 目前只收 **S6a/S6d、Cx/Dx、Gx** 這三個介面會用到的號碼（2026-08-23 的
+# 裁定：先窄後寬，其餘介面等真實封包出現再加）。其他介面的號碼一律落到
+# 「未收錄」，那是誠實的輸出，不是缺陷。
+
+table: diameter_3gpp
+spec: "3GPP TS 29.230"
+
+causes:
+  # ── 成功（Cx/Dx 用 Experimental-Result 表達成功，這是它與別的介面不同的地方）──
+  2001:
+    name: "DIAMETER_FIRST_REGISTRATION"
+    plain: "第一次註冊成功。HSS 認可這個 IMPU，並要求 S-CSCF 下載使用者資料。注意這個 2001 在 Experimental-Result-Code 裡，與基礎的 Result-Code 2001（單純的成功）不是同一件事。"
+
+  2002:
+    name: "DIAMETER_SUBSEQUENT_REGISTRATION"
+    plain: "後續註冊成功（re-registration）。使用者已經註冊在同一台 S-CSCF 上，不需要重新下載資料。"
+
+  2003:
+    name: "DIAMETER_UNREGISTERED_SERVICE"
+    plain: "使用者沒有註冊，但有未註冊狀態的服務（例如來電轉接），所以仍要指派一台 S-CSCF。這是成功，不是錯誤。"
+
+  # ── 暫時性 ──
+  4181:
+    name: "DIAMETER_AUTHENTICATION_DATA_UNAVAILABLE"
+    plain: "HSS 這次拿不到鑑權向量，請稍後再試。暫時性，不代表用戶有問題。"
+    common_causes:
+      - "HSS 後端的 AuC 忙碌或連線異常"
+      - "向量產生服務暫時不可用"
+
+  # ── 永久失敗：身分類（Cx/Dx 與 S6a 共用） ──
+  5001:
+    name: "DIAMETER_ERROR_USER_UNKNOWN"
+    plain: "HSS 裡沒有這個用戶。身分本身不存在，不是設定錯或權限不足。"
+    common_causes:
+      - "IMSI/IMPI 沒開通，或開通在另一套 HSS 上"
+      - "測試 SIM 沒寫進資料庫"
+      - "IMPI 的推導規則與 HSS 裡存的不一致（IMSI@realm 的 realm 拼法）"
+      - "用戶已被刪除，而 MME/S-CSCF 還握著舊的 context"
+
+  5002:
+    name: "DIAMETER_ERROR_IDENTITIES_DONT_MATCH"
+    plain: "請求裡的 IMPI 與 IMPU 在 HSS 裡不屬於同一個用戶。兩個身分各自存在，但兜不起來。"
+    common_causes:
+      - "IMPU 屬於別的 IMPI（設定錯置）"
+      - "P-CSCF 或 UE 送出的 IMPI 是從 IMSI 推導的，而 HSS 存的是另一組"
+
+  5003:
+    name: "DIAMETER_ERROR_IDENTITY_NOT_REGISTERED"
+    plain: "這個身分目前沒有註冊。**不是「不存在」**（那是 5001），是「存在但現在沒上線」。"
+    common_causes:
+      - "查詢一個尚未完成 IMS 註冊的 IMPU"
+      - "註冊已逾時被 HSS 清掉，而查詢端還以為它在線上"
+
+  5004:
+    name: "DIAMETER_ERROR_ROAMING_NOT_ALLOWED"
+    plain: "這個用戶不被允許在目前的網路漫遊。身分沒問題，位置有問題。"
+    common_causes:
+      - "簽約資料裡的漫遊限制（禁止的 PLMN 清單）"
+      - "拜訪網路與家網路之間沒有漫遊協議"
+      - "Visited-PLMN-Id 帶錯"
+
+  5005:
+    name: "DIAMETER_ERROR_IDENTITY_ALREADY_REGISTERED"
+    plain: "這個身分已經註冊在別的地方了，而目前的請求不允許覆蓋。"
+    common_causes:
+      - "前一次註冊沒有正常解除（S-CSCF 或 HSS 殘留狀態）"
+      - "同一個 IMPU 同時從兩個地方註冊"
+
+  5006:
+    name: "DIAMETER_ERROR_AUTH_SCHEME_NOT_SUPPORTED"
+    plain: "請求指定的鑑權方式（Digest-AKAv1、Digest-MD5…）HSS 不支援。"
+    common_causes:
+      - "S-CSCF 與 HSS 設定的鑑權方式不一致"
+      - "SIM 卡支援的方式與網路要求的不同"
+
+  5007:
+    name: "DIAMETER_ERROR_IN_ASSIGNMENT_TYPE"
+    plain: "SAR 的 Server-Assignment-Type 與 HSS 認知的用戶狀態互相矛盾。"
+
+  5011:
+    name: "DIAMETER_ERROR_FEATURE_UNSUPPORTED"
+    plain: "請求要求的功能（Feature-List）對端不支援。"
+
+  # ── 永久失敗：Gx / PCC 策略類（TS 29.212 會用到的那幾個） ──
+  5061:
+    name: "INVALID_SERVICE_INFORMATION"
+    plain: "AF 送來的服務資訊不合法，PCRF 無法據以產生策略規則。"
+
+  5062:
+    name: "FILTER_RESTRICTIONS"
+    plain: "服務資訊裡的流量描述（filter）不符合這個網路允許的形式。"
+    common_causes:
+      - "SDP 協商出的媒體描述超出策略允許的範圍"
+      - "使用了網路不支援的萬用字元或位址形式"
+
+  5063:
+    name: "REQUESTED_SERVICE_NOT_AUTHORIZED"
+    plain: "這個用戶沒有被授權使用所請求的服務。"
+
+  5065:
+    name: "IP-CAN_SESSION_NOT_AVAILABLE"
+    plain: "PCRF 找不到對應的 IP-CAN session —— AF 要綁的那條資料連線在 PCRF 這邊不存在。"
+    common_causes:
+      - "Rx 的 AAR 早於 Gx 的 CCR-I 抵達（訊令競態）"
+      - "IP-CAN session 已經被終止，而 AF 還在用舊的綁定"
+      - "UE 的 IP 位址在 PCRF 與 AF 之間對不起來（NAT、位址重用）"
+
+  5066:
+    name: "UNAUTHORIZED_NON_EMERGENCY_SESSION"
+    plain: "這條 IP-CAN session 只允許緊急服務，而請求的是非緊急服務。"
+
+  # ── 永久失敗：IMS 身分 ──
+  5401:
+    name: "DIAMETER_ERROR_IMPI_UNKNOWN"
+    plain: "HSS 不認得這個 IMPI（私有身分）。"
+
+  5402:
+    name: "DIAMETER_ERROR_NOT_AUTHORIZED"
+    plain: "請求者沒有被授權做這件事 —— 是對「請求方」的拒絕，不是對用戶的拒絕。"
+
+  # ── 永久失敗：S6a/S6d 專屬（TS 29.272 用到的那幾個，號碼在 5420 之後） ──
+  5420:
+    name: "DIAMETER_ERROR_UNKNOWN_EPS_SUBSCRIPTION"
+    plain: "HSS 裡有這個用戶，但他沒有 EPS 簽約資料 —— 也就是「有這個人，但沒開 4G/LTE 數據」。與 5001（根本沒這個人）是兩回事。"
+    common_causes:
+      - "只開通了 2G/3G 的 circuit-switched 簽約，沒開 EPS"
+      - "簽約資料裡沒有任何 APN 設定"
+      - "用戶剛建立，EPS 的部分還沒同步過來"
+
+  5421:
+    name: "DIAMETER_ERROR_RAT_NOT_ALLOWED"
+    plain: "這個用戶不被允許使用目前的無線接取技術。人與簽約都沒問題，接取方式有問題。"
+    common_causes:
+      - "簽約限制只允許特定 RAT（例如只准 NB-IoT）"
+      - "MME 回報的 RAT-Type 與簽約允許的不符"
+
+  5422:
+    name: "DIAMETER_ERROR_EQUIPMENT_UNKNOWN"
+    plain: "EIR 不認得這台設備的 IMEI，或它被列入禁用清單。這是對**設備**的拒絕，不是對用戶。"
+    common_causes:
+      - "IMEI 在黑名單（掛失、贓機）"
+      - "EIR 裡沒有這個 IMEI 而策略設成「不認得就擋」"
+
+  5423:
+    name: "DIAMETER_ERROR_UNKNOWN_SERVING_NODE"
+    plain: "HSS 不認得這台服務節點（MME/SGSN）—— 它送來的 Origin-Host 不在 HSS 的認知裡。"
+    common_causes:
+      - "新的 MME 沒有在 HSS 上開通"
+      - "Origin-Host 字串與 HSS 設定的不一致"

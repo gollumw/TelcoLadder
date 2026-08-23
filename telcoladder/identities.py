@@ -41,11 +41,11 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     # 我最初照計畫寫的清單含它（那份計畫寫於 PFCP adapter 落地之前），
     # 症狀是 UI 上同一個類別顯示「尚未實作」又列出四個實際值。
     # 抓到它的是 `test_unimplemented_kinds_stay_in_sync_with_the_adapters`。
-    IdKind.IMPI,
-    IdKind.IMPU,
+    # IMPI / IMPU / DIAMETER_SESSION_ID **已於 2026-08-23 移出這份清單** ——
+    # `adapters/diameter.py` 開始生產它們。抓到這件事的是同一條測試：
+    # 留在清單上的話，UI 會同時顯示「尚未實作」與實際值。
     IdKind.MSISDN,
     IdKind.SIP_CALL_ID,
-    IdKind.DIAMETER_SESSION_ID,
     IdKind.GTP_TEID,
 )
 

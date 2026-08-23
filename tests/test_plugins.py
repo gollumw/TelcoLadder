@@ -142,7 +142,7 @@ def test_plugin_adapter_lands_in_its_declared_position(install_plugin):
     importlib.invalidate_caches()
     _clear_caches()
     names = [a.NAME for a in adapters_mod.adapters()]
-    assert names == ["ngap", "faketel", "sbi", "nas-5gs", "pfcp", "gtp"]
+    assert names == ["ngap", "faketel", "sbi", "nas-5gs", "diameter", "pfcp", "gtp"]
 
 
 def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
@@ -165,7 +165,7 @@ def test_builtins_still_work_when_metadata_cannot_be_enumerated(monkeypatch):
             names = [a.NAME for a in adapters_mod.adapters()]
         # sbi(15) 排在 nas-5gs(20) 之前 —— 它用 multipart 載送 NAS，
         # 而契約要求載體排在載荷之前。2026-08-19 從 30 改過來。
-        assert names == ["ngap", "sbi", "nas-5gs", "pfcp", "gtp"]
+        assert names == ["ngap", "sbi", "nas-5gs", "diameter", "pfcp", "gtp"]
         # filter 也要還在，否則 read_frames 會拿到空字串而撈不到任何封包。
         assert "(ngap)" in adapters_mod.display_filter()
     finally:

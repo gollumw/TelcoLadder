@@ -1,7 +1,11 @@
 // TypeScript Data Schema — 5G SA Session Correlation & Packet-Level Analyzer
 // Phase 1: UI-only, backed by generated mock data (see lib/mock-data.ts)
 
-export type TelecomDomain = "ACCESS_N1_N2" | "CORE_SBI" | "USER_PLANE_N4_N3";
+export type TelecomDomain =
+  | "ACCESS_N1_N2"
+  | "CORE_SBI"
+  | "USER_PLANE_N4_N3"
+  | "CORE_DIAMETER";
 
 export type NetworkNode = "UE" | "gNB" | "AMF" | "SMF" | "UPF" | "AUSF";
 

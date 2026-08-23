@@ -33,6 +33,14 @@ _DOMAIN_BY_PROTOCOL = {
     "sbi": "CORE_SBI",
     "pfcp": "USER_PLANE_N4_N3",
     "gtp": "USER_PLANE_N4_N3",
+    # Diameter 自成一個 Domain（2026-08-23）。它不是 5G 的參考點體系 ——
+    # S6a／Cx／Gx 是 EPC 與 IMS 的介面，塞進 CORE_SBI 會讓「核網控制面」
+    # 這個分頁同時裝著兩套不相干的信令。
+    #
+    # **加一個 Domain 就必須同步 `web/src/lib/types.ts` 的聯集型別與
+    # `SessionAnalysisView` 的分頁清單** —— 後端吐一個前端不認得的值，
+    # 症狀是那些事件在每一個分頁都不出現，而且不報錯。
+    "diameter": "CORE_DIAMETER",
 }
 
 
@@ -99,7 +107,12 @@ def events(analysis: Analysis, supi: str, *, wire: bool = True) -> dict:
             "to": msg.dst.label(),
             "name": msg.label,
             "protocol": msg.protocol,
-            "interface": reference_point(msg.protocol, msg.src.role, msg.dst.role),
+            # **協定自己說得出介面時，信它。** Diameter 的 Application-Id 是
+            # 線路上寫著的事實；`reference_point()` 是從我們推出來的網元角色
+            # 反推的。兩者都有時前者比較可靠 —— 角色推錯過，Application-Id
+            # 不會。（adapter 填 `detail["reference_point"]`。）
+            "interface": msg.detail.get("reference_point")
+            or reference_point(msg.protocol, msg.src.role, msg.dst.role),
             "domain": _DOMAIN_BY_PROTOCOL.get(msg.protocol),
             "status": "ERROR" if msg.is_failure else "SUCCESS",
         }

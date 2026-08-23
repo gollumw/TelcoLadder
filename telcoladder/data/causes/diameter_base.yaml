@@ -1,0 +1,156 @@
+# Diameter 基礎 Result-Code —— RFC 6733 的 `Result-Code` AVP（code 268）。
+#
+# ## 這張表與 `diameter_3gpp.yaml` 是兩個不同的號碼空間，不能混用
+#
+# 同一個號碼在兩張表裡意思完全不同：
+#
+#     Result-Code 5001              = DIAMETER_AVP_UNSUPPORTED（訊息裡有對方不認得的 AVP）
+#     Experimental-Result-Code 5001 = DIAMETER_ERROR_USER_UNKNOWN（HSS 裡沒這個用戶）
+#     Result-Code 5003              = DIAMETER_AUTHORIZATION_REJECTED
+#     Experimental-Result-Code 5003 = DIAMETER_ERROR_IDENTITY_NOT_REGISTERED
+#     Result-Code 5004              = DIAMETER_INVALID_AVP_VALUE
+#     Experimental-Result-Code 5004 = DIAMETER_ERROR_ROAMING_NOT_ALLOWED
+#
+# 查錯表會得到一個看起來完全合理的錯誤解釋 —— 與專案 CLAUDE.md §3.2（NGAP 的
+# Cause 是 CHOICE，五個群組各自從 0 編號）同一類的陷阱。**選表的依據是這個號碼
+# 從哪個 AVP 讀出來的**，不是 Application-Id、不是介面名（`adapters/diameter.py`）。
+#
+# ## 名稱的出處
+#
+# `name` 逐字取自 tshark 自己的 `diameter.Result-Code` 值表
+# （`tshark -G values`）—— 那是 Wireshark 內建、與本專案獨立的實作。
+# `tests/test_adapter_diameter.py::test_cause_names_match_tsharks_own_table`
+# 逐條比對，抄錯會紅。
+#
+# ## 為什麼沒有 clause
+#
+# 上面那個 oracle 給得出**名稱**，給不出**節號**。RFC 6733 §7.1 建立的是一個
+# IANA 登錄表，號碼陸續由不同 RFC 補進去（4006 的信用控制、4740 的 SIP…），
+# 所以「這個號碼在第幾節」沒有單一答案，而人工核對還沒做。
+#
+# 專案 CLAUDE.md §2.3：AI 不得生成 3GPP／RFC 條號。**少一個節號只是不方便，
+# 多一個錯的節號會被當真** —— 比照 `pfcp.py` 的同一個裁定。要補請人工核對後
+# 逐條加 `clause:`（`causes.py` 已支援選用）。
+#
+# 欄位與 `nas_5gmm.yaml` 相同：
+#   name          規範裡的正式名稱，逐字照抄
+#   plain         給人看的白話，講「實際上發生了什麼」
+#   common_causes 現場最常見的根因，由實務經驗整理，不是規範內容
+#
+# plain 與 common_causes 一律寫**純文字** —— 會被原樣畫進 Mermaid 標籤與網頁，
+# 兩邊都不解析 markdown。
+
+table: diameter_base
+spec: "RFC 6733"
+
+causes:
+  2001:
+    name: "DIAMETER_SUCCESS"
+    plain: "請求成功。這是唯一代表「完全成功」的基礎結果碼。"
+
+  3002:
+    name: "DIAMETER_UNABLE_TO_DELIVER"
+    plain: "收到請求的節點沒辦法把它送到目的地 —— 通常是中繼（DRA）找不到下一跳。"
+    common_causes:
+      - "Destination-Host 指向一台不存在或已下線的節點"
+      - "DRA 的路由表沒有這個 realm 的下一跳"
+      - "目的節點的 Diameter 連線斷了，DRA 還沒收斂"
+
+  3003:
+    name: "DIAMETER_REALM_NOT_SERVED"
+    plain: "收到請求的節點不服務 Destination-Realm 指的那個 realm。"
+    common_causes:
+      - "漫遊夥伴的 realm 沒設進 DRA 或 HSS"
+      - "Destination-Realm 拼錯，或帶了錯的 MCC/MNC"
+
+  3004:
+    name: "DIAMETER_TOO_BUSY"
+    plain: "對端暫時過載，請重試或改送別台。這是暫時性錯誤，不是設定問題。"
+    common_causes:
+      - "HSS/PCRF 在流量尖峰被打爆"
+      - "大量 UE 同時重新附著（網路故障後的 attach storm）"
+
+  3005:
+    name: "DIAMETER_LOOP_DETECTED"
+    plain: "訊息在中繼之間繞回自己 —— Route-Record 裡出現了本節點。"
+    common_causes:
+      - "兩台 DRA 互指對方當下一跳"
+      - "realm 路由設定成環"
+
+  3007:
+    name: "DIAMETER_APPLICATION_UNSUPPORTED"
+    plain: "對端不支援這則訊息宣告的 Application-Id。連線建得起來，但這個介面談不成。"
+    common_causes:
+      - "CER/CEA 沒有協商到這個 application（一邊有、一邊沒有）"
+      - "打錯介面：把 S6a 的請求送到只開 Cx 的節點"
+      - "版本落差，新介面對舊節點還不存在"
+
+  3010:
+    name: "DIAMETER_UNKNOWN_PEER"
+    plain: "對端不認得這個發起者 —— 它的 Origin-Host 不在對方的 peer 表裡。"
+    common_causes:
+      - "新增節點時只在一邊設了 peer"
+      - "Origin-Host 與對方設定的字串不一致（大小寫、FQDN 尾綴）"
+
+  4001:
+    name: "DIAMETER_AUTHENTICATION_REJECTED"
+    plain: "鑑權被拒。**注意這是基礎結果碼**，3GPP 的鑑權失敗多半走 Experimental-Result-Code。"
+
+  4002:
+    name: "DIAMETER_OUT_OF_SPACE"
+    plain: "對端沒有空間存這筆資料（多見於計費）。暫時性。"
+
+  5001:
+    name: "DIAMETER_AVP_UNSUPPORTED"
+    plain: "訊息裡有一個對方不認得、但被標成必要（M 旗標）的 AVP，所以整則被拒。"
+    common_causes:
+      - "兩端的 3GPP release 版本不同，新 AVP 對舊節點不存在"
+      - "廠商自訂 AVP 標了 M 旗標送給別家設備"
+      - "Vendor-Id 帶錯，對方查不到那個 AVP 的定義"
+
+  5002:
+    name: "DIAMETER_UNKNOWN_SESSION_ID"
+    plain: "對方不認得這個 Session-Id —— 那個工作階段在它那邊已經不存在了。"
+    common_causes:
+      - "PCRF/HSS 重啟後 session 狀態沒了，而對端還在用舊的 Session-Id"
+      - "先前的終止訊息（STR/CCR-T）已經把它關掉了，之後又送了一則"
+      - "兩端對 session 生命週期的認知不同步"
+
+  5003:
+    name: "DIAMETER_AUTHORIZATION_REJECTED"
+    plain: "使用者身分沒問題，但這個服務不允許他用。**這是授權被拒，不是鑑權失敗。**"
+    common_causes:
+      - "簽約資料裡沒開這個服務"
+      - "策略（PCRF）明確拒絕了這條 IP-CAN session"
+
+  5004:
+    name: "DIAMETER_INVALID_AVP_VALUE"
+    plain: "某個 AVP 的值不合法 —— 型別對、內容不對。回覆通常會用 Failed-AVP 指出是哪一個。"
+    common_causes:
+      - "編碼錯誤（長度欄與內容不符、字串沒補齊）"
+      - "列舉值超出規範定義的範圍"
+      - "IMSI/MSISDN 帶了非數字或長度不對"
+
+  5005:
+    name: "DIAMETER_MISSING_AVP"
+    plain: "少了一個規範要求必須有的 AVP。回覆的 Failed-AVP 會指出缺哪一個。"
+    common_causes:
+      - "實作漏帶條件性 AVP（某些欄位只在特定情境必要）"
+      - "release 落差：新版把某個 AVP 改成必要"
+
+  5009:
+    name: "DIAMETER_AVP_OCCURS_TOO_MANY_TIMES"
+    plain: "某個 AVP 出現次數超過規範允許的上限。"
+
+  5012:
+    name: "DIAMETER_UNABLE_TO_COMPLY"
+    plain: "對方看得懂這則請求，但就是做不到 —— 而且沒有更精確的碼可用。這是資訊量最低的一個永久失敗，接近「內部錯誤」。"
+    common_causes:
+      - "對端內部例外（資料庫連不上、後端服務掛了）"
+      - "請求本身合法但落在對端沒實作的情境"
+      - "設定不完整，對端寧可整則拒絕也不部分執行"
+      - "看到 5012 時，答案幾乎一定在對端的日誌裡，不在封包裡"
+
+  5017:
+    name: "DIAMETER_NO_COMMON_SECURITY"
+    plain: "CER/CEA 協商不出雙方都支援的安全機制，連線建不起來。"

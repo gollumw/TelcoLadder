@@ -332,6 +332,19 @@ def test_transport_only_residue_is_not_reported_as_missing_signalling() -> None:
     assert "13 frames are sctp.\n" not in md
 
 
+def test_a_cause_without_a_clause_renders_without_trailing_space() -> None:
+    """Diameter 的表只有 spec 沒有 clause。串接時的空 clause 會留下尾端空白 ——
+    在給 agent 讀的那一頁上，那是一行看起來壞掉的引用。"""
+    analysis = analyse(FIXTURES / "diameter-epc-ims" / "capture.pcap")
+    doc = summary.build(analysis, source_name="x")
+    md = summary.render_markdown(doc)
+    refs = [line for line in md.splitlines() if "3GPP TS 29.230" in line or "RFC 6733" in line]
+    assert refs, "這份 fixture 應該有 Diameter 的 cause 引用"
+    for line in refs:
+        assert line == line.rstrip(), f"尾端有空白：{line!r}"
+        assert "  " not in line.split("—")[-1], f"引用裡有多餘空白：{line!r}"
+
+
 def test_no_coverage_means_empty_lists_not_missing_keys() -> None:
     doc = summary.build(_synthetic(), source_name="x")
     assert doc["not_visible"]["undecoded_traffic"] == []

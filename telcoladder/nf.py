@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from telcoladder.adapters.diameter import COMMANDS as _DIAMETER_COMMANDS
 from telcoladder.model import Endpoint, Message
 
 #: N2 介面上 AMF 固定監聽的 SCTP 埠（TS 38.412）。
@@ -69,6 +70,7 @@ UE_ROLE = "UE"
 #: Diameter adapter 落地時在這裡加 `"diameter": "DRA"` —— 判定邏輯不必動。
 RELAY_ROLE_BY_PROTOCOL: dict[str, str] = {
     "sbi": "SCP",
+    "diameter": "DRA",
 }
 
 
@@ -94,16 +96,54 @@ def find_relays(messages: list[Message]) -> dict[str, str]:
     """
     candidates: dict[str, set[str]] = defaultdict(set)
     for msg in messages:
-        target = msg.detail.get("relay-target")
-        if not target or target == msg.dst.ip:
-            # 目標就是收件者本人 —— 那是直接通訊，不是轉送。
-            # 少了這個判斷會把真正的網元標成 SCP。
-            continue
         role = RELAY_ROLE_BY_PROTOCOL.get(msg.protocol)
-        if role:
+        if not role:
+            continue
+
+        # ── 證據 A：訊息指名的收件者不是線路上的對端（`relay-target`）──
+        target = msg.detail.get("relay-target")
+        if target and target != msg.dst.ip:
+            # 目標就是收件者本人 → 直接通訊。少了這個判斷會把真正的網元標成 SCP。
             candidates[msg.dst.ip].add(role)
 
+        # ── 證據 B：訊息自己說它被轉送過（`relay-record`）──
+        #
+        # **這一條是正面證據，而且指的是「發送者」不是「收件者」。**
+        # RFC 6733 §6.7.1：relay/proxy 轉送請求時必須附上一筆 Route-Record。
+        # 所以帶著 Route-Record 的訊息，**送出它的那一端就是中繼**。
+        #
+        # 為什麼需要它 —— 證據 A 在真實的 DRA 上會靜默失效：代理通常
+        # **保留原始的 Origin-Host**，於是主機名同時對到端點與 DRA 兩個位址，
+        # 「指名的收件者」看起來就在線路的另一端。實測 fixture 上證據 A
+        # 找到 0 個中繼，而那份檔裡確實有一台。
+        if msg.detail.get("relay-record"):
+            candidates[msg.src.ip].add(role)
+
     return {ip: next(iter(roles)) for ip, roles in candidates.items() if len(roles) == 1}
+
+
+def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
+    """Diameter 訊息的角色投票。
+
+    **Answer 的方向與 Request 相反** —— 與上面 NGAP 那段是同一個坑：
+    少了這一步，`3GPP-Update-Location Answer`（HSS 回的）會被判成 MME 發送，
+    與 Request 的票互相矛盾，結果是兩端都因衝突而放棄判定，圖上全變成 IP。
+    """
+    application = msg.detail.get("application-id")
+    if application is None:
+        return
+    code = _COMMAND_BY_LABEL.get(msg.label)
+    if code is None:
+        return
+    roles = DIAMETER_ROLES.get((int(application), code))
+    if roles is None:
+        return
+    initiator_role, responder_role = roles
+    is_answer = msg.label.endswith(" Answer")
+    initiator = dst_ip if is_answer else src_ip
+    responder = src_ip if is_answer else dst_ip
+    vote(initiator, initiator_role)
+    vote(responder, responder_role)
 
 
 def _endpoint_key(endpoint: Endpoint) -> str:
@@ -160,6 +200,10 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
             elif base in _AMF_INITIATED:
                 vote(initiator, "AMF")
                 vote(responder, "gNB")
+
+        # ── Diameter：(Application-Id, Command-Code) 決定兩方是誰 ──
+        if msg.protocol == "diameter":
+            _diameter_vote(msg, vote, src_ip, dst_ip)
 
         if msg.protocol == "pfcp" and msg.label.startswith("Session Establishment Request"):
             vote(src_ip, "SMF")
@@ -225,9 +269,58 @@ def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Me
     return messages
 
 
+#: Diameter 的角色階梯：**(Application-Id, Command-Code) → (發起方, 回應方)**。
+#:
+#: 判準與上面 NGAP 那條完全相同 —— 「只有某一方會發起這個程序」。差別在
+#: Diameter 必須連 Application-Id 一起看：同一個命令碼在不同介面上是不同的
+#: 兩方（272 在 Gx 上是 PCEF↔PCRF，在 Gy 上是 CTF↔OCS），而 258 在 Gx 上是
+#: PCRF 主動發起、在別的介面上未必。
+#:
+#: **只收有把握的那三個介面**（2026-08-23 的裁定）。不在表上的
+#: Application-Id 一律不投票 —— 圖上顯示 IP，那是誠實的「推不出來」。
+#:
+#: 命令碼與方向取自各介面規範的程序定義（TS 29.272 §5、TS 29.229 §6、
+#: TS 29.212 §4），**只用「誰發起」這一個事實**，不引用任何條號。
+DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
+    # ── S6a/S6d（App 16777251）──
+    (16777251, 316): ("MME", "HSS"),   # Update-Location
+    (16777251, 318): ("MME", "HSS"),   # Authentication-Information
+    (16777251, 321): ("MME", "HSS"),   # Purge-UE
+    (16777251, 323): ("MME", "HSS"),   # Notify
+    (16777251, 317): ("HSS", "MME"),   # Cancel-Location —— HSS 主動
+    (16777251, 319): ("HSS", "MME"),   # Insert-Subscriber-Data
+    (16777251, 320): ("HSS", "MME"),   # Delete-Subscriber-Data
+    (16777251, 322): ("HSS", "MME"),   # Reset
+    # ── Cx/Dx（App 16777216）—— I-CSCF 與 S-CSCF 發起的命令不同，這是
+    #    這張表最有價值的地方：光看位址分不出兩台 CSCF 誰是誰。
+    (16777216, 300): ("I-CSCF", "HSS"),   # User-Authorization
+    (16777216, 302): ("I-CSCF", "HSS"),   # Location-Info
+    (16777216, 301): ("S-CSCF", "HSS"),   # Server-Assignment
+    (16777216, 303): ("S-CSCF", "HSS"),   # Multimedia-Auth
+    (16777216, 304): ("HSS", "S-CSCF"),   # Registration-Termination
+    (16777216, 305): ("HSS", "S-CSCF"),   # Push-Profile
+    # ── Gx（App 16777238）──
+    (16777238, 272): ("PCEF", "PCRF"),   # Credit-Control
+    (16777238, 258): ("PCRF", "PCEF"),   # Re-Auth —— PCRF 主動
+}
+
+#: 命令碼 → 名稱的反查，只給 `_diameter_vote` 用。
+_COMMAND_BY_LABEL: dict[str, int] = {
+    f"{name} {kind}": code
+    for code, name in _DIAMETER_COMMANDS.items()
+    for kind in ("Request", "Answer")
+}
+
+
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
 #: 依首次出現順序。這只是呈現偏好，不影響任何判定。
-PARTICIPANT_ORDER = ("UE", "gNB", "AMF", "SCP", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF", "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF")
+PARTICIPANT_ORDER = (
+    # 5G 核網（既有順序不動）
+    "UE", "gNB", "AMF", "SCP", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF",
+    "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF",
+    # Diameter：接取側 → 中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
+    "MME", "DRA", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
+)
 
 
 def participant_rank(endpoint: Endpoint) -> tuple[int, str]:

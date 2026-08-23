@@ -50,8 +50,15 @@ class CauseInfo:
     common_causes: tuple[str, ...]
 
     def one_line(self) -> str:
-        """畫在圖上的一行說明。"""
-        return f"{self.name} (#{self.value}) — {self.spec} {self.clause}"
+        """畫在圖上的一行說明。
+
+        **`clause` 可以是空的。** 有些表只查得到「哪一份規範定義了這個號碼」，
+        查不到「在第幾節」—— Diameter 的兩張表就是（見 `data/causes/diameter_*.yaml`
+        的檔頭）。那時只印規範，**不補一個猜出來的節號**：少一個節號只是不方便，
+        多一個錯的節號會被當真（本檔開頭那段的整個理由）。
+        """
+        where = f"{self.spec} {self.clause}".strip()
+        return f"{self.name} (#{self.value}) — {where}"
 
 
 def _table_dirs() -> list[tuple[str, Path]]:
@@ -92,8 +99,13 @@ def _load_tables() -> dict[str, dict[int, CauseInfo]]:
 
 
 def _entries(raw: dict) -> dict[int, CauseInfo]:
-    """一張表的內容。`spec` / `clause` 是整張表共用的出處。"""
-    table, spec, clause = raw["table"], raw["spec"], raw["clause"]
+    """一張表的內容。`spec` / `clause` 是整張表共用的出處。
+
+    **`clause` 選用，`spec` 必填。** 「這個號碼由哪份規範定義」永遠答得出來，
+    「在第幾節」不一定 —— 而後者只能人工核對，不能推。缺了就留空。
+    """
+    table, spec = raw["table"], raw["spec"]
+    clause = raw.get("clause", "")
     return {
         int(value): CauseInfo(
             table=table,

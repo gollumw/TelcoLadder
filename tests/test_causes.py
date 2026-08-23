@@ -72,8 +72,13 @@ def test_every_table_declares_its_source(path):
     少了出處的表就是「來路不明的說法」，那正是本專案要避免的東西。
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert raw["spec"].startswith("3GPP TS")
-    assert raw["clause"].startswith("§")
+    # 出處不必然是 3GPP —— Diameter 的基礎結果碼出自 IETF（2026-08-23）。
+    assert raw["spec"].startswith(("3GPP TS", "RFC ")), raw["spec"]
+    # **`clause` 選用。** 有些登錄表沒有單一節號可指（Diameter 的號碼由
+    # 不同 RFC 陸續補進同一個 IANA 登錄），而人工核對還沒做。
+    # 有寫就必須是節號的形狀；沒寫就是明確的「還沒核對」，不是漏填。
+    if "clause" in raw:
+        assert raw["clause"].startswith("§"), raw["clause"]
     assert raw["table"] == path.stem, "檔名必須等於表名，載入器靠這個對應"
 
 
@@ -89,6 +94,10 @@ def test_all_expected_tables_are_present():
     assert set(table_names()) == {
         "nas_5gmm", "nas_5gsm",
         "ngap_radioNetwork", "ngap_transport", "ngap_nas", "ngap_protocol", "ngap_misc",
+        # Diameter（2026-08-23）。**兩張是刻意的** —— 同一個號碼在
+        # `Result-Code` 與 `Experimental-Result-Code` 裡意思完全不同，
+        # 合成一張就等於讓工具給出看起來合理的錯誤解釋。
+        "diameter_base", "diameter_3gpp",
     }
 
 

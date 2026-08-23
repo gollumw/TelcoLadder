@@ -63,6 +63,7 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "ACCESS_N1_N2", label: "Access & Mobility (N1/N2)" },
   { id: "CORE_SBI", label: "Core Control (SBI N11/N12)" },
   { id: "USER_PLANE_N4_N3", label: "User Plane & Tunnel (N4/N3)" },
+  { id: "CORE_DIAMETER", label: "Diameter (S6a/Cx/Gx)" },
 ];
 
 //: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**

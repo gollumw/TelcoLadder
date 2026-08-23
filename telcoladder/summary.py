@@ -307,7 +307,10 @@ def _ref_text(ref: dict | None) -> str:
     if not ref["known"]:
         return _("{table} #{value} (not in this tool's cause table yet)").format(
             table=ref["table"], value=ref["value"])
-    return f'{ref["name"]} (#{ref["value"]}) — {ref["spec"]} {ref["clause"]}'
+    # `clause` 可以是空的（Diameter 的兩張表就是，見 `causes.CauseInfo.one_line`）——
+    # 直接串會留下尾端空白，而那會出現在給 agent 讀的那一頁上。
+    where = f'{ref["spec"]} {ref["clause"] or ""}'.strip()
+    return f'{ref["name"]} (#{ref["value"]}) — {where}'
 
 
 def _md_escape(text: str) -> str:

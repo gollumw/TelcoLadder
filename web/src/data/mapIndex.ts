@@ -44,6 +44,7 @@ export function domainFromStack(stack: string): TelecomDomain | undefined {
   if (layers.has("ngap") || layers.has("nas-5gs")) return "ACCESS_N1_N2";
   if (layers.has("pfcp") || layers.has("gtp")) return "USER_PLANE_N4_N3";
   if (layers.has("http2")) return "CORE_SBI";
+  if (layers.has("diameter")) return "CORE_DIAMETER";
   return undefined;
 }
 

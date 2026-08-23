@@ -110,10 +110,10 @@ class Adapter(Protocol):
     def carrier_keys(self, block: dict[str, Any], frame: Frame) -> frozenset[IdKey]: ...
 
 
-from telcoladder.adapters import gtp, nas5gs, ngap, pfcp, sbi  # noqa: E402
+from telcoladder.adapters import diameter, gtp, nas5gs, ngap, pfcp, sbi  # noqa: E402
 
 #: 不經外掛機制、永遠都在的那些。
-BUILTIN_ADAPTERS: tuple[Adapter, ...] = (ngap, nas5gs, sbi, pfcp, gtp)  # type: ignore[assignment]
+BUILTIN_ADAPTERS: tuple[Adapter, ...] = (ngap, nas5gs, sbi, diameter, pfcp, gtp)  # type: ignore[assignment]
 
 _REQUIRED_ATTRS = ("NAME", "ORDER", "DISPLAY_FILTER", "DISSECTORS", "parse")
 

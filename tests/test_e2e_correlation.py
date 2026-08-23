@@ -105,12 +105,18 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
 
     `5gc-e2e` 刻意四種信令協定都含（N2 的 NGAP 與內嵌 NAS、SBI、N4 的
     PFCP）；GTP-U 只存在於 `userplane`（信令 fixture 產生時 N3 不在擷取
-    範圍）。兩份合起來，每個內建 adapter 都有一份**已知含它協定**的檔案 ——
-    「零命中」因此一定是 adapter 壞了，不是擷取檔不對。
+    範圍）；Diameter 只存在於 `diameter-epc-ims`（它是 EPC/IMS 的協定，
+    不會出現在 5G 核網的擷取檔裡）。三份合起來，每個內建 adapter 都有一份
+    **已知含它協定**的檔案 —— 「零命中」因此一定是 adapter 壞了，
+    不是擷取檔不對。
     """
     counts = {a.NAME: 0 for a in BUILTIN_ADAPTERS}
-    userplane = e2e_pcap.parent.parent / "userplane" / "capture.pcap"
-    for pcap in (e2e_pcap, userplane):
+    fixtures = e2e_pcap.parent.parent
+    for pcap in (e2e_pcap,
+                 fixtures / "userplane" / "capture.pcap",
+                 # Diameter 不存在於任何 5G 擷取檔裡（2026-08-23）——
+                 # 它是 EPC/IMS 的協定，所以要自己那一份。
+                 fixtures / "diameter-epc-ims" / "capture.pcap"):
         for frame in read_frames(pcap):
             for message in parse_frame(frame):
                 counts[message.protocol] = counts.get(message.protocol, 0) + 1
