@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from telcoladder.adapters.diameter import COMMANDS as _DIAMETER_COMMANDS
 from telcoladder.model import Endpoint, Message
 
 #: N2 介面上 AMF 固定監聽的 SCTP 埠（TS 38.412）。
@@ -132,10 +131,10 @@ def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
     application = msg.detail.get("application-id")
     if application is None:
         return
-    code = _COMMAND_BY_LABEL.get(msg.label)
+    code = msg.detail.get("command-code")
     if code is None:
         return
-    roles = DIAMETER_ROLES.get((int(application), code))
+    roles = DIAMETER_ROLES.get((int(application), int(code)))
     if roles is None:
         return
     initiator_role, responder_role = roles
@@ -304,22 +303,19 @@ DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
     (16777238, 258): ("PCRF", "PCEF"),   # Re-Auth —— PCRF 主動
 }
 
-#: 命令碼 → 名稱的反查，只給 `_diameter_vote` 用。
-_COMMAND_BY_LABEL: dict[str, int] = {
-    f"{name} {kind}": code
-    for code, name in _DIAMETER_COMMANDS.items()
-    for kind in ("Request", "Answer")
-}
-
-
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
 #: 依首次出現順序。這只是呈現偏好，不影響任何判定。
 PARTICIPANT_ORDER = (
     # 5G 核網（既有順序不動）
     "UE", "gNB", "AMF", "SCP", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF",
     "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF",
-    # Diameter：接取側 → 中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
-    "MME", "DRA", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
+    # 4G EPC 控制面（T3，2026-08-23）。`MME` 原本在下面 Diameter 那組，
+    # 移上來與 `eNB` 相鄰 —— 它在 S1-MME 上是接取側的對端，在 S6a 上才是
+    # HSS 的對端，而**一份混合擷取檔裡兩種都會出現**；跟著接取側排，
+    # UE → eNB → MME → SGW → PGW 才讀得下去。
+    "eNB", "MME", "SGW", "PGW",
+    # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
+    "DRA", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
 )
 
 

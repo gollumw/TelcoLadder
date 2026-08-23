@@ -12,6 +12,7 @@ from telcoladder.i18n import _
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import NamedTuple
 
 
 class IdKind(StrEnum):
@@ -29,6 +30,24 @@ class IdKind(StrEnum):
     PFCP_SEID = "pfcp_seid"
     SBI_STREAM = "sbi_stream"  # HTTP/2 stream，用於配對 SBI request/response
     SM_CONTEXT_REF = "sm_context_ref"  # SMF 配發的 PDU session 上下文參照
+
+    # ── Phase 2：4G EPC 控制面。T4–T6 的 adapter 尚未實作 ──
+    #
+    # **這裡刻意沒有 `IMSI`。** 4G 的 IMSI 一律進 `SUPI` —— 兩者是同一個
+    # 號碼空間（TS 23.003），而 `adapters/diameter.py` 從落地那天就是這樣做的
+    # （S6a 的 `User-Name` 純數字 → `SUPI`）。
+    #
+    # 分成兩把 key 的後果是**同一個人在一份混合擷取檔裡變成兩條流程**：
+    # S6a 的 ULR 掛在 `SUPI`、NAS-EPS 的 Attach 掛在 `IMSI`，`correlate` 只認
+    # 「共用任一把 key」，於是併不起來。而**兩條流程各自都合理、圖照樣畫得
+    # 出來** —— CLAUDE.md §4 那張表的「流程切錯」那一列。
+    #
+    # 名字叫 SUPI 而不叫 IMSI 只是歷史（Phase 1 先做 5G）。呈現層早就中性了：
+    # `identities.KIND_LABELS` 寫的是 `SUPI / IMSI`。改 enum 名要動 MCP 工具
+    # 參數、web 的 `?supi=`、xDR 欄位 —— 那是對外契約，不值得為了措辭破壞。
+    ENB_UE_S1AP_ID = "enb_ue_s1ap_id"
+    MME_UE_S1AP_ID = "mme_ue_s1ap_id"
+    GTP_TEID_C = "gtp_teid_c"
 
     # ── Phase 2：IMS。現在只是佔位，adapter 尚未實作 ──
     IMPI = "impi"
@@ -94,9 +113,21 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.MSISDN: IdClass.SUBSCRIBER,
     IdKind.RAN_UE_NGAP_ID: IdClass.SUBSCRIBER,
     IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
+    # S1AP 的兩把 UE ID 與上面 NGAP 那兩把同構：只在一條 S1 連線內唯一，
+    # 但指的確實是某個 UE。一律走 `identity.scoped()`（§3.3：少了連線前綴，
+    # 兩個 eNB 底下各自從 1 開始配號的用戶會被併成同一條）。
+    IdKind.ENB_UE_S1AP_ID: IdClass.SUBSCRIBER,
+    IdKind.MME_UE_S1AP_ID: IdClass.SUBSCRIBER,
     IdKind.PFCP_SEID: IdClass.SESSION,
     IdKind.SM_CONTEXT_REF: IdClass.SESSION,
     IdKind.GTP_TEID: IdClass.SESSION,
+    # **控制面的 TEID 必須與使用者面分開，不能共用 `GTP_TEID`。**
+    # GTP-C 走 2123、GTP-U 走 2152，而**同一台 SGW 兩者常是同一個 IP** ——
+    # `identity.gtp_tunnel()` 的範圍是位址，所以共用 kind 的話，一條 S11 控制
+    # session 與一條不相干的使用者面隧道只要 TEID 數字撞號就會併成同一條。
+    # 那正是 §5 講的「最危險的失敗不是沒接上，而是接錯人」。
+    # 分成兩個 kind 就夠了 —— key 是 `(IdKind, str)`，kind 不同就不會撞。
+    IdKind.GTP_TEID_C: IdClass.SESSION,
     IdKind.SIP_CALL_ID: IdClass.SESSION,
     IdKind.DIAMETER_SESSION_ID: IdClass.SESSION,
     IdKind.SBI_STREAM: IdClass.EXCHANGE,
@@ -110,6 +141,31 @@ def is_flow_worthy(kinds: "frozenset[IdKind] | set[IdKind]") -> bool:
     這組訊息是「某個 NF 打給另一個 NF 的一次呼叫」，該併進共用桶。
     """
     return any(ID_CLASSES[kind] is not IdClass.EXCHANGE for kind in kinds)
+
+
+class BlindSpot(NamedTuple):
+    """一件「我看得到，但讀不出來」的事。
+
+    `key` 只有在這個盲點**屬於某條流程**時才有值（SBI 那條 HTTP/2 stream
+    就是），否則 `None`，由 `pipeline` 單純計數。
+    """
+
+    kind: str
+    key: IdKey | None = None
+
+
+#: 盲點的種類 —— **這是契約詞彙，不是隨便的字串**。
+#:
+#: 核心對每一種都有自己的一句話與自己的處置建議（`summary` 的 `not_visible`：
+#: 加密的 NAS 要對照核網日誌、ECIES 的 SUCI 要改用 NGAP UE ID 搜尋）。
+#: 那些句子是核心知識，留在核心；**「這一格裡有幾個」是 adapter 知識**，
+#: 只有讀那個協定的人數得出來。這條線就是這兩件事的分界。
+#:
+#: 新增一種之前先問：核心講不講得出「使用者該怎麼辦」？講不出來就不要加 ——
+#: 那會變成一個沒有人知道該拿它怎麼辦的數字。
+BLIND_CIPHERED_NAS = "ciphered_nas"
+BLIND_ECIES_PROTECTED_SUCI = "ecies_protected_suci"
+BLIND_UNDECODED_STREAM = "undecoded_stream"
 
 
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。

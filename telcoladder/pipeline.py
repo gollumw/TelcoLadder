@@ -25,15 +25,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from telcoladder.adapters import default_decode_as, parse_frame
-from telcoladder.adapters.nas5gs import count_ciphered, count_protected_suci
-from telcoladder.adapters.sbi import undecoded_header_streams
+from telcoladder.adapters import blind_spots, default_decode_as, parse_frame
 from telcoladder.causes import annotate
 from telcoladder.correlate import correlate
 from telcoladder.lifecycle import apply as apply_lifecycle
 from telcoladder.coverage import Coverage, measure
 from telcoladder.extract import read_frames
-from telcoladder.model import Flow, Message
+from telcoladder.model import (
+    BLIND_CIPHERED_NAS,
+    BLIND_ECIES_PROTECTED_SUCI,
+    BLIND_UNDECODED_STREAM,
+    Flow,
+    Message,
+)
 from telcoladder.nf import apply_roles
 from telcoladder.packets import capture_duration
 from telcoladder.i18n import _
@@ -251,9 +255,15 @@ def _extract(
         pcap, decode_as=rules, relax_seq=relax_seq, display_filter=display_filter
     ):
         messages.extend(parse_frame(frame))
-        ciphered += count_ciphered(frame)
-        protected_suci += count_protected_suci(frame)
-        undecoded |= undecoded_header_streams(frame)
+        # **不指名任何 adapter** —— 問過所有人，誰有盲點誰自己回報。
+        # 契約詞彙在 `model.py`，鉤子的理由在 `adapters.blind_spots()`。
+        for spot in blind_spots(frame):
+            if spot.kind == BLIND_CIPHERED_NAS:
+                ciphered += 1
+            elif spot.kind == BLIND_ECIES_PROTECTED_SUCI:
+                protected_suci += 1
+            elif spot.kind == BLIND_UNDECODED_STREAM and spot.key is not None:
+                undecoded.add(spot.key)
     return messages, ciphered, protected_suci, undecoded
 
 

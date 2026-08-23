@@ -1,4 +1,6 @@
-"""5G 參考點（介面）命名 —— 從**觀測到的**協定與網元角色查表得到。
+"""參考點（介面）命名 —— 從**觀測到的**協定與網元角色查表得到。
+
+涵蓋 5G（TS 23.501）與 4G EPC（TS 23.401）。
 
 ## 這不是條號，但適用同一條紀律
 
@@ -18,6 +20,17 @@
   是 SCP，那條線上並沒有一個公認的參考點代號 —— 就留空。
 
 新增一列之前請先確認它在規範裡真的有這個代號，而不是「看起來應該有」。
+
+## 為什麼 Diameter 不走這張表
+
+這張表的鍵是 `(協定, {兩端角色})` —— 它預設**兩端角色決定介面**。5G 的 SBI
+與 4G 的 GTP 都成立，Diameter 不成立：同一對主機可以同時跑 S6a 與 S13，
+介面取決於 **Application-Id**，而那是線路上的事實、只有 adapter 讀得到。
+
+所以 Diameter 自己填 `detail["reference_point"]`，`callflow` 優先採用它、
+查不到才退回這張表。**那不是繞過，是同一條紀律的另一種來源** ——
+線路上寫著的比推出來的可信。新 adapter 若也是這種情況（介面取決於訊息
+內容而非兩端角色），照做即可。
 """
 
 from __future__ import annotations
@@ -42,6 +55,17 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
     ("sbi", frozenset({"UDM", "AUSF"})): "N13",
     ("sbi", frozenset({"PCF", "AMF"})): "N15",
     ("sbi", frozenset({"AMF", "NSSF"})): "N22",
+
+    # ── 4G EPC（TS 23.401）。T3 先把表補上，adapter 在 T4–T6 ──
+    #
+    # **S5 與 S8 是同一個參考點的兩種佈署**（非漫遊 / 漫遊），差別在兩端
+    # 是否屬於同一個 PLMN —— 那件事光看這兩個角色判不出來，所以標
+    # `S5/S8`，與 3GPP 自己的行文一致。**寧可標得寬，不要猜一個窄的。**
+    ("s1ap", frozenset({"eNB", "MME"})): "S1-MME",
+    ("gtp", frozenset({"eNB", "SGW"})): "S1-U",
+    ("gtpv2", frozenset({"MME", "SGW"})): "S11",
+    ("gtpv2", frozenset({"SGW", "PGW"})): "S5/S8",
+    ("gtp", frozenset({"SGW", "PGW"})): "S5/S8",
 }
 
 

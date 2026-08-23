@@ -304,6 +304,15 @@ def parse(frame: Frame) -> list[Message]:
 
         detail: dict[str, str] = {}
 
+        code = _to_int(first(block.get("diameter_diameter_cmd_code")))
+        if code is not None:
+            # **線路上寫著的命令碼，不是從顯示字串反推的。**
+            # `nf.py` 判角色需要 `(Application-Id, Command-Code)`。它原本
+            # `import COMMANDS` 再拿 `msg.label` 去反查 —— 那條路有兩個問題：
+            # 核心因此指名相依一個特定 adapter，而且 label 是**顯示字串**，
+            # 措辭一改反查就靜默落空、角色整片消失（§4 那一類）。
+            detail["command-code"] = str(code)
+
         application = _to_int(first(block.get("diameter_diameter_applicationId")))
         if application is not None:
             detail["application-id"] = str(application)

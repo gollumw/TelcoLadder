@@ -49,18 +49,5 @@
  ],
  "unassigned": [],
  "phantom": [],
- "named_adapter_imports": [
-  [
-   "nf",
-   "adapters.diameter"
-  ],
-  [
-   "pipeline",
-   "adapters.nas5gs"
-  ],
-  [
-   "pipeline",
-   "adapters.sbi"
-  ]
- ]
+ "named_adapter_imports": []
 }

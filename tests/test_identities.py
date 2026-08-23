@@ -60,8 +60,15 @@ def test_unimplemented_kinds_stay_in_sync_with_the_adapters() -> None:
     這就是為什麼這件事不能靠紀律：清單與程式碼分開存在，就一定會漂移。
     哪天 IMS 外掛加了 MSISDN 生產者，這條會紅並強迫 UI 文案一起更新。
     """
+    # **也要掃 `identity.py`。** adapter 不一定自己寫 `IdKind.X` ——
+    # `gtp.py` 走 `identity.gtp_tunnel()` 建 key，那個建構子才是寫著
+    # `IdKind.GTP_TEID` 的地方。只掃 adapter 目錄的話，一個**有生產者**的
+    # 類別會被判成未實作，UI 標「尚未實作」而引擎其實抽得到（2026-08-24
+    # 實測 userplane fixture 就是這個情況，`GTP_TEID` 錯標了）。
+    # T6 的 `GTP_TEID_C` 會走同一種建構子，所以這不是一次性的補丁。
+    sources = list(ADAPTER_DIR.glob("*.py")) + [ADAPTER_DIR.parent / "identity.py"]
     produced: set[IdKind] = set()
-    for path in ADAPTER_DIR.glob("*.py"):
+    for path in sources:
         for name in re.findall(r"IdKind\.([A-Z_]+)", path.read_text(encoding="utf-8")):
             produced.add(IdKind[name])
 

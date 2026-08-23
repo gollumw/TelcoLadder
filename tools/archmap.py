@@ -155,30 +155,45 @@ _DOMAIN_GROUPS = [
 
 # ─────────────── 手寫的部分：核心對 adapter 的指名相依 ───────────────
 
-#: 核心模組直接 import 特定 adapter 的地方。**加一筆等於承認多了一處耦合**——
-#: `tests/test_archmap.py` 會擋下沒登記的新增。
+#: 核心模組直接 import 特定 adapter 的地方。**現在是空的，而空的就是不變量。**
 #:
-#: 三處在做同一件事：**核心需要問一個只有 adapter 才知道的問題**。現在用指名
-#: import 解決，因為只有三處。T4–T7 會讓 adapter 從 6 個變 10 個，而 NAS-EPS 與
-#: SIP 幾乎確定要走同樣的路 —— 屆時要嘛把它變成 adapter 契約的選用鉤子，要嘛
-#: 接受核心裡有五六條指名分支。**前者只有在寫第一個 4G adapter 之前做才便宜。**
-CORE_ADAPTER_IMPORTS: dict[tuple[str, str], tuple[str, str, str]] = {
-    ("nf", "adapters.diameter"): (
-        "COMMANDS", "角色推斷",
-        "同一個命令碼在不同介面上是不同的兩方，鍵是 (Application-Id, Command-Code)。"),
-    ("pipeline", "adapters.nas5gs"): (
-        "count_ciphered · count_protected_suci", "看不見什麼",
-        "「加密的 NAS 有幾則」只有 NAS adapter 數得出來。**4G 的 NAS 一樣會加密。**"),
-    ("pipeline", "adapters.sbi"): (
-        "undecoded_header_streams", "看不見什麼",
-        "「有哪些 HTTP/2 串流讀不出標頭」同上。S1AP／SIP 各有自己的不可見面。"),
-}
+#: 2026-08-23 量出三處，2026-08-24 全部解掉（見 `RESOLVED_COUPLINGS`）。
+#: 留著這張空表加上 `tests/test_archmap.py` 的守衛，是為了讓**下一處**不能
+#: 悄悄長出來 —— 外掛契約寫著「只加模組，不改核心」，那句話現在真的成立了。
+#:
+#: 要再加一筆進來，等於在說「我知道這是一處核心對特定 adapter 的耦合，而且
+#: 我想不到能進契約的鉤子」。那是要有人決定的設計題，不該由「反正加一行
+#: import 也沒人管」決定。
+CORE_ADAPTER_IMPORTS: dict[tuple[str, str], tuple[str, str, str]] = {}
 
-#: 將來哪些任務會長出同一個形狀 —— 畫在耦合圖上當虛線。
-_COUPLING_FUTURE = [
-    ("nf", "adapters.sip", "T7", "也要推角色？"),
-    ("pipeline", "adapters.naseps", "T5", "4G NAS 也會加密"),
-    ("pipeline", "adapters.s1ap", "T4", "也有不可見面"),
+#: 那三處各自怎麼解的。**保留是因為解法不同，而差別本身是判準。**
+#: 欄位：(誰, 原本拿了什麼, 解法, 說明)
+RESOLVED_COUPLINGS: list[tuple[str, str, str, str]] = [
+    ("nf.py", "diameter.COMMANDS", "其實是缺陷",
+     "它只拿 `COMMANDS` 做「顯示字串 → 命令碼」的反查，因為 adapter 沒把命令碼寫進 "
+     "`detail`。補上之後 import 直接消失，**而且更正確** —— 原本靠 `msg.label` 反查，"
+     "而 label 是顯示字串，措辭一改反查就靜默落空、整片角色退回 IP。"
+     "**判準：先問「這真的是設計題嗎」，三處裡有一處根本不是。**"),
+    ("pipeline.py", "nas5gs.count_ciphered · count_protected_suci", "收進契約鉤子",
+     "「這一格有幾則 NAS 加密到讀不出來」只有讀 NAS 的人數得出來 —— 那是 adapter 知識。"
+     "而「使用者該怎麼辦」（對照核網日誌）是核心知識，留在 `summary`。"),
+    ("pipeline.py", "sbi.undecoded_header_streams", "收進契約鉤子",
+     "「哪些 HTTP/2 stream 的標頭解不出來」同一個形狀，同一個鉤子收掉。"),
+]
+
+#: 契約表面。T4–T7 只要填這些，核心一行不動。
+#: 欄位：(屬性, 必填?, 用途)
+ADAPTER_CONTRACT: list[tuple[str, bool, str]] = [
+    ("NAME", True, "出現在 `Message.protocol` 上"),
+    ("ORDER", True, "adapter 之間的順序，**有語意**"),
+    ("DISPLAY_FILTER", True, "丟給 tshark 的 filter 片段"),
+    ("DISSECTORS", True, "`telcoladder check` 要驗證存在的 dissector"),
+    ("parse(frame)", True, "`Frame` → `list[Message]`"),
+    ("DECODE_AS", False, "tshark `-d` 規則"),
+    ("CARRIES", False, "這個 adapter 載送哪些協定"),
+    ("CARRIER_LAYER", False, "區塊在 tshark 輸出裡的層名（預設 = `NAME`）"),
+    ("carrier_keys()", False, "從載體區塊推出的身分鍵"),
+    ("blind_spots()", False, "**2026-08-24 新增**：看得到卻讀不出來的東西"),
 ]
 
 
@@ -190,7 +205,7 @@ ROADMAP: list[tuple[str, str, str, str, str, str, tuple[str, ...]]] = [
     ("T1", "P1", "第七道資料紅線的網：電話號碼形狀", "30m", "10m", "done", ()),
     ("T2", "P1", "Open5GS ＋ Kamailio IMS testbed，產 4G／IMS／RTP fixture",
      "1d", "—", "self", ()),
-    ("T3", "P1", "4G 專用 IdKind ＋ ID_CLASSES ＋ 參考點", "2h", "30m", "door", ()),
+    ("T3", "P1", "4G IdKind ＋ 參考點 ＋ adapter 契約鉤子", "2h", "40m", "done", ()),
     ("T4", "P1", "S1AP adapter（ASN.1 PER，載送 NAS-EPS）", "1w", "1 session", "todo", ("T2", "T3")),
     ("T5", "P1", "NAS-EPS adapter（掛在 S1AP 底下，多態載體）", "3d", "½ session", "todo", ("T2", "T3", "T4")),
     ("T6", "P1", "GTPv2-C adapter（S11／S5-S8，TEID-C 關聯）", "3d", "½ session", "todo", ("T2", "T3")),
@@ -369,24 +384,18 @@ def diagram_domains() -> str:
 
 
 def diagram_coupling() -> str:
+    """adapter 契約：必填五樣、選用五樣。T4–T7 只要填這些，核心一行不動。"""
     lines = [_MM_INIT, "graph LR", _CLASSDEFS, ""]
-    ids: dict[str, str] = {}
-    edges: list[str] = []
-    for i, ((core, adapter), (sym, why, _reason)) in enumerate(CORE_ADAPTER_IMPORTS.items()):
-        c, a = f"c{i}", f"a{i}"
-        ids[f"{core}|{adapter}"] = c
-        lines.append(f'  {c}["{core}.py<br/>{why}"]:::n')
-        lines.append(f'  {a}["{adapter}<br/>{sym}"]:::leak')
-        edges.append(f"  {c} --> {a}")
-    for j, (core, adapter, task, label) in enumerate(_COUPLING_FUTURE):
-        f = f"f{j}"
-        lines.append(f'  {f}["{adapter} · {task}"]:::todo')
-        src = next((v for k, v in ids.items() if k.startswith(core + "|")), None)
-        if src:
-            edges.append(f'  {src} -.->|"{label}"| {f}')
-    lines += [""] + edges
-    lines.append(f"  linkStyle {','.join(str(i) for i in range(len(CORE_ADAPTER_IMPORTS)))}"
-                 " stroke:#C05A3E,stroke-width:2px")
+    for gid, title, want in (("REQ", "必填 · 缺一個載入就炸", True),
+                             ("OPT", "選用 · 沒宣告完全正常", False)):
+        lines.append(f'  subgraph {gid}["{title}"]')
+        lines.append("    direction TB")
+        for i, (attr, required, _why) in enumerate(ADAPTER_CONTRACT):
+            if required is not want:
+                continue
+            cls = "hub" if attr == "blind_spots()" else ("ok" if want else "n")
+            lines.append(f'    {gid}{i}["{attr}"]:::{cls}')
+        lines.append("  end")
     return "\n".join(lines)
 
 
@@ -493,24 +502,20 @@ def render(data: dict) -> str:
             f'<td>{tag}</td><td class="wrap-ok">{_md(note)}</td></tr>'
         )
 
-    # ── 耦合表
-    cp_rows = []
-    live = {(n["core"], n["adapter"]) for n in data["named_adapter_imports"]}
-    for (core, adapter), (sym, why, reason) in CORE_ADAPTER_IMPORTS.items():
-        seen = "" if (core, adapter) in live else ' <span class="tag t-fault">已消失</span>'
-        cp_rows.append(
-            f'<tr><td class="mono">{_esc(core)}.py{seen}</td>'
-            f'<td class="mono">{_esc(adapter.split(".")[-1])}.{_esc(sym)}</td>'
-            f'<td class="wrap-ok">{_md(reason)}</td></tr>'
-        )
-    undocumented = sorted(live - set(CORE_ADAPTER_IMPORTS))
-    for core, adapter in undocumented:
-        cp_rows.append(
-            f'<tr><td class="mono">{_esc(core)}.py <span class="tag t-fault">未登記</span></td>'
-            f'<td class="mono">{_esc(adapter)}</td>'
-            f'<td class="wrap-ok">新出現的指名相依，尚未寫下理由。'
-            f'請補進 <code>tools/archmap.py</code> 的 <code>CORE_ADAPTER_IMPORTS</code>。</td></tr>'
-        )
+    # ── 契約表
+    contract_rows = "".join(
+        f'<tr><td class="mono">{_esc(a)}</td>'
+        f'<td class="mono">{"✓" if r else "—"}</td>'
+        f'<td class="wrap-ok">{_md(w)}</td></tr>'
+        for a, r, w in ADAPTER_CONTRACT
+    )
+    contract_panel = _panel("adapter 契約", "必填 5 · 選用 5", diagram_coupling())
+    resolved_rows = "".join(
+        f'<tr><td class="mono">{_esc(who)}</td><td class="mono">{_esc(what)}</td>'
+        f'<td><span class="tag t-ok">{_esc(how)}</span></td>'
+        f'<td class="wrap-ok">{_md(why)}</td></tr>'
+        for who, what, how, why in RESOLVED_COUPLINGS
+    )
 
     # ── roadmap 表
     rm_rows = []
@@ -589,25 +594,34 @@ def render(data: dict) -> str:
 </section>
 
 <section>
-  <h2><span class="num">03</span>核心 → adapter 的指名相依</h2>
-  <p class="sub">實線＝今天存在的三處；虛線＝T4／T5／T7 幾乎確定會長出的同一個形狀。
-  這張表由程式比對<strong>實際的 import</strong>，登記表以外的新增會被標紅。</p>
-  {_panel("指名相依", "實線＝現況 · 虛線＝將來的同一形狀", diagram_coupling())}
+  <h2><span class="num">03</span>adapter 契約</h2>
+  <p class="sub">核心對特定 adapter 的指名 import <strong>現在是零</strong>，而零就是不變量 ——
+  <code>tests/test_archmap.py</code> 會擋下任何新增。T4–T7 只要填下面這些。</p>
+  {contract_panel}
   <div class="tbl"><table>
-    <thead><tr><th class="mono">誰</th><th class="mono">拿了什麼</th><th>為什麼</th></tr></thead>
-    <tbody>{"".join(cp_rows)}</tbody>
+    <thead><tr><th class="mono">屬性</th><th class="mono">必填</th><th>用途</th></tr></thead>
+    <tbody>{contract_rows}</tbody>
   </table></div>
-  <div class="note fault">
-    <h4>這不是 bug，是一個要現在決定的設計題</h4>
-    <p>三處在做同一件事：<strong>核心需要問一個只有 adapter 才知道的問題</strong>。
-    現在用指名 import 解決，因為只有三處。</p>
-    <p>T4–T7 會讓 adapter 從 6 個變成 10 個。要嘛把它變成 adapter 契約裡的選用鉤子，
-    要嘛接受核心裡有五六條指名分支 —— <strong>前者只有在寫第一個 4G adapter 之前做才便宜</strong>。
-    這與 T3 同屬「動了就難改」，值得一起決定。</p>
-  </div>
-</section>
 
-<section>
+  <h3>2026-08-24：三處耦合怎麼解掉的</h3>
+  <p>2026-08-23 量出三處核心指名相依特定 adapter，而外掛契約寫著「只加模組，不改核心」——
+  <strong>那句話當時並不成立</strong>。三處解法不同，而差別本身是判準。</p>
+  <div class="tbl"><table>
+    <thead><tr><th class="mono">誰</th><th class="mono">原本拿了什麼</th><th class="mono">解法</th><th>說明</th></tr></thead>
+    <tbody>{resolved_rows}</tbody>
+  </table></div>
+  <div class="note ok">
+    <h4>先問「這真的是設計題嗎」</h4>
+    <p>三處裡<strong>有一處根本不是</strong>。<code>nf.py</code> 只拿
+    <code>diameter.COMMANDS</code> 做「顯示字串 → 命令碼」的反查，因為 adapter 沒把命令碼
+    寫進 <code>detail</code>。補上之後 import 直接消失 —— 而且更正確：靠 <code>msg.label</code>
+    反查，措辭一改就靜默落空、整片角色退回 IP。</p>
+    <p>另外兩處是同一個形狀（<em>核心要問一個只有 adapter 才知道的問題</em>），
+    收成選用鉤子 <code>blind_spots()</code>。<strong>具體省下什麼</strong>：T5 的 NAS-EPS
+    一樣會加密、T4 的 S1AP 與 T7 的 SIP 各有自己的不可見面 —— 照原本的寫法要在核心再加三條
+    指名分支，現在它們宣告鉤子就好。</p>
+  </div>
+
   <h2><span class="num">04</span>資料流</h2>
   <p class="sub">一份 pcap 進來，三個交集為零的出口。</p>
   {_panel("管線", "約 0.19 秒／MB，線性", diagram_flow())}

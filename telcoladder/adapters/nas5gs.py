@@ -29,7 +29,10 @@ from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
 from telcoladder.identity import globally_unique
 from telcoladder.model import (
+    BLIND_CIPHERED_NAS,
+    BLIND_ECIES_PROTECTED_SUCI,
     IDENTITY_SOURCE_KEY,
+    BlindSpot,
     CauseRef,
     Endpoint,
     IdKey,
@@ -385,3 +388,14 @@ def parse(frame: Frame) -> list[Message]:
             )
         )
     return messages
+
+
+def blind_spots(frame: Frame) -> list[BlindSpot]:
+    """契約鉤子（`adapters/__init__.py`）—— 這一格裡我讀不出來的東西。
+
+    上面兩個函式各自保留，因為那才是判定邏輯、也是測試直接驗的對象；
+    這裡只是把它們的結果翻成契約詞彙，好讓 `pipeline` 不必指名 nas5gs。
+    """
+    spots = [BlindSpot(BLIND_CIPHERED_NAS)] * count_ciphered(frame)
+    spots += [BlindSpot(BLIND_ECIES_PROTECTED_SUCI)] * count_protected_suci(frame)
+    return spots

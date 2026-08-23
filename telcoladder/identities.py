@@ -44,9 +44,16 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     # IMPI / IMPU / DIAMETER_SESSION_ID **已於 2026-08-23 移出這份清單** ——
     # `adapters/diameter.py` 開始生產它們。抓到這件事的是同一條測試：
     # 留在清單上的話，UI 會同時顯示「尚未實作」與實際值。
+    # GTP_TEID **已於 2026-08-24 移出** —— `adapters/gtp.py` 一直在產生它，
+    # 只是走 `identity.gtp_tunnel()` 這個建構子而不是寫 `IdKind.GTP_TEID` 字面，
+    # 於是同步測試的靜態掃描看不到它。症狀是 UI 標「尚未實作」而引擎其實抽得到
+    # （實測 userplane fixture：`gtp_teid` 有值）。掃描範圍已擴及 `identity.py`。
     IdKind.MSISDN,
     IdKind.SIP_CALL_ID,
-    IdKind.GTP_TEID,
+    # 4G 控制面（T3 建的資料模型，adapter 在 T4／T6）
+    IdKind.ENB_UE_S1AP_ID,
+    IdKind.MME_UE_S1AP_ID,
+    IdKind.GTP_TEID_C,
 )
 
 #: 給人看的類別名稱。
@@ -64,7 +71,10 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.MSISDN: "MSISDN",
     IdKind.SIP_CALL_ID: "SIP Call-ID",
     IdKind.DIAMETER_SESSION_ID: "Diameter Session-Id",
-    IdKind.GTP_TEID: "GTP TEID",
+    IdKind.GTP_TEID: "GTP TEID (user plane)",
+    IdKind.GTP_TEID_C: "GTP TEID-C (control plane)",
+    IdKind.ENB_UE_S1AP_ID: "eNB UE S1AP ID",
+    IdKind.MME_UE_S1AP_ID: "MME UE S1AP ID",
 }
 
 #: 為什麼這個類別現在搜不到。UI 直接顯示這句話，不要自己另寫。
@@ -74,7 +84,9 @@ UNAVAILABLE_REASONS: dict[IdKind, str] = {
     IdKind.MSISDN: N_('Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling'),
     IdKind.SIP_CALL_ID: N_('Needs the SIP adapter (not implemented yet)'),
     IdKind.DIAMETER_SESSION_ID: N_('Needs the Diameter adapter (not implemented yet)'),
-    IdKind.GTP_TEID: N_('Needs the GTP adapter (not implemented yet)'),
+    IdKind.ENB_UE_S1AP_ID: N_('Needs the S1AP adapter (not implemented yet)'),
+    IdKind.MME_UE_S1AP_ID: N_('Needs the S1AP adapter (not implemented yet)'),
+    IdKind.GTP_TEID_C: N_('Needs the GTPv2-C adapter (not implemented yet) - control-plane TEIDs are a separate number space from the user-plane ones'),
 }
 
 

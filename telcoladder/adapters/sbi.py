@@ -16,7 +16,7 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import connection_scope, globally_unique, scoped
-from telcoladder.model import Endpoint, IdKey, IdKind, Message
+from telcoladder.model import BLIND_UNDECODED_STREAM, BlindSpot, Endpoint, IdKey, IdKind, Message
 
 NAME = "sbi"
 
@@ -397,3 +397,12 @@ def parse(frame: Frame) -> list[Message]:
             )
         )
     return messages
+
+
+def blind_spots(frame: Frame) -> list[BlindSpot]:
+    """契約鉤子（`adapters/__init__.py`）—— 標頭解不出來的那些 stream。
+
+    這一種帶 `key`：盲點本身屬於某條流程，下游要拿它避開「未獲回應」的誤報。
+    """
+    return [BlindSpot(BLIND_UNDECODED_STREAM, key)
+            for key in undecoded_header_streams(frame)]

@@ -20,6 +20,7 @@
 | `CARRIES` | 這個 adapter 會載送哪些協定，如 `("nas-5gs",)` |
 | `CARRIER_LAYER` | 它的區塊在 tshark 輸出裡叫什麼層；**預設等於 `NAME`** |
 | `carrier_keys(block, frame)` | 從**載體區塊**推出的身分鍵，回 `frozenset[IdKey]` |
+| `blind_spots(frame)` | 這一格裡**我看得到卻讀不出來**的東西，見下 |
 
 `CARRIER_LAYER` 存在是因為 **adapter 的名字與 tshark 的層名是兩回事**：
 `sbi.NAME` 是 `"sbi"`（會出現在 `Message.protocol` 上），但它的區塊在 `-T ek`
@@ -79,6 +80,7 @@ filter 是「把這個協定的封包留下來」，前提是 tshark **已經認
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import cache
 from typing import Protocol
 
@@ -86,7 +88,14 @@ from typing import Any
 
 from telcoladder.i18n import _
 from telcoladder.extract import Frame
-from telcoladder.model import IdKey, Message
+from telcoladder.model import (
+    BLIND_CIPHERED_NAS,
+    BLIND_ECIES_PROTECTED_SUCI,
+    BLIND_UNDECODED_STREAM,
+    BlindSpot,
+    IdKey,
+    Message,
+)
 from telcoladder.plugins import ADAPTER_GROUP, PluginError, load_group
 
 
@@ -108,6 +117,9 @@ class Adapter(Protocol):
     #: 選用。從載體區塊推出的身分鍵。載荷 adapter 靠它歸戶，
     #: 因為載荷自己的欄位通常不足以識別是誰。
     def carrier_keys(self, block: dict[str, Any], frame: Frame) -> frozenset[IdKey]: ...
+
+    #: 選用。這一格裡「看得到協定層、但讀不出內容」的東西。見 `blind_spots()`。
+    def blind_spots(self, frame: Frame) -> Iterable[BlindSpot]: ...
 
 
 from telcoladder.adapters import diameter, gtp, nas5gs, ngap, pfcp, sbi  # noqa: E402
@@ -259,6 +271,32 @@ def required_dissectors() -> tuple[str, ...]:
         for dissector in adapter.DISSECTORS:
             seen.setdefault(dissector, None)
     return tuple(seen)
+
+
+def blind_spots(frame: Frame) -> list[BlindSpot]:
+    """問過每一個 adapter：這一格裡有什麼是你看得到卻讀不出來的？
+
+    **這個函式存在的理由是 `pipeline` 不該指名任何一個 adapter。**
+    在它之前，`pipeline` 直接 `from telcoladder.adapters.nas5gs import
+    count_ciphered` 與 `from telcoladder.adapters.sbi import
+    undecoded_header_streams` —— 兩處都是核心相依特定 adapter，而外掛契約
+    寫著「只加模組，不改核心」。
+
+    具體後果：T5 的 NAS-EPS 一樣會加密（4G 的 NAS 過了 Security Mode
+    Command 之後同樣讀不到內層），照原本的寫法就得在 `pipeline` 再加一條
+    指名分支；T4 的 S1AP、T7 的 SIP 各有自己的不可見面，再兩條。現在它們
+    只要宣告 `blind_spots()`，**核心一行都不必動**。
+
+    沒宣告這個鉤子的 adapter 完全正常 —— 多數協定沒有「看得到讀不出來」
+    這種狀態。
+    """
+    out: list[BlindSpot] = []
+    for adapter in adapters():
+        hook = getattr(adapter, "blind_spots", None)
+        if hook is None:
+            continue
+        out.extend(hook(frame))
+    return out
 
 
 def parse_frame(frame: Frame) -> list[Message]:
