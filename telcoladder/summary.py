@@ -105,8 +105,10 @@ def _capture(analysis: Analysis) -> dict:
         "frames_decoded": len({m.frame for m in messages}),
         "messages": len(messages),
         "flows": len(analysis.flows),
-        # 第一則到最後一則**解出來的**訊息的間隔 —— 不是擷取檔的總時長
-        # （那需要 capinfos，而且兩者常常差很多：信令前後可能是幾分鐘的心跳）。
+        # **整份檔多長**（capinfos）。與下面那個是兩回事，而且可以差三個數量級 ——
+        # 兩個並排是刻意的：只給下面那個，要挑時間窗的人會挑出一個空結果。
+        "duration_s": analysis.capture_duration_s,
+        # 第一則到最後一則**解出來的**訊息的間隔 —— 不是擷取檔的總時長。
         "signalling_span_s": (
             round(max(m.ts for m in messages) - min(m.ts for m in messages), 6)
             if messages else None
@@ -338,8 +340,10 @@ def render_markdown(doc: dict) -> str:
         messages=cap["messages"], flows=cap["flows"],
         protocols=", ".join(cap["protocols"]) or "—",
     ))
+    if cap["duration_s"] is not None:
+        out.append(_("Capture duration: {duration}s end to end.").format(duration=cap["duration_s"]))
     if cap["signalling_span_s"] is not None:
-        out.append(_("Signalling span: {span}s from the first to the last decoded message.").format(span=cap["signalling_span_s"]))
+        out.append(_("Signalling span: {span}s from the first to the last decoded message - this is **not** the capture's length; use the duration above when choosing a time window.").format(span=cap["signalling_span_s"]))
     out.append(
         _("First message at {iso} (UTC).").format(iso=cap["started_at"])
         if cap["started_at"] else _("No absolute timestamps in this capture.")

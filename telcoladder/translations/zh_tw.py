@@ -321,8 +321,9 @@ CATALOG: dict[str, str] = {
     "Frames: {decoded} decoded of {total}; {messages} messages in {flows} flows; protocols: {protocols}.":
         "封包：{total} 格中解出 {decoded} 格；{messages} 則訊息、{flows} 條流程；協定：{protocols}。",
     "(total unknown)": "（總數未知）",
-    "Signalling span: {span}s from the first to the last decoded message.":
-        "信令跨度：第一則到最後一則解出的訊息相隔 {span} 秒。",
+    "Capture duration: {duration}s end to end.": "擷取檔長度：整份 {duration} 秒。",
+    "Signalling span: {span}s from the first to the last decoded message - this is **not** the capture's length; use the duration above when choosing a time window.":
+        "信令跨度：第一則到最後一則解出的訊息相隔 {span} 秒 —— 這**不是**擷取檔的長度；要挑時間窗請用上面那個。",
     "First message at {iso} (UTC).": "第一則訊息於 {iso}（UTC）。",
     "No absolute timestamps in this capture.": "這份擷取檔沒有絕對時間戳。",
     "Not visible to this tool": "這個工具看不見的",
@@ -373,6 +374,8 @@ CATALOG: dict[str, str] = {
         "輸出 JSON 而不是 Markdown。同一組事實、固定的欄位集合；summary_version 只在破壞性變更時遞增。同一份擷取檔的輸出逐位元組可重現。",
     "Run as an MCP server on stdin/stdout so an AI agent can call summarize_capture, list_subscribers, get_subscriber_callflow and diagnose_failures as tools. Local only: the client spawns this process; there is no network listener. Register with: claude mcp add telcoladder -- telcoladder mcp":
         "以 MCP 伺服器模式跑在 stdin/stdout 上，讓 AI agent 把 summarize_capture、list_subscribers、get_subscriber_callflow、diagnose_failures 當工具呼叫。只在本機：由客戶端 spawn 這個行程，沒有任何網路監聽。註冊：claude mcp add telcoladder -- telcoladder mcp",
+    "Still reading the capture - {seconds}s so far. Large files take a while; narrow with since/until if this is too slow.":
+        "仍在讀取擷取檔 —— 已經 {seconds} 秒。大檔要跑一陣子；太慢的話用 since／until 收窄。",
     "TelcoLadder MCP server ready on stdio ({n} tools). Diagnostics go to stderr.":
         "TelcoLadder MCP 伺服器已在 stdio 上就緒（{n} 個工具）。診斷訊息一律走 stderr。",
 }

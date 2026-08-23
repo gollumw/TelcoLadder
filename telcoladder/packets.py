@@ -355,9 +355,48 @@ def total_packets(pcap: Path, *, tshark: Tshark | None = None) -> int | None:
     return None
 
 
+def capture_duration(pcap: Path, *, tshark: Tshark | None = None) -> float | None:
+    """整份擷取檔的時間跨度（秒）。取不到回 `None`。
+
+    **為什麼需要它**：`Analysis` 只知道**解出來的訊息**橫跨多久，而那兩個數字
+    可以差三個數量級 —— `ki-mismatch` 的訊息跨 0.019 秒，檔案本身跨 13.6 秒
+    （信令發生在第 8 秒）。少了這個欄位，看到「0.019 秒」的人會挑一個
+    `--until 1` 的時間窗然後拿到空結果。**這是實際發生過的事**（2026-08-23，
+    我自己寫完那個欄位一小時後就踩了）。
+
+    與 `total_packets` 同一次 capinfos 的成本 —— `-c` 本來就要走完所有封包，
+    時間跨度是順帶的。取不到一律 None，**絕不從別的數字推算**。
+    """
+    tshark = tshark or find_tshark()
+    capinfos = tshark.path.with_name(
+        "capinfos.exe" if tshark.path.name.endswith(".exe") else "capinfos"
+    )
+    if not capinfos.exists():
+        return None
+    try:
+        out = subprocess.run(
+            [str(capinfos), "-u", "-M", str(pcap)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):  # pragma: no cover - 環境相關
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        if "Capture duration" in line:
+            _unused, _unused, value = line.partition(":")
+            try:
+                return float(value.strip().split()[0])
+            except (ValueError, IndexError):
+                return None
+    return None
+
+
 __all__ = [
     "COLUMN_FIELDS",
     "COLUMN_TITLES",
+    "capture_duration",
     "MAX_INDEX_ROWS",
     "PacketColumnsUnavailable",
     "PacketRow",

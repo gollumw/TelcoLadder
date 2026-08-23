@@ -35,6 +35,7 @@ from telcoladder.coverage import Coverage, measure
 from telcoladder.extract import read_frames
 from telcoladder.model import Flow, Message
 from telcoladder.nf import apply_roles
+from telcoladder.packets import capture_duration
 from telcoladder.i18n import _
 from telcoladder.prefilter import Narrowing, TimeWindow, combine, narrow_to_identity
 from telcoladder.probe import CaptureShape, inspect
@@ -203,6 +204,16 @@ class Analysis:
     整個 N2 介面可能已經被排除在外（見 `prefilter.Narrowing.excluded`）。
     """
 
+    capture_duration_s: float | None = None
+    """**整份擷取檔**的時間跨度（秒）。`None` 代表 capinfos 取不到。
+
+    與「訊息橫跨多久」是兩回事，而且可以差三個數量級：`ki-mismatch` 的訊息
+    跨 0.019 秒、檔案跨 13.6 秒（信令在第 8 秒）。**只給前者的話，要挑時間窗
+    的人（或 agent）會挑出一個空結果** —— 那是實際發生過的事。
+
+    量的是**收窄之前的原始檔**，不是切片 —— 挑窗的人要知道的是「整份有多長」。
+    """
+
     auto_decode: AutoDecode | None = None
     """工具為了讀懂這份檔自己多做的事。`None` 代表預設解碼就夠了。
 
@@ -306,9 +317,16 @@ def analyse(
             # 退回 display filter 得到的答案完全相同。
             slice_note = _("Slicing failed ({error}); filtering with a display filter instead.").format(error=exc)
 
+    # **在切片之前量原始檔。** 切片之後量到的是切片的長度，而挑時間窗的人
+    # 要知道的是整份檔有多長 —— 拿切片的長度去挑下一個窗會愈挑愈小。
+    try:
+        duration = capture_duration(pcap)
+    except TsharkNotFound:
+        duration = None
+
     try:
         return _analyse_within(
-            sliced or pcap, prefilter,
+            sliced or pcap, prefilter, capture_duration_s=duration,
             decode_as=decode_as, nas_from_ue=nas_from_ue, wire=wire,
             with_coverage=with_coverage, auto_decode=auto_decode,
             sliced=sliced is not None, slice_note=slice_note,
@@ -330,6 +348,7 @@ def _analyse_within(
     auto_decode: bool,
     sliced: bool,
     slice_note: str,
+    capture_duration_s: float | None = None,
 ) -> Analysis:
     """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。"""
     if wire:
@@ -449,6 +468,7 @@ def _analyse_within(
 
     return Analysis(
         flows=flows,
+        capture_duration_s=capture_duration_s,
         ciphered=ciphered,
         protected_suci=protected_suci,
         sbi_undecoded=frozenset(sbi_undecoded),

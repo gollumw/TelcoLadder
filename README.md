@@ -310,6 +310,18 @@ the client on the same machine and runs `tshark` on the paths it is handed, so
 there is deliberately no HTTP transport. One analysis per file is cached in
 memory for the session; nothing is copied or written to disk.
 
+**Large captures.** Dissection runs at roughly 0.19 s/MB, so a 145 MB file takes
+about 28 seconds and a 2 GB one several minutes — past most MCP clients' request
+timeout. When the client supplies a `progressToken`, the server emits
+`notifications/progress` every two seconds while it works, which is what the
+protocol asks implementations to reset their timeout on; the agent still makes one
+call and gets one answer. The heartbeat reports elapsed seconds and no percentage,
+because the analysis makes one to three passes and a frame count would go backwards.
+All four tools also take `since` / `until` / `filter` so an agent can bound the work,
+and whatever was narrowed is always reported back in `not_visible` — the answer never
+silently describes a subset. Narrowing by subscriber is deliberately *not* exposed:
+it drops the whole N2 interface, and that trade-off should not be made implicitly.
+
 Two honest gaps: the cause explanations and common root causes in the table are
 currently written in Traditional Chinese only (the spec names and clause numbers
 are language-neutral); and the summary lists only identifiers the adapters

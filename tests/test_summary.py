@@ -84,7 +84,7 @@ TOP_LEVEL = {
 }
 CAPTURE_FIELDS = {
     "frames_total", "frames_decoded", "messages", "flows",
-    "signalling_span_s", "started_at", "protocols",
+    "duration_s", "signalling_span_s", "started_at", "protocols",
 }
 NOT_VISIBLE_FIELDS = {
     "ciphered_nas", "ecies_protected_suci", "frames_not_decoded",
@@ -140,10 +140,28 @@ def test_absolute_timestamp_is_rendered_when_present() -> None:
     assert "2023-11-14T22:13:20" in summary.render_markdown(doc)
 
 
+def test_the_capture_length_and_the_signalling_span_are_both_reported(ki) -> None:
+    """兩個數字可以差三個數量級，而只給後者會讓人挑出一個空的時間窗。
+
+    ki-mismatch 實測：檔案 13.632 秒、訊息跨 0.019 秒（信令在第 8 秒）。
+    **這是實際發生過的事** —— 我寫完 `signalling_span_s` 一小時後就拿它去挑
+    `--until 5`，結果 0 則訊息，還以為是 bug。
+    """
+    doc = summary.build(ki, source_name="x")
+    assert doc["capture"]["duration_s"] == pytest.approx(13.632037, abs=1e-5)
+    assert doc["capture"]["signalling_span_s"] == pytest.approx(0.019, abs=1e-6)
+    md = summary.render_markdown(doc)
+    assert "Capture duration: 13.632037s end to end." in md
+    # 而且要明講那兩個不是同一件事。
+    assert "**not** the capture's length" in md
+
+
 def test_total_frames_is_null_when_coverage_was_not_measured() -> None:
     """沒跑 capinfos 就沒有總數 —— 不從任何東西推估。"""
     doc = summary.build(_synthetic(), source_name="x")
     assert doc["capture"]["frames_total"] is None
+    # 合成的 Analysis 沒跑過 capinfos —— 不推估，就是 None。
+    assert doc["capture"]["duration_s"] is None
     assert doc["not_visible"]["frames_not_decoded"] is None
     assert doc["capture"]["frames_decoded"] == 2  # 這個是數得出來的
 

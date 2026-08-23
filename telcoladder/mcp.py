@@ -20,6 +20,42 @@ httpx、starlette 一整串，而我們需要的只有 stdio 上的 JSON-RPC 2.0
 任何 print、警告、traceback 進了 stdout，客戶端的解析就斷了 —— 而且症狀是
 「工具偶爾失靈」而不是明確的錯。所有診斷一律走 stderr。
 
+## 大檔：進度通知，不是逾時
+
+**這是給 agent 用時第一個撞到的牆。** 實測 `analyse()` 這條路的斜率
+（2026-08-23，multi-imsi 重複合併出來的檔）：
+
+    32,520 格 /   5.8 MB →  2.0 秒
+   260,160 格 /  48.3 MB →  9.6 秒
+   780,480 格 / 145.0 MB → 28.2 秒     ← 約 0.19 秒/MB，線性
+
+外推 436 MB 約 85 秒、2 GB 約 6.5 分鐘。**145 MB 就已經超過很多客戶端的
+預設請求逾時**，而症狀是「這個工具對大檔沒反應」—— 工具跑完了，客戶端
+已經放棄。
+
+（CLAUDE.md §5.5 那個「436 MB 要 71.6 秒」講的是**檢視器的完整索引**：
+它要把每一格都放進封包清單。`analyse()` 只解信令，是另一條路。
+本節的數字才是 MCP 這條路的。）
+
+解法走協定原生的那條：客戶端在 `params._meta.progressToken` 給一個 token，
+伺服器就在分析期間定期送 `notifications/progress`（MCP 2025-06-18）。
+規範說收到進度的實作**應該**重置逾時，所以一次呼叫就能跑完，agent 那側
+的契約完全不變 —— 它還是「問一次、拿一個答案」。
+
+做法是把工具丟進一個 worker 執行緒，主迴圈每 `PROGRESS_INTERVAL` 秒送一次
+心跳。**心跳只報經過秒數，不報百分比** —— `analyse()` 會跑一到三趟
+（probe、抽取、必要時重跑），frame 計數會倒退，而編一個分母正是
+`session.Progress` 那句「**不准編造分母**」在防的事。
+
+## 收窄：讓 agent 有辦法把工作變小
+
+`since` / `until` / `filter` 直接對應 CLI 的同名旗標。一個知道「這份檔有 2 GB」
+的 agent 可以只要一段時間窗。
+
+**刻意不開 `--subscriber`。** 它會把整個 N2 介面排除在外（多數封包不帶識別碼），
+CLI 因此附一份「哪些流量沒被涵蓋」的報告 —— 那種取捨不該讓 agent 隱式地做。
+要看單一訂戶請用 `get_subscriber_callflow`，那是關聯之後的結果，不是過濾。
+
 ## 快取
 
 同一份擷取檔的三個工具會被接連呼叫（先摘要、再列訂戶、再看某一個人），
@@ -33,6 +69,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import IO
@@ -42,8 +80,8 @@ from telcoladder.extract import ExtractError
 from telcoladder.i18n import _
 from telcoladder.identities import no_result_explanation
 from telcoladder.model import IdKind
-from telcoladder.pipeline import Analysis, analyse
-from telcoladder.prefilter import PrefilterError
+from telcoladder.pipeline import Analysis, Prefilter, analyse
+from telcoladder.prefilter import PrefilterError, TimeWindow
 from telcoladder.tshark import TsharkNotFound
 
 #: 我們會講的協定版本。客戶端提的版本在這裡就照它的；不在就回最新的 ——
@@ -65,6 +103,10 @@ INSTRUCTIONS = (
 
 CACHE_SIZE = 4
 
+#: 心跳間隔（秒）。短到能撐住客戶端逾時，長到不會把 stdout 灌爆。
+#: 環境變數只給測試用 —— 真實使用不需要調它，所以刻意不做成 CLI 旗標。
+PROGRESS_INTERVAL = float(os.environ.get("TELCOLADDER_PROGRESS_INTERVAL", "2.0"))
+
 _PCAP_ARG = {
     "type": "string",
     "description": "Absolute path to a pcap/pcapng file on the machine running this server.",
@@ -76,6 +118,32 @@ _LANG_ARG = {
                    "3GPP tables are currently Chinese regardless.",
 }
 
+#: 收窄選項，四個工具共用。**一份定義** —— 四份會漂移，而症狀是同一個
+#: `--since` 在一個工具上生效、在另一個上被忽略。
+_NARROWING_ARGS = {
+    "since": {
+        "type": "number",
+        "description": "Only packets from this many seconds after the first frame. Use this on a "
+                       "large capture: a multi-hundred-MB file takes over a minute to dissect in full.",
+    },
+    "until": {
+        "type": "number",
+        "description": "Only packets up to this many seconds after the first frame.",
+    },
+    "filter": {
+        "type": "string",
+        "description": "A tshark display filter applied as-is, e.g. 'diameter || ngap'. Not validated - "
+                       "tshark reports its own errors. Narrowing is always reported back in the result's "
+                       "not_visible section, so the answer never silently describes a subset.",
+    },
+}
+
+
+def _tool_schema(*extra: tuple[str, dict], required: tuple[str, ...] = ("pcap_path",)) -> dict:
+    """工具的 inputSchema：`pcap_path` ＋ 語言 ＋ 收窄，加上各自的額外欄位。"""
+    properties = {"pcap_path": _PCAP_ARG, **dict(extra), "lang": _LANG_ARG, **_NARROWING_ARGS}
+    return {"type": "object", "properties": properties, "required": list(required)}
+
 TOOLS: list[dict] = [
     {
         "name": "summarize_capture",
@@ -85,11 +153,7 @@ TOOLS: list[dict] = [
             "every failure with its 3GPP cause reference. Byte-for-byte reproducible. "
             "Call this first."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"pcap_path": _PCAP_ARG, "lang": _LANG_ARG},
-            "required": ["pcap_path"],
-        },
+        "inputSchema": _tool_schema(),
     },
     {
         "name": "list_subscribers",
@@ -98,11 +162,7 @@ TOOLS: list[dict] = [
             "sessions), plus identities that could not be linked to any SUPI, plus the "
             "visibility gaps that explain why a subscriber may be missing."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"pcap_path": _PCAP_ARG, "lang": _LANG_ARG},
-            "required": ["pcap_path"],
-        },
+        "inputSchema": _tool_schema(),
     },
     {
         "name": "get_subscriber_callflow",
@@ -111,15 +171,11 @@ TOOLS: list[dict] = [
             "protocol, reference point, failure cause text), the participants in ladder order, "
             "and the procedure segments with their frame ranges and outcomes."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pcap_path": _PCAP_ARG,
-                "supi": {"type": "string", "description": "SUPI / IMSI, digits only, as returned by list_subscribers."},
-                "lang": _LANG_ARG,
-            },
-            "required": ["pcap_path", "supi"],
-        },
+        "inputSchema": _tool_schema(
+            ("supi", {"type": "string",
+                      "description": "SUPI / IMSI, digits only, as returned by list_subscribers."}),
+            required=("pcap_path", "supi"),
+        ),
     },
     {
         "name": "diagnose_failures",
@@ -129,11 +185,7 @@ TOOLS: list[dict] = [
             "failed or did not complete, a cause roll-up across subscribers, and the visibility "
             "gaps. An empty failure list does not prove success - read the gaps."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"pcap_path": _PCAP_ARG, "lang": _LANG_ARG},
-            "required": ["pcap_path"],
-        },
+        "inputSchema": _tool_schema(),
     },
 ]
 
@@ -157,17 +209,19 @@ class _Cache:
         self.misses = 0
 
     @staticmethod
-    def key(path: Path) -> tuple:
+    def key(path: Path, narrowing: tuple) -> tuple:
         stat = path.stat()
-        return (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+        # **收窄條件是鍵的一部分。** 少了它，`--since 0 --until 5` 的結果會被
+        # 當成整份檔的結果送回去 —— 而那份摘要看起來完全正常，只是少了東西。
+        return (str(path.resolve()), stat.st_size, stat.st_mtime_ns, narrowing)
 
-    def get(self, path: Path) -> Analysis:
-        key = self.key(path)
+    def get(self, path: Path, prefilter: Prefilter, narrowing: tuple) -> Analysis:
+        key = self.key(path, narrowing)
         if key in self._entries:
             self._entries.move_to_end(key)
             return self._entries[key]
         self.misses += 1
-        result = analyse(path)
+        result = analyse(path, prefilter=prefilter)
         self._entries[key] = result
         while len(self._entries) > self._size:
             self._entries.popitem(last=False)
@@ -188,8 +242,23 @@ def _analysis_for(arguments: dict) -> tuple[Analysis, Path]:
         raise ToolError(f"pcap_path must be absolute; got {raw!r}.")
     if not path.is_file():
         raise ToolError(f"No such file: {path}")
+
+    since, until = arguments.get("since"), arguments.get("until")
+    display_filter = arguments.get("filter") or ""
+    for name, value in (("since", since), ("until", until)):
+        if value is not None and not isinstance(value, (int, float)):
+            raise ToolError(f"{name} must be a number of seconds; got {value!r}.")
+    if not isinstance(display_filter, str):
+        raise ToolError(f"filter must be a string; got {display_filter!r}.")
+
+    prefilter = Prefilter(
+        window=TimeWindow(since, until),
+        display_filter=display_filter,
+        # **刻意不接 `subscriber`** —— 見檔頭。它會把整個 N2 排除掉，
+        # 而那種取捨不該讓 agent 隱式地做。
+    )
     try:
-        return _cache.get(path), path
+        return _cache.get(path, prefilter, (since, until, display_filter)), path
     except (ExtractError, TsharkNotFound, PrefilterError) as exc:
         raise ToolError(str(exc)) from exc
 
@@ -321,6 +390,64 @@ def handle(message: dict) -> dict | None:
     return _error(request_id, METHOD_NOT_FOUND, f"Method not found: {method}")
 
 
+#: stdout 只能有 JSON-RPC，而心跳是從主迴圈送的、結果是從 worker 回來的 ——
+#: 兩者都寫同一條管線，所以寫入必須是原子的。少了這個鎖，症狀是偶爾一行
+#: JSON 被另一行切開，客戶端解析失敗（而且只在大檔上出現）。
+_stdout_lock = threading.Lock()
+
+
+def _write(stdout: IO[bytes], payload: dict) -> None:
+    with _stdout_lock:
+        stdout.write(json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n")
+        stdout.flush()
+
+
+def progress_token(message: dict):
+    """客戶端要不要進度通知。沒給就不送 —— 規範說 token 是關聯的依據。"""
+    meta = (message.get("params") or {}).get("_meta") or {}
+    return meta.get("progressToken")
+
+
+def _handle_with_heartbeat(message: dict, stdout: IO[bytes], token) -> dict | None:
+    """把工具丟進 worker，主執行緒每 `PROGRESS_INTERVAL` 秒送一次心跳。
+
+    **心跳只報經過秒數，不報百分比。** `analyse()` 會跑一到三趟（probe、抽取、
+    必要時重跑），frame 計數會倒退 —— 編一個分母正是 `session.Progress` 那句
+    「**不准編造分母**」在防的事。規範允許 `progress` 在沒有 `total` 時單純遞增。
+
+    順帶把「太慢就收窄」寫進訊息裡：看到心跳的人（或 agent）當下就知道下一步。
+    """
+    outcome: list[dict | None] = []
+
+    def run() -> None:
+        try:
+            outcome.append(handle(message))
+        except Exception as exc:  # noqa: BLE001 —— 一個工具的例外不能殺掉伺服器
+            print(f"telcoladder mcp: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+            outcome.append(_error(message.get("id"), -32603,
+                                  f"Internal error: {type(exc).__name__}: {exc}"))
+
+    worker = threading.Thread(target=run, daemon=True)
+    started = time.monotonic()
+    worker.start()
+    ticks = 0
+    while True:
+        worker.join(timeout=PROGRESS_INTERVAL)
+        if not worker.is_alive():
+            break
+        ticks += 1
+        _write(stdout, {
+            "jsonrpc": "2.0",
+            "method": "notifications/progress",
+            "params": {
+                "progressToken": token,
+                "progress": ticks,
+                "message": _("Still reading the capture - {seconds}s so far. Large files take a while; narrow with since/until if this is too slow.").format(seconds=int(time.monotonic() - started)),
+            },
+        })
+    return outcome[0] if outcome else None
+
+
 def serve(stdin: IO[bytes] | None = None, stdout: IO[bytes] | None = None) -> int:
     """讀 stdin 的每一行、寫 stdout 的每一行，直到 EOF。
 
@@ -339,17 +466,22 @@ def serve(stdin: IO[bytes] | None = None, stdout: IO[bytes] | None = None) -> in
         except json.JSONDecodeError:
             response = _error(None, PARSE_ERROR, "Invalid JSON.")
         else:
-            try:
-                response = handle(message)
-            except Exception as exc:  # noqa: BLE001 —— 一個工具的例外不能殺掉整個伺服器
-                print(f"telcoladder mcp: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
-                response = _error(message.get("id") if isinstance(message, dict) else None,
-                                  -32603, f"Internal error: {type(exc).__name__}: {exc}")
+            token = progress_token(message) if isinstance(message, dict) else None
+            if token is not None:
+                # **一次呼叫、一個答案 —— 只是中途會說話。** 大檔的分析比多數
+                # 客戶端的請求逾時久，而規範說收到進度的實作應該重置逾時。
+                response = _handle_with_heartbeat(message, stdout, token)
+            else:
+                try:
+                    response = handle(message)
+                except Exception as exc:  # noqa: BLE001 —— 一個工具的例外不能殺掉整個伺服器
+                    print(f"telcoladder mcp: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+                    response = _error(message.get("id") if isinstance(message, dict) else None,
+                                      -32603, f"Internal error: {type(exc).__name__}: {exc}")
         if response is not None:
-            stdout.write(json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n")
-            stdout.flush()
+            _write(stdout, response)
     return 0
 
 
-__all__ = ["CACHE_SIZE", "INSTRUCTIONS", "PROTOCOL_VERSIONS", "TOOLS", "ToolError",
-           "call_tool", "handle", "serve"]
+__all__ = ["CACHE_SIZE", "INSTRUCTIONS", "PROGRESS_INTERVAL", "PROTOCOL_VERSIONS", "TOOLS",
+           "ToolError", "call_tool", "handle", "progress_token", "serve"]
