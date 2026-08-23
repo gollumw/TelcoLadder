@@ -20,9 +20,15 @@
 # 因為 tshark 的 `-T ek` 會把一則訊息裡的多個 `Vendor-Id` 攤成一個清單，
 # 從那個攤平的欄位分不出哪個是誰的。
 #
-# ## 名稱的出處
+# ## 名稱的出處（兩個獨立來源，2026-08-23 起）
 #
-# `name` 逐字取自 tshark 自己的 `diameter.Experimental-Result-Code` 值表
+# **第一手**：3GPP TS 29.230 V17.3.0（Rel-17）§8.1.2／§8.1.3／§8.1.4 的表，
+# 自 3gpp.org 下載（`29_series/29.230/29230-h30.zip`，解出的 docx
+# sha256 22debf89da9c501a4164b6d963796d6955052553f2f6553ad4048691bc3ad537），
+# 解析 `word/document.xml` 逐號碼比對 —— 本表收錄的每一個名稱與該表**逐字相同**，
+# 出處欄（Specified in the TS）也與下面各段的介面歸屬一致。文件本身有版權，不進 repo。
+#
+# **第二手（測試用 oracle）**：`name` 同時逐字等於 tshark 自己的 `diameter.Experimental-Result-Code` 值表
 # （`tshark -G values`），它源自 Wireshark 的 Diameter 字典，字典裡標著
 # 「3GPP TS 29.230 version 13.0.0」。`tests/test_adapter_diameter.py` 逐條比對。
 #
@@ -185,9 +191,10 @@ causes:
   5147:
     name: "DIAMETER_ERROR_CONFLICTING_REQUEST"
     plain: "這個請求與同一 session 上進行中的另一個請求衝突。"
-  # 5146 在 tshark 的表裡與 5144 同名 —— oracle 自己有疑點，**不收**，查到會是「未收錄」。
+  # 5146 在 tshark 的表裡與 5144 同名；TS 29.230 Table 8.1.4 寫的是 `reserved` —— **不收**，查到會是「未收錄」。
 
-  # ── 永久失敗：IMS 身分 ──
+  # ── 永久失敗：Zh/Zn（GBA 鑑權，TS 29.109）—— 第一版標成「IMS 身分」，
+  #    TS 29.230 Table 8.1.4 的出處欄寫的是 29.109。不在這一輪的三個介面裡。──
   5401:
     name: "DIAMETER_ERROR_IMPI_UNKNOWN"
     plain: "HSS 不認得這個 IMPI（私有身分）。"
