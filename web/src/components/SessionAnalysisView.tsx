@@ -666,6 +666,27 @@ export function SessionAnalysisView({
                   )}
                   {selectedEvent.causeText && <span className="text-signal-red font-semibold">· {selectedEvent.causeText}</span>}
                 </div>
+                {/* **失敗的白話與常見根因。**
+                    上面那一行是出處（名稱、號碼、規範、條號），這一塊才是
+                    「實際發生了什麼」與「現場最常見的原因」—— 而它原本從來
+                    沒有出現在瀏覽器上：後端送的是一條 fallback 鏈，而出處
+                    永遠有值，所以白話永遠取不到（T-LADDER-CAUSE）。
+                    CLI 的 summarize 一直印得出來，兩個表面因此不一致。 */}
+                {selectedEvent.causeExplanation && (
+                  <div className="mb-2 rounded border border-signal-red-border bg-signal-red-bg p-2 text-[11px] leading-relaxed text-fg-muted">
+                    <p>{selectedEvent.causeExplanation}</p>
+                    {selectedEvent.causeCommon && selectedEvent.causeCommon.length > 0 && (
+                      <>
+                        <p className="mt-1.5 font-semibold text-fg-dim">{t("Most common root causes")}</p>
+                        <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
+                          {selectedEvent.causeCommon.map((cause) => (
+                            <li key={cause}>{cause}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
                 {selectedTree ? (
                   <ProtocolTree nodes={selectedTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
                 ) : (

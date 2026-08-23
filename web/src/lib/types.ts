@@ -78,6 +78,17 @@ export interface CallFlowEvent {
   summary: string;
   /** Only for status === "ERROR": human-readable cause, annotated next to the ladder arrow. */
   causeText?: string;
+  /**
+   * Only for status === "ERROR": the plain-language explanation from the cause table.
+   *
+   * **Separate from `causeText`, not a fallback for it.** They answer different
+   * questions - `causeText` is the citation (name, number, spec, clause), this is
+   * what actually happened. The backend used to send whichever was available first,
+   * and since the citation is always present this never arrived (T-LADDER-CAUSE).
+   */
+  causeExplanation?: string;
+  /** Only for status === "ERROR": the most common root causes, from field experience. */
+  causeCommon?: string[];
   /** Only for status === "ERROR": id of the Cause IE inside this event's decodeTree, so the
    *  Decode Inspector can auto-focus it instead of making the user hunt through the tree. */
   causeNodeId?: string;

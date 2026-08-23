@@ -242,6 +242,8 @@ export interface CallFlowEventJson {
   status: "SUCCESS" | "ERROR";
   /** 只有失敗事件有。文字來自 `data/causes/*.yaml` 的靜態查表。 */
   cause_text?: string;
+  cause_explanation?: string;
+  cause_common?: string[];
   /** 身分是跟哪個載體借的。NAS 沒有自己的 UE ID（CLAUDE.md §3.4）。 */
   identity_source?: string;
   /** 這一格實際疊了哪些協定（`ngap,nas-5gs`）。只在線路視圖有。 */
@@ -280,6 +282,10 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     // **不編一句** —— 失敗事件有 cause 解釋可放，其餘留空。
     summary: event.cause_text ?? "",
     ...(event.cause_text ? { causeText: event.cause_text } : {}),
+    // 白話與常見根因是**另外兩個欄位**，不是 causeText 的替代品 ——
+    // 前者是出處、後者是「實際發生了什麼」（見 types.ts 的說明）。
+    ...(event.cause_explanation ? { causeExplanation: event.cause_explanation } : {}),
+    ...(event.cause_common?.length ? { causeCommon: event.cause_common } : {}),
     // **後端沒給就整個鍵不存在**，不是填空字串或 0 —— 與 `Sourced` 那邊
     // 同一條原則（沒觀測到就說沒觀測到）。`delta` 特別要小心:0 是一個
     // 合法的間隔值，用 `??` 以外的寫法會把它當成「沒有」。

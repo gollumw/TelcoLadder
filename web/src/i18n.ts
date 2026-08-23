@@ -153,6 +153,7 @@ const zh_TW: Record<string, string> = {
 
   // DataMiningView
   "Subscriber identity search": "電信身分精確搜尋",
+  "Most common root causes": "現場最常見的根因",
   "UE IPv4/IPv6": "UE IPv4/IPv6",
   "e.g. 001010123456789 or 192.0.2.122": "例如 001010123456789 或 192.0.2.122",
   "Search & correlate": "搜尋並關聯",

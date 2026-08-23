@@ -275,6 +275,49 @@ def test_procedures_do_not_overlap(wire_flow) -> None:
         assert prev_end < next_start, f"段重疊：…{prev_end} 與 {next_start}…"
 
 
+def test_a_failure_carries_the_citation_and_the_explanation_separately(e2e_pcap) -> None:
+    """**三個欄位，不是一條 fallback 鏈**（T-LADDER-CAUSE，2026-08-23）。
+
+    原本後端送「第一個非空的」，而 `cause_note`（出處）只要有 cause 就一定有值
+    —— 所以白話與常見根因**從來沒有到過瀏覽器**。CLI 的 `summarize` 一直印得
+    出來，兩個表面因此講不同的話，而且完全不報錯。
+    """
+    from telcoladder.viewer import callflow_json
+
+    session = _session(e2e_pcap.parent.parent / "ki-mismatch" / "capture.pcap", wire=True)
+    flow = callflow_json(session, _a_supi(session))
+    failures = [e for e in flow["events"] if e["status"] == "ERROR"]
+    assert failures, "ki-mismatch 應該要有失敗事件"
+
+    synch = next(e for e in failures if "#21" in e.get("cause_text", ""))
+    # 出處：名稱、號碼、規範、條號。語言中性。
+    assert synch["cause_text"] == "Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2"
+    # 白話：實際發生了什麼。**與出處是不同的欄位。**
+    assert "out of sync" in synch["cause_explanation"]
+    assert synch["cause_explanation"] != synch["cause_text"]
+    # 常見根因：現場經驗，是 list 不是換行串接的字串。
+    assert isinstance(synch["cause_common"], list) and len(synch["cause_common"]) == 2
+    assert "two core networks" in synch["cause_common"][0]
+
+
+def test_the_ladder_cause_follows_the_language(e2e_pcap) -> None:
+    """出處語言中性，白話跟著語言換 —— 與 `summarize` 同一條規矩。"""
+    from telcoladder import i18n
+    from telcoladder.viewer import callflow_json
+
+    session = _session(e2e_pcap.parent.parent / "ki-mismatch" / "capture.pcap", wire=True)
+    texts = {}
+    for lang in ("en", "zh_TW"):
+        with i18n.use(lang):
+            flow = callflow_json(session, _a_supi(session))
+        event = next(e for e in flow["events"] if "#21" in e.get("cause_text", ""))
+        texts[lang] = (event["cause_text"], event["cause_explanation"])
+
+    assert texts["en"][0] == texts["zh_TW"][0], "出處不該被翻譯"
+    assert texts["en"][1] != texts["zh_TW"][1], "白話應該跟著語言換"
+    assert "序號不同步" in texts["zh_TW"][1]
+
+
 def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
     """失敗的段要同時帶終端 cause 與起因 —— 畫面在段的層級講一次，
     使用者不必自己找哪支箭是紅的。"""

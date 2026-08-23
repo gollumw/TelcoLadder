@@ -9,6 +9,7 @@ agent 講的不一樣」，而那種不一致沒有任何測試會自然抓到�
 
 from __future__ import annotations
 
+from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
@@ -117,13 +118,25 @@ def events(analysis: Analysis, supi: str, *, wire: bool = True) -> dict:
             "status": "ERROR" if msg.is_failure else "SUCCESS",
         }
         if msg.is_failure:
-            # cause 的解釋一律來自 `data/causes/*.yaml` 的靜態查表
-            # （CLAUDE.md §2.3）。這裡只是把已經查好的字搬過來。
-            for key in ("cause_note", "cause_plain", "cause_common"):
-                value = msg.detail.get(key)
-                if value:
-                    event["cause_text"] = value
-                    break
+            # cause 的解釋一律來自 `data/causes/*.yaml` 的靜態查表（CLAUDE.md §2.3）。
+            #
+            # **三個欄位，不是一條 fallback 鏈**（T-LADDER-CAUSE，2026-08-23）。
+            # 原本是「取第一個非空的」，而 `cause_note` 只要有 cause 就一定有值
+            # （查不到號碼時也會回「未收錄」）—— 所以後兩個**從來沒被取到**，
+            # 梯形圖只看得到 `Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2`，
+            # 看不到「SQN 序號不同步」與四條常見根因。CLI 印得出來、瀏覽器印不出來，
+            # 同一份資料兩個表面不一致，而且完全不報錯。
+            #
+            # 白話與根因**在這裡選語言**：`detail` 存的是英文原文（見
+            # `causes.annotate`），而這一層知道這次要講哪種語言。
+            note = msg.detail.get("cause_note")
+            if note:
+                event["cause_text"] = note
+            info = lookup(msg.cause) if msg.cause is not None else None
+            if info and info.plain:
+                event["cause_explanation"] = info.plain_text()
+            if info and info.common_causes:
+                event["cause_common"] = list(info.common_causes_text())
         # **這則訊息的身分是從哪裡繼承來的。**
         #
         # NAS 沒有自己的 UE ID，它的身分來自載體（CLAUDE.md §3.4）。而載體
