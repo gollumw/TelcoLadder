@@ -1,0 +1,66 @@
+{
+ "modules": [
+  "__init__",
+  "__main__",
+  "adapters",
+  "adapters.diameter",
+  "adapters.gtp",
+  "adapters.nas5gs",
+  "adapters.ngap",
+  "adapters.pfcp",
+  "adapters.sbi",
+  "callflow",
+  "causes",
+  "chrome",
+  "cli",
+  "correlate",
+  "coverage",
+  "decode",
+  "decodeas",
+  "extract",
+  "flowtable",
+  "framebytes",
+  "i18n",
+  "identities",
+  "identity",
+  "interfaces",
+  "lifecycle",
+  "mcp",
+  "model",
+  "nf",
+  "packets",
+  "pdusession",
+  "pipeline",
+  "plugins",
+  "prefilter",
+  "probe",
+  "procedures",
+  "render_mermaid",
+  "session",
+  "slicer",
+  "summary",
+  "translations",
+  "translations.zh_tw",
+  "tshark",
+  "viewer",
+  "web",
+  "wireview",
+  "xdr"
+ ],
+ "unassigned": [],
+ "phantom": [],
+ "named_adapter_imports": [
+  [
+   "nf",
+   "adapters.diameter"
+  ],
+  [
+   "pipeline",
+   "adapters.nas5gs"
+  ],
+  [
+   "pipeline",
+   "adapters.sbi"
+  ]
+ ]
+}
