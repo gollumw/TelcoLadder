@@ -132,8 +132,15 @@ def test_every_adapter_module_appears_in_the_domain_table(live: dict) -> None:
 
     這是分域圖的完整性 —— 一個沒有歸屬的 adapter 會從 4G/5G/IMS 那張圖上
     整個消失，而圖看起來完全正常。
+
+    **來源是註冊表，不是模組路徑。** 第一版寫 `m.startswith("adapters.")`，
+    而 2026-08-24 把載體機制抽成 `adapters/carrier.py` 之後那個猜法就錯了 ——
+    它在那個目錄底下，但不是 adapter。反過來也一樣：一個放在別處、經 entry
+    point 註冊的外掛 adapter，路徑前綴永遠猜不到。
     """
-    actual = {m for m in live["modules"] if m.startswith("adapters.")}
+    from telcoladder.adapters import BUILTIN_ADAPTERS
+
+    actual = {f"adapters.{a.__name__.rsplit('.', 1)[-1]}" for a in BUILTIN_ADAPTERS}
     listed = {m for _d, m, _i, _s, _n in archmap.DOMAINS}
     missing = sorted(actual - listed)
     assert not missing, (

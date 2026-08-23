@@ -26,7 +26,8 @@ from telcoladder.adapters import (
     default_decode_as,
 )
 from telcoladder.adapters import sbi as sbi_adapter
-from telcoladder.adapters.nas5gs import _MAX_DIG_DEPTH, _dig, _nas_blocks
+from telcoladder.adapters.carrier import MAX_DIG_DEPTH, carried_blocks, dig
+from telcoladder.adapters.nas5gs import NAME as NAS5GS
 from telcoladder.adapters.nas5gs import NAME as NAS
 from telcoladder.correlate import correlate
 from telcoladder.extract import read_frames
@@ -55,7 +56,7 @@ def _tshark_nested_nas_count(pcap: Path) -> int:
 def _blocks_by_carrier(pcap: Path) -> dict[str, int]:
     counts: dict[str, int] = {}
     for frame in read_frames(pcap, decode_as=default_decode_as()):
-        for _block, _carrier, adapter in _nas_blocks(frame):
+        for _block, _carrier, adapter in carried_blocks(NAS5GS, frame):
             key = adapter.NAME if adapter is not None else "(頂層)"
             counts[key] = counts.get(key, 0) + 1
     return counts
@@ -108,18 +109,18 @@ def test_carrier_precedes_payload_in_adapter_order() -> None:
 
 def test_dig_finds_direct_child() -> None:
     block = {"nas-5gs": {"x": 1}}
-    assert _dig(block, "nas-5gs") == [{"x": 1}]
+    assert dig(block, "nas-5gs") == [{"x": 1}]
 
 
 def test_dig_finds_nested_child() -> None:
     block = {"mime_multipart": {"nas-5gs": {"x": 1}}}
-    assert _dig(block, "nas-5gs") == [{"x": 1}]
+    assert dig(block, "nas-5gs") == [{"x": 1}]
 
 
 def test_dig_handles_list_layers() -> None:
     """tshark 對單則給 dict、多則給 list —— 中間層也一樣。"""
     block = {"mime_multipart": [{"nas-5gs": {"a": 1}}, {"nas-5gs": [{"b": 2}]}]}
-    assert _dig(block, "nas-5gs") == [{"a": 1}, {"b": 2}]
+    assert dig(block, "nas-5gs") == [{"a": 1}, {"b": 2}]
 
 
 def test_dig_depth_is_bounded() -> None:
@@ -127,13 +128,13 @@ def test_dig_depth_is_bounded() -> None:
     deep: dict = {"leaf": {"nas-5gs": {"x": 1}}}
     for _ in range(100):
         deep = {"wrap": deep}
-    assert _dig(deep, "nas-5gs") == []
+    assert dig(deep, "nas-5gs") == []
 
 
 def test_dig_needs_exactly_one_intermediate_layer(e2e_pcap: Path) -> None:
     """**D6 的真正守衛。**
 
-    `_MAX_DIG_DEPTH` 留了餘裕，但**餘裕不是守衛** —— 它只會讓結構改變時
+    `MAX_DIG_DEPTH` 留了餘裕，但**餘裕不是守衛** —— 它只會讓結構改變時
     默默吐出不同的結果。這條釘住實測的結構。
 
     講清楚單位：路徑是 `http2 → mime_multipart → nas-5gs`（兩段），
@@ -145,27 +146,31 @@ def test_dig_needs_exactly_one_intermediate_layer(e2e_pcap: Path) -> None:
     minimum_limits: set[int] = set()
     for frame in read_frames(e2e_pcap, decode_as=default_decode_as()):
         for block in frame.layer("http2"):
-            for limit in range(_MAX_DIG_DEPTH + 1):
+            for limit in range(MAX_DIG_DEPTH + 1):
                 # 逐層收緊上限，找出「找得到」所需的最小值
                 if _dig_with_limit(block, NAS, limit):
                     minimum_limits.add(limit)
                     break
     assert minimum_limits == {1}, (
         f"SBI 夾帶 NAS 的中間層數變了：需要 {sorted(minimum_limits)} 層遞迴。"
-        "tshark 的結構改了，_MAX_DIG_DEPTH 與本測試要一起更新。"
+        "tshark 的結構改了，MAX_DIG_DEPTH 與本測試要一起更新。"
     )
 
 
 def _dig_with_limit(node, target, limit):
-    """複製 `_dig` 的語意但可指定上限 —— 只給上面那條測試用。"""
-    import telcoladder.adapters.nas5gs as mod
+    """複製 `dig` 的語意但可指定上限 —— 只給上面那條測試用。
 
-    original = mod._MAX_DIG_DEPTH
-    mod._MAX_DIG_DEPTH = limit
+    2026-08-24 起這套機制住在 `adapters/carrier.py`（NAS-EPS 也要用，
+    複製第二份等於把 §3.1 的教訓寫成兩份會漂的實作）。
+    """
+    import telcoladder.adapters.carrier as mod
+
+    original = mod.MAX_DIG_DEPTH
+    mod.MAX_DIG_DEPTH = limit
     try:
-        return mod._dig(node, target)
+        return mod.dig(node, target)
     finally:
-        mod._MAX_DIG_DEPTH = original
+        mod.MAX_DIG_DEPTH = original
 
 
 # ── 身分鍵 ──────────────────────────────────────────────────
@@ -308,7 +313,7 @@ def test_nas_blocks_are_deduplicated() -> None:
         src_port=1, dst_port=2,
         layers={"ngap": {"nas-5gs": shared}, "nas-5gs": shared},
     )
-    blocks = _nas_blocks(frame)
+    blocks = carried_blocks(NAS5GS, frame)
     assert len(blocks) == 1
     assert blocks[0][2].NAME == "ngap", "載體版本應該勝出（頂層版本沒有鑰匙）"
 

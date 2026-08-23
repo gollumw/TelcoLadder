@@ -188,7 +188,17 @@ PROC_UE_CONTEXT_RELEASE = 23
 
 #: E.212 保留給測試網的 MCC 001 / MNC 01。**所有識別碼都出自這個範圍**
 #: —— 見 `tests/test_no_real_subscriber_data.py` 的第一道網。
-TEST_IMSI = "001010123456789"
+#:
+#: **三位訂戶各有各的 IMSI，而這件事是被測試逼出來的。** 第一版三個人共用
+#: 同一個號碼，T4 時看不出問題（S1AP 抽不到 IMSI）；T5 的 NAS-EPS 一落地就
+#: 把三條流程正確地併成一條 —— **引擎沒錯，是 fixture 在說「這三個是同一個人」**。
+#: 尾巴的規律（0123456789／987654321／111111111）是刻意的：捏造的識別碼
+#: 要看得出是捏造的（同 `test_no_real_subscriber_data.py` 的判準）。
+TEST_IMSIS = {
+    1: "001010123456789",
+    2: "001010987654321",
+    3: "001010111111111",
+}
 
 
 def eps_mobile_identity_imsi(imsi: str) -> bytes:
@@ -203,8 +213,8 @@ def eps_mobile_identity_imsi(imsi: str) -> bytes:
     return bytes(out)
 
 
-def nas_attach_request() -> bytes:
-    identity = eps_mobile_identity_imsi(TEST_IMSI)
+def nas_attach_request(subscriber: int) -> bytes:
+    identity = eps_mobile_identity_imsi(TEST_IMSIS[subscriber])
     esm = bytes([0x02, 0x01, 0xD0, 0x11])  # PDN connectivity request
     return (
         bytes([0x07, 0x41, 0x71])           # EMM / Attach request / KSI+type
@@ -232,6 +242,29 @@ def nas_authentication_response() -> bytes:
     return bytes([0x07, 0x53, len(res)]) + res
 
 
+def nas_attach_reject(emm_cause: int) -> bytes:
+    """Attach reject（0x44）＋ 必填的 EMM cause。
+
+    **這則存在的理由是讓 cause 那條路徑有東西可踩** —— 沒有它，
+    `nas-eps.emm.cause` 的讀取只有程式碼對稱性，沒有封包驗過。
+    """
+    return bytes([0x07, 0x44, emm_cause])
+
+
+def nas_ciphered() -> bytes:
+    """Security Mode Command 之後的 NAS：**看得到，但讀不到內層**。
+
+    表頭 = 安全標頭型別 2（完整性保護＋加密）與協定識別碼 7，
+    接 4 個位元組的 MAC、1 個序號，然後是密文。
+
+    這是真實網路的正常現象，不是解析失敗（`nas5gs.py` 開頭那句話在 4G 上
+    一模一樣）。fixture 需要它，否則 `blind_spots()` 那條路徑在 4G 上
+    **一次都沒被執行過** —— 而 T3 把它做成契約鉤子的理由正是「NAS-EPS
+    一樣會加密」。
+    """
+    return bytes([0x27]) + bytes([0xAA, 0xBB, 0xCC, 0xDD]) + bytes([0x01]) + bytes(range(0x40, 0x4C))
+
+
 # ── 各介面的識別碼 ─────────────────────────────────────────────────────
 
 MME = "10.0.0.2"
@@ -246,19 +279,21 @@ CGI_VALUE = bytes([0x00, 0x00, 0xF1, 0x10, 0x00, 0x00, 0x00, 0x10])
 RRC_MO_SIGNALLING = bytes([0x30])
 
 
-def initial_ue_message(enb_ue: int) -> bytes:
+def initial_ue_message(enb_ue: int, subscriber: int) -> bytes:
     return s1ap_pdu(INITIATING, PROC_INITIAL_UE_MESSAGE, IGNORE, [
         protocol_ie(IE_ENB_UE_ID, REJECT, constrained_int(enb_ue)),
-        protocol_ie(IE_NAS_PDU, REJECT, octet_string(nas_attach_request())),
+        protocol_ie(IE_NAS_PDU, REJECT, octet_string(nas_attach_request(subscriber))),
         protocol_ie(IE_TAI, REJECT, TAI_VALUE),
         protocol_ie(IE_EUTRAN_CGI, IGNORE, CGI_VALUE),
         protocol_ie(IE_RRC_ESTABLISHMENT_CAUSE, IGNORE, RRC_MO_SIGNALLING),
     ])
 
 
-def nas_transport(downlink: bool, mme_ue: int, enb_ue: int) -> bytes:
+def nas_transport(downlink: bool, mme_ue: int, enb_ue: int,
+                  nas: bytes | None = None) -> bytes:
     code = PROC_DOWNLINK_NAS if downlink else PROC_UPLINK_NAS
-    nas = nas_authentication_request() if downlink else nas_authentication_response()
+    if nas is None:
+        nas = nas_authentication_request() if downlink else nas_authentication_response()
     ies = [
         protocol_ie(IE_MME_UE_ID, REJECT, constrained_int(mme_ue)),
         protocol_ie(IE_ENB_UE_ID, REJECT, constrained_int(enb_ue)),
@@ -284,7 +319,7 @@ def build() -> list[tuple[str, str, bytes]]:
     out: list[tuple[str, str, bytes]] = []
 
     # ── 訂戶一：eNB A 底下的 eNB-UE 1，一路走到正常釋放 ──
-    out.append((ENB_A, MME, initial_ue_message(1)))
+    out.append((ENB_A, MME, initial_ue_message(1, 1)))
     out.append((MME, ENB_A, nas_transport(True, 7, 1)))
     out.append((ENB_A, MME, nas_transport(False, 7, 1)))
     out.append((MME, ENB_A, s1ap_pdu(
@@ -299,8 +334,15 @@ def build() -> list[tuple[str, str, bytes]]:
     out.append((ENB_A, MME, s1ap_pdu(
         SUCCESSFUL, PROC_UE_CONTEXT_RELEASE, REJECT, ue_pair(7, 1))))
 
-    # ── 訂戶二：同一個 eNB，InitialContextSetup 失敗並帶 Cause ──
-    out.append((ENB_A, MME, initial_ue_message(2)))
+    # ── 訂戶二：同一個 eNB。三件事各一則 ──
+    #   ① 加密的 NAS —— 看得到協定層、讀不到內層（`blind_spots()` 的踩點）
+    #   ② 帶 EMM cause 的 Attach reject（NAS 層的失敗）
+    #   ③ 帶 S1AP Cause 的 InitialContextSetupFailure（S1AP 層的失敗）
+    # **兩層的失敗刻意都放**：它們是不同的東西，混為一談會讓「哪一層拒絕了」
+    # 這個問題答不出來。
+    out.append((ENB_A, MME, initial_ue_message(2, 2)))
+    out.append((ENB_A, MME, nas_transport(False, 8, 2, nas_ciphered())))
+    out.append((MME, ENB_A, nas_transport(True, 8, 2, nas_attach_reject(11))))
     out.append((MME, ENB_A, s1ap_pdu(
         INITIATING, PROC_INITIAL_CONTEXT_SETUP, REJECT, ue_pair(8, 2))))
     out.append((ENB_A, MME, s1ap_pdu(
@@ -308,7 +350,7 @@ def build() -> list[tuple[str, str, bytes]]:
         ue_pair(8, 2) + [protocol_ie(IE_CAUSE, IGNORE, cause_radio_network(21))])))
 
     # ── 訂戶三：**另一個 eNB，號碼與訂戶一相同**（§3.3 的負向不變量）──
-    out.append((ENB_B, MME, initial_ue_message(1)))
+    out.append((ENB_B, MME, initial_ue_message(1, 3)))
     out.append((MME, ENB_B, nas_transport(True, 9, 1)))
 
     return out

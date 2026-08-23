@@ -71,7 +71,7 @@ def test_message_names_agree_with_tshark(messages) -> None:
         if number.isdigit():
             info_by_frame[int(number)] = info
 
-    assert len(info_by_frame) == 12, f"tshark 認得 {len(info_by_frame)} 格，預期 12"
+    assert len(info_by_frame) == 14, f"tshark 認得 {len(info_by_frame)} 格，預期 14"
 
     for message in messages:
         info = info_by_frame.get(message.frame)
@@ -228,9 +228,11 @@ def test_the_nas_payload_is_nested_inside_the_s1ap_layer() -> None:
         for block in frame.layer("s1ap"):
             if "nas-eps" in block:
                 nested += 1
-    # 6 格：訂戶一的 Attach ＋ 認證來回（3）、訂戶二的 Attach（1）、
-    # 訂戶三的 Attach ＋ 認證請求（2）。
-    assert nested == 6, f"預期 6 格帶 NAS，實際 {nested}"
+    # 8 格：訂戶一的 Attach ＋ 認證來回（3）、訂戶二的 Attach ＋ 加密的
+    # ＋ Attach reject（3）、訂戶三的 Attach ＋ 認證請求（2）。
+    # **加密的那一格也算**：它有 nas-eps 區塊，只是內層讀不到 —— 那正是
+    # 「看得到協定層、讀不到內容」，與「沒有這一層」是兩件事。
+    assert nested == 8, f"預期 8 格帶 NAS，實際 {nested}"
 
 
 def test_roles_resolve_and_the_release_reply_points_the_right_way(analysis) -> None:

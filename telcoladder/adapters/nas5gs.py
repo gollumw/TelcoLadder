@@ -27,6 +27,7 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
+from telcoladder.adapters.carrier import carried_blocks
 from telcoladder.identity import globally_unique
 from telcoladder.model import (
     BLIND_CIPHERED_NAS,
@@ -120,88 +121,6 @@ _FAILURE_TYPES = {
 }
 
 
-#: `_dig` 的遞迴層數上限。
-#:
-#: **數的是中間層的數量，不是路徑段數。** 實測：SBI 那條路徑是
-#: `http2 → mime_multipart → nas-5gs`（兩段），但中間層只有 `mime_multipart`
-#: 一個，所以只需要 **1**；NGAP 那條是 **0**（`nas-5gs` 是直接子鍵）。
-#:
-#: 這裡設 3 是留餘裕給 tshark 未來多包一兩層，但**餘裕不是守衛** —— 它只會
-#: 讓結構改變時默默吐出不同的結果。真正的守衛是
-#: `test_dig_needs_exactly_one_intermediate_layer`：結構一變它就紅。
-#: 不夠再放寬，並同時更新那條測試。
-_MAX_DIG_DEPTH = 3
-
-
-def _dig(node: Any, target: str, depth: int = 0) -> list[dict[str, Any]]:
-    """在載體區塊底下有界地找出 `target` 層。
-
-    **不寫死路徑**：NGAP 是 `ngap.nas-5gs` 直接一層，SBI 是隔著
-    `mime_multipart`。寫死的話 tshark 換版本改了中間層名字就靜默失效 ——
-    而「靜默失效」正是 T1 要修的這個 bug 本身。
-    """
-    if depth > _MAX_DIG_DEPTH:
-        return []
-    if isinstance(node, list):
-        found: list[dict[str, Any]] = []
-        for item in node:
-            found.extend(_dig(item, target, depth))
-        return found
-    if not isinstance(node, dict):
-        return []
-    hit = node.get(target)
-    if isinstance(hit, dict):
-        return [hit]
-    if isinstance(hit, list):
-        return [item for item in hit if isinstance(item, dict)]
-    found = []
-    for value in node.values():
-        if isinstance(value, (dict, list)):
-            found.extend(_dig(value, target, depth + 1))
-    return found
-
-
-def _nas_blocks(frame: Frame) -> list[tuple[dict[str, Any], dict[str, Any] | None, Any]]:
-    """挖出這一格裡的每一則 NAS，**連同它的載體與載體 adapter 一起回傳**。
-
-    載體不能丟：NAS PDU 自己的欄位通常不足以歸戶。NGAP 載送時 UE 的身分在
-    NGAP 的 UE ID 上，SBI 載送時在 HTTP/2 stream id 與同層的 IMSI 上。少了
-    這層連結，只帶 SUPI 的 Registration request 會跟其後只有 NGAP ID 的訊息
-    分成兩條流程 —— 而且分完各自看起來都很合理。
-
-    載體是**查表**來的（`carriers_of`）而不是寫死的 —— 見
-    `adapters/__init__.py` 的契約說明。
-
-    **去重**：同一個區塊有可能既被某個載體挖到、又出現在頂層。多算一則訊息
-    不會報錯，圖上只是多一條看起來合理的箭頭，所以這裡用物件識別擋掉。
-    `id()` 只在同一格的解析期間有意義，而這正是它的作用域。
-    """
-    # 延後 import：避免與註冊表循環
-    from telcoladder.adapters import carrier_blocks, carriers_of
-
-    blocks: list[tuple[dict[str, Any], dict[str, Any] | None, Any]] = []
-    seen: set[int] = set()
-
-    for carrier_adapter in carriers_of(NAME):
-        for parent in carrier_blocks(carrier_adapter, frame):
-            for nested in _dig(parent, NAME):
-                if id(nested) in seen:
-                    continue
-                seen.add(id(nested))
-                blocks.append((nested, parent, carrier_adapter))
-
-    # NAS 直接出現在頂層（未知載體，或 tshark 就這樣給）。目前六份 fixture
-    # 都是 0，但保留它 —— 刪掉是拿「現在沒有」當「永遠不會有」，而那正是
-    # 這個 bug 的成因。沒有載體就沒有載體的鑰匙，訊息仍然看得到。
-    for block in frame.layer(NAME):
-        if id(block) in seen:
-            continue
-        seen.add(id(block))
-        blocks.append((block, None, None))
-
-    return blocks
-
-
 def _supi_from_suci(block: dict[str, Any]) -> str | None:
     """把 SUCI 的欄位拼回 SUPI（≈ IMSI）。
 
@@ -263,7 +182,7 @@ def count_ciphered(frame: Frame) -> int:
     認識特定 adapter。現在先用最小的方式解決。
     """
     ciphered = 0
-    for block, _carrier, _carrier_adapter in _nas_blocks(frame):
+    for block, _carrier, _carrier_adapter in carried_blocks(NAME, frame):
         has_type = (
             block.get("nas-5gs_nas-5gs_mm_message_type") is not None
             or block.get("nas-5gs_nas-5gs_sm_message_type") is not None
@@ -296,7 +215,7 @@ def count_protected_suci(frame: Frame) -> int:
     計數與實際能不能搜到不一致。
     """
     protected = 0
-    for block, _carrier, _carrier_adapter in _nas_blocks(frame):
+    for block, _carrier, _carrier_adapter in carried_blocks(NAME, frame):
         # SUCI 存在的痕跡。scheme_id 是 0 也算「有 SUCI」——
         # 它是不是 null-scheme 由 `_supi_from_suci` 判斷，不在這裡重複一次。
         has_suci = (
@@ -311,7 +230,7 @@ def count_protected_suci(frame: Frame) -> int:
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
 
-    for block, carrier, carrier_adapter in _nas_blocks(frame):
+    for block, carrier, carrier_adapter in carried_blocks(NAME, frame):
         mm_type = _to_int(block.get("nas-5gs_nas-5gs_mm_message_type"))
         sm_type = _to_int(block.get("nas-5gs_nas-5gs_sm_message_type"))
 
