@@ -410,8 +410,8 @@ Open5GS + UERANSIM testbed, so they carry this repo's licence and no third-party
 constraints.
 
 **What the badge does and does not mean.** Every push runs the full suite on
-Python 3.11/3.12/3.13 on Linux; macOS and Windows (3.13) run weekly and on
-demand. The cross-checks above genuinely run there — the fixtures are in the
+Python 3.11/3.12/3.13 on Linux, plus macOS and Windows on 3.13.
+The cross-checks above genuinely run there — the fixtures are in the
 repo, so nothing is skipped for want of a capture. It does **not** cover IMS,
 TLS-protected SBI, ECIES-protected SUCIs, or any deployment other than the one
 Open5GS topology the fixtures came from. Those gaps are real and are named at
