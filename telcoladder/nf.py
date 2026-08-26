@@ -371,7 +371,8 @@ PARTICIPANT_ORDER = (
     # UE → eNB → MME → SGW → PGW 才讀得下去。
     "eNB", "MME", "SGW", "PGW",
     # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
-    "DRA", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
+    # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
+    "DRA", "P-CSCF", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
 )
 
 

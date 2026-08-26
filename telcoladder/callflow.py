@@ -42,6 +42,20 @@ _DOMAIN_BY_PROTOCOL = {
     # `SessionAnalysisView` 的分頁清單** —— 後端吐一個前端不認得的值，
     # 症狀是那些事件在每一個分頁都不出現，而且不報錯。
     "diameter": "CORE_DIAMETER",
+
+    # ── 4G 與 IMS（2026-08-24 補）──
+    #
+    # **T4–T6 三輪都漏了這裡，而症狀正是上面那段警告寫的**：`domain` 是 None
+    # 的事件在前端 `events.filter((e) => e.domain === domain)` 底下**永遠不匹配
+    # 任何一個分頁**，只在「All Domains」看得到。實測 4G 的 13 個事件全中。
+    #
+    # **不重用 5G 的那三個**：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的
+    # （他看的是 S1-MME），而把 S11 塞進 `USER_PLANE_N4_N3` 也一樣 ——
+    # 那是同一個「功能」但不同世代的介面，而這個工具的讀者分得出差別。
+    "s1ap": "ACCESS_S1_EPS",
+    "nas-eps": "ACCESS_S1_EPS",
+    "gtpv2": "BEARER_S11_S5S8",
+    "sip": "IMS_SIP",
 }
 
 

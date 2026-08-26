@@ -48,8 +48,10 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     # 只是走 `identity.gtp_tunnel()` 這個建構子而不是寫 `IdKind.GTP_TEID` 字面，
     # 於是同步測試的靜態掃描看不到它。症狀是 UI 標「尚未實作」而引擎其實抽得到
     # （實測 userplane fixture：`gtp_teid` 有值）。掃描範圍已擴及 `identity.py`。
+    # SIP_CALL_ID／IMPU **已於 2026-08-24 移出** —— `adapters/sip.py` 落地（T7）。
+    # MSISDN 還留著：SIP 的 `To`/`From` 用的是 IMPU，而 MSISDN 要等
+    # `tel:` URI 或 Diameter 的 `Subscription-Id`（都還沒抽）。
     IdKind.MSISDN,
-    IdKind.SIP_CALL_ID,
     # ENB/MME_UE_S1AP_ID **已於 2026-08-24 移出** —— `adapters/s1ap.py` 落地，
     # 開始產生它們。抓到這件事的正是同步測試（T3 就預告過「T4 落地那天會紅」）。
     # GTP_TEID_C **已於 2026-08-24 移出** —— `adapters/gtpv2.py` 落地（T6）。

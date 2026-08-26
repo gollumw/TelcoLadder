@@ -123,12 +123,12 @@ class Adapter(Protocol):
 
 
 from telcoladder.adapters import (  # noqa: E402
-    diameter, gtp, gtpv2, nas5gs, naseps, ngap, pfcp, s1ap, sbi,
+    diameter, gtp, gtpv2, nas5gs, naseps, ngap, pfcp, s1ap, sbi, sip,
 )
 
 #: 不經外掛機制、永遠都在的那些。
 BUILTIN_ADAPTERS: tuple[Adapter, ...] = (
-    ngap, s1ap, nas5gs, naseps, sbi, diameter, pfcp, gtpv2, gtp,
+    ngap, s1ap, nas5gs, naseps, sip, sbi, diameter, pfcp, gtpv2, gtp,
 )  # type: ignore[assignment]
 
 _REQUIRED_ATTRS = ("NAME", "ORDER", "DISPLAY_FILTER", "DISSECTORS", "parse")

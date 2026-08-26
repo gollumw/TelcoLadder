@@ -66,6 +66,12 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
     ("gtpv2", frozenset({"MME", "SGW"})): "S11",
     ("gtpv2", frozenset({"SGW", "PGW"})): "S5/S8",
     ("gtp", frozenset({"SGW", "PGW"})): "S5/S8",
+
+    # ── IMS（TS 23.228）。T7 只收 Gm ──
+    #
+    # **Mw（P-CSCF↔S-CSCF）刻意不收**：這份擷取檔沒有那一腿，而
+    # 一條沒有封包驗過的參考點與一個猜出來的條號是同一種傷（§2.3）。
+    ("sip", frozenset({"UE", "P-CSCF"})): "Gm",
 }
 
 

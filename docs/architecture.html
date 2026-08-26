@@ -183,14 +183,14 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit 9b91520</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 533e5bd</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
   <code>tools/archmap.py</code>，這一頁就跟著走。</p>
 </header>
 
-<div class="stats"><div class="stat"><b>50</b><span>Python 模組</span></div><div class="stat"><b>13,908</b><span>行</span></div><div class="stat"><b>9</b><span>adapter 已交付</span></div><div class="stat"><b>2</b><span>adapter 待做</span></div><div class="stat"><b>—</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>9</b><span>TODOS 未關閉</span></div></div>
+<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,201</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>—</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>9</b><span>TODOS 未關閉</span></div></div>
 
 <section>
   <h2><span class="num">01</span>分層相依</h2>
@@ -220,28 +220,28 @@ graph TD
     summ["summary"]:::n
     mmd["render_mermaid · xdr"]:::n
   end
-  subgraph L4["L4 · 語意 · 1,721 行"]
+  subgraph L4["L4 · 語意 · 1,737 行"]
     direction LR
     cflow["callflow"]:::n
     proc["procedures"]:::n
     ftab["flowtable"]:::n
     ids["identities · pdusession"]:::n
   end
-  subgraph L3["L3 · 分析核心 · 1,759 行"]
+  subgraph L3["L3 · 分析核心 · 1,760 行"]
     direction LR
     pipe["pipeline"]:::hub
     nfm["nf"]:::n
     cause["causes"]:::n
     misc["correlate · lifecycle · coverage"]:::n
   end
-  ad["L2 · adapters ×6 · 3,021 行"]:::hub
+  ad["L2 · adapters ×6 · 3,258 行"]:::hub
   subgraph L1["L1 · tshark 介面 · 2,395 行"]
     direction LR
     extr["extract"]:::n
     rest["packets · decode · prefilter · probe · slicer"]:::n
     tsh["tshark"]:::hub
   end
-  subgraph L0["L0 · 基礎 · 1,313 行"]
+  subgraph L0["L0 · 基礎 · 1,352 行"]
     direction LR
     idt["identity"]:::n
     mdl["model"]:::hub
@@ -263,14 +263,14 @@ graph TD
   mdl --> i18n
 </pre>
 </div></div>
-  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span>cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,440 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,259 行<br><span>4 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>pdusession</span><span>callflow</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,721 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">pipeline</span><span>nf</span><span>coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">1,759 行<br><span>7 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.sbi</span><span>adapters.diameter</span><span>adapters.gtpv2</span><span>adapters.nas5gs</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.naseps</span><span>adapters.ngap</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,021 行<br><span>11 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>extract</span><span>decode</span><span>prefilter</span><span>decodeas</span><span>probe</span><span>tshark</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,395 行<br><span>9 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span>translations.zh_tw</span><span>model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,313 行<br><span>9 個</span></div></div></div>
+  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span>cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,440 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,259 行<br><span>4 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>callflow</span><span>pdusession</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,737 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">pipeline</span><span>nf</span><span>coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">1,760 行<br><span>7 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.sbi</span><span>adapters.diameter</span><span>adapters.gtpv2</span><span>adapters.nas5gs</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.naseps</span><span>adapters.ngap</span><span>adapters.sip</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,258 行<br><span>12 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>extract</span><span>decode</span><span>prefilter</span><span>decodeas</span><span>probe</span><span>tshark</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,395 行<br><span>9 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span>translations.zh_tw</span><span>model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,352 行<br><span>9 個</span></div></div></div>
 </section>
 
 <section>
   <h2><span class="num">02</span>4G · 5G · IMS 分域</h2>
   <p class="sub">協定名不等於世代：PFCP 與 GTP-U 兩個世代都用，而
   <code>diameter</code> 一個 adapter 同時橫跨 4G（S6a／Gx）與 IMS（Cx／Dx）。</p>
-  <div class="panel"><div class="panel-hd"><span>adapter 分域</span><span>9 個已交付 · 2 個待做</span></div><div class="panel-bd">
+  <div class="panel"><div class="panel-hd"><span>adapter 分域</span><span>10 個已交付 · 1 個待做</span></div><div class="panel-bd">
 <pre class="mermaid">
 %%{init:{'theme':'base','themeVariables':{'fontFamily':'IBM Plex Mono, monospace','fontSize':'13px','textColor':'#B3C1CC','lineColor':'#7F8D99','clusterBkg':'rgba(127,141,153,0.07)','clusterBorder':'#7F8D99','titleColor':'#D08A26','edgeLabelBackground':'#1B252E'}}}%%
 graph LR
@@ -282,9 +282,9 @@ graph LR
   classDef door fill:#34201A,stroke:#C05A3E,stroke-width:2px,color:#E89078
   classDef gate fill:#332814,stroke:#D08A26,stroke-width:2px,color:#E8B563
 
-  subgraph GI["IMS 訊令與媒體 · 全空"]
+  subgraph GI["IMS · SIP 已落地，媒體（E3）待評估"]
     direction TB
-    GI_sip["sip<br/>Gm · Mw · T7"]:::todo
+    GI_sip["sip<br/>Gm"]:::ok
     GI_rtp["rtp<br/>E3 · 延後"]:::todo
   end
   subgraph G4["4G 控制面 · 三個 adapter 全部落地（E1 完成）"]
@@ -313,7 +313,7 @@ graph LR
   <div class="tbl"><table>
     <thead><tr><th class="mono">域</th><th class="mono">adapter</th><th class="mono">介面</th>
     <th class="mono">行</th><th>狀態</th><th>備註</th></tr></thead>
-    <tbody><tr><td class="mono">5G 核網</td><td class="mono">ngap</td><td class="mono">N2</td><td class="num">275</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">gNB↔AMF 控制面。載送 NAS-5GS。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">nas5gs</td><td class="mono">N1</td><td class="num">320</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 NGAP 與 SBI 兩個載體底下 —— 多態，不是獨立一層。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">sbi</td><td class="mono">SBI</td><td class="num">408</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">HTTP/2 服務化介面。<strong>結構解析只在非 5G 的 HTTP/2 擷取上驗證過。</strong></td></tr><tr><td class="mono">使用者面</td><td class="mono">pfcp</td><td class="mono">N4</td><td class="num">208</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">CUPS 控制面。<strong>協定本身跨世代</strong>，這裡的參考點表只標了 N4。</td></tr><tr><td class="mono">使用者面</td><td class="mono">gtp</td><td class="mono">N3</td><td class="num">103</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">GTP-U 隧道。橋接 N4↔N2 靠 <code>identity.gtp_tunnel(位址, TEID)</code>。</td></tr><tr><td class="mono">4G EPC · IMS</td><td class="mono">diameter</td><td class="mono">S6a/S6d · Gx · Cx/Dx</td><td class="num">375</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok"><strong>唯一橫跨兩個世代的 adapter</strong>：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 Application-Id 但沒有角色推論（T-DIAM-MORE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">s1ap</td><td class="mono">S1-MME</td><td class="num">295</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">ASN.1 PER 載體，載送 NAS-EPS —— <strong>與 NGAP 同構</strong>（三種結果、五個 cause 群組、UE ID 只在一條連線內唯一）。<strong>cause 查表還沒有</strong>（<code>data/causes/s1ap_*.yaml</code> 未建），號碼抽得出來但解釋會誠實回「尚未收錄」。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">naseps</td><td class="mono">S1-MME 內</td><td class="num">282</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 S1AP 底下，走 <code>adapters/carrier.py</code> 的共用機制。<strong>IMSI 進 <code>SUPI</code></strong>（T3 的單向門）。加密計數走 <code>blind_spots()</code> 鉤子 —— <strong>核心一行沒改</strong>。<strong>cause 查表還沒有</strong>（T-4G-CAUSE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">gtpv2</td><td class="mono">S11 · S5/S8</td><td class="num">341</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">承載建立。<strong>控制面與使用者面的 TEID 分成兩個號碼空間</strong>（T3 的 <code>GTP_TEID_C</code>）——同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，走通用的 <code>NF_ROLE_HINTS_KEY</code>，<strong><code>nf.py</code> 不認得 GTPv2</strong>。</td></tr><tr><td class="mono">IMS 訊令</td><td class="mono">sip</td><td class="mono">Gm · Mw</td><td class="num">—</td><td><span class="tag t-sig">T7</span></td><td class="wrap-ok">註冊與 INVITE，Call-ID 關聯，SDP 取媒體埠備用。<strong>要先有第七道網</strong>（已完成）。</td></tr><tr><td class="mono">IMS 媒體</td><td class="mono">rtp</td><td class="mono">—</td><td class="num">—</td><td><span class="tag t-mute">延後</span></td><td class="wrap-ok">E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。</td></tr></tbody>
+    <tbody><tr><td class="mono">5G 核網</td><td class="mono">ngap</td><td class="mono">N2</td><td class="num">275</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">gNB↔AMF 控制面。載送 NAS-5GS。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">nas5gs</td><td class="mono">N1</td><td class="num">320</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 NGAP 與 SBI 兩個載體底下 —— 多態，不是獨立一層。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">sbi</td><td class="mono">SBI</td><td class="num">408</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">HTTP/2 服務化介面。<strong>結構解析只在非 5G 的 HTTP/2 擷取上驗證過。</strong></td></tr><tr><td class="mono">使用者面</td><td class="mono">pfcp</td><td class="mono">N4</td><td class="num">208</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">CUPS 控制面。<strong>協定本身跨世代</strong>，這裡的參考點表只標了 N4。</td></tr><tr><td class="mono">使用者面</td><td class="mono">gtp</td><td class="mono">N3</td><td class="num">103</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">GTP-U 隧道。橋接 N4↔N2 靠 <code>identity.gtp_tunnel(位址, TEID)</code>。</td></tr><tr><td class="mono">4G EPC · IMS</td><td class="mono">diameter</td><td class="mono">S6a/S6d · Gx · Cx/Dx</td><td class="num">368</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok"><strong>唯一橫跨兩個世代的 adapter</strong>：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 Application-Id 但沒有角色推論（T-DIAM-MORE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">s1ap</td><td class="mono">S1-MME</td><td class="num">295</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">ASN.1 PER 載體，載送 NAS-EPS —— <strong>與 NGAP 同構</strong>（三種結果、五個 cause 群組、UE ID 只在一條連線內唯一）。<strong>cause 查表還沒有</strong>（<code>data/causes/s1ap_*.yaml</code> 未建），號碼抽得出來但解釋會誠實回「尚未收錄」。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">naseps</td><td class="mono">S1-MME 內</td><td class="num">282</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 S1AP 底下，走 <code>adapters/carrier.py</code> 的共用機制。<strong>IMSI 進 <code>SUPI</code></strong>（T3 的單向門）。加密計數走 <code>blind_spots()</code> 鉤子 —— <strong>核心一行沒改</strong>。<strong>cause 查表還沒有</strong>（T-4G-CAUSE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">gtpv2</td><td class="mono">S11 · S5/S8</td><td class="num">341</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">承載建立。<strong>控制面與使用者面的 TEID 分成兩個號碼空間</strong>（T3 的 <code>GTP_TEID_C</code>）——同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，走通用的 <code>NF_ROLE_HINTS_KEY</code>，<strong><code>nf.py</code> 不認得 GTPv2</strong>。</td></tr><tr><td class="mono">IMS 訊令</td><td class="mono">sip</td><td class="mono">Gm</td><td class="num">244</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">註冊與 INVITE。<strong>只收 <code>From</code> 當關聯鍵</strong> —— 收 <code>To</code> 會把「A 打給 C」與「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用同一份判準），那是 IMS 接上 EPC 的橋。<strong>Mw 刻意不收</strong>（沒有封包驗過）。</td></tr><tr><td class="mono">IMS 媒體</td><td class="mono">rtp</td><td class="mono">—</td><td class="num">—</td><td><span class="tag t-mute">延後</span></td><td class="wrap-ok">E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。</td></tr></tbody>
   </table></div>
   <div class="note fault">
     <h4>4G 控制面整片是空的</h4>
@@ -442,7 +442,7 @@ graph LR
   T4["T4 ✓<br/>S1AP adapter ＋ 自"]:::ok
   T5["T5 ✓<br/>NAS-EPS adapter "]:::ok
   T6["T6 ✓<br/>GTPv2-C adapter"]:::ok
-  T7["T7<br/>SIP adapter"]:::n
+  T7["T7 ✓<br/>SIP adapter ＋ 4G"]:::ok
   T8["T8<br/>工作階段表依失敗／重傳／未獲回應"]:::n
   T9["T9<br/>證據包匯出 ＋ 強制 manif"]:::n
   T10["T10<br/>跨檔彙總"]:::n
@@ -454,7 +454,7 @@ graph LR
   T4 --> T5
   T3 --> T6
   T1 --> T7
-  T2 --> T7
+  T3 --> T7
   T12 --> T8
   T12 --> T9
   T12 --> T10
@@ -468,7 +468,7 @@ graph LR
   <div class="tbl"><table>
     <thead><tr><th class="mono">ID</th><th>項目</th><th class="mono">優先</th>
     <th class="mono">人工</th><th class="mono">CC</th><th class="mono">依賴</th><th>狀態</th></tr></thead>
-    <tbody><tr><td class="mono">T1</td><td class="wrap-ok">第七道資料紅線的網：電話號碼形狀</td><td class="mono">P1</td><td class="num">30m</td><td class="num">10m</td><td class="mono">—</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T2</td><td class="wrap-ok">Open5GS ＋ Kamailio IMS testbed，產 4G／IMS／RTP fixture</td><td class="mono">P1</td><td class="num">1d</td><td class="num">—</td><td class="mono">—</td><td><span class="tag t-sig">本人執行</span></td></tr><tr><td class="mono">T3</td><td class="wrap-ok">4G IdKind ＋ 參考點 ＋ adapter 契約鉤子</td><td class="mono">P1</td><td class="num">2h</td><td class="num">40m</td><td class="mono">—</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T4</td><td class="wrap-ok">S1AP adapter ＋ 自製 fixture（ASN.1 PER）</td><td class="mono">P1</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T3</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T5</td><td class="wrap-ok">NAS-EPS adapter ＋ 載體機制抽共用</td><td class="mono">P1</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T3 · T4</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T6</td><td class="wrap-ok">GTPv2-C adapter（S11／S5-S8，跨介面關聯）</td><td class="mono">P1</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T3</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T7</td><td class="wrap-ok">SIP adapter（註冊與 INVITE，Call-ID 關聯）</td><td class="mono">P1</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T1 · T2</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T8</td><td class="wrap-ok">工作階段表依失敗／重傳／未獲回應排序</td><td class="mono">P2</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T9</td><td class="wrap-ok">證據包匯出 ＋ 強制 manifest（含排除格數）</td><td class="mono">P2</td><td class="num">4d</td><td class="num">½ session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T10</td><td class="wrap-ok">跨檔彙總（xDR 層聚合，--merge 強制警告）</td><td class="mono">P2</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T11</td><td class="wrap-ok">兩份擷取檔對比程序結局</td><td class="mono">P2</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T12</td><td class="wrap-ok">驗證軌啟動 —— E1＋E2 落地當天觸發</td><td class="mono">P1</td><td class="num">4–6w</td><td class="num">—</td><td class="mono">T4 · T5 · T6 · T7</td><td><span class="tag t-sig">硬性閘門</span></td></tr></tbody>
+    <tbody><tr><td class="mono">T1</td><td class="wrap-ok">第七道資料紅線的網：電話號碼形狀</td><td class="mono">P1</td><td class="num">30m</td><td class="num">10m</td><td class="mono">—</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T2</td><td class="wrap-ok">Open5GS ＋ Kamailio IMS testbed，產 4G／IMS／RTP fixture</td><td class="mono">P1</td><td class="num">1d</td><td class="num">—</td><td class="mono">—</td><td><span class="tag t-sig">本人執行</span></td></tr><tr><td class="mono">T3</td><td class="wrap-ok">4G IdKind ＋ 參考點 ＋ adapter 契約鉤子</td><td class="mono">P1</td><td class="num">2h</td><td class="num">40m</td><td class="mono">—</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T4</td><td class="wrap-ok">S1AP adapter ＋ 自製 fixture（ASN.1 PER）</td><td class="mono">P1</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T3</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T5</td><td class="wrap-ok">NAS-EPS adapter ＋ 載體機制抽共用</td><td class="mono">P1</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T3 · T4</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T6</td><td class="wrap-ok">GTPv2-C adapter（S11／S5-S8，跨介面關聯）</td><td class="mono">P1</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T3</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T7</td><td class="wrap-ok">SIP adapter ＋ 4G/IMS 跨域關聯（<strong>E2 完成</strong>）</td><td class="mono">P1</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T1 · T3</td><td><span class="tag t-ok">已關閉</span></td></tr><tr><td class="mono">T8</td><td class="wrap-ok">工作階段表依失敗／重傳／未獲回應排序</td><td class="mono">P2</td><td class="num">3d</td><td class="num">½ session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T9</td><td class="wrap-ok">證據包匯出 ＋ 強制 manifest（含排除格數）</td><td class="mono">P2</td><td class="num">4d</td><td class="num">½ session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T10</td><td class="wrap-ok">跨檔彙總（xDR 層聚合，--merge 強制警告）</td><td class="mono">P2</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T11</td><td class="wrap-ok">兩份擷取檔對比程序結局</td><td class="mono">P2</td><td class="num">1w</td><td class="num">1 session</td><td class="mono">T12</td><td><span class="tag t-mute">待辦</span></td></tr><tr><td class="mono">T12</td><td class="wrap-ok">驗證軌啟動 —— E1＋E2 落地當天觸發</td><td class="mono">P1</td><td class="num">4–6w</td><td class="num">—</td><td class="mono">T4 · T5 · T6 · T7</td><td><span class="tag t-sig">硬性閘門</span></td></tr></tbody>
   </table></div>
   <div class="note fault">
     <h4>T3 是單向門，T12 是硬性閘門</h4>
@@ -484,7 +484,7 @@ graph LR
   <p class="sub">Vite ＋ React ＋ Tailwind v3，建置產物進版控（<code>pip install</code> 的人不需要 Node）。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">檔案</th><th class="mono">行</th></tr></thead>
-    <tbody><tr><td class="mono">lib/mock-data.ts</td><td class="num">1,504</td></tr><tr><td class="mono">components/SessionAnalysisView.tsx</td><td class="num">822</td></tr><tr><td class="mono">components/DataMiningView.tsx</td><td class="num">542</td></tr><tr><td class="mono">data/mapIndex.ts</td><td class="num">418</td></tr><tr><td class="mono">App.tsx</td><td class="num">373</td></tr><tr><td class="mono">components/DecodeAsPanel.tsx</td><td class="num">350</td></tr><tr><td class="mono">data/apiSource.ts</td><td class="num">341</td></tr><tr><td class="mono">data/source.ts</td><td class="num">330</td></tr><tr><td class="mono">i18n.ts</td><td class="num">280</td></tr><tr><td class="mono">components/SessionAnalyzer.tsx</td><td class="num">260</td></tr><tr><td class="mono">components/DiscoveredSessionsPanel.tsx</td><td class="num">175</td></tr><tr><td class="mono">lib/types.ts</td><td class="num">172</td></tr><tr><td class="mono">data/mockSource.ts</td><td class="num">165</td></tr><tr><td class="mono">lib/utils.ts</td><td class="num">152</td></tr><tr><td class="mono">components/ProtocolTree.tsx</td><td class="num">111</td></tr><tr><td class="mono">components/HexDump.tsx</td><td class="num">54</td></tr><tr><td class="mono">main.tsx</td><td class="num">19</td></tr></tbody>
+    <tbody><tr><td class="mono">lib/mock-data.ts</td><td class="num">1,504</td></tr><tr><td class="mono">components/SessionAnalysisView.tsx</td><td class="num">842</td></tr><tr><td class="mono">components/DataMiningView.tsx</td><td class="num">542</td></tr><tr><td class="mono">data/mapIndex.ts</td><td class="num">418</td></tr><tr><td class="mono">App.tsx</td><td class="num">373</td></tr><tr><td class="mono">components/DecodeAsPanel.tsx</td><td class="num">350</td></tr><tr><td class="mono">data/apiSource.ts</td><td class="num">341</td></tr><tr><td class="mono">data/source.ts</td><td class="num">330</td></tr><tr><td class="mono">i18n.ts</td><td class="num">280</td></tr><tr><td class="mono">components/SessionAnalyzer.tsx</td><td class="num">260</td></tr><tr><td class="mono">lib/types.ts</td><td class="num">177</td></tr><tr><td class="mono">components/DiscoveredSessionsPanel.tsx</td><td class="num">175</td></tr><tr><td class="mono">data/mockSource.ts</td><td class="num">165</td></tr><tr><td class="mono">lib/utils.ts</td><td class="num">152</td></tr><tr><td class="mono">components/ProtocolTree.tsx</td><td class="num">111</td></tr><tr><td class="mono">components/HexDump.tsx</td><td class="num">54</td></tr><tr><td class="mono">main.tsx</td><td class="num">19</td></tr></tbody>
   </table></div>
 </section>
 
@@ -498,8 +498,8 @@ graph LR
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit 9b91520</span>
-  <span>50 模組 · 13,908 行</span>
+  <span>tools/archmap.py</span><span>commit 533e5bd</span>
+  <span>51 模組 · 14,201 行</span>
   <span>測試數未量到</span>
 </footer>
 </div>

@@ -31,7 +31,7 @@ from telcoladder.model import IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
-FIXTURE = Path(__file__).parent / "fixtures" / "4g-attach-s1ap-s11" / "capture.pcap"
+FIXTURE = Path(__file__).parent / "fixtures" / "4g-volte-end-to-end" / "capture.pcap"
 
 
 @pytest.fixture(scope="module")

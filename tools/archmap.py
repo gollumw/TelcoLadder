@@ -64,7 +64,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("L2", "adapters", "entry point 註冊，加協定不必改核心", (
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",
         "adapters.pfcp", "adapters.gtp", "adapters.diameter", "adapters.s1ap",
-        "adapters.naseps", "adapters.gtpv2", "adapters.carrier",
+        "adapters.naseps", "adapters.gtpv2", "adapters.sip", "adapters.carrier",
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
@@ -144,8 +144,10 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "承載建立。**控制面與使用者面的 TEID 分成兩個號碼空間**（T3 的 `GTP_TEID_C`）——"
      "同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，"
      "走通用的 `NF_ROLE_HINTS_KEY`，**`nf.py` 不認得 GTPv2**。"),
-    ("IMS 訊令", "adapters.sip", "Gm · Mw", "T7",
-     "註冊與 INVITE，Call-ID 關聯，SDP 取媒體埠備用。**要先有第七道網**（已完成）。"),
+    ("IMS 訊令", "adapters.sip", "Gm", "shipped",
+     "註冊與 INVITE。**只收 `From` 當關聯鍵** —— 收 `To` 會把「A 打給 C」與"
+     "「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用"
+     "同一份判準），那是 IMS 接上 EPC 的橋。**Mw 刻意不收**（沒有封包驗過）。"),
     ("IMS 媒體", "adapters.rtp", "—", "deferred",
      "E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。"),
 ]
@@ -156,7 +158,7 @@ _DOMAIN_GROUPS = [
     ("GU", "使用者面 · 跨世代", ("使用者面",), "ok"),
     ("G4D", "4G / IMS 訂閱與政策 · 已交付", ("4G EPC · IMS",), "ok"),
     ("G4", "4G 控制面 · 三個 adapter 全部落地（E1 完成）", ("4G 控制面",), "ok"),
-    ("GI", "IMS 訊令與媒體 · 全空", ("IMS 訊令", "IMS 媒體"), "todo"),
+    ("GI", "IMS · SIP 已落地，媒體（E3）待評估", ("IMS 訊令", "IMS 媒體"), "ok"),
 ]
 
 
@@ -216,7 +218,7 @@ ROADMAP: list[tuple[str, str, str, str, str, str, tuple[str, ...]]] = [
     ("T4", "P1", "S1AP adapter ＋ 自製 fixture（ASN.1 PER）", "1w", "1 session", "done", ("T3",)),
     ("T5", "P1", "NAS-EPS adapter ＋ 載體機制抽共用", "3d", "½ session", "done", ("T3", "T4")),
     ("T6", "P1", "GTPv2-C adapter（S11／S5-S8，跨介面關聯）", "3d", "½ session", "done", ("T3",)),
-    ("T7", "P1", "SIP adapter（註冊與 INVITE，Call-ID 關聯）", "1w", "1 session", "todo", ("T1", "T2")),
+    ("T7", "P1", "SIP adapter ＋ 4G/IMS 跨域關聯（**E2 完成**）", "1w", "1 session", "done", ("T1", "T3")),
     ("T8", "P2", "工作階段表依失敗／重傳／未獲回應排序", "3d", "½ session", "todo", ("T12",)),
     ("T9", "P2", "證據包匯出 ＋ 強制 manifest（含排除格數）", "4d", "½ session", "todo", ("T12",)),
     ("T10", "P2", "跨檔彙總（xDR 層聚合，--merge 強制警告）", "1w", "1 session", "todo", ("T12",)),

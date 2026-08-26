@@ -1,9 +1,10 @@
-# 4g-attach-s1ap-s11 — 4G S1-MME 的 Attach、失敗與號碼重用
+# 4g-volte-end-to-end — 一位訂戶的完整 VoLTE 歷程，四個介面
 
-由 `make.py` 逐位元組寫成，**14 格**，全部走 SCTP／PPID 18／埠 36412。
+由 `make.py` 逐位元組寫成，**32 格**，橫跨四個介面：
+S1-MME（SCTP/36412）、S11 與 S5/S8（UDP/2123）、Gm（UDP/5060）。
 授權同本 repo（`../../../LICENSE`）。
 
-重建：`python tests/fixtures/4g-attach-s1ap-s11/make.py`
+重建：`python tests/fixtures/4g-volte-end-to-end/make.py`
 
 ## 為什麼是寫出來的
 
@@ -21,6 +22,26 @@
 | 1–7 | eNB A ↔ MME | InitialUEMessage → 認證來回 → InitialContextSetup → UEContextRelease | 一條完整的正常流程；**6→7 的 Command／Complete 是釋放判定的踩點** |
 | 8–12 | eNB A ↔ MME | InitialUEMessage → **加密的 NAS** → **Attach reject（EMM cause 11）** → InitialContextSetupRequest → **Failure（帶 S1AP Cause）** | 三條路徑各一：讀不到內層、NAS 層的失敗、S1AP 層的失敗 |
 | 13–14 | **eNB B** ↔ MME | InitialUEMessage → DownlinkNASTransport | **eNB-UE-S1AP-ID 又是 1** —— 與第 1 格同號但不同人 |
+| 15–20 | MME ↔ SGW ↔ PGW | Create Session（S11 → S5/S8）→ Delete Session | 訂戶一的承載。**第 18 格同時帶控制面與使用者面的 F-TEID，而且位址與 TEID 數字相同** |
+| 21–22 | MME ↔ SGW | Create Session → **Cause 73 No resources** | 訂戶二的承載失敗 |
+| 23–30 | UE ↔ P-CSCF | REGISTER → **401** → REGISTER → 200 → INVITE ＋ SDP → 100/180/200 | 訂戶一的 IMS 註冊與通話。**401 不是失敗**，那是註冊的正常步驟 |
+| 31–32 | UE ↔ P-CSCF | INVITE → **404 Not Found** | 訂戶二的通話失敗 |
+
+## 這份檔存在的理由：一個訂戶，四個介面，一條流程
+
+訂戶一的 **21 則訊息橫跨 S1-MME、S11／S5-S8 與 Gm** —— 附著、拿承載、
+註冊 IMS、撥出電話。橋有兩座，都在線路上：
+
+* **S11 → S1-MME**：Create Session Request 帶著 IMSI。
+* **Gm → 全部**：IMPU 是 `sip:<IMSI>@ims.mnc001.mcc001.3gppnetwork.org`，
+  TS 23.003 §13.4 的無 ISIM 推導形狀，所以推得回 IMSI。
+
+**分成三份檔就一件都驗不到**，而那正是 §6 那句「5G 與 IMS 在同一張圖上關聯」
+要證明的東西。訂戶二則是**三層都失敗**（S1AP 的 Failure、GTPv2 的 No resources、
+SIP 的 404）—— 混為一談會讓「哪一層拒絕了」這個問題答不出來。
+
+訂戶三只是被叫方：他有自己的附著，但**沒有被塞進打電話那個人的流程**。
+那是刻意的負向不變量 —— SIP 的 `To` 是事實不是關聯鍵。
 
 **第 9 格（加密的 NAS）與第 10 格（Attach reject）是 T5 加的。** 前者是
 `blind_spots()` 那條路徑在 4G 上的唯一踩點 —— 沒有它，T3 建那個契約鉤子的
@@ -72,6 +93,11 @@ PLMN 編成 `00 f1 10`（MCC 001／MNC 01）也是同一組。位址是 RFC 1918
   T5 檢視過並補了兩格（加密、reject），但**ESM 那條路徑仍然只有一則**
   （Attach request 夾帶的 PDN connectivity request，而且它被 EMM 蓋過）——
   ESM 的訊息型別表與 cause 欄位**沒有任何一格單獨驗過**。
+* **SIP 沒有經過代理轉送的那一腿**（只有 UE↔P-CSCF 的 Gm）。所以 `Via` 的
+  中繼偵測、Mw 參考點、S-CSCF 的角色**一個都沒有封包驗過** —— 那些是 T2
+  的真實擷取檔進來之後的事。
+* **SDP 只有最小的音訊 m 行。** 媒體埠抽得出來，但 E3（RTP 關聯）要的
+  「這條 RTP 屬於哪通電話」完全沒有驗過。
 * **加密的那一格是編的密文**，不是真的加密結果。它證明的是「安全標頭型別
   非 0 且抽不到訊息型別 ⇒ 算一則讀不到」，不證明真實的 NAS 加密長什麼樣。
-* **只有 14 格。** 視窗化、大檔效能、進度心跳這些路徑都碰不到。
+* **只有 32 格。** 視窗化、大檔效能、進度心跳這些路徑都碰不到。

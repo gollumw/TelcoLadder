@@ -220,7 +220,7 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     eNB/MME UE S1AP ID **只在單一 S1 連線內唯一** —— 兩個 eNB 都會從 1 開始
     配號（§3.3）。所以 key 一律用 `scope`（該連線的 IP 對）前綴，否則不同
     基地台底下的兩個用戶會被錯誤地併成同一條流程，**而梯形圖照樣畫得出來**。
-    `tests/fixtures/4g-attach-s1ap-s11/` 刻意放了兩個 eNB 各有一個 eNB-UE 1
+    `tests/fixtures/4g-volte-end-to-end/` 刻意放了兩個 eNB 各有一個 eNB-UE 1
     來守這件事。
     """
     keys: set[IdKey] = set()

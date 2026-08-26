@@ -29,7 +29,7 @@ from telcoladder.model import IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
-FIXTURE = Path(__file__).parent / "fixtures" / "4g-attach-s1ap-s11" / "capture.pcap"
+FIXTURE = Path(__file__).parent / "fixtures" / "4g-volte-end-to-end" / "capture.pcap"
 
 
 @pytest.fixture(scope="module")
@@ -264,9 +264,10 @@ def test_roles_resolve_and_the_release_reply_points_the_right_way(analysis) -> N
 
     # SGW／PGW 是 T6 加的（S11／S5-S8），它們的角色來源不同 ——
     # GTPv2-C 的 F-TEID IE 直接指名，見 `test_adapter_gtpv2.py`。
-    assert roles == {
+    # **只斷言 S1AP 這幾個**。SGW/PGW（T6）與 UE/P-CSCF（T7）各有各的來源，
+    # 由它們自己的測試守 —— 在這裡寫死整張表，下一個 adapter 就會讓它紅。
+    assert {k: v for k, v in roles.items() if v in ("eNB", "MME")} == {
         "10.0.0.1": "eNB", "10.0.0.2": "MME", "10.0.0.3": "eNB",
-        "10.0.0.4": "SGW", "10.0.0.5": "PGW",
     }, f"角色判定：{roles}。全空或缺一個通常代表某則訊息投出了矛盾的票。"
 
     complete = next(m for flow in analysis.flows for m in flow.messages

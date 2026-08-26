@@ -68,7 +68,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import globally_unique
+from telcoladder.identity import globally_unique, imsi_from_ims_identity
 from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "diameter"
@@ -139,14 +139,6 @@ COMMANDS: dict[int, str] = {
     322: "3GPP-Reset",
     323: "3GPP-Notify",
 }
-
-#: 從 IMPI 推 IMSI 的條件形狀（TS 23.003 §13.3 的無 ISIM 推導）。
-#: **兩邊都要合**：左邊 14–15 位純數字，右邊是標準的 IMS 家網域。
-#: 少一個條件就會把發自己 IMPI 的 ISIM 用戶誤推成某個 IMSI。
-_IMPI_DERIVED = re.compile(
-    r"^(?P<imsi>\d{14,15})@ims\.mnc\d{2,3}\.mcc\d{3}\.3gppnetwork\.org$",
-    re.IGNORECASE,
-)
 
 #: `Experimental-Result` 群組 AVP 裡我們要的兩個成員（RFC 6733 §4.5 / TS 29.230）。
 _AVP_VENDOR_ID = 266
@@ -263,11 +255,12 @@ def _identity_keys(block: dict[str, Any]) -> set[IdKey]:
             keys.add(globally_unique(IdKind.SUPI, text))
         elif "@" in text:
             keys.add(globally_unique(IdKind.IMPI, text))
-            derived = _IMPI_DERIVED.match(text)
+            # **只在形狀完全吻合時推導**。ISIM 發的 IMPI 過不了那個比對，
+            # 於是不會被誤接到某個 IMSI 身上。判準住在 `identity.py` ——
+            # SIP adapter（T7）用的是同一份（見那裡的說明）。
+            derived = imsi_from_ims_identity(text)
             if derived:
-                # **只在形狀完全吻合時推導**（見檔頭）。ISIM 發的 IMPI 過不了
-                # 這個比對，於是不會被誤接到某個 IMSI 身上。
-                keys.add(globally_unique(IdKind.SUPI, derived.group("imsi")))
+                keys.add(globally_unique(IdKind.SUPI, derived))
 
     for impu in _as_list(block.get("diameter_diameter_Public-Identity")):
         if impu:

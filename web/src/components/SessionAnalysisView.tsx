@@ -64,6 +64,9 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "CORE_SBI", label: "Core Control (SBI N11/N12)" },
   { id: "USER_PLANE_N4_N3", label: "User Plane & Tunnel (N4/N3)" },
   { id: "CORE_DIAMETER", label: "Diameter (S6a/Cx/Gx)" },
+  { id: "ACCESS_S1_EPS", label: "Access & Mobility (S1-MME)" },
+  { id: "BEARER_S11_S5S8", label: "Bearer (S11/S5-S8)" },
+  { id: "IMS_SIP", label: "IMS (SIP Gm/Mw)" },
 ];
 
 //: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**
@@ -203,6 +206,16 @@ export function SessionAnalysisView({
   const isMidStream = identity?.captureStatus === "mid-stream";
 
   const supiEvents = useMemo(() => (supi ? callFlowEvents.filter((e) => e.supi === supi) : []), [callFlowEvents, supi]);
+
+  //: 這個訂戶的事件實際落在哪些 Domain。
+  //
+  //: **拿它來決定顯示哪些分頁鈕** —— 2026-08-24 起有七個 domain，而任何一份
+  //: 擷取檔通常只用到兩三個。算的是 `supiEvents`（這位訂戶的全部）而不是
+  //: `filteredEvents`：後者已經被 Domain 過濾過，**用它會讓分頁按到自己消失**。
+  const presentDomains = useMemo(
+    () => new Set(supiEvents.map((e) => e.domain).filter(Boolean)),
+    [supiEvents],
+  );
 
   //: 選中的那一段。`startFrame` 當識別碼 —— 一個訂戶不可能有兩段同時開始。
   const current = useMemo(
@@ -405,8 +418,15 @@ export function SessionAnalysisView({
           )}
 
           {/* Domain Filter Toolbar */}
+          {/* **只顯示這份擷取檔真的有的分頁。** 2026-08-24 起有七個 domain
+              （5G 三個 ＋ Diameter ＋ 4G 兩個 ＋ IMS），而任何一份擷取檔通常
+              只用到兩三個 —— 全部列出來的話，使用者要在四個永遠是空的鈕裡面
+              找那兩個有東西的。這與 `DataMiningView` 那兩份寫死清單改成由引擎
+              供應是同一個判斷：**畫面只該列真的存在的東西**（§10）。 */}
           <div className="mb-3 flex flex-wrap gap-1">
-            {DOMAIN_TABS.map((tab) => (
+            {DOMAIN_TABS.filter(
+              (tab) => tab.id === "ALL" || presentDomains.has(tab.id),
+            ).map((tab) => (
               <button
                 key={tab.id}
                 type="button"

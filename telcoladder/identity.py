@@ -29,6 +29,8 @@ RAN_UE_NGAP_ID 就是典型：每個 gNB 都從 1 開始配號。兩個基地台
 
 from __future__ import annotations
 
+import re
+
 from telcoladder.extract import Frame
 from telcoladder.model import IdKey, IdKind
 
@@ -155,3 +157,34 @@ def globally_unique(kind: IdKind, value: object) -> IdKey:
     比 `scoped()` 用錯更糟：它會把毫無關係的訊息黏在一起。
     """
     return (kind, str(value))
+
+
+#: 從 IMS 身分推 IMSI 的條件形狀（TS 23.003 §13.3 的無 ISIM 推導）。
+#:
+#: **兩邊都要合**：左邊 14–15 位純數字，右邊是標準的 IMS 家網域。
+#: 少一個條件就會把發自己 IMPI 的 ISIM 用戶誤推成某個 IMSI ——
+#: 而那會把兩個不相干的人併成一條流程，圖照樣畫得出來（§4 那一類）。
+_IMS_DERIVED = re.compile(
+    r"^(?:sips?:)?(?P<imsi>\d{14,15})@ims\.mnc\d{2,3}\.mcc\d{3}\.3gppnetwork\.org$",
+    re.IGNORECASE,
+)
+
+
+def imsi_from_ims_identity(identity: str) -> str | None:
+    """IMPI 或 IMPU 裡藏著的 IMSI —— **只在形狀完全吻合時才推**。
+
+    這是 IMS 接上 EPC／5GC 的橋：`sip:001010123456789@ims.mnc001.mcc001
+    .3gppnetwork.org` 與 S6a 的 `User-Name` 指的是同一個人，而
+    `correlate` 只認「共用任一把 key」。
+
+    **2026-08-24 從 `adapters/diameter.py` 搬出來**，因為 SIP adapter（T7）
+    要用同一套。複製第二份的代價不是多幾行，是兩份會漂 —— 一邊放寬了條件、
+    另一邊沒有，而症狀是「同一個人在 Cx 上併得起來、在 Gm 上併不起來」，
+    沒有任何一層會報錯。
+
+    `sip:` / `sips:` 前綴會先剝掉（Diameter 的 IMPI 沒有 scheme，
+    SIP 的 To/From 有）。回 None 就是不推 —— **寧可少一個關聯，
+    也不要加一個猜出來的**。
+    """
+    match = _IMS_DERIVED.match(identity.strip())
+    return match.group("imsi") if match else None

@@ -30,7 +30,7 @@ from telcoladder.model import NF_ROLE_HINTS_KEY, IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
-FIXTURE = Path(__file__).parent / "fixtures" / "4g-attach-s1ap-s11" / "capture.pcap"
+FIXTURE = Path(__file__).parent / "fixtures" / "4g-volte-end-to-end" / "capture.pcap"
 
 
 @pytest.fixture(scope="module")
@@ -198,8 +198,11 @@ def test_the_same_subscriber_spans_s1_mme_and_s11(analysis) -> None:
         assert len(supis) == 1
         by_supi[supis.pop()] = {m.protocol for m in flow.messages}
 
-    assert by_supi["001010123456789"] == {"s1ap", "gtpv2"}, "訂戶一應該橫跨兩個介面"
-    assert by_supi["001010987654321"] == {"s1ap", "gtpv2"}, "訂戶二（兩層都失敗）同理"
+    # T7 之後又多了 IMS —— **這條測試只該守 GTPv2 有沒有接上**，
+    # 完整的三層由 `test_adapter_sip.py` 守。寫死整個集合的話，
+    # 下一個 adapter 落地時這裡會紅，而紅的理由與它要守的東西無關。
+    assert {"s1ap", "gtpv2"} <= by_supi["001010123456789"], "訂戶一的 S11 沒接上"
+    assert {"s1ap", "gtpv2"} <= by_supi["001010987654321"], "訂戶二（兩層都失敗）同理"
     # 訂戶三只有 S1-MME —— fixture 沒給他 S11，**那是刻意的**：
     # 一個「只出現在一個介面上」的訂戶不該被硬塞進別人的會話。
     assert by_supi["001010111111111"] == {"s1ap"}

@@ -5,7 +5,12 @@ export type TelecomDomain =
   | "ACCESS_N1_N2"
   | "CORE_SBI"
   | "USER_PLANE_N4_N3"
-  | "CORE_DIAMETER";
+  | "CORE_DIAMETER"
+  // 4G 與 IMS（2026-08-24）。**刻意不重用 5G 的三個** —— `ACCESS_N1_N2`
+  // 這個名字對 4G 工程師是錯的（他看的是 S1-MME）。見 `callflow.py`。
+  | "ACCESS_S1_EPS"
+  | "BEARER_S11_S5S8"
+  | "IMS_SIP";
 
 export type NetworkNode = "UE" | "gNB" | "AMF" | "SMF" | "UPF" | "AUSF";
 

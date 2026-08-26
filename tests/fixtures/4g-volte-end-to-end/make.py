@@ -32,7 +32,7 @@
 * **時間是編的**（每格差 1 秒），所以任何「耗時」數字都不具現實意義。
 * **NAS 內容只到能被 tshark 認出訊息型別為止** —— 完整的 NAS-EPS 解析是 T5。
 
-用法：`python tests/fixtures/4g-attach-s1ap-s11/make.py`
+用法：`python tests/fixtures/4g-volte-end-to-end/make.py`
 """
 
 from __future__ import annotations
@@ -408,6 +408,157 @@ def ue_pair(mme_ue: int, enb_ue: int) -> list[bytes]:
     ]
 
 
+# ── SIP（Gm / Mw）—— IMS 註冊與通話 ────────────────────────────────────
+#
+# **純文字，最好寫的一個**，但也是唯一會踩到資料紅線第七道網的 ——
+# 那道網（T1）正是趕在這一刻之前補的。這裡的 IMPU 一律用
+# **TS 23.003 §13.4 從測試網 IMSI 推導的形狀**（`sip:00101…@ims.mnc001…`），
+# 那個形狀網會放行，而且它同時是 IMS 接上 EPC 的橋。
+
+#: IMS 的家網域。MCC 001 / MNC 01 —— 與上面的 IMSI 同一組測試網。
+IMS_DOMAIN = "ims.mnc001.mcc001.3gppnetwork.org"
+
+P_CSCF = "10.0.0.6"
+S_CSCF = "10.0.0.7"
+#: UE 拿到的 PDN 位址。**不是 eNB 的位址** —— SIP 是端到端的，
+#: 跑在剛剛那條承載上面。
+UE_IP = "10.0.0.10"
+
+SIP_PORT = 5060
+
+
+def impu(subscriber: int) -> str:
+    """從 IMSI 推導的公用身分。`identity.imsi_from_ims_identity()` 認得這個形狀，
+    所以這個訂戶的 IMS 流程會與他的 S1-MME／S11 流程併成一條。"""
+    return f"sip:{TEST_IMSIS[subscriber]}@{IMS_DOMAIN}"
+
+
+def sip_message(start_line: str, headers: list[tuple[str, str]],
+                body: str = "") -> bytes:
+    """**行尾必須是 CRLF**，標頭與內文之間空一行（RFC 3261 §7）。
+
+    `Content-Length` 一律自己算 —— 寫死的話改一次內文就對不上，
+    而 tshark 會安靜地只解到那個長度為止。
+    """
+    lines = [start_line]
+    lines += [f"{name}: {value}" for name, value in headers]
+    lines.append(f"Content-Length: {len(body)}")
+    text = "\r\n".join(lines) + "\r\n\r\n" + body
+    return text.encode()
+
+
+def sdp_offer(port: int) -> str:
+    """最小的 SDP 提議。媒體埠是 T7 之後接 RTP（E3）要用的。"""
+    return (
+        "v=0\r\n"
+        f"o=- 1 1 IN IP4 {UE_IP}\r\n"
+        "s=-\r\n"
+        f"c=IN IP4 {UE_IP}\r\n"
+        "t=0 0\r\n"
+        f"m=audio {port} RTP/AVP 96\r\n"
+        "a=rtpmap:96 AMR/8000\r\n"
+    )
+
+
+def sip_dialogue() -> list[tuple[str, str, bytes]]:
+    """訂戶一註冊並撥出一通電話；訂戶二的 INVITE 被拒。
+
+    **刻意與 4G 的信令放在同一份擷取檔裡**：IMPU 從 IMSI 推得出來，
+    所以同一個訂戶的 IMS 流程會與他的 S1-MME 附著、S11 會話併成一條。
+    那是 §6 那句「5G 與 IMS 在同一張圖上關聯」的 4G 版本。
+    """
+    out: list[tuple[str, str, bytes]] = []
+    one, two = impu(1), impu(2)
+    via_ue = f"SIP/2.0/UDP {UE_IP}:{SIP_PORT};branch=z9hG4bK{{}}"
+
+    def register(call_id: str, cseq: int, authorization: str | None) -> bytes:
+        headers = [
+            ("Via", via_ue.format(cseq)),
+            ("Max-Forwards", "70"),
+            ("From", f"<{one}>;tag=reg{cseq}"),
+            ("To", f"<{one}>"),
+            ("Call-ID", call_id),
+            ("CSeq", f"{cseq} REGISTER"),
+            ("Contact", f"<sip:{TEST_IMSIS[1]}@{UE_IP}:{SIP_PORT}>"),
+            ("Expires", "600000"),
+        ]
+        if authorization:
+            headers.append(("Authorization", authorization))
+        return sip_message(f"REGISTER sip:{IMS_DOMAIN} SIP/2.0", headers)
+
+    def response(code: int, reason: str, call_id: str, cseq: str,
+                 to_uri: str, from_uri: str, tag: str,
+                 extra: list[tuple[str, str]] | None = None,
+                 body: str = "") -> bytes:
+        headers = [
+            ("Via", via_ue.format(cseq.split()[0])),
+            ("From", f"<{from_uri}>;tag=reg1"),
+            ("To", f"<{to_uri}>;tag={tag}"),
+            ("Call-ID", call_id),
+            ("CSeq", cseq),
+        ]
+        headers += extra or []
+        if body:
+            headers.append(("Content-Type", "application/sdp"))
+        return sip_message(f"SIP/2.0 {code} {reason}", headers, body)
+
+    # ① 註冊：先被挑戰、帶上認證再來一次
+    reg_call = f"reg-1@{UE_IP}"
+    out.append((UE_IP, P_CSCF, register(reg_call, 1, None)))
+    out.append((P_CSCF, UE_IP, response(
+        401, "Unauthorized", reg_call, "1 REGISTER", one, one, "cscf1",
+        [("WWW-Authenticate",
+          f'Digest realm="{IMS_DOMAIN}",nonce="0001",algorithm=AKAv1-MD5')])))
+    out.append((UE_IP, P_CSCF, register(
+        reg_call, 2,
+        f'Digest username="{TEST_IMSIS[1]}@{IMS_DOMAIN}",realm="{IMS_DOMAIN}",'
+        f'nonce="0001",uri="sip:{IMS_DOMAIN}",response="0002"')))
+    out.append((P_CSCF, UE_IP, response(
+        200, "OK", reg_call, "2 REGISTER", one, one, "cscf1",
+        [("P-Associated-URI", f"<{one}>")])))
+
+    # ② 撥出：INVITE 帶 SDP，一路到 200 OK
+    call = f"call-1@{UE_IP}"
+    callee = f"sip:{TEST_IMSIS[3]}@{IMS_DOMAIN}"
+    out.append((UE_IP, P_CSCF, sip_message(
+        f"INVITE {callee} SIP/2.0", [
+            ("Via", via_ue.format(1)),
+            ("Max-Forwards", "70"),
+            ("From", f"<{one}>;tag=inv1"),
+            ("To", f"<{callee}>"),
+            ("Call-ID", call),
+            ("CSeq", "1 INVITE"),
+            ("Contact", f"<sip:{TEST_IMSIS[1]}@{UE_IP}:{SIP_PORT}>"),
+            ("P-Preferred-Identity", f"<{one}>"),
+            ("Content-Type", "application/sdp"),
+        ], sdp_offer(49152))))
+    out.append((P_CSCF, UE_IP, response(
+        100, "Trying", call, "1 INVITE", callee, one, "cscf2")))
+    out.append((P_CSCF, UE_IP, response(
+        180, "Ringing", call, "1 INVITE", callee, one, "cscf2")))
+    out.append((P_CSCF, UE_IP, response(
+        200, "OK", call, "1 INVITE", callee, one, "cscf2",
+        body=sdp_offer(49154))))
+
+    # ③ 訂戶二：INVITE 被拒 —— **IMS 層的失敗**，與他在 S1AP／S11 上的失敗
+    #    是同一個人的第三層。三層都放是刻意的（見 scenario.md）。
+    fail_call = f"call-2@{UE_IP}"
+    out.append((UE_IP, P_CSCF, sip_message(
+        f"INVITE {callee} SIP/2.0", [
+            ("Via", via_ue.format(2)),
+            ("Max-Forwards", "70"),
+            ("From", f"<{two}>;tag=inv2"),
+            ("To", f"<{callee}>"),
+            ("Call-ID", fail_call),
+            ("CSeq", "1 INVITE"),
+            ("Content-Type", "application/sdp"),
+        ], sdp_offer(49156))))
+    out.append((P_CSCF, UE_IP, response(
+        404, "Not Found", fail_call, "1 INVITE", callee, two, "cscf3")))
+
+    return out
+
+
 def build() -> list[tuple[str, str, bytes]]:
     """(來源, 目的, S1AP PDU) 的序列。順序就是時間順序。"""
     out: list[tuple[str, str, bytes]] = []
@@ -525,6 +676,9 @@ def main() -> None:
     for src, dst, pdu in build_gtpv2():
         packets.append(ip_packet(
             src, dst, udp_datagram(GTPV2C_PORT, GTPV2C_PORT, pdu), protocol=17))
+    for src, dst, text in sip_dialogue():
+        packets.append(ip_packet(
+            src, dst, udp_datagram(SIP_PORT, SIP_PORT, text), protocol=17))
     target = HERE / "capture.pcap"
     write_pcap(target, packets)
     print(f"寫出 {target.relative_to(HERE.parent.parent.parent)}：{len(packets)} 格")
