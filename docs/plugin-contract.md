@@ -1,115 +1,119 @@
-# 外掛契約
+# Plugin Contract
 
-> **English summary.** This is the contract a protocol plugin must satisfy; the
-> body is in Traditional Chinese. The structure is what matters: the first table
-> lists every axis a plugin provides (adapter and cause-table entry points,
-> `DISPLAY_FILTER`, `DECODE_AS`, `CARRIES`, `CARRIER_LAYER`, `carrier_keys()`,
-> `Message.releases`), and for each one **what silently breaks if you omit it** -
-> none of these failures raise an error. Identity keys go through
-> `telcoladder/identity.py` and have three scope dimensions: global, connection or
-> address, and allocation episode. The code examples are language-neutral and
-> `tests/test_plugins.py` pins every behaviour described here. If a section needs
-> translating to be usable, open an issue and say which one.
+TelcoLadder's protocol support is pluggable. **Adding a protocol means
+installing a package**, not patching the core — so IMS (the commercial
+module) and 5GC (Apache-2.0) can evolve independently without forking.
 
-
-TelcoLadder 的協定支援是可插拔的。**加一個協定 = 裝一個套件**，不是改核心
-程式碼 —— 這是為了讓 IMS（商業模組）與 5GC（Apache-2.0）能各自演進而不分家。
-
-實作依據見 [`telcoladder/plugins.py`](../telcoladder/plugins.py)、
-[`telcoladder/adapters/__init__.py`](../telcoladder/adapters/__init__.py)、
-[`telcoladder/identity.py`](../telcoladder/identity.py)。
-行為由 [`tests/test_plugins.py`](../tests/test_plugins.py) 釘住。
+Implementation: [`telcoladder/plugins.py`](../telcoladder/plugins.py),
+[`telcoladder/adapters/__init__.py`](../telcoladder/adapters/__init__.py),
+[`telcoladder/identity.py`](../telcoladder/identity.py).
+Behaviour is pinned by [`tests/test_plugins.py`](../tests/test_plugins.py).
 
 ---
 
-## 五個軸線，不是一個
+## Five axes, not one
 
-一個協定要真的接上來，得同時提供這些東西。少任何一樣，症狀都是**完全不報錯，
-但一則訊息都沒解析出來**：
+A protocol only truly connects when it provides all of these. Omit any one
+and the symptom is **no error at all, and not a single message parsed**:
 
-| 軸線 | 怎麼提供 | 漏掉的症狀 |
+| Axis | How to provide it | Symptom when omitted |
 |---|---|---|
-| adapter | `telcoladder.adapters` entry point | 沒有人解析那個協定 |
-| cause 表 | `telcoladder.cause_tables` entry point | 每個 cause 都印「尚未收錄」 |
-| **display filter** | adapter 的 `DISPLAY_FILTER` 屬性 | **tshark 根本不吐那些封包** |
-| **decode-as** | adapter 的 `DECODE_AS` 屬性（選用） | **tshark 認不出那是什麼協定** |
-| **載送宣告** | adapter 的 `CARRIES` 屬性（選用） | 被它載送的協定一則都解不出來 |
-| **層名** | adapter 的 `CARRIER_LAYER` 屬性（選用，預設 `NAME`） | 同上，而且**更難查**：載體本身正常運作 |
-| **載體身分** | adapter 的 `carrier_keys()`（選用） | 載荷解得出來但歸不了戶，變成孤兒流程 |
-| **釋放宣告** | `Message.releases`（選用，見下） | **兩個不相干的訂戶被併成一條流程** |
+| adapter | `telcoladder.adapters` entry point | nobody parses the protocol |
+| cause tables | `telcoladder.cause_tables` entry point | every cause prints "not catalogued" |
+| **display filter** | the adapter's `DISPLAY_FILTER` attribute | **tshark never emits those packets** |
+| **decode-as** | the adapter's `DECODE_AS` attribute (optional) | **tshark does not recognise the protocol** |
+| **carriage declaration** | the adapter's `CARRIES` attribute (optional) | protocols it carries decode nothing |
+| **layer name** | the adapter's `CARRIER_LAYER` attribute (optional, defaults to `NAME`) | same as above, and **harder to debug**: the carrier itself works |
+| **carrier identity** | the adapter's `carrier_keys()` (optional) | payloads decode but cannot be attributed — orphan flows |
+| **release declaration** | `Message.releases` (optional, below) | **two unrelated subscribers merge into one flow** |
 
-## 釋放宣告：`Message.releases`
+## Release declaration: `Message.releases`
 
-**網元配出去的識別碼會被回收再配給下一個 UE。** NGAP UE ID、PFCP SEID、
-GTP TEID、HTTP/2 stream id 全都是這樣。而 `correlate` 只認「共用 key ＝ 同一個人」——
-所以重用之後，前後兩位訂戶會被併成一條流程，**圖看起來完全合理**。
+**Identifiers allocated by network functions are recycled and handed to the
+next UE.** NGAP UE IDs, PFCP SEIDs, GTP TEIDs, and HTTP/2 stream ids all
+behave this way. `correlate` knows only "shared key = same person" — so
+after reuse, two successive subscribers merge into one flow, **and the
+diagram looks entirely plausible**.
 
-adapter 的責任只有一件：在**確認釋放**的那一則訊息上填 `Message.releases`。
-「那讓誰變成第幾次配發」由 `telcoladder/lifecycle.py` 算，adapter 不必知道。
+The adapter's sole responsibility: fill `Message.releases` on the message
+that **confirms** the release. "Which allocation episode that makes for
+whom" is computed by `telcoladder/lifecycle.py`; the adapter need not know.
 
 ```python
-# adapters/pfcp.py —— 只宣告 SEID，不宣告它擁有的 F-TEID
+# adapters/pfcp.py — declare only the SEID, not the F-TEIDs it owns
 releases: set[IdKey] = set()
 if msg_type in _DELETION_CONFIRMED and cause == _CAUSE_ACCEPTED:
     releases = {k for k in identity if k[0] is IdKind.PFCP_SEID}
 ```
 
-三條規則：
+Three rules:
 
-1. **只認確認，不認發起。** PFCP 的 `Deletion Request` 可能被拒絕；NGAP 的
-   `UEContextRelease`**Command** 只是 AMF 下令，context 要等 gNB 回 Complete
-   才真的沒了。依發起端切分＝在還活著的時候把一個人的流程切成兩半，
-   而那**比不切更糟**（兩半各自看起來都像「訊息不完整」）。
-2. **只宣告訊息自己帶得出來的。** PFCP 的 Deletion 只帶 SEID，不帶它釋放掉的
-   F-TEID —— 那個對應由 `lifecycle` 從稍早「兩者同時在場」的訊息推出來。
-   在 adapter 裡憑記憶補上等於在逐訊息的地方做跨訊息的事。
-3. **沒有觀測到就不填。** 憑時間間隔猜「大概釋放了」是另一個方向的錯。
+1. **Confirmations only, never initiations.** PFCP's `Deletion Request` can
+   be refused; NGAP's `UEContextRelease` **Command** is only the AMF's
+   order — the context is gone only when the gNB answers Complete. Splitting
+   on the initiator cuts a living session's flow in half, which is **worse
+   than not splitting** (both halves look like incomplete captures).
+2. **Declare only what the message itself carries.** PFCP's Deletion
+   carries the SEID, not the F-TEIDs it releases — `lifecycle` derives that
+   mapping from earlier messages where both appeared together. Filling it
+   from memory inside the adapter does cross-message work in a per-message
+   place.
+3. **Unobserved means unfilled.** Guessing "probably released" from time
+   gaps is the same error in the other direction.
 
-Phase 2 的對照：SIP 的 `BYE`（200 OK 之後）釋放 Call-ID、Diameter 的
-`Session-Termination-Answer` 釋放 Session-Id。**但兩者的規範都要求全域唯一
-且不重用**（RFC 3261 §8.1.1.4、RFC 6733 §8.8），所以它們預設不在
-`lifecycle.REUSABLE` 裡 —— 遇到違反規範的實作再加，不要先猜。
+Phase 2 counterparts: SIP's `BYE` (after 200 OK) releases the Call-ID;
+Diameter's `Session-Termination-Answer` releases the Session-Id. **Both
+specifications require global uniqueness without reuse** (RFC 3261
+§8.1.1.4, RFC 6733 §8.8), so neither is in `lifecycle.REUSABLE` by
+default — add them if a non-compliant implementation is ever observed, not
+pre-emptively.
 
-## 載體協定：`CARRIES` / `CARRIER_LAYER` / `carrier_keys`
+## Carrier protocols: `CARRIES` / `CARRIER_LAYER` / `carrier_keys`
 
-tshark 的 `-T ek` 把子解剖**巢狀在載體層內**，不是攤平在頂層。所以「協定 A
-載送協定 B」時，B 的 adapter 必須知道去 A 底下找 —— 而且光找到還不夠，
-B 通常認不出自己屬於誰（SBI 夾帶的下行 NAS 內容裡沒有任何識別碼），
-身分得跟載體借。
+tshark's `-T ek` **nests sub-dissections inside the carrier layer** rather
+than flattening them to the top. So when protocol A carries protocol B, B's
+adapter must know to look under A — and finding the block is not enough: B
+usually cannot identify its own subscriber (SBI-carried downlink NAS
+content holds no identifier), so identity is borrowed from the carrier.
 
 ```python
-CARRIES = ("nas-5gs",)        # 我載送這些協定
-CARRIER_LAYER = "http2"       # 我的區塊在 ek 輸出裡叫這個層（預設 = NAME）
+CARRIES = ("nas-5gs",)        # protocols I carry
+CARRIER_LAYER = "http2"       # my block's layer name in ek output (default = NAME)
 
 def carrier_keys(block, frame) -> frozenset[IdKey]:
-    """從我的區塊推出的身分鍵，給載荷歸戶用。"""
+    """Identity keys derived from my block, for attributing my payloads."""
 ```
 
-三者皆選用，用 `getattr` 取用 —— 沒宣告的 adapter 行為完全不變。
+All three are optional and accessed via `getattr` — undeclared adapters
+behave exactly as before.
 
-**`CARRIER_LAYER` 最容易漏，而且症狀最難查。** `NAME` 是給人看的（會出現在
-`Message.protocol` 上），層名是 tshark 的鍵，兩者不一定相同 —— `sbi` 的層叫
-`http2`。宣告錯的話載體自己一切正常，只有被它載送的協定一則都收不到。
-NGAP 剛好兩者同名，所以這個缺口在只有一個載體的年代看不出來，是 2026-08-19
-實作 SBI 載送時才炸出來的。
+**`CARRIER_LAYER` is the easiest to miss and the hardest to debug.** `NAME`
+is human-facing (it appears on `Message.protocol`); the layer name is
+tshark's key, and the two are not necessarily equal — `sbi`'s layer is
+`http2`. Declared wrong, the carrier itself works perfectly while every
+protocol it carries receives nothing. NGAP happens to share both names, so
+this gap was invisible in the single-carrier era; it surfaced on 2026-08-19
+when SBI carriage was implemented.
 
-後兩個最容易漏，因為它們不是獨立的註冊動作，只是 adapter 上的屬性。
-
-而且它們是兩件事：**filter 是「把這個協定的封包留下來」，前提是 tshark
-已經認出那是什麼協定。** 認不出來的時候，filter 寫得再對也留不下任何東西。
+The last two axes are the easiest to miss because they are not separate
+registration actions, merely attributes. And they are distinct things: **a
+filter keeps a protocol's packets on the premise that tshark has already
+recognised the protocol.** When it has not, no filter — however correct —
+retains anything.
 
 ---
 
-## adapter 契約
+## The adapter contract
 
-一個 adapter 是任何具備這五樣的物件（通常就是一個模組），外加一個選用的：
+An adapter is any object (usually a module) with these five, plus one
+optional:
 
 ```python
-NAME = "sip"                              # 出現在 Message.protocol 上
-ORDER = 40                                # 排列順序，小的先跑
-DISPLAY_FILTER = "sip || sdp"             # 丟給 tshark 的 filter 片段
-DISSECTORS = ("sip", "sdp")               # telcoladder check 要驗證的 dissector
-DECODE_AS = ("tcp.port==5062,sip",)       # 選用，見下
+NAME = "sip"                              # appears on Message.protocol
+ORDER = 40                                # ordering; lower runs first
+DISPLAY_FILTER = "sip || sdp"             # fragment passed to tshark
+DISSECTORS = ("sip", "sdp")               # verified by `telcoladder check`
+DECODE_AS = ("tcp.port==5062,sip",)       # optional, see below
 
 def parse(frame: Frame) -> list[Message]:
     ...
@@ -120,168 +124,197 @@ def parse(frame: Frame) -> list[Message]:
 sip = "telcoladder_ims.adapters.sip"
 ```
 
-### ORDER 有語意
+### ORDER carries semantics
 
-**載體協定要排在載荷之前。** NGAP 內嵌 NAS，同一格裡先畫
-`InitialUEMessage` 再畫 `Registration request` 才讀得通 —— ORDER 決定的
-就是這個。內建的用 10（ngap）／20（nas-5gs）／30（sbi）／40（pfcp），中間留了空隙。
+**Carriers must precede payloads.** NGAP embeds NAS, and within one frame
+`InitialUEMessage` must be drawn before `Registration request` for the
+diagram to read — that is what ORDER decides. Built-ins use 10 (ngap) /
+20 (nas-5gs) / 30 (sbi) / 40 (pfcp), with gaps left between.
 
-同 ORDER 時以 `NAME` 為第二鍵，所以順序不會隨安裝順序改變。**同一份擷取檔
-在兩台機器上必須畫出同一張圖。**
+Ties break on `NAME`, so ordering never depends on install order. **The
+same capture must render the same diagram on any two machines.**
 
-### DECODE_AS：光有 filter 不夠
+### DECODE_AS: a filter alone is not enough
 
-tshark 靠啟發式判斷一條 TCP 串流跑的是什麼協定，而**擷取起點若在連線建立
-之後，那個判斷會失敗**。實測一份含 5GC SBI 的擷取檔：連線在抓包前就建好，
-tshark 沒看到 HTTP/2 的 preface，整條串流退回 `data` —— `DISPLAY_FILTER = "http2"`
-一格都收不到，而且完全不報錯。同一份擷取檔加上 `-d tcp.port==7777,http2`
-之後，SBI 訊息從 60 則變成 146 則。
+tshark uses heuristics to decide what a TCP stream carries, and **when the
+capture starts after connection establishment, that heuristic fails**.
+Measured on a 5GC SBI capture: the connections predated the capture, tshark
+never saw the HTTP/2 preface, the streams degraded to `data`, and
+`DISPLAY_FILTER = "http2"` received nothing — with no error. Adding
+`-d tcp.port==7777,http2` took SBI messages from 60 to 146.
 
-IMS 會更常遇到：SIP 跑 5062 / 6060、Diameter 被改 port 都是常態。
+IMS meets this even more often: SIP on 5062/6060 and re-ported Diameter are
+routine.
 
-**這些 port 是啟發式提示，不是規範值。** 與 NGAP 的 38412（TS 38.412）、
-PFCP 的 8805（TS 29.244）不同 —— 那兩個是規範定死的，而 SBI 的 port 由
-NRF discovery 決定，7777 只是 Open5GS 的預設。所以 `DECODE_AS` 的意義是
-「常見部署能開箱即用」，不是「這個協定就跑在這個 port」。其他部署一律用
-CLI 的 `--decode-as` 疊加，它排在 adapter 的預設**之後**，所以蓋得過預設。
+**These ports are heuristic hints, not normative values.** Unlike NGAP's
+38412 (TS 38.412) and PFCP's 8805 (TS 29.244) — which the specifications
+fix — the SBI port comes from NRF discovery, and 7777 is merely Open5GS's
+default. `DECODE_AS` therefore means "common deployments work out of the
+box", not "this protocol runs on this port". Other deployments stack the
+CLI's `--decode-as`, which is applied **after** adapter defaults and thus
+overrides them.
 
-選用而非必填是刻意的：多數協定跑在標準 port 上，不該為了一個用不到的欄位
-逼既有外掛改版。沒宣告就當空的。
+Optional rather than required, deliberately: most protocols run on
+standard ports, and existing plugins should not be forced to rev for an
+unused field. Undeclared means empty.
 
-**同一個選擇器被兩個 adapter 指向不同協定時會直接報錯**（`PluginError`）。
-tshark 只採用最後一條 `-d`，落選的那個 adapter 一格都收不到 —— 靜默取其一
-等於把這個失敗藏起來。撞號時請改用 CLI 明確指定。
+**Two adapters claiming one selector for different protocols raise
+`PluginError` outright.** tshark honours only the last `-d`, and the losing
+adapter receives nothing — silently picking one hides that failure. On
+collision, specify explicitly via the CLI.
 
-### DISPLAY_FILTER 會被括起來
+### DISPLAY_FILTER gets parenthesised
 
-片段各自加括號再用 `||` 串。所以 `"sip || sdp"` 是安全的 —— 不加括號的話
-運算優先序會悄悄改變，而 tshark 不會抱怨，它只會回傳不一樣的封包集合。
-
----
-
-## detail 契約 —— 餵給 nf.py 的證據
-
-`Message.detail` 不只是給人看的附註，其中幾把鑰匙是 `nf.py` 判定網元角色的
-**證據來源**。填錯或不填，圖上就會出現一排 IP 位址。
-
-| 鑰匙 | 意義 | 誰在用 |
-|---|---|---|
-| `service` | SBI 的服務名（`/nausf-auth/…` → `nausf-auth`） | `nf.py` 階梯 3：請求打向誰，誰就是提供者 |
-| `user-agent` | 發送端自報的 NF 型別 | `nf.py` 階梯 3：來源角色 |
-| `relay-target` | **這則訊息指名的真正收件者**（主機部分） | `nf.py` 第一趟：找出轉送者 |
-
-### relay-target：線路上的對端不一定是邏輯上的對端
-
-真實核網幾乎都有轉送者。5G 的 SCP（間接通訊）、Diameter 的 DRA 與 SLF、
-IMS 的 SIP proxy —— 症狀完全一樣：**所有訊息的線路對端都是那個中間人**，
-而它後面的網元一個都看不到。
-
-沒有這把鑰匙時會發生什麼（實測，`tests/fixtures/5gc-e2e/`）：SCP 的位址同時
-收到 AUSF、UDM、PCF、SMF、NRF 五種票，`resolve_roles` 因為矛盾而拒絕採納，
-圖上留下一個裸 IP。更糟的是它**主動投出錯票** —— SCP 轉送請求時會原封不動
-保留原始發送端的 `User-Agent`（`SCP → NRF` 帶著 `user-agent: SMF`），
-那一票會落在 SCP 身上。
-
-所以 adapter 要如實填上「這則訊息說它要去哪裡」，`nf.py` 據此判斷：
-
-> **收到一則指名別人的訊息的那一端，就是轉送者。**
-
-各協定從哪裡取：
-
-| 協定 | 欄位 | 備註 |
-|---|---|---|
-| SBI | `3gpp-Sbi-Target-apiRoot` | 間接通訊時由發送端帶上；`:authority` 指的是 SCP 自己 |
-| Diameter | `Destination-Host` | 另有更強的獨立證據，見下 |
-| SIP | `Route` | 與 `Record-Route` 搭配 |
-
-只填主機部分，不要帶埠號 —— `nf.py` 是拿 IP 比對的。
-
-**Diameter 把這件事分得比 SBI 更徹底。** DRA 轉送時**不得改寫**
-`Origin-Host` / `Origin-Realm`（那永遠是原始發送端），而是自己疊一個
-`Route-Record` 上去；`Destination-Host` / `Destination-Realm` 指名真正的
-收件者。所以 Diameter adapter 除了填 `relay-target`，還可以拿
-`Route-Record` 的存在當第二個獨立證據 —— 那是轉送者自己留下的簽名。
-
-> ⚠ 上面列的是**欄位與 AVP 名稱，不是條號**。要在程式或文件裡引用 3GPP
-> 條文出處，一律人工核對後才寫（見 CLAUDE.md §2.3）。實作時 AVP 的實際
-> tshark 欄位名請用 `tshark -G fields` 對過，不要憑印象。
-
-**為什麼不做成「SCP 規則」**：那樣 Diameter 進來時就得再寫一次，IMS 再一次。
-判定邏輯裡沒有任何一個字提到 SCP —— 它只認 `relay-target` 這把鑰匙。
-新協定要支援轉送者，填鑰匙即可，`nf.py` 不必動。
-
-角色名稱在 `nf.py` 的 `RELAY_ROLE_BY_PROTOCOL` 對照表裡（`sbi` → `SCP`），
-新協定在那裡加一行。同一個位址被兩個協定判成不同種轉送者時**不標** ——
-比照全檔的哲學：證據矛盾時，標錯比不標更糟。
-
-**限制**：只有在部署真的送出那個欄位時才有效。完全透明的 SCP 不送
-`3gpp-Sbi-Target-apiRoot`，那時仍然退回顯示 IP —— 那是正確的 fail-safe。
+Fragments are individually parenthesised and joined with `||`, so
+`"sip || sdp"` is safe — unparenthesised, operator precedence would shift
+quietly, and tshark would not complain; it would simply return a different
+packet set.
 
 ---
 
-## cause 表契約
+## The detail contract — evidence fed to nf.py
 
-entry point 的值要解析成一個**含 `*.yaml` 的目錄 `Path`**：
+`Message.detail` is not merely a human-facing annotation; several keys are
+`nf.py`'s **evidence sources** for network-function role inference. Filled
+wrong or left empty, the diagram shows a column of IP addresses.
+
+| Key | Meaning | Consumer |
+|---|---|---|
+| `service` | SBI service name (`/nausf-auth/…` → `nausf-auth`) | `nf.py` ladder step 3: whoever a request targets is the provider |
+| `user-agent` | the sender's self-declared NF type | `nf.py` ladder step 3: source role |
+| `relay-target` | **the true named recipient of this message** (host part) | `nf.py` pass one: relay discovery |
+
+### relay-target: the wire peer is not necessarily the logical peer
+
+Real cores almost always have relays. 5G's SCP (indirect communication),
+Diameter's DRA and SLF, IMS's SIP proxies — the symptom is identical:
+**every message's wire peer is the intermediary**, and nothing behind it is
+visible.
+
+What happens without this key (measured, `tests/fixtures/5gc-e2e/`): the
+SCP's address collects votes for AUSF, UDM, PCF, SMF, and NRF;
+`resolve_roles` refuses on contradiction, leaving a bare IP. Worse, it
+**casts wrong votes**: the SCP forwards requests preserving the original
+sender's `User-Agent` (`SCP → NRF` carrying `user-agent: SMF`), and that
+vote lands on the SCP.
+
+The adapter therefore reports faithfully where the message says it is
+going, and `nf.py` judges by one rule:
+
+> **The endpoint that receives a message naming someone else is a relay.**
+
+Where each protocol takes it from:
+
+| Protocol | Field | Note |
+|---|---|---|
+| SBI | `3gpp-Sbi-Target-apiRoot` | carried by the sender in indirect communication; `:authority` names the SCP itself |
+| Diameter | `Destination-Host` | stronger independent evidence exists — see below |
+| SIP | `Route` | in combination with `Record-Route` |
+
+Fill the host part only, no port — `nf.py` compares IPs.
+
+**Diameter separates this even more cleanly than SBI.** A forwarding DRA
+**must not rewrite** `Origin-Host` / `Origin-Realm` (always the original
+sender) and instead stacks its own `Route-Record`;
+`Destination-Host` / `Destination-Realm` name the true recipient. So a
+Diameter adapter can, beyond `relay-target`, treat the presence of
+`Route-Record` as second, independent evidence — the relay's own signature.
+
+> ⚠ The above lists **field and AVP names, not clause numbers**. Citing
+> 3GPP clause references in code or documentation requires human
+> verification first (CLAUDE.md §2.3). Check actual tshark field names with
+> `tshark -G fields`; do not rely on memory.
+
+**Why this is not an "SCP rule"**: that shape would be rewritten for
+Diameter, then again for IMS. The inference logic contains no mention of
+the SCP — it recognises only the `relay-target` key. A new protocol
+supports relays by filling the key; `nf.py` does not change.
+
+Role names live in `nf.py`'s `RELAY_ROLE_BY_PROTOCOL` table
+(`sbi` → `SCP`); new protocols add one row. An address judged as two
+different relay kinds by two protocols gets **no label** — per the
+project-wide philosophy: on contradictory evidence, a wrong label is worse
+than none.
+
+**Limitation**: effective only when the deployment actually sends the
+field. A fully transparent SCP omits `3gpp-Sbi-Target-apiRoot`, and the
+node falls back to an IP — the correct fail-safe.
+
+---
+
+## The cause-table contract
+
+The entry-point value must resolve to a **directory `Path` containing
+`*.yaml`**:
 
 ```toml
 [project.entry-points."telcoladder.cause_tables"]
 ims = "telcoladder_ims:CAUSE_DIR"
 ```
 
-YAML 格式見 [`telcoladder/data/causes/`](../telcoladder/data/causes/)。三條規則：
+YAML format: see [`telcoladder/data/causes/`](../telcoladder/data/causes/).
+Three rules:
 
-1. **`spec` / `clause` 必須人工核對。** 目標使用者是電信工程師，他們會去查
-   你引的條號。一個幻覺出來的 `§5.5.1.3.5` 會讓整個工具的信任瞬間歸零 ——
-   而且比不給解釋更糟，因為錯的引用會被當真。**AI 不得生成這兩個欄位。**
-2. **`plain` / `common_causes` 寫純文字。** 它們會被原樣畫進 Mermaid 標籤、
-   SVG `<text>` 與 HTML 報告，三個地方都不解析 markdown。
-3. **表名不得與既有的撞號。** 撞了會拋 `PluginError`，不會覆蓋。
+1. **`spec` / `clause` require human verification.** The target users are
+   telecom engineers who will look up the clauses you cite. One
+   hallucinated `§5.5.1.3.5` zeroes the tool's credibility instantly — and
+   is worse than no explanation, because a wrong citation gets believed.
+   **AI must not generate these two fields.**
+2. **`plain` / `common_causes` are plain text.** They render verbatim into
+   Mermaid labels, SVG `<text>`, and HTML — none of which parse markdown.
+3. **Table names must not collide with existing ones.** A collision raises
+   `PluginError`; nothing is overwritten.
 
 ---
 
-## 身分別名契約 —— 最危險的一條
+## The identity-alias contract — the most dangerous clause
 
-`correlate` 靠「兩則訊息共用任一把 key」併流。所以一把建錯的 key 不會讓程式
-壞掉，它會讓**兩個不同的用戶被併成一條流程**，而畫出來的圖看起來完全合理。
+`correlate` merges flows whenever two messages share any key. A wrongly
+built key does not crash anything — it **merges two different users into
+one flow**, and the rendered diagram looks entirely plausible.
 
-唯一要回答的問題是：**這個識別碼在多大的範圍內唯一？**
+The one question to answer: **within what scope is this identifier
+unique?**
 
 ```python
 from telcoladder.identity import connection_scope, globally_unique, scoped
 
 scope = connection_scope(frame)
 
-# 只在一條連線內唯一 —— 每個節點都從 1 開始配號
+# unique only within one connection — every node numbers from 1
 scoped(IdKind.GTP_TEID, scope, teid)
 
-# 全網唯一 —— 這正是它能跨 5GC 與 IMS 的原因
+# globally unique — precisely why it bridges 5GC and IMS
 globally_unique(IdKind.IMPU, impu)
 ```
 
-| 範圍 | 例子 |
+| Scope | Examples |
 |---|---|
-| 全網唯一 | SUPI/IMSI、IMPU、MSISDN、SIP Call-ID、Diameter Session-Id |
-| **只在一條連線內唯一** | RAN/AMF UE NGAP ID、HTTP/2 stream ID、**GTP TEID** |
+| globally unique | SUPI/IMSI, IMPU, MSISDN, SIP Call-ID, Diameter Session-Id |
+| **unique within one connection only** | RAN/AMF UE NGAP ID, HTTP/2 stream ID, **GTP TEID** |
 
-用錯方向兩邊都糟：漏了 `scoped()` 會把不相干的人黏在一起；
-對全網唯一的識別碼硬加範圍，則會讓同一個人在不同介面上被拆成幾條流程 ——
-而那正好毀掉跨協定關聯，也就是這個工具的整個賣點。
+Both wrong directions hurt: a missing `scoped()` glues unrelated people
+together; forcing a scope onto a globally unique identifier splits one
+person into several flows across interfaces — destroying exactly the
+cross-protocol correlation that is this tool's entire selling point.
 
-需要新的 `IdKind` 就加到 `telcoladder/model.py` 的 enum 裡（Phase 2 的
-IMS 識別碼已經預留好了）。
+New `IdKind`s go into `telcoladder/model.py`'s enum (Phase 2's IMS
+identifiers are already reserved).
 
 ---
 
-## 壞掉的外掛會發生什麼事
+## What happens with a broken plugin
 
-| 情況 | 行為 |
+| Situation | Behaviour |
 |---|---|
-| 外掛 import 失敗 | 拋 `PluginError`，**指名是哪個外掛** |
-| adapter 缺契約屬性 | 拋 `PluginError`，列出缺哪些（載入時就炸，不等到某一格封包） |
-| cause 表名撞號 | 拋 `PluginError`，講出是哪兩個來源 |
-| cause 目錄不存在 | 拋 `PluginError` |
-| **列不出套件清單** | 只發 `RuntimeWarning`，內建協定照常運作 |
+| plugin import failure | `PluginError`, **naming the plugin** |
+| adapter missing contract attributes | `PluginError` listing what is missing (at load, not at some later packet) |
+| cause-table name collision | `PluginError` naming both sources |
+| cause directory missing | `PluginError` |
+| **package list unenumerable** | `RuntimeWarning` only; built-in protocols keep working |
 
-最後一列是刻意的例外：「你裝的外掛壞了」是使用者修得掉的問題，該擋在他
-面前；而 metadata 損壞跟他手上的擷取檔無關 —— 沒有任何外掛的 TelcoLadder
-仍然是一個完整的 5GC 分析工具，不該因為列不出安裝清單就整個罷工。
+The last row is a deliberate exception: "the plugin you installed is
+broken" is user-fixable and belongs in their face; corrupt metadata has
+nothing to do with the capture at hand — TelcoLadder without any plugin is
+still a complete 5GC analysis tool and should not strike because it cannot
+list installed packages.

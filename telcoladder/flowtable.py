@@ -40,7 +40,7 @@ flow 進同一個父列。只有 SESSION 類鍵的 flow（PDU session 之類）�
 
 已知侷限：網元 trace 的 NGAP 半邊（NAS 加密、無橋），每個
 `amf_ue_ngap_id` 各自成父列 —— 那是證據的極限不是 bug
-（使用指南 §8 講過為什麼）。
+（docs/user-guide.md §8 講過為什麼）。
 """
 
 from __future__ import annotations

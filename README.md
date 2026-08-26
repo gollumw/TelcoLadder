@@ -56,7 +56,7 @@ telcoladder serve            # → http://localhost:3005, drop a capture on the 
 > squinted at. The name is narrower than the tool: the browser view, the
 > per-procedure xDR export and the PDU-session matrix are not ladders. It stuck anyway.
 
-> 中文使用指南（面向真實封包的操作與能力邊界）：[docs/使用指南.md](docs/使用指南.md)
+> Operating guide for real captures (workflows and capability boundaries): [docs/user-guide.md](docs/user-guide.md)
 
 **Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, N4 (PFCP), and N3 (GTP-U) are
 each exercised against real testbed captures, including one that carries N2, SBI

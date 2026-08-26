@@ -1,39 +1,44 @@
-# GUI Phase 3 —— 把 React 介面從 mock 換成真實資料
+# GUI Phase 3 — Moving the React Interface from Mock to Real Data
 
-> 進度紀錄。Phase 1（介面移植）與 Phase 2（抽出 DataSource 介面）已完成並推上 master。
+> Progress record. Phase 1 (interface port) and Phase 2 (DataSource
+> extraction) are complete and merged to master.
 
-## 已完成
+## Completed
 
-| | commit | 內容 |
+| | commit | Contents |
 |---|---|---|
-| Phase 1 | `a816609` | 6 個元件 ＋ `lib/` 三檔自 TelcoShark-Sandbox 逐位元組移植，走 `/app/<sid>` |
-| Phase 2 | `5885aca` | `DataSource` 介面、`mockSource` / `apiSource`、`App.tsx` 負責載入與失敗狀態 |
-| Phase 3 前置 | `5434a87` | `/index` 補上 tcp/udp/sctp 的埠（`RawPacket` 需要 `IP:port`） |
+| Phase 1 | `a816609` | 6 components + three `lib/` files ported byte-for-byte from TelcoShark-Sandbox, served at `/app/<sid>` |
+| Phase 2 | `5885aca` | `DataSource` interface, `mockSource` / `apiSource`, `App.tsx` owning loading and failure states |
+| Phase 3 prerequisite | `5434a87` | `/index` gains tcp/udp/sctp ports (`RawPacket` needs `IP:port`) |
 
-## `/index` → `RawPacket` 的對映現況
+## Current `/index` → `RawPacket` mapping
 
-| `RawPacket` 欄位 | 來源 | 狀態 |
+| `RawPacket` field | Source | Status |
 |---|---|---|
 | `frameNumber` | `n` | ✅ |
 | `timestamp` / `epochMicroseconds` | `epoch` | ✅ |
 | `srcIp` / `dstIp` | `src` / `dst` | ✅ |
-| `srcPort` / `dstPort` | `sport` / `dport` | ✅（`5434a87`）|
+| `srcPort` / `dstPort` | `sport` / `dport` | ✅ (`5434a87`) |
 | `length` / `info` | `len` / `info` | ✅ |
-| `protocol` | `proto` | ⚠ 型別是 8 值 union，實際是任意字串（`NGAP/NAS-5GS`） |
-| `domain` | 由 `stack` 推導 | ⚠ 要寫映射 |
-| `correlatedSupi` / `status` | `/flows` 反查 | ❌ session 列目前不帶 frame 清單 |
-| `decodeTree` | `/decode?frame=N` | ⚠ 懶載入，`DataSource` 要長第二個方法 |
-| `hexDump` | — | ❌ **後端完全沒有 hex 輸出** |
+| `protocol` | `proto` | ⚠ typed as an 8-value union; actual values are arbitrary strings (`NGAP/NAS-5GS`) |
+| `domain` | derived from `stack` | ⚠ mapping still to be written |
+| `correlatedSupi` / `status` | reverse lookup from `/flows` | ❌ session rows do not yet carry frame lists |
+| `decodeTree` | `/decode?frame=N` | ⚠ lazy-loaded; `DataSource` needs a second method |
+| `hexDump` | — | ❌ **the backend has no hex output at all** |
 
-## 還沒動的兩塊大的
+## The two large pieces not yet started
 
-- **結構化 call flow API** —— 目前只回 SVG 字串，y 座標在 Python 端算死，
-  做不到 TelcoLadder 介面要的泳道動態增減與 Domain 切換。
-- **規模** —— GUI 把全部封包當一個記憶體陣列做客戶端過濾。真實 pcap 幾十萬
-  封包會卡死。要改視窗化，並把 `computeDiscoveredSessions` 的全母體聚合移到
-  伺服器端（`flows_json` 已經在做那件事，而且有測試）。
+- **Structured call-flow API** — currently returns an SVG string with
+  y-coordinates fixed in Python, which cannot support the dynamic lane
+  add/remove and Domain switching the TelcoLadder interface requires.
+- **Scale** — the GUI treats all packets as one in-memory array with
+  client-side filtering. Real pcaps run to hundreds of thousands of packets
+  and would lock the page. Requires windowing, and moving
+  `computeDiscoveredSessions`' full-population aggregation to the server
+  (`flows_json` already does this, with tests).
 
-## 分岔紀錄
+## Divergence record
 
-`web/PORTED.json` 的 `diverged` 區記錄哪些移植檔已刻意偏離來源。**分岔的檔
-照樣釘雜湊** —— 有意的分岔不等於之後誰都能隨便改。
+`web/PORTED.json`'s `diverged` section records which ported files have
+deliberately departed from their source. **Diverged files remain
+hash-pinned** — intentional divergence is not a licence for future drift.

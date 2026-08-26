@@ -1,103 +1,125 @@
-# 4g-volte-end-to-end — 一位訂戶的完整 VoLTE 歷程，四個介面
+# 4g-volte-end-to-end — one subscriber's complete VoLTE journey across four interfaces
 
-由 `make.py` 逐位元組寫成，**32 格**，橫跨四個介面：
-S1-MME（SCTP/36412）、S11 與 S5/S8（UDP/2123）、Gm（UDP/5060）。
-授權同本 repo（`../../../LICENSE`）。
+Written byte-by-byte by `make.py`: **32 frames** spanning four interfaces —
+S1-MME (SCTP/36412), S11 and S5/S8 (UDP/2123), Gm (UDP/5060).
+Licensed with this repository (`../../../LICENSE`).
 
-重建：`python tests/fixtures/4g-volte-end-to-end/make.py`
+Rebuild: `python tests/fixtures/4g-volte-end-to-end/make.py`
 
-## 為什麼是寫出來的
+## Why it is written, not captured
 
-真實的 S1AP 擷取檔一律含真實訂戶（CLAUDE.md §2.1，沒有例外），而本專案的
-4G／IMS 測試床還沒建（T2）。理由與 `diameter-epc-ims/`、`ne-trace/` 相同。
+Real S1AP captures always contain real subscribers (CLAUDE.md §2.1 — no
+exceptions), and this project's 4G/IMS testbed does not exist yet (T2). The
+same reasoning as `diameter-epc-ims/` and `ne-trace/`.
 
-**編碼的 oracle 是 tshark。** 每一段 ASN.1 APER 都是拿它反覆試出來的 ——
-`constrained_int` 那個「1 byte 長度 ＋ 最小位元組」的寫法試了四種才對，
-其餘三種不是 Malformed 就是被讀成 0。從 X.691 推導不會報錯，tshark 會。
+**The encoding oracle is tshark.** Every ASN.1 APER fragment was found by
+iterating against it — the `constrained_int` "1-byte length + minimal octets"
+form took four attempts; the other three were either Malformed or read as 0.
+Deriving from X.691 raises no errors; tshark does.
 
-## 裡面有什麼
+## Contents
 
-| 格 | 方向 | 訊息 | 為什麼在這裡 |
+| Frames | Direction | Messages | Why they are here |
 |---|---|---|---|
-| 1–7 | eNB A ↔ MME | InitialUEMessage → 認證來回 → InitialContextSetup → UEContextRelease | 一條完整的正常流程；**6→7 的 Command／Complete 是釋放判定的踩點** |
-| 8–12 | eNB A ↔ MME | InitialUEMessage → **加密的 NAS** → **Attach reject（EMM cause 11）** → InitialContextSetupRequest → **Failure（帶 S1AP Cause）** | 三條路徑各一：讀不到內層、NAS 層的失敗、S1AP 層的失敗 |
-| 13–14 | **eNB B** ↔ MME | InitialUEMessage → DownlinkNASTransport | **eNB-UE-S1AP-ID 又是 1** —— 與第 1 格同號但不同人 |
-| 15–20 | MME ↔ SGW ↔ PGW | Create Session（S11 → S5/S8）→ Delete Session | 訂戶一的承載。**第 18 格同時帶控制面與使用者面的 F-TEID，而且位址與 TEID 數字相同** |
-| 21–22 | MME ↔ SGW | Create Session → **Cause 73 No resources** | 訂戶二的承載失敗 |
-| 23–30 | UE ↔ P-CSCF | REGISTER → **401** → REGISTER → 200 → INVITE ＋ SDP → 100/180/200 | 訂戶一的 IMS 註冊與通話。**401 不是失敗**，那是註冊的正常步驟 |
-| 31–32 | UE ↔ P-CSCF | INVITE → **404 Not Found** | 訂戶二的通話失敗 |
+| 1–7 | eNB A ↔ MME | InitialUEMessage → authentication exchange → InitialContextSetup → UEContextRelease | One complete normal flow; **6→7's Command/Complete is the release-detection exercise point** |
+| 8–12 | eNB A ↔ MME | InitialUEMessage → **ciphered NAS** → **Attach reject (EMM cause 11)** → InitialContextSetupRequest → **Failure (with S1AP Cause)** | One of each path: unreadable payload, NAS-layer failure, S1AP-layer failure |
+| 13–14 | **eNB B** ↔ MME | InitialUEMessage → DownlinkNASTransport | **eNB-UE-S1AP-ID is 1 again** — same number as frame 1, different person |
+| 15–20 | MME ↔ SGW ↔ PGW | Create Session (S11 → S5/S8) → Delete Session | Subscriber one's bearer. **Frame 18 carries both control-plane and user-plane F-TEIDs with identical address and TEID number** |
+| 21–22 | MME ↔ SGW | Create Session → **Cause 73 No resources** | Subscriber two's bearer failure |
+| 23–30 | UE ↔ P-CSCF | REGISTER → **401** → REGISTER → 200 → INVITE + SDP → 100/180/200 | Subscriber one's IMS registration and call. **401 is not a failure** — it is the registration's normal step |
+| 31–32 | UE ↔ P-CSCF | INVITE → **404 Not Found** | Subscriber two's call failure |
 
-## 這份檔存在的理由：一個訂戶，四個介面，一條流程
+## Why this fixture exists: one subscriber, four interfaces, one flow
 
-訂戶一的 **21 則訊息橫跨 S1-MME、S11／S5-S8 與 Gm** —— 附著、拿承載、
-註冊 IMS、撥出電話。橋有兩座，都在線路上：
+Subscriber one's **21 messages span S1-MME, S11/S5-S8, and Gm** — attach,
+bearer, IMS registration, outgoing call. Both bridges are on the wire:
 
-* **S11 → S1-MME**：Create Session Request 帶著 IMSI。
-* **Gm → 全部**：IMPU 是 `sip:<IMSI>@ims.mnc001.mcc001.3gppnetwork.org`，
-  TS 23.003 §13.4 的無 ISIM 推導形狀，所以推得回 IMSI。
+* **S11 → S1-MME**: the Create Session Request carries the IMSI.
+* **Gm → everything**: the IMPU is
+  `sip:<IMSI>@ims.mnc001.mcc001.3gppnetwork.org` — TS 23.003 §13.4's no-ISIM
+  derived form, so the IMSI is recoverable.
 
-**分成三份檔就一件都驗不到**，而那正是 §6 那句「5G 與 IMS 在同一張圖上關聯」
-要證明的東西。訂戶二則是**三層都失敗**（S1AP 的 Failure、GTPv2 的 No resources、
-SIP 的 404）—— 混為一談會讓「哪一層拒絕了」這個問題答不出來。
+**Split into three files, none of this is testable** — and it is exactly what
+§6's "5G and IMS correlated on one diagram" claim must prove. Subscriber two
+fails **at all three layers** (S1AP Failure, GTPv2 No resources, SIP 404) —
+conflating them makes "which layer rejected" unanswerable.
 
-訂戶三只是被叫方：他有自己的附著，但**沒有被塞進打電話那個人的流程**。
-那是刻意的負向不變量 —— SIP 的 `To` 是事實不是關聯鍵。
+Subscriber three is only a callee: they have their own attach, and they are
+**not folded into the caller's flow**. A deliberate negative invariant —
+SIP's `To` is a fact, not a correlation key.
 
-**第 9 格（加密的 NAS）與第 10 格（Attach reject）是 T5 加的。** 前者是
-`blind_spots()` 那條路徑在 4G 上的唯一踩點 —— 沒有它，T3 建那個契約鉤子的
-理由（「NAS-EPS 一樣會加密」）就一次都沒被執行過。後者讓 EMM cause 的讀取
-有真實封包可踩，而不是只有程式碼對稱性。
+**Frame 9 (ciphered NAS) and frame 10 (Attach reject) were added by T5.** The
+former is the only 4G exercise point of the `blind_spots()` path — without
+it, the reason T3 built that contract hook ("NAS-EPS ciphers the same way")
+would never have executed. The latter gives EMM-cause reading a real packet
+to stand on rather than code symmetry alone.
 
-**兩層的失敗刻意都放**（NAS 的 Attach reject 與 S1AP 的
-InitialContextSetupFailure）：它們是不同的東西，混為一談會讓「**哪一層拒絕了**」
-這個問題答不出來 —— 而那正是這種工具存在的理由。
+**Failures at both layers are deliberately present** (the NAS Attach reject
+and the S1AP InitialContextSetupFailure): they are different things, and
+conflating them makes "which layer rejected" unanswerable — the reason this
+class of tool exists.
 
-第三組是這份 fixture 最重要的部分。§3.3 說 UE ID 只在一條連線內唯一，
-兩個 eNB 都會從 1 開始配號；少了連線範圍前綴，第一位與第三位訂戶會被
-`correlate` 併成同一條流程，**而梯形圖照樣畫得出來** —— 箭頭都在、訊息都在，
-只是那條流程屬於兩個人。`test_two_enbs_reusing_the_same_ue_id_stay_apart`
-守著它，變異驗過（改成 `globally_unique()` → 3 條掉到 2 條）。
+The third group is this fixture's most important part. §3.3 states UE IDs
+are unique only within one connection, and both eNBs number from 1; without
+the connection-scope prefix, subscribers one and three merge into one flow —
+**and the ladder still renders**: every arrow, every message, just one flow
+belonging to two people. `test_two_enbs_reusing_the_same_ue_id_stay_apart`
+guards it, mutation-verified (`globally_unique()` drops 3 flows to 2).
 
-5G 那邊一直缺這種擷取檔（`TODOS.md` 的 T-TWOGNB），這裡先補上 4G 的。
+The 5G side has always lacked such a capture (`TODOS.md` T-TWOGNB); the 4G
+version lands first.
 
-## 識別碼全部出自測試網
+## All identifiers are test-network values
 
-**三位訂戶各有各的 IMSI**（`001010123456789`／`001010987654321`／
-`001010111111111`）—— E.212 保留給測試網的 MCC 001 / MNC 01。
+**Each of the three subscribers has their own IMSI** (`001010123456789` /
+`001010987654321` / `001010111111111`) — E.212's test-network
+MCC 001 / MNC 01.
 
-**這件事是被測試逼出來的。** 第一版三個人共用同一個號碼，T4 時看不出問題
-（S1AP 抽不到 IMSI）；T5 的 NAS-EPS 一落地就把三條流程**正確地**併成一條 ——
-引擎沒錯，是 fixture 在說「這三個是同一個人」。尾巴的規律是刻意的：
-捏造的識別碼要看得出是捏造的。
+**This was forced by a test.** The first version gave all three one shared
+number: invisible under T4 (S1AP extracts no IMSI), and the moment T5's
+NAS-EPS landed it **correctly** merged the three flows into one — the engine
+was right; the fixture was claiming these three are the same person. The
+patterned tails are deliberate: an invented identifier must be visibly
+invented.
 
-PLMN 編成 `00 f1 10`（MCC 001／MNC 01）也是同一組。位址是 RFC 1918 的
-`10.0.0.0/8`。
-**沒有任何一個號碼與真實網路有關**（見 `tests/test_no_real_subscriber_data.py`）。
+The PLMN encodes as `00 f1 10` (MCC 001 / MNC 01) — the same allocation.
+Addresses are RFC 1918 `10.0.0.0/8`.
+**No number relates to any real network**
+(see `tests/test_no_real_subscriber_data.py`).
 
-## 它證明不了的東西
+## What it cannot prove
 
-**別把測試通過當成涵蓋了這些。**
+**Do not read passing tests as covering any of this.**
 
-* **沒有 SCTP 的多重歸屬、分段、重傳、亂序** —— 一則訊息一格，一格一個
-  DATA chunk。真實的 S1-MME 會把多則 PDU 塞進同一格，那條路徑沒被踩到。
-* **IE 組合比真實網路貧乏。** 只放解析路徑真的會走到的：UE ID、NAS-PDU、
-  TAI、EUTRAN-CGI、RRC-Establishment-Cause、Cause。真實的
-  InitialContextSetupRequest 還帶 E-RAB 清單、UE 安全能力、AMBR ——
-  那些欄位一個都沒驗過。
-* **Cause 只編了 radioNetwork 一個群組。** 另外四個（transport／nas／
-  protocol／misc）的讀取路徑**沒有實際封包驗過**，只有程式碼對稱性。
-* **時間是編的**（每格差 1 秒，起點固定在 1700000000）。任何「耗時」數字
-  都不具現實意義。
-* **NAS 內容只到 tshark 認得出訊息型別為止。** Attach request 帶了 IMSI 與
-  ESM 容器，Authentication request/response 只有必填 IE 湊長度。
-  T5 檢視過並補了兩格（加密、reject），但**ESM 那條路徑仍然只有一則**
-  （Attach request 夾帶的 PDN connectivity request，而且它被 EMM 蓋過）——
-  ESM 的訊息型別表與 cause 欄位**沒有任何一格單獨驗過**。
-* **SIP 沒有經過代理轉送的那一腿**（只有 UE↔P-CSCF 的 Gm）。所以 `Via` 的
-  中繼偵測、Mw 參考點、S-CSCF 的角色**一個都沒有封包驗過** —— 那些是 T2
-  的真實擷取檔進來之後的事。
-* **SDP 只有最小的音訊 m 行。** 媒體埠抽得出來，但 E3（RTP 關聯）要的
-  「這條 RTP 屬於哪通電話」完全沒有驗過。
-* **加密的那一格是編的密文**，不是真的加密結果。它證明的是「安全標頭型別
-  非 0 且抽不到訊息型別 ⇒ 算一則讀不到」，不證明真實的 NAS 加密長什麼樣。
-* **只有 32 格。** 視窗化、大檔效能、進度心跳這些路徑都碰不到。
+* **No SCTP multi-homing, fragmentation, retransmission, or reordering** —
+  one message per frame, one DATA chunk per frame. Real S1-MME packs
+  multiple PDUs into one frame; that path is unexercised.
+* **IE variety is poorer than a real network.** Only IEs the parsing paths
+  actually visit are present: UE IDs, NAS-PDU, TAI, EUTRAN-CGI,
+  RRC-Establishment-Cause, Cause. A real InitialContextSetupRequest also
+  carries the E-RAB list, UE security capabilities, and AMBR — none of those
+  fields are verified.
+* **Causes are encoded for the radioNetwork group only.** The other four
+  groups' (transport / nas / protocol / misc) read paths have **no packet
+  verification**, only code symmetry.
+* **Timing is invented** (1-second deltas from a fixed epoch of 1700000000).
+  No duration figure carries real-world meaning.
+* **NAS content goes only as far as tshark recognising the message type.**
+  The Attach request carries the IMSI and an ESM container; Authentication
+  request/response carry only mandatory IEs for length. T5 reviewed this and
+  added two frames (ciphered, reject), but **the ESM path still has exactly
+  one message** (the PDN connectivity request piggybacked in the Attach
+  request, shadowed by EMM) — the ESM message-type table and cause field
+  have **no individually verified frame**.
+* **SIP has no proxied leg** (only UE↔P-CSCF on Gm). So `Via` relay
+  detection, the Mw reference point, and the S-CSCF role have **zero packet
+  verification** — those wait for T2's real captures.
+* **SDP has only a minimal audio m-line.** Media ports extract, but E3's
+  (RTP correlation) "which call owns this RTP stream" is entirely
+  unverified.
+* **The ciphered frame is fabricated ciphertext**, not a real encryption
+  result. It proves "non-zero security header type with no extractable
+  message type counts as unreadable"; it does not prove what real NAS
+  ciphering looks like.
+* **Only 32 frames.** Windowing, large-file performance, and progress
+  heartbeats are untouched.

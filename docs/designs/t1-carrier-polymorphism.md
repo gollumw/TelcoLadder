@@ -1,19 +1,22 @@
-# T1 — 載體多態：讓 SBI 夾帶的 NAS 訊息現形
+# T1 — Carrier Polymorphism: Surfacing NAS Messages Carried over SBI
 
-> 2026-08-19。本檔是實作計畫，供 `/plan-eng-review` 審查。
-> 前置決策：scope review（2026-08-18）把 T1 列入「工具目前會講錯話」的完成線。
+> 2026-08-19. Implementation plan, reviewed by `/plan-eng-review`.
+> Prior ruling: the scope review (2026-08-18) placed T1 on the "the tool
+> currently says wrong things" completion line.
 
-## 問題
+## Problem
 
-`telcoladder/adapters/nas5gs.py:123` 的 `_nas_blocks()` 只認一種載體：
+`_nas_blocks()` in `telcoladder/adapters/nas5gs.py:123` recognises exactly
+one carrier:
 
 ```python
 for parent in frame.layer("ngap"):
     nested = parent.get("nas-5gs")
 ```
 
-而 tshark `-T ek` 的子解剖是**巢狀在載體層內**，不是攤平在頂層。實測五份 fixture 的
-`nas-5gs` 出現位置：
+But tshark `-T ek` **nests sub-dissections inside the carrier layer**; it
+does not flatten them to the top. Measured occurrences of `nas-5gs` across
+five fixtures:
 
 | fixture | `ngap.nas-5gs` | `http2.mime_multipart.nas-5gs` |
 |---|---|---|
@@ -23,78 +26,93 @@ for parent in frame.layer("ngap"):
 | unknown-dnn | 10 | 0 |
 | supi-not-provisioned | 2 | 0 |
 
-第二欄那些**現在完全看不到**。使用者的真實電信商擷取檔上是 34 則，其中包含一則
-`PDU session establishment reject` —— 工具因此**少報失敗**，而少報失敗的除錯工具
-比沒有更糟。
+Everything in the second column is **currently invisible**. On the user's
+real operator capture that is 34 messages, including a
+`PDU session establishment reject` — the tool therefore **under-reports
+failures**, and a debugging tool that under-reports failures is worse than
+none.
 
-`CLAUDE.md §3.1` 對 `-T ek` 的敘述是錯的（說它「保留全部」，沒說存取要跟著載體走），
-那份錯誤文件正是這個 bug 的成因，所以 T3 併在本次一起修。
+`CLAUDE.md §3.1`'s description of `-T ek` was wrong (it said "preserves
+everything" without saying access must follow the carrier); that incorrect
+document is this bug's origin, so T3 is folded into this work.
 
-## 量過的事實（不是推測）
+## Measured facts (not conjecture)
 
-**載體長這樣** —— 帶 NAS 的是 HTTP/2 **DATA** frame，身上只有 stream id：
+**What the carrier looks like** — the NAS rides an HTTP/2 **DATA** frame
+carrying only a stream id:
 
 ```
 stream 149   frame 387   type=1 (HEADERS)   :path=/nsmf-pdusession/v1/sm-contexts
-             frame 388   type=0 (DATA)      ← NAS 在這裡，沒有 path、沒有 SUPI
-             frame 431   type=1 (HEADERS)   ← 標頭解不出來（HPACK 缺口）
+             frame 388   type=0 (DATA)      ← NAS here; no path, no SUPI
+             frame 431   type=1 (HEADERS)   ← headers unreadable (HPACK gap)
 ```
 
-所以 NAS 區塊**在本地只推得出 `SBI_STREAM`**，SUPI 在同一條 stream 的 HEADERS 上，
-而那在另一格封包裡。跨格連結是 `correlate` 的聯集查找在做，不是 adapter。
+So a NAS block can **locally derive only `SBI_STREAM`**; the SUPI sits on
+the same stream's HEADERS in another frame. Cross-frame linking is
+`correlate`'s union-find, not the adapter's job.
 
-**但同層還有一個 IMSI。** tshark 已經把 multipart 的 JSON part 解出來，並把裡面的
-IMSI 抽成專屬欄位，**就掛在 NAS 區塊的兄弟位置**：
+**But the same layer holds an IMSI.** tshark already parses the
+multipart's JSON part and extracts its IMSI into a dedicated field, **a
+sibling of the NAS block**:
 
 ```
 mime_multipart
- ├── json.e212_e212_assoc_imsi = "001011234567895"   ← 不用解 JSON，讀一個欄位
+ ├── json.e212_e212_assoc_imsi = "001011234567895"   ← one field read, no JSON parsing
  └── nas-5gs = {…}
 ```
 
-實測 50% 的 NAS multipart 帶著它 —— 而且**與 `SBI_STREAM` 那條路互補**
-（前者接得到 `POST /sm-contexts`，後者接得到 `/namf-comm/…/imsi-…/n1-n2-messages`）。
+Measured: 50% of NAS multiparts carry it — and it **complements** the
+`SBI_STREAM` path (the former reaches `POST /sm-contexts`, the latter
+reaches `/namf-comm/…/imsi-…/n1-n2-messages`).
 
-**兩種身分來源的模擬對照**（把假訊息灌進真實 `correlate`）：
+**Simulated comparison of the two identity sources** (fake messages fed
+into the real `correlate`):
 
 | | 5gc-e2e | multi-imsi |
 |---|---|---|
-| 新增可見訊息 | 4 | 20 |
-| 只給 `SBI_STREAM`：流程數 | 9 → 9 | 25 → 25 |
-| 只給 `SBI_STREAM`：孤兒 | 2 | 10 |
-| **＋同層 IMSI：流程數** | 9 → **8** | 25 → **20** |
-| **＋同層 IMSI：孤兒** | **0** | **0** |
+| new visible messages | 4 | 20 |
+| `SBI_STREAM` only: flow count | 9 → 9 | 25 → 25 |
+| `SBI_STREAM` only: orphans | 2 | 10 |
+| **+ same-layer IMSI: flow count** | 9 → **8** | 25 → **20** |
+| **+ same-layer IMSI: orphans** | **0** | **0** |
 
-加上 IMSI 之後**訊息變多、流程反而變少、零孤兒** —— 原本歸不了戶的 SBI 流程被併回
-訂戶名下。這直接改善工作階段表的訊噪比（見 learning `aggregation-can-destroy-signal-to-noise`）。
-故裁定 **D3：兩個鍵都給**。
+With the IMSI added, **messages increase, flows decrease, zero orphans** —
+previously unattributable SBI flows fold back under their subscribers,
+directly improving the session table's signal-to-noise (see learning
+`aggregation-can-destroy-signal-to-noise`). Hence ruling **D3: emit both
+keys**.
 
-## 設計
+## Design
 
-### 核心：身分推導要多態，而多態要走契約而不是 import
+### Core: identity derivation must be polymorphic, and polymorphism goes through the contract, not imports
 
-現況的耦合是 `nas5gs.py:15-16` 直接 import ngap 的內部函式：
+The current coupling is `nas5gs.py:15-16` importing ngap internals
+directly:
 
 ```python
 from telcoladder.adapters.ngap import association_scope
 from telcoladder.adapters.ngap import identity_keys as ngap_identity_keys
 ```
 
-`identity_keys` / `association_scope` **不在 `adapters/__init__.py` 的五項契約裡**。
-所以「載體多態」不能靠再 import 一個 sbi 的函式解決 —— 那只是把一條硬編碼變成兩條，
-而 Phase 2 接 SIP（載送 SDP）、Diameter（載送 AVP）時會變成四條。
+`identity_keys` / `association_scope` are **not among the five contract
+items in `adapters/__init__.py`**. So "carrier polymorphism" cannot be
+solved by importing one more sbi function — that turns one hard-coded edge
+into two, and Phase 2's SIP (carrying SDP) and Diameter (carrying AVPs)
+make it four.
 
-**改成契約的選用屬性**，比照 `DECODE_AS` 的前例：
+**Instead: optional contract attributes**, following the `DECODE_AS`
+precedent:
 
-| 新屬性 | 型別 | 用途 |
+| New attribute | Type | Purpose |
 |---|---|---|
-| `CARRIES` | `tuple[str, ...]` | 這個 adapter 可以載送哪些協定，如 `("nas-5gs",)` |
-| `carrier_keys(block, frame)` | `→ frozenset[IdKey]` | 從**載體區塊**推出的身分鍵 |
+| `CARRIES` | `tuple[str, ...]` | protocols this adapter can carry, e.g. `("nas-5gs",)` |
+| `carrier_keys(block, frame)` | `→ frozenset[IdKey]` | identity keys derived from the **carrier block** |
 
-兩者皆選用。沒宣告的 adapter 行為完全不變 —— 這是「不逼既有外掛改版」的既定作風。
+Both optional. Undeclared adapters behave exactly as before — the standing
+"never force existing plugins to rev" policy.
 
 ```
-                       現況（硬編碼）                  改後（契約）
+                    today (hard-coded)                after (contract)
                   ┌──────────────────┐          ┌──────────────────┐
    nas5gs.parse ──┤ frame.layer(ngap)│          │ carriers_of(     │
                   │      ↓ import    │          │   "nas-5gs")     │
@@ -103,186 +121,232 @@ from telcoladder.adapters.ngap import identity_keys as ngap_identity_keys
                                                 ┌────────┴────────┐
                                                 ▼                 ▼
                                           ngap.carrier_keys  sbi.carrier_keys
-                                          （NGAP ID＋scope） （SBI_STREAM＋scope）
+                                          (NGAP IDs + scope) (SBI_STREAM + scope)
                                                 │                 │
                                                 └────────┬────────┘
-                                                    correlate 聯集查找
+                                                  correlate union-find
 ```
 
-### 三處改動
+### Three changes
 
-**① `adapters/__init__.py`** — 契約多兩個選用屬性，加一個查表函式：
+**1. `adapters/__init__.py`** — two optional contract attributes plus a
+lookup:
 
 ```python
 def carriers_of(payload: str) -> tuple[Adapter, ...]:
-    """哪些 adapter 宣告會載送 `payload`，依 ORDER 排序。"""
+    """Adapters declaring they carry `payload`, ordered by ORDER."""
 ```
 
-**② `adapters/ngap.py` / `adapters/sbi.py`** — 各自實作 `CARRIES` 與 `carrier_keys`：
+**2. `adapters/ngap.py` / `adapters/sbi.py`** — each implements `CARRIES`
+and `carrier_keys`:
 
-- `ngap.carrier_keys` = 現有的 `identity_keys(block, association_scope(frame))`，原樣搬。
-- `sbi.carrier_keys` = `scoped(SBI_STREAM, connection_scope(frame), streamid)`，
-  與 `sbi.parse` 對 HEADERS 產的鍵**必須是同一個** —— 不同就接不起來，而且不報錯。
-  **外加同層的 `globally_unique(SUPI, e212_e212_assoc_imsi)`（D3）**；欄位不存在時
-  就只回前者 —— 舊版 tshark 上是歸戶率下降，不是壞掉。
-- **`sbi.ORDER` 從 30 改到 20 以下（D2）** —— 契約要求載體排在載荷之前。
+- `ngap.carrier_keys` = the existing
+  `identity_keys(block, association_scope(frame))`, moved verbatim.
+- `sbi.carrier_keys` =
+  `scoped(SBI_STREAM, connection_scope(frame), streamid)`, which **must be
+  the very key** `sbi.parse` produces for HEADERS — differing keys never
+  join, and never report. **Plus the same-layer
+  `globally_unique(SUPI, e212_e212_assoc_imsi)` (D3)**; when the field is
+  absent, only the former is returned — on older tshark that is reduced
+  attribution, not breakage.
+- **`sbi.ORDER` moves from 30 to below 20 (D2)** — the contract requires
+  carriers before payloads.
 
-**③ `adapters/nas5gs.py`** — `_nas_blocks` 改成走查表，`_identity_keys` 改成問載體：
+**3. `adapters/nas5gs.py`** — `_nas_blocks` walks the lookup;
+`_identity_keys` asks the carrier:
 
 ```python
 for carrier_adapter in carriers_of(NAME):
     for parent in frame.layer(carrier_adapter.NAME):
-        nested = _dig(parent, NAME)      # 支援多層巢狀
+        nested = _dig(parent, NAME)      # supports multi-level nesting
         ...
 ```
 
-`_dig` 要處理 `http2.mime_multipart.nas-5gs` 這種**中間隔了一層**的情況 ——
-NGAP 是 `ngap.nas-5gs` 直接一層，SBI 是隔著 `mime_multipart`。實作用有界深度的
-遞迴搜尋（**上限 3 —— 實測 2 加一層餘裕，D6**），不寫死路徑：寫死的話 tshark 換版本
-改了中間層名字就靜默失效。真正的守衛是測試釘住「實際深度就是 2」，而不是餘裕本身 ——
-餘裕只會讓結構改變時默默吐出不同結果，測試才會紅。
+`_dig` must handle the **one-intermediate-layer** case
+(`http2.mime_multipart.nas-5gs`) — NGAP is a direct `ngap.nas-5gs`, SBI
+sits behind `mime_multipart`. Implemented as bounded-depth recursion
+(**cap 3 — measured 2 plus one level of slack, D6**), never a hard-coded
+path: hard-coded, a tshark version renaming the middle layer fails
+silently. The real guard is the test pinning "the actual depth is 2", not
+the slack — slack only makes structural change silently yield different
+results; a test reddens.
 
-**去重（D5）**：`_nas_blocks` 用 `id(block)` 去重。頂層 fallback 保留（未知載體仍收得到），
-但同一個區塊若兩條路都拿到只算一次 —— 多算一則訊息不會報錯，圖上多一條看起來合理的箭頭。
+**Dedup (D5)**: `_nas_blocks` dedupes on `id(block)`. The top-level
+fallback stays (unknown carriers still land), but a block reached by both
+paths counts once — double-counting raises nothing; the diagram just grows
+one plausible-looking extra arrow.
 
-## 測試
+## Tests
 
-每個判定配獨立 oracle，比照 `CLAUDE.md §4` 的既有作風。
+Each judgement gets an independent oracle, per `CLAUDE.md §4`'s standing
+practice.
 
-| 測試 | 守什麼 | oracle |
+| Test | Guards | Oracle |
 |---|---|---|
-| `test_sbi_carried_nas_is_visible` | `5gc-e2e` 必須解出 4 則、`multi-imsi` 必須解出 20 則 SBI 夾帶的 NAS | tshark 直接數 `http2.mime_multipart.nas-5gs` |
-| `test_flow_count_does_not_grow` | 兩份 fixture 的流程數 T1 前後相同（9→9、25→25） | 現行輸出即基準 |
-| `test_carrier_keys_match_parse_keys` | `sbi.carrier_keys` 產的 `SBI_STREAM` 與 `sbi.parse` 對同一 stream 產的**逐字相同** | 兩者互為 oracle |
-| `test_ngap_path_unchanged` | NGAP 載送的那條路徑產出**逐位元組不變** | 現行輸出即基準 |
-| `test_adapter_without_carries_still_works` | 沒宣告 `CARRIES` 的假 adapter 不會炸 | `test_plugins.py` 既有模式 |
-| `test_dig_depth_is_bounded` | 惡意巢狀（深度 100）不會遞迴爆炸 | 合成輸入 |
-| `test_dig_actual_depth_is_2` | **D6 的真正守衛** —— `nas-5gs` 相對 `http2` 的實際深度恰好是 2 | 真實 fixture |
-| `test_dig_handles_list_layers` | 中間層是 list 而非 dict 時也找得到 | 合成輸入 |
-| `test_carrier_keys_without_imsi_field` | 同層沒有 `e212_e212_assoc_imsi` 時只回 `SBI_STREAM`，不炸 | 合成輸入 |
-| `test_imsi_attribution_leaves_no_orphans` | 兩份 fixture 的 SBI 夾帶 NAS **零孤兒**，流程數 9→8 / 25→20 | 本檔量到的數字 |
-| `test_nas_blocks_dedup` | 同一區塊經兩條路取得只算一次 | 合成輸入 |
-| `test_carrier_precedes_payload` | 同一格裡載體的訊息必須排在載荷之前（D2 的不變量） | 合成輸入 |
-| `test_imsi_display_toggle` | 顯示開關的開／關兩態（D4） | 兩態各一 |
+| `test_sbi_carried_nas_is_visible` | `5gc-e2e` must decode 4 and `multi-imsi` 20 SBI-carried NAS messages | tshark counting `http2.mime_multipart.nas-5gs` directly |
+| `test_flow_count_does_not_grow` | flow counts identical before/after T1 (9→9, 25→25) | current output as baseline |
+| `test_carrier_keys_match_parse_keys` | `sbi.carrier_keys`' `SBI_STREAM` is **character-identical** to `sbi.parse`'s for the same stream | each other |
+| `test_ngap_path_unchanged` | the NGAP-carried path's output is **byte-identical** | current output as baseline |
+| `test_adapter_without_carries_still_works` | a fake adapter without `CARRIES` does not crash | existing `test_plugins.py` pattern |
+| `test_dig_depth_is_bounded` | hostile nesting (depth 100) cannot blow the stack | synthetic input |
+| `test_dig_actual_depth_is_2` | **D6's real guard** — `nas-5gs` sits exactly 2 levels under `http2` | real fixtures |
+| `test_dig_handles_list_layers` | intermediate layers that are lists, not dicts | synthetic input |
+| `test_carrier_keys_without_imsi_field` | absent `e212_e212_assoc_imsi` → `SBI_STREAM` only, no crash | synthetic input |
+| `test_imsi_attribution_leaves_no_orphans` | **zero orphans** for SBI-carried NAS in both fixtures; flows 9→8 / 25→20 | the numbers measured in this document |
+| `test_nas_blocks_dedup` | a block reached via two paths counts once | synthetic input |
+| `test_carrier_precedes_payload` | within one frame the carrier's message precedes the payload's (D2's invariant) | synthetic input |
+| `test_imsi_display_toggle` | both states of the display toggle (D4) | one test each |
 
-**負向不變量最重要**：`5gc-registration` / `unknown-dnn` / `supi-not-provisioned`
-這三份**沒有** SBI 夾帶 NAS，T1 之後訊息數必須**完全不變**。多解出來就是誤判。
+**The negative invariant matters most**: `5gc-registration` /
+`unknown-dnn` / `supi-not-provisioned` carry **no** SBI-borne NAS, and
+their message counts must be **exactly unchanged** after T1. Anything
+extra is a false positive.
 
-## 審查裁定（2026-08-19 `/plan-eng-review`）
+## Review rulings (2026-08-19 `/plan-eng-review`)
 
-| # | 裁定 | 依據 |
+| # | Ruling | Basis |
 |---|---|---|
-| **D2** | **`sbi.ORDER` 移到 `nas5gs` 之前** | 契約寫明「載體排在載荷之前」，T1 讓 SBI 成為載體後就違反了。實測三份 fixture **零格**同時產出 SBI 與 NAS 訊息 → **現在改是零 diff**，等真實擷取檔出現混合格再改就要重產 golden |
-| **D3** | **`sbi.carrier_keys` 同時回 `SBI_STREAM` 與同層 IMSI** | tshark 已把 JSON body 的 IMSI 抽成 `mime_multipart.json.e212_e212_assoc_imsi`，**就在 NAS 區塊旁邊**。實測：孤兒 10 → **0**，流程數 25 → **20**（歸不了戶的 SBI 流程被併回訂戶）。約三行 |
-| **D4** | **呈現層加開關控制是否顯示 IMSI 歸戶**（訊息一律照解） | 使用者裁定。CLI/HTML 那側先落地；React 介面等 Phase 3 接真實資料時繼承 |
-| **D5** | **保留頂層 fallback，加 `id(block)` 去重** | 那行在六份 fixture 上從未觸發（頂層 `nas-5gs` 皆為 0），但它是為「未來別的載體」寫的。刪掉是拿「目前沒有」當「永遠不會有」—— 那正是 T1 這個 bug 的成因 |
-| **D6** | **`_dig` 深度上限 3，另加測試釘住「實際深度就是 2」** | 實測 `http2.mime_multipart.nas-5gs` 是 2 層。餘裕留一層；真正的守衛是那條測試 —— tshark 改結構時它會紅，而不是靠餘裕默默吐出不同結果。不夠再放寬 |
-| — | `carriers_of()` 加 `@cache` | 隔壁的 `adapters()` 本來就是 `@cache`（Rule 11：照 codebase 慣例）。非判斷題，直接折入 |
+| **D2** | **`sbi.ORDER` moves before `nas5gs`** | The contract states carriers precede payloads; T1 making SBI a carrier violates it. Measured: **zero frames** across three fixtures emit both SBI and NAS messages → **changing now is zero-diff**; changing after a real mixed frame appears means regenerating goldens |
+| **D3** | **`sbi.carrier_keys` returns both `SBI_STREAM` and the same-layer IMSI** | tshark already extracts the JSON body's IMSI as `mime_multipart.json.e212_e212_assoc_imsi`, **right beside the NAS block**. Measured: orphans 10 → **0**, flows 25 → **20**. ~3 lines |
+| **D4** | **A presentation-layer toggle controls whether IMSI attribution is displayed** (messages always decode) | decision. CLI/HTML side lands first; the React side inherits when Phase 3 wires real data |
+| **D5** | **Keep the top-level fallback, add `id(block)` dedup** | The line never fires on the six fixtures (top-level `nas-5gs` is always 0), but it exists for future carriers. Deleting it treats "not now" as "not ever" — the exact reasoning that caused the T1 bug |
+| **D6** | **`_dig` depth cap 3, plus a test pinning "actual depth is 2"** | Measured: `http2.mime_multipart.nas-5gs` is 2 levels. One level of slack; the real guard is the test — it reddens when tshark changes structure, instead of slack silently yielding different results. Widen only if needed |
+| — | `carriers_of()` gets `@cache` | the adjacent `adapters()` is already `@cache` (Rule 11: follow codebase convention). Not a judgement call; folded in |
 
-**效能（實測，非估計）**：有界遞迴讓 Python 端 parse 從 7.3ms → 14.0ms，但只佔端到端
-**1.63%**（tshark 解碼 398ms 才是瓶頸，1726 封包）。深度改 3 後更低。**不會有感。**
+**Performance (measured, not estimated)**: bounded recursion moves
+Python-side parse from 7.3 ms to 14.0 ms — **1.63%** of end-to-end
+(tshark's 398 ms decode is the bottleneck, 1726 packets). Lower still with
+depth 3. **Imperceptible.**
 
-## 失敗模式
+## Failure modes
 
-| 新路徑 | 一種真實的失敗 | 有測試？ | 有錯誤處理？ | 使用者看得到？ |
+| New path | A realistic failure | Tested? | Handled? | User-visible? |
 |---|---|---|---|---|
-| `_dig` | tshark 換版多包一層 → 靜默漏掉 | ✅ D6 的深度斷言會紅 | — | CI 會擋 |
-| `sbi.carrier_keys` | 舊 tshark 不產 `e212_e212_assoc_imsi` | ✅ 有／無兩態都測 | ✅ 優雅降級成只回 `SBI_STREAM` | 歸戶率下降，但不會壞 |
-| `_nas_blocks` 去重 | 同區塊兩條路都拿到 → 多算訊息 | ✅ 合成輸入測去重 | ✅ `id()` 去重 | 無（已擋在源頭） |
-| `carriers_of` | 外掛沒宣告 `CARRIES` → AttributeError | ✅ 比照 `test_plugins.py` | ✅ `getattr` 預設空 | 無 |
+| `_dig` | tshark adds a wrapping layer → silent loss | ✅ D6's depth assertion reddens | — | CI blocks |
+| `sbi.carrier_keys` | old tshark lacks `e212_e212_assoc_imsi` | ✅ both states tested | ✅ degrades to `SBI_STREAM` only | reduced attribution, no breakage |
+| `_nas_blocks` dedup | one block via both paths → double count | ✅ synthetic dedup test | ✅ `id()` dedup | none (stopped at source) |
+| `carriers_of` | plugin without `CARRIES` → AttributeError | ✅ per `test_plugins.py` | ✅ `getattr` default | none |
 
-**零 critical gap** —— 每個失敗模式都同時有測試與處理。
+**Zero critical gaps** — every failure mode has both a test and handling.
 
 ## NOT in scope
 
-| 項目 | 理由 |
+| Item | Reason |
 |---|---|
-| 從 SBI JSON body 解出 SUPI 以外的欄位（TEID / S-NSSAI / DNN） | 那是 GUI Phase 3 的 `sourceInterfaces` 那一組，不在 T1 的因果鏈上 |
-| 補 HPACK 缺口 | 原理上做不到 —— 動態表在擷取起點之前就建立了 |
-| Diameter / SIP 的 `CARRIES` | 本次只定契約形狀，不實作 Phase 2 的協定 |
-| `_to_int` 的五份重複 | 既有 DRY 違反（`ngap`/`nas5gs`/`sbi`/`pfcp`/`extract` 各一份），不是 T1 造成的。列為 TODO |
-| React 介面的 IMSI 開關 | D4 的一半 —— 那側還在 Phase 1 mock，接真實資料時才做得完 |
+| extracting fields beyond SUPI from SBI JSON bodies (TEID / S-NSSAI / DNN) | that is GUI Phase 3's `sourceInterfaces` group, off T1's causal chain |
+| closing the HPACK gap | impossible in principle — the dynamic table predates the capture |
+| `CARRIES` for Diameter / SIP | this defines the contract shape only; Phase 2 protocols are not implemented here |
+| the five `_to_int` copies | a pre-existing DRY violation, not caused by T1. Listed as a TODO |
+| the React-side IMSI toggle | D4's other half — that side is still Phase 1 mock; only completable when real data is wired |
 
-## What already exists（重用，不重建）
+## What already exists (reuse, do not rebuild)
 
-- **`ngap.identity_keys()`** —— `ngap.carrier_keys` 原樣包它，不重寫。
-- **`sbi.parse()` 產的 `SBI_STREAM` 鍵** —— `sbi.carrier_keys` 必須產出**逐字相同**的鍵，兩者互為 oracle。
-- **`correlate()` 的聯集查找** —— 跨格連結（NAS 在 DATA 格、SUPI 在 HEADERS 格）完全由它處理，adapter 不需要自己找。
-- **`DECODE_AS` 的選用屬性前例** —— `CARRIES` / `carrier_keys` 照同一個模式（`getattr` 預設、不逼既有外掛改版）。
-- **`identity.scoped()` / `globally_unique()`** —— 不手寫前綴（CLAUDE.md §5）。
-- **六份既有 fixture** —— `5gc-e2e` 與 `multi-imsi` 就含 SBI 夾帶 NAS，**不需要新擷取檔**。
+- **`ngap.identity_keys()`** — `ngap.carrier_keys` wraps it verbatim.
+- **the `SBI_STREAM` key from `sbi.parse()`** — `sbi.carrier_keys` must
+  produce the **character-identical** key; each is the other's oracle.
+- **`correlate()`'s union-find** — cross-frame linking (NAS in the DATA
+  frame, SUPI in the HEADERS frame) is entirely its job.
+- **the `DECODE_AS` optional-attribute precedent** — `CARRIES` /
+  `carrier_keys` follow the same pattern.
+- **`identity.scoped()` / `globally_unique()`** — never hand-write
+  prefixes (CLAUDE.md §5).
+- **the six existing fixtures** — `5gc-e2e` and `multi-imsi` already
+  contain SBI-borne NAS; **no new capture needed**.
 
-## 平行化
+## Parallelisation
 
-Sequential implementation, no parallelization opportunity —— 五個步驟全部集中在
-`telcoladder/adapters/`，共用同一個模組目錄，拆 worktree 只會製造合併衝突。
+Sequential implementation, no parallelisation opportunity — all five steps
+live in `telcoladder/adapters/`; separate worktrees would only manufacture
+merge conflicts.
 
 ## Implementation Tasks
 
-- [ ] **T1a (P1, human: ~30min / CC: ~5min)** — `adapters/__init__.py` — 契約加 `CARRIES` / `carrier_keys` 兩個選用屬性 ＋ `@cache` 的 `carriers_of()`
-  - Surfaced by: 架構審查 —— `identity_keys` 目前是 `nas5gs` 直接 import `ngap` 的內部函式，不在契約裡
+- [ ] **T1a (P1, human: ~30min / CC: ~5min)** — `adapters/__init__.py` —
+  add `CARRIES` / `carrier_keys` as optional contract attributes plus a
+  `@cache`d `carriers_of()`
+  - Surfaced by: architecture review — `identity_keys` is currently a
+    direct internal import from ngap, outside the contract
   - Verify: `test_adapter_without_carries_still_works`
-- [ ] **T1b (P1, human: ~20min / CC: ~5min)** — `adapters/ngap.py` / `adapters/sbi.py` — 各自實作 `CARRIES` 與 `carrier_keys`；**`sbi.ORDER` 改到 20 以下**
-  - Surfaced by: D2、D3
-  - Verify: `test_carrier_keys_match_parse_keys`、`test_carrier_precedes_payload`
-- [ ] **T1c (P1, human: ~1h / CC: ~15min)** — `adapters/nas5gs.py` — `_dig`（深度 3）＋ `_nas_blocks` 走查表 ＋ `id()` 去重 ＋ `_identity_keys` 問載體
-  - Surfaced by: D5、D6
-  - Verify: `test_sbi_carried_nas_is_visible`（4 / 20 則）、`test_dig_actual_depth_is_2`
-- [ ] **T1d (P2, human: ~30min / CC: ~10min)** — 呈現層 — IMSI 歸戶顯示開關
+- [ ] **T1b (P1, human: ~20min / CC: ~5min)** — `adapters/ngap.py` /
+  `adapters/sbi.py` — implement `CARRIES` and `carrier_keys`;
+  **`sbi.ORDER` below 20**
+  - Surfaced by: D2, D3
+  - Verify: `test_carrier_keys_match_parse_keys`,
+    `test_carrier_precedes_payload`
+- [ ] **T1c (P1, human: ~1h / CC: ~15min)** — `adapters/nas5gs.py` —
+  `_dig` (depth 3) + `_nas_blocks` via lookup + `id()` dedup +
+  `_identity_keys` asking the carrier
+  - Surfaced by: D5, D6
+  - Verify: `test_sbi_carried_nas_is_visible` (4 / 20 messages),
+    `test_dig_actual_depth_is_2`
+- [ ] **T1d (P2, human: ~30min / CC: ~10min)** — presentation layer —
+  IMSI-attribution display toggle
   - Surfaced by: D4
-  - Verify: 開／關兩態各一條
-- [ ] **T1e (P2, human: ~20min / CC: ~5min)** — `CLAUDE.md §3.1` ＋ `docs/plugin-contract.md` — 修「`-T ek` 不扁平」並記載兩個新屬性
-  - Surfaced by: T3（本來就在完成線上，與 T1 同源）
-  - Verify: 人工閱讀
-- [ ] **T1f (P2, human: ~30min / CC: ~8min)** — `adapters/*.py` ＋ `extract.py` — 五份 `_to_int` 整併為一份（D7，使用者裁定併入 T1）
-  - Surfaced by: 程式碼品質審查 —— DRY 違反，五處實作
-  - **⚠ 不是純搬移**：四個 adapter 版本逐位元組相同，但 `extract.py` 那份多一個
-    `if isinstance(value, int): return value`。對整數兩者同值，**對布林不同** ——
-    `extract` 回 `1`，adapter 回 `None`（`str(True)` → `ValueError`）。tshark 的 ek
-    是 JSON，布林可能出現。
-  - **做法**：統一採 `extract.py` 的超集版本（它已經是公用模組），並**加一條測試明確
-    釘住布林輸入的結果**，讓這個行為改變是寫下來的而不是順手發生的。
-  - Files: `telcoladder/extract.py`, `telcoladder/adapters/{ngap,nas5gs,sbi,pfcp}.py`
-  - Verify: `test_to_int_accepts_bool`；全套 326 綠
+  - Verify: one test per state
+- [ ] **T1e (P2, human: ~20min / CC: ~5min)** — `CLAUDE.md §3.1` +
+  `docs/plugin-contract.md` — fix "`-T ek` is not flat" and document the
+  two new attributes
+  - Surfaced by: T3 (already on the completion line, same root as T1)
+  - Verify: human read
+- [ ] **T1f (P2, human: ~30min / CC: ~8min)** — `adapters/*.py` +
+  `extract.py` — consolidate the five `_to_int` copies into one (D7, user
+  ruled it into T1)
+  - Surfaced by: code-quality review — DRY violation, five implementations
+  - **⚠ Not a pure move**: the four adapter versions are byte-identical,
+    but `extract.py`'s adds `if isinstance(value, int): return value`.
+    Equal for ints, **different for booleans** — `extract` returns `1`,
+    the adapters return `None` (`str(True)` → `ValueError`). tshark's ek
+    is JSON; booleans can appear.
+  - **Approach**: adopt `extract.py`'s superset (already the shared
+    module), and **add a test explicitly pinning the boolean-input
+    result**, so the behaviour change is written down rather than
+    incidental.
+  - Files: `telcoladder/extract.py`,
+    `telcoladder/adapters/{ngap,nas5gs,sbi,pfcp}.py`
+  - Verify: `test_to_int_accepts_bool`; full suite of 326 green
 
-## 刻意不做
+## Deliberately not done
 
-| 項目 | 為什麼 |
+| Item | Why |
 |---|---|
-| 從 SBI 的 JSON body 抽 SUPI | 那能把剩下三分之二歸戶，但需要解 multipart 的 JSON part，是另一個能力。屬於 GUI Phase 3 的 `sourceInterfaces` 那一組 |
-| 補 HPACK 缺口 | 原理上做不到 —— 動態表在擷取起點之前就建立了 |
-| Diameter / SIP 的 `CARRIES` | 本次只定契約形狀，不實作 Phase 2 的協定 |
-| 改 `_supis_in_path` | 不在 T1 的因果鏈上 |
+| extracting the SUPI from SBI JSON bodies | it would attribute the remaining two-thirds, but requires parsing the multipart JSON part — a separate capability, in GUI Phase 3's `sourceInterfaces` group |
+| closing the HPACK gap | impossible in principle — the dynamic table predates the capture |
+| `CARRIES` for Diameter / SIP | contract shape only; Phase 2 protocols not implemented here |
+| changing `_supis_in_path` | off T1's causal chain |
 
-## 驗收
+## Acceptance
 
 ```bash
-.venv/bin/pytest -q                       # 326 + 新測試，全綠
+.venv/bin/pytest -q                       # 326 + new tests, all green
 .venv/bin/telcoladder analyze tests/fixtures/multi-imsi/capture.pcap --html /tmp/a.html
 ```
 
-手動：拿使用者的真實 ue_trace 跑，確認那則 `PDU session establishment reject`
-出現在輸出裡（現在完全看不到）。
+Manual: run the user's real ue_trace and confirm the
+`PDU session establishment reject` appears in the output (currently
+entirely invisible).
 
-## 規模
+## Size
 
-程式 ~120 行、測試 ~180 行、文件（`CLAUDE.md §3.1` 修正 ＋ `docs/plugin-contract.md`
-新增兩個選用屬性）~40 行。human ~4h / CC ~40min。
+~120 lines of code, ~180 of tests, ~40 of documentation (the
+`CLAUDE.md §3.1` correction plus the two new optional attributes in
+`docs/plugin-contract.md`). Human ~4 h / CC ~40 min.
 
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `the scope review` | Scope & strategy | 2 | CLEAR (2026-08-18) | mode: SCOPE_REDUCTION, 0 critical gaps, 6 deferred |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex_reviews disabled；依規則整節跳過，不退回 subagent |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex_reviews disabled; section skipped per the rules, no subagent fallback |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | **CLEAR (2026-08-19)** | 5 issues, 0 critical gaps, FULL_REVIEW |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (2026-08-18) | score: 5/10 → 9/10, 7 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 1 | CLEAR (2026-08-18) | score: 7/10 → 8/10, TTHW: <1min → champion |
 
-**VERDICT:** CEO + ENG + DESIGN + DX CLEARED —— T1 可以開始實作。
+**VERDICT:** CEO + ENG + DESIGN + DX CLEARED — T1 may begin implementation.
 
-五個發現全部有裁定並折入計畫（D2 ORDER、D3 載體身分、D4 顯示開關、D5 去重、D6 深度上限），
-零 critical gap。所有結論以實測為據而非推論：巢狀路徑、流程數變化、歸戶率、效能佔比
-都在本檔留下數字，之後有人要推翻請重新量。
+All five findings carry rulings folded into the plan (D2 ORDER, D3 carrier
+identity, D4 display toggle, D5 dedup, D6 depth cap); zero critical gaps.
+Every conclusion rests on measurement, not inference: nesting paths, flow
+count deltas, attribution rates, and performance share are all recorded as
+numbers in this document — re-measure before overturning any of them.
 
 NO UNRESOLVED DECISIONS

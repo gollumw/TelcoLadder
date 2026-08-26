@@ -1,41 +1,48 @@
-# TelcoLadder 語意色調校與視覺系統完成報告
+# TelcoLadder Semantic Colour Calibration and Visual System Report
 
-## 1. 語意色調校：Lightness 嚴格拉齊（L = 0.720–0.721）
+## 1. Semantic colours: strict lightness alignment (L = 0.720–0.721)
 
-依據回饋，我們放棄物理上無法在 sRGB 取得一致的「等 Chroma」限制，改採**「Lightness 嚴格拉齊至 0.72、Chroma 各自取各色相在 sRGB 色域上限的 ~88%」**。
+The original "equal chroma" constraint is physically unattainable in sRGB, so
+the palette instead **aligns Lightness strictly to 0.72 and sets Chroma to
+~88% of each hue's sRGB gamut ceiling**.
 
-### 1.1 最終色碼與實測反算值（OKLCH 反算）
+### 1.1 Final colours and back-computed OKLCH values
 
-> 計算基準：標準 OKLab/OKLCH 轉換式（Björn Ottosson, 2020），畫布底色 Canvas: `#090d16`（反算 OKLCH: `0.160 / 0.0203 / 265.6°`）。
+> Basis: the standard OKLab/OKLCH transforms (Björn Ottosson, 2020). Canvas
+> background: `#090d16` (back-computed OKLCH: `0.160 / 0.0203 / 265.6°`).
 
-| 語意角色 | 最終色碼 (sRGB) | 反算 Lightness (L) | 反算 Chroma (C) | 反算 Hue (H) | 對比度 (對 Canvas `#090d16`) | WCAG 評級 |
+| Semantic role | Final sRGB | Lightness (L) | Chroma (C) | Hue (H) | Contrast vs canvas `#090d16` | WCAG |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Fail** (玫瑰紅) | `#f67a73` | **0.721** | 0.1534 | 24.9° | **7.36:1** | AAA (7:1) ✓ |
-| **Warn** (琥珀金) | `#d59733` | **0.720** | 0.1336 | 74.9° | **7.68:1** | AAA (7:1) ✓ |
-| **OK** (翡翠綠) | `#3ac178` | **0.721** | 0.1571 | 155.0° | **8.40:1** | AAA (7:1) ✓ |
-| **Accent** (訊號青) | `#39b6d0` | **0.720** | 0.1120 | 214.8° | **8.12:1** | AAA (7:1) ✓ |
+| **Fail** (rose) | `#f67a73` | **0.721** | 0.1534 | 24.9° | **7.36:1** | AAA (7:1) ✓ |
+| **Warn** (amber) | `#d59733` | **0.720** | 0.1336 | 74.9° | **7.68:1** | AAA (7:1) ✓ |
+| **OK** (emerald) | `#3ac178` | **0.721** | 0.1571 | 155.0° | **8.40:1** | AAA (7:1) ✓ |
+| **Accent** (cyan) | `#39b6d0` | **0.720** | 0.1120 | 214.8° | **8.12:1** | AAA (7:1) ✓ |
 
-- **Lightness 最大跨度**：
+- **Maximum lightness spread**:
   $$\Delta L = L_{\max} - L_{\min} = 0.721 - 0.720 = \mathbf{0.001}$$
-  （遠在要求之 $\pm 0.02$ 內，四色在感知與灰階下視覺份量完全一致）。
-- **對比度餘裕**：全部大幅超越 WCAG AA（4.5:1）與 AAA（7.0:1）標準。
+  (well inside the required $\pm 0.02$; the four colours carry equal
+  perceptual weight, including in greyscale).
+- **Contrast headroom**: all four comfortably exceed WCAG AA (4.5:1) and
+  AAA (7.0:1).
 
 ---
 
-## 2. 測試與不變量守護
+## 2. Tests and invariant guards
 
-1. **前端編譯**：
-   - `npm run build`：0 警告，產出 `telcoladder/static/app.{js,css}`。
-2. **測試套件**：
-   - `pytest`：**514 passed in 136s**（包含後端解碼樹 PDML `show` 屬性新增的 2 項測試與全部 19 項資產不變量測試）。
-3. **PORTED.json 釘住**：
-   - `SessionAnalysisView.tsx`（`c1ac3dbc0e37f1d2a280f4d2a7fd3bf1592afff8abcad3065d095352e1f68410`）與所有分岔檔案雜湊精確記錄。
+1. **Front-end build**: `npm run build` — 0 warnings, producing
+   `telcoladder/static/app.{js,css}`.
+2. **Test suite**: `pytest` — **514 passed in 136 s** (including the 2 new
+   tests for the decode tree's PDML `show` attribute and all 19 asset
+   invariant tests).
+3. **PORTED.json pinning**: `SessionAnalysisView.tsx`
+   (`c1ac3dbc0e37f1d2a280f4d2a7fd3bf1592afff8abcad3065d095352e1f68410`) and
+   every diverged file's hash recorded exactly.
 
 ---
 
-## 3. 截圖產物清單
+## 3. Screenshot inventory
 
-所有截圖已同步輸出至 `docs/images/` 與 Artifact 目錄：
+All screenshots are exported to `docs/images/`:
 
 ![08 - Grayscale Failure View (ki-mismatch)](images/08_grayscale_ki_mismatch.png)
 
@@ -53,4 +60,5 @@
 
 ![05 - unknown-dnn Warning Banner](images/05_unknown_dnn_banner.png)
 
-README 預覽圖 [`docs/images/browser.png`](images/browser.png) 已更新為最新渲染結果。
+The README preview image [`docs/images/browser.png`](images/browser.png) is
+updated to the latest render.

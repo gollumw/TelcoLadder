@@ -23,9 +23,10 @@ This is the honest limit of packet capture alone, and it is the reason TelcoLadd
 now reports a ciphered-NAS count instead of staying silent:
 
 ```
-2 條流程、17 則訊息
-⚠ 另有 6 則 NAS 訊息已加密，內層看不到（Security Mode Command 之後為正常現象）。
-  若流程看起來成功但實際失敗，原因可能就在其中 —— 請對照核網日誌。
+2 flows, 17 messages
+⚠ 6 more NAS messages are ciphered and unreadable (normal after Security
+  Mode Command). If a flow looks successful but actually failed, the reason
+  may be in there — check the core-network logs.
 ```
 
 Without that warning the user reads the diagram as a success. The tool was behaving

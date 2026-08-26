@@ -1,62 +1,75 @@
-# Diameter：EPC 附著 ＋ IMS 註冊 ＋ Gx 策略，含三種失敗
+# Diameter: EPC attach + IMS registration + Gx policy, with three failures
 
-**這份擷取檔不是側錄線路，是照 RFC 6733 的線路格式逐位元組寫出來的**
-（`make.py`，Apache-2.0，同本 repo）。理由與 `ne-trace/` 相同：真實的
-S6a／Cx／Gx 擷取檔一律含真實訂戶資料，依 CLAUDE.md §2.1 不得進版控，
-而本專案手上沒有 4G/IMS 測試床。
+**This capture is not sniffed off a wire — it is written byte-by-byte in
+RFC 6733's wire format** (`make.py`, Apache-2.0, this repository). The
+reasoning matches `ne-trace/`: real S6a/Cx/Gx captures always contain real
+subscriber data and cannot enter version control (CLAUDE.md §2.1), and this
+project has no 4G/IMS testbed.
 
-重新產生：`python3 make.py`。輸出逐位元組可重現（時間戳寫死、無亂數），
-所以任何人都能重跑一次再 `diff` 驗證這個檔沒有被動過手腳。
+Regenerate: `python3 make.py`. The output is byte-reproducible (fixed
+timestamps, no randomness), so anyone can re-run and `diff` to verify the
+file has not been tampered with.
 
-## 交叉驗證
+## Cross-validation
 
-`tshark` 的 Diameter 解剖器認得每一格（30/30），且命令名稱與 Application-Id
-與 `make.py` 寫進去的一致 —— 兩個獨立實作對同一份位元組達成一致，
-這就是這份 fixture 的 oracle。
+tshark's Diameter dissector recognises every frame (30/30), and the command
+names and Application-Ids agree with what `make.py` wrote — two independent
+implementations agreeing on the same bytes is this fixture's oracle.
 
-## 內容（30 格，7 條 TCP 連線）
+## Contents (30 frames, 7 TCP connections)
 
-| 介面 | App-Id | 交換 | 結果 |
+| Interface | App-Id | Exchange | Result |
 |---|---|---|---|
-| Base | 0 | CER/CEA、DWR/DWA | Result-Code 2001 |
-| S6a | 16777251 | AIR/AIA、ULR/ULA（IMSI …895） | Result-Code 2001 |
-| Gx | 16777238 | CCR/CCA（IMSI …895） | Result-Code 2001 |
-| Cx | 16777216 | UAR/UAA、MAR/MAA、SAR/SAA（IMPI …895@ims…） | Experimental 2001／Result-Code 2001 |
-| S6a | 16777251 | ULR/ULA（IMSI …891） | **Experimental-Result-Code 5420** |
-| Cx | 16777216 | MAR/MAA（IMPI …892@ims…） | **Experimental-Result-Code 5001** |
-| Gx | 16777238 | CCR/CCA（IMSI …892） | **Result-Code 5012**（E 旗標） |
-| S6a 經 DRA | 16777251 | AIR/AIA（IMSI …895），MME → DRA → HSS 兩段 | Result-Code 2001；DRA 轉送的那一腿帶 **Route-Record** |
-| S6a 經 DRA | 16777251 | ULR/ULA（IMSI …891），同樣兩段 | **Experimental 5420** —— 同一則失敗被看到兩次，程序層必須收成一次 |
+| Base | 0 | CER/CEA, DWR/DWA | Result-Code 2001 |
+| S6a | 16777251 | AIR/AIA, ULR/ULA (IMSI …895) | Result-Code 2001 |
+| Gx | 16777238 | CCR/CCA (IMSI …895) | Result-Code 2001 |
+| Cx | 16777216 | UAR/UAA, MAR/MAA, SAR/SAA (IMPI …895@ims…) | Experimental 2001 / Result-Code 2001 |
+| S6a | 16777251 | ULR/ULA (IMSI …891) | **Experimental-Result-Code 5420** |
+| Cx | 16777216 | MAR/MAA (IMPI …892@ims…) | **Experimental-Result-Code 5001** |
+| Gx | 16777238 | CCR/CCA (IMSI …892) | **Result-Code 5012** (E flag) |
+| S6a via DRA | 16777251 | AIR/AIA (IMSI …895), MME → DRA → HSS, two legs | Result-Code 2001; the DRA's forwarded leg carries **Route-Record** |
+| S6a via DRA | 16777251 | ULR/ULA (IMSI …891), same two legs | **Experimental 5420** — the same failure observed twice; the procedure layer must collapse it to one |
 
-三種失敗是刻意挑的，因為它們踩在**同一個號碼在兩張表裡意思完全不同**的線上：
+The three failures are chosen deliberately because they sit on the line
+where **the same number means entirely different things in the two tables**:
 
-* `Experimental-Result-Code 5001` ＝ `DIAMETER_ERROR_USER_UNKNOWN`
-* **基礎** `Result-Code 5001` ＝ `DIAMETER_AVP_UNSUPPORTED`
+* `Experimental-Result-Code 5001` = `DIAMETER_ERROR_USER_UNKNOWN`
+* **Base** `Result-Code 5001` = `DIAMETER_AVP_UNSUPPORTED`
 
-查錯表會得到一個看起來完全合理的錯誤解釋 —— 與 CLAUDE.md §3.2（NGAP 的
-Cause 是 CHOICE，五個群組各自從 0 編號）同一類的陷阱。所以這份檔同時放了
-「3GPP 的 5xxx」與「基礎的 5xxx」，讓那條判斷有東西可以踩。
+Looking up the wrong table yields a perfectly plausible wrong explanation —
+the same trap class as CLAUDE.md §3.2 (NGAP's Cause is a CHOICE with five
+groups each numbered from 0). This file therefore carries both "3GPP 5xxx"
+and "base 5xxx" so that judgement has something to exercise it.
 
-## 訂戶
+## Subscribers
 
-全部落在 ITU-T E.212 保留給測試網的 MCC 001（`00101…`），與其他 fixture 同一
-個網段。節點位址用 RFC 5737 的文件用網段 `198.51.100.0/24`，realm 用
-3GPP 的標準格式但 MCC/MNC 是測試值。**沒有任何真實網路的東西。**
+All fall in ITU-T E.212's test-network MCC 001 (`00101…`), the same range as
+the other fixtures. Node addresses use RFC 5737's documentation range
+`198.51.100.0/24`; realms use 3GPP's standard format with test MCC/MNC
+values. **Nothing belongs to any real network.**
 
-## 這份檔證明不了什麼
+## What this file cannot prove
 
-別把測試通過當成涵蓋了這些（`make.py` 檔頭有同一份清單）：
+Do not read passing tests as covering any of this (`make.py`'s header
+carries the same list):
 
-* **真實網路的 AVP 組合遠比這裡豐富** —— 真實的 ULA 帶著整份
-  `Subscription-Data`（巢狀十幾層），那條路沒被測到。
-* **沒有 SCTP** —— 全部走 TCP 3868。真實 EPC 的 Diameter 多半在 SCTP 上。
-* **沒有分段與重組** —— 每則訊息剛好一個 TCP segment。
-* **DRA 的兩筆刻意一成一敗。** 成功那筆驗不出「去重對不對」（失敗次數兩邊
-  都是 0），所以另加一筆失敗的 —— 那條路徑上同一則回應被看到兩次，
-  `Procedure.failures` 必須是 1。轉送腿照 RFC 6733 §6.2 配**新的 Hop-by-Hop、
-  保留 End-to-End**，所以拿 hop 當去重鍵會當場算錯。
-* **DRA 只走 Route-Record 這條證據。** 第一版沒有 DRA；2026-08-23 加了
-  MME → DRA → HSS 的四格，而且實測 `Destination-Host` 比對在它身上**找不到**中繼
-  （代理保留原始 `Origin-Host`）。所以這份檔驗得了 Route-Record 那條路，驗不了
-  redirect agent、多級中繼、或 answer-only 的擷取（answer 不帶 Route-Record）。
-* **時間是編出來的** —— 任何關於延遲的判斷在這份檔上沒有意義。
+* **Real-network AVP variety is far richer** — a real ULA carries a full
+  `Subscription-Data` (a dozen nesting levels); that path is untested.
+* **No SCTP** — everything rides TCP 3868. Real EPC Diameter mostly runs
+  over SCTP.
+* **No fragmentation or reassembly** — every message is exactly one TCP
+  segment.
+* **The two DRA transactions are deliberately one success, one failure.**
+  The success cannot verify the dedup (failure counts equal either way), so
+  a failing one was added — on that path the same answer is observed twice
+  and `Procedure.failures` must be 1. The forwarded legs follow RFC 6733
+  §6.2 (**new Hop-by-Hop, same End-to-End**), so keying dedup on hop
+  miscounts immediately.
+* **The DRA is evidenced only by Route-Record.** The first version had no
+  DRA; the four MME → DRA → HSS frames were added on 2026-08-23, and
+  measurement showed `Destination-Host` matching finds **no** relay on it
+  (proxies preserve the original `Origin-Host`). This file therefore
+  verifies the Route-Record path and cannot verify redirect agents,
+  multi-hop relaying, or answer-only captures (answers carry no
+  Route-Record).
+* **Timing is invented** — no latency judgement is meaningful on this file.
