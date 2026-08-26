@@ -718,7 +718,7 @@ def _error_page(message: str, *, hint: str = "", detail: str = "") -> str:
         body.append(f"<p>{esc(hint)}</p>")
     if detail:
         body.append(f"<pre>{esc(detail)}</pre>")
-    body.append(f'</div><a class="back" href="/">{esc(_('← Back to the home page'))}</a>')
+    body.append(f'</div><a class="back" href="/">{esc(_("← Back to the home page"))}</a>')
     return _shell("TelcoLadder", "".join(body))
 
 
@@ -744,7 +744,7 @@ def _language_switch() -> str:
         f'<a href="/?lang={code}"{" class=on" if code == current else ""}>{label}</a>'
         for code, label in (("en", "English"), ("zh_TW", "中文"))
     )
-    return f'<p class="lang" style="text-align:right;margin:-6px 0 10px">{esc(_('Language'))}: {links}</p>'
+    return f'<p class="lang" style="text-align:right;margin:-6px 0 10px">{esc(_("Language"))}: {links}</p>'
 
 
 # 首頁樣式與腳本的設計筆記（原本寫在 CSS／JS 註解裡，會隨頁面送到瀏覽器 ——
