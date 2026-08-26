@@ -37,18 +37,19 @@
     },
     "src/lib/mock-data.ts": {
       "original_sha256": "fbb7ab75556a3bc10a2cb8cb8ef38e53a06a0dec5830c848e574bedf7d26853e",
-      "current_sha256": "0fcbce34046ef89a5071c3ff27fd8df4e3fea2dfad67a4fd1b1b05469b2407b3",
+      "current_sha256": "ed739c08a7419e55d87b7f34b5aedd3e744982a78c73800925c190fbb7ee0e0b",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "一行：`assignByteRanges(seed.decodeTree ?? [], …)`。`decodeTree` 在型別上已改選用，手寫的 seed 一律有，但 tsc 需要這個保護。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。",
-      "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。"
+      "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
+      "reason": "2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。"
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "69d2f5769f430986b0478dc7a4935e6ae9cf30094012033a2fe8b781a93d9655",
+      "current_sha256": "cb8d92cc20ae1be25e55710e8f6d0e15e778cf3dba57a085f70c50f4fe245a76",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。協定快篩鈕與身分搜尋的下拉選單改由引擎供應（`Dataset.protocolFilters` / `identityKinds`），拿掉兩份寫死的 5G 清單（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
-      "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。"
+      "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。 2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。"
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",

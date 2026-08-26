@@ -25,7 +25,7 @@ const USER_B_SUPI = "imsi-001010987654321";
 const USER_C_SUPI = "imsi-001010555555555";
 
 const sessionIdentities: SessionIdentity[] = [
-  { supi: USER_A_SUPI, guti: "001-01-8001-0002-C3F1A9", msisdn: "12015550123", imei: "358752119876543", captureStatus: "complete" },
+  { supi: USER_A_SUPI, guti: "001-01-8001-0002-C3F1A9", msisdn: "12015550123", imei: "123456789012345", captureStatus: "complete" },
   // Rejected before GUTI assignment / subscriber-profile lookup — there is genuinely nothing else to show.
   { supi: USER_B_SUPI, captureStatus: "complete" },
   // Capture starts after Registration — GUTI/MSISDN/IMEI were never observed, not just omitted.
@@ -90,7 +90,7 @@ const packetSeeds: PacketSeed[] = [
     frameNumber: 1,
     timestamp: "2026-08-19T01:05:12.100000Z",
     epochMicroseconds: 1755565512100000,
-    srcIp: "192.0.2.109",
+    srcIp: "198.51.100.9",
     srcPort: 51820,
     dstIp: "192.0.2.62",
     dstPort: 53,
@@ -100,7 +100,7 @@ const packetSeeds: PacketSeed[] = [
     domain: "USER_PLANE_N4_N3",
     status: "INFO",
     decodeTree: [
-      ...baseLayers({ frameNumber: 1, length: 74, srcIp: "192.0.2.109", srcPort: 51820, dstIp: "192.0.2.62", dstPort: 53, transport: "UDP" }),
+      ...baseLayers({ frameNumber: 1, length: 74, srcIp: "198.51.100.9", srcPort: 51820, dstIp: "192.0.2.62", dstPort: 53, transport: "UDP" }),
       {
         id: "f1-dns",
         label: "Domain Name System",
@@ -404,7 +404,7 @@ const packetSeeds: PacketSeed[] = [
             label: "Create PDR (PDR ID 1)",
             detail: "Precedence 100",
             children: [
-              { id: "f9-pdr1-pdi", label: "PDI", detail: "Source Interface: Access, Local F-TEID 0x2F3A9C11, UE IP 192.0.2.122" },
+              { id: "f9-pdr1-pdi", label: "PDI", detail: "Source Interface: Access, Local F-TEID 0x2F3A9C11, UE IP 198.51.100.22" },
               { id: "f9-pdr1-far", label: "FAR ID", detail: "1" },
             ],
           },
@@ -657,7 +657,7 @@ const packetSeeds: PacketSeed[] = [
             label: "Create PDR (PDR ID 1)",
             detail: "Precedence 100",
             children: [
-              { id: "f16-pdr1-pdi", label: "PDI", detail: "Source Interface: Access, Local F-TEID 0x1A4B8C99, UE IP 192.0.2.155" },
+              { id: "f16-pdr1-pdi", label: "PDI", detail: "Source Interface: Access, Local F-TEID 0x1A4B8C99, UE IP 198.51.100.55" },
               { id: "f16-pdr1-far", label: "FAR ID", detail: "1" },
             ],
           },
@@ -943,7 +943,7 @@ const packetSeeds: PacketSeed[] = [
     epochMicroseconds: 1755565512700615,
     srcIp: "192.0.2.62",
     srcPort: 53,
-    dstIp: "192.0.2.109",
+    dstIp: "198.51.100.9",
     dstPort: 51820,
     protocol: "DNS",
     length: 98,
@@ -951,7 +951,7 @@ const packetSeeds: PacketSeed[] = [
     domain: "USER_PLANE_N4_N3",
     status: "INFO",
     decodeTree: [
-      ...baseLayers({ frameNumber: 25, length: 98, srcIp: "192.0.2.62", srcPort: 53, dstIp: "192.0.2.109", dstPort: 51820, transport: "UDP" }),
+      ...baseLayers({ frameNumber: 25, length: 98, srcIp: "192.0.2.62", srcPort: 53, dstIp: "198.51.100.9", dstPort: 51820, transport: "UDP" }),
       {
         id: "f25-dns",
         label: "Domain Name System",
@@ -967,7 +967,7 @@ const packetSeeds: PacketSeed[] = [
     frameNumber: 26,
     timestamp: "2026-08-19T01:05:12.720615Z",
     epochMicroseconds: 1755565512720615,
-    srcIp: "192.0.2.109",
+    srcIp: "198.51.100.9",
     srcPort: 123,
     dstIp: "192.0.2.63",
     dstPort: 123,
@@ -977,7 +977,7 @@ const packetSeeds: PacketSeed[] = [
     domain: "USER_PLANE_N4_N3",
     status: "INFO",
     decodeTree: [
-      ...baseLayers({ frameNumber: 26, length: 48, srcIp: "192.0.2.109", srcPort: 123, dstIp: "192.0.2.63", dstPort: 123, transport: "UDP" }),
+      ...baseLayers({ frameNumber: 26, length: 48, srcIp: "198.51.100.9", srcPort: 123, dstIp: "192.0.2.63", dstPort: 123, transport: "UDP" }),
       {
         id: "f26-ntp",
         label: "Network Time Protocol",
@@ -995,7 +995,7 @@ const packetSeeds: PacketSeed[] = [
     epochMicroseconds: 1755565512738615,
     srcIp: "192.0.2.63",
     srcPort: 123,
-    dstIp: "192.0.2.109",
+    dstIp: "198.51.100.9",
     dstPort: 123,
     protocol: "NTP",
     length: 48,
@@ -1003,7 +1003,7 @@ const packetSeeds: PacketSeed[] = [
     domain: "USER_PLANE_N4_N3",
     status: "SUCCESS",
     decodeTree: [
-      ...baseLayers({ frameNumber: 27, length: 48, srcIp: "192.0.2.63", srcPort: 123, dstIp: "192.0.2.109", dstPort: 123, transport: "UDP" }),
+      ...baseLayers({ frameNumber: 27, length: 48, srcIp: "192.0.2.63", srcPort: 123, dstIp: "198.51.100.9", dstPort: 123, transport: "UDP" }),
       {
         id: "f27-ntp",
         label: "Network Time Protocol",
@@ -1432,7 +1432,7 @@ const correlationEntries: CorrelationEntry[] = [
     pduSessionId: 5,
     sNssai: { sst: 1, sd: "000001" },
     dnn: "internet",
-    ueIp: "192.0.2.122",
+    ueIp: "198.51.100.22",
     upfN3Teid: "0x2F3A9C11",
     gnbN3Teid: "0x88F10A02",
     qosFlowId: 1,
@@ -1455,7 +1455,7 @@ const correlationEntries: CorrelationEntry[] = [
     pduSessionId: 8,
     sNssai: { sst: 1, sd: "000002" },
     dnn: "ims",
-    ueIp: "192.0.2.155",
+    ueIp: "198.51.100.55",
     upfN3Teid: "0x1A4B8C99",
     gnbN3Teid: "0x99A8B7C1",
     qosFlowId: 2,
@@ -1478,7 +1478,7 @@ const correlationEntries: CorrelationEntry[] = [
     pduSessionId: 12,
     sNssai: { sst: 1, sd: "000001" },
     dnn: "internet",
-    ueIp: "192.0.2.140",
+    ueIp: "198.51.100.40",
     upfN3Teid: "0x77CC2201",
     gnbN3Teid: "0x33DD4402",
     qosFlowId: 1,

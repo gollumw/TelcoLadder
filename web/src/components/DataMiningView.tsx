@@ -251,7 +251,7 @@ export function DataMiningView({
                   setSearchResult(null);
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleTargetSearch()}
-                placeholder={t("e.g. 001010123456789 or 192.0.2.122")}
+                placeholder={t("e.g. 001010123456789 or 198.51.100.22")}
                 className="w-full rounded border border-border bg-surface-2 py-1.5 pl-8 pr-2 font-mono text-xs text-fg placeholder:text-fg-dim focus:border-signal-cyan focus:outline-none transition-colors"
               />
             </div>

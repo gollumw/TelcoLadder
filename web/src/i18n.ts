@@ -155,7 +155,7 @@ const zh_TW: Record<string, string> = {
   "Subscriber identity search": "電信身分精確搜尋",
   "Most common root causes": "現場最常見的根因",
   "UE IPv4/IPv6": "UE IPv4/IPv6",
-  "e.g. 001010123456789 or 192.0.2.122": "例如 001010123456789 或 192.0.2.122",
+  "e.g. 001010123456789 or 198.51.100.22": "例如 001010123456789 或 198.51.100.22",
   "Search & correlate": "搜尋並關聯",
   "No subscriber matches this identifier": "查無符合此識別碼的用戶",
   "Go to Session Analysis (this subscriber)": "前往 Session Analysis（此用戶）",
