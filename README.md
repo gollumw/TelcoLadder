@@ -69,13 +69,14 @@ on it.
 
 ## What it does today
 
-- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP, GTP-U and Diameter from
-  `pcap` / `pcapng` via `tshark` — 5G control plane, user plane, and the
-  EPC/IMS signalling that sits beside them, in the same timeline.
+- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP and GTP-U (5G); S1AP, NAS-EPS and
+  GTPv2-C (4G/EPC); SIP and Diameter (IMS) from `pcap` / `pcapng` via `tshark` —
+  three generations of signalling on one timeline, not three separate tools.
 - **Names the network functions** instead of showing IP addresses, and shows
-  the IP when the evidence is ambiguous rather than guessing. Roles a test
-  capture has actually produced: `gNB`, `AMF`, `SCP`, `AUSF`, `UDM`, `UDR`,
-  `PCF`, `SMF`, `UPF`.
+  the IP when the evidence is ambiguous rather than guessing. The 23 roles the
+  test captures actually produce: `gNB`, `AMF`, `AUSF`, `UDM`, `UDR`, `PCF`,
+  `BSF`, `NRF`, `SMF`, `UPF`, `SCP` (5G); `eNB`, `MME`, `SGW`, `PGW`, `HSS`,
+  `PCRF`, `PCEF`, `DRA` (4G/EPC); `UE`, `P-CSCF`, `I-CSCF`, `S-CSCF` (IMS).
 - **Understands relays.** A production core almost always has one — a 5G
   **SCP**, a Diameter **DRA**, a SIP proxy — and then every message's wire peer
   is the middlebox, not the network function you care about. TelcoLadder reads the
@@ -335,20 +336,36 @@ The real gap in the open-source tooling is not drawing 5G call flows — it is
 VoWiFi spans SIP (IMS), Diameter (Cx/Dx/Rx/S6a/SWx/SWm), GTP/NAS (EPC), and
 NGAP (5G), and no open tool stitches those into a single diagram.
 
-The architecture is built for that from day one: protocols are pluggable
-adapters registered through entry points, and the identity model already has
-slots for IMPI, IMPU, MSISDN, SIP Call-ID, Diameter Session-Id, and GTP TEID.
+**That gap is now closed for the control plane.** S1AP, NAS-EPS, GTPv2-C, SIP
+and Diameter all ship today, and they correlate: in the 4G VoLTE test capture,
+one subscriber's S1-MME attach, S11 bearer setup and Gm registration land in a
+**single** flow of 21 messages — bridged by the IMSI that GTPv2-C carries and
+by the no-ISIM IMPU that SIP derives back to it. The second subscriber does the
+same in 9. Neither is stitched by hand.
 
-The goal is that adding IMS means adding adapters rather than rewriting the
-core. That is a goal, not yet a proven property — wiring up SBI already forced
-one new axis into the adapter contract (`DECODE_AS`, because a display filter
-alone does not make tshark decode a protocol on a non-standard port). Expect
-IMS to find more.
+"Adding a protocol means adding an adapter rather than rewriting the core" was
+listed here as a goal, not a proven property. **It is now measured**: the core
+names zero adapters (`tools/archmap.py` reports it, and a test fails if the
+count leaves zero). Getting there took two rounds of paying that debt down —
+SBI had forced `DECODE_AS` into the contract, and NAS-5GS and SBI had left the
+pipeline importing them by name, which is now the optional `blind_spots()` hook.
+The three most recent adapters each landed without the core changing a line.
 
-Planned, in order: IMS adapters (SIP, Diameter) and EPC (GTP-C, NAS-EPS) →
-local-LLM root-cause narration over the extracted facts and the cause table.
-The model narrates; it never produces a clause number — that rule is in
-`CONTRIBUTING.md` and it applies to the model too.
+What is still missing, honestly:
+
+- **The 4G and IMS cause tables.** 286 cause values are extracted and none are
+  explained yet — `describe()` says "not in this tool" rather than guessing.
+  Spec-cited explanation is the whole point of this tool, so this is the next
+  piece of work, not polish.
+- **Media.** SIP records the SDP ports; nothing reads them yet. RTP/RTCP
+  correlation is the next adapter.
+- **A real IMS capture.** The 4G/IMS fixtures are hand-written byte by byte,
+  with `tshark` as the oracle. What that cannot prove is listed in each
+  `scenario.md`, and the CI badge does not cover it.
+
+After that: local-LLM root-cause narration over the extracted facts and the
+cause table. The model narrates; it never produces a clause number — that rule
+is in `CONTRIBUTING.md` and it applies to the model too.
 
 ## Prior art, and why this exists anyway
 

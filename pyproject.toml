@@ -1,18 +1,25 @@
 [project]
 name = "telcoladder"
 version = "0.1.0"
-description = "Turn telecom signalling captures into Mermaid sequence diagrams — 5G core today, IMS/VoLTE next."
+description = "Turn telecom signalling captures into Mermaid sequence diagrams — 5G core, 4G/EPC and IMS on one timeline."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "gollumw" }]
-keywords = ["5g", "ngap", "nas", "pcap", "wireshark", "mermaid", "sequence-diagram", "ims", "volte", "diameter"]
+keywords = ["5g", "4g", "lte", "ngap", "s1ap", "nas", "gtp", "sip", "pcap", "wireshark",
+            "mermaid", "sequence-diagram", "ims", "volte", "diameter"]
 
 # 相依刻意保持極少。tshark 是外部執行檔，不是 Python 套件。
 # 不用 pyshark：它只是 tshark 的慢包裝，多一層依賴無收益。
 dependencies = [
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gollumw/TelcoLadder"
+Repository = "https://github.com/gollumw/TelcoLadder"
+Issues = "https://github.com/gollumw/TelcoLadder/issues"
+Documentation = "https://github.com/gollumw/TelcoLadder/blob/master/docs/WALKTHROUGH.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
