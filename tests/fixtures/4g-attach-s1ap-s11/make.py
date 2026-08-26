@@ -32,7 +32,7 @@
 * **時間是編的**（每格差 1 秒），所以任何「耗時」數字都不具現實意義。
 * **NAS 內容只到能被 tshark 認出訊息型別為止** —— 完整的 NAS-EPS 解析是 T5。
 
-用法：`python tests/fixtures/s1ap-eps-attach/make.py`
+用法：`python tests/fixtures/4g-attach-s1ap-s11/make.py`
 """
 
 from __future__ import annotations
@@ -77,12 +77,17 @@ def sctp_data(src_port: int, dst_port: int, tsn: int, payload: bytes) -> bytes:
     return header[:8] + struct.pack("<I", checksum) + chunk
 
 
-def ip_packet(src: str, dst: str, payload: bytes) -> bytes:
+def udp_datagram(src_port: int, dst_port: int, payload: bytes) -> bytes:
+    """UDP。**校驗和填 0** —— IPv4 上那是合法的「不檢查」，tshark 不會抱怨。"""
+    return struct.pack("!HHHH", src_port, dst_port, 8 + len(payload), 0) + payload
+
+
+def ip_packet(src: str, dst: str, payload: bytes, protocol: int = 132) -> bytes:
     def to_bytes(addr: str) -> bytes:
         return bytes(int(part) for part in addr.split("."))
 
     header = struct.pack(
-        "!BBHHHBBH", 0x45, 0, 20 + len(payload), 1, 0, 64, 132, 0
+        "!BBHHHBBH", 0x45, 0, 20 + len(payload), 1, 0, 64, protocol, 0
     ) + to_bytes(src) + to_bytes(dst)
     total = sum(struct.unpack("!10H", header))
     total = (total & 0xFFFF) + (total >> 16)
@@ -265,11 +270,100 @@ def nas_ciphered() -> bytes:
     return bytes([0x27]) + bytes([0xAA, 0xBB, 0xCC, 0xDD]) + bytes([0x01]) + bytes(range(0x40, 0x4C))
 
 
+# ── GTPv2-C（S11 / S5-S8）—— TS 29.274 ────────────────────────────────
+#
+# **TLV，比 S1AP 的 ASN.1 PER 好寫得多**，但同樣拿 tshark 當 oracle。
+
+#: GTPv2-C 的 UDP 埠（TS 29.274）。**兩端共用** —— 與 PFCP 的 8805 同一種情況，
+#: 所以它不能用來判角色。
+GTPV2C_PORT = 2123
+
+
+def gtpv2_ie(ie_type: int, value: bytes, instance: int = 0) -> bytes:
+    """IE：型別(1) ＋ 長度(2) ＋ spare/instance(1) ＋ 值。"""
+    return struct.pack("!BHB", ie_type, len(value), instance & 0x0F) + value
+
+
+def gtpv2_message(message_type: int, teid: int | None, sequence: int,
+                  ies: list[bytes]) -> bytes:
+    """GTPv2-C 訊息。
+
+    第一個位元組：版本(2) 佔高三位，T 旗標表示有沒有帶 TEID。
+    **Create Session Request 的 TEID 是 0 而且旗標仍為 1** —— 那時 SGW 還沒
+    配給 MME 任何東西，但欄位在。
+    """
+    body = b"".join(ies)
+    flags = 0x40 | (0x08 if teid is not None else 0)
+    tail = (struct.pack("!I", teid) if teid is not None else b"") + \
+        sequence.to_bytes(3, "big") + b"\x00"
+    return struct.pack("!BBH", flags, message_type, len(tail) + len(body)) + tail + body
+
+
+def tbcd(digits: str) -> bytes:
+    """TBCD：**低位 nibble 是先來的那個數字**，奇數位補 0xF。"""
+    out = bytearray()
+    for i in range(0, len(digits), 2):
+        low = int(digits[i])
+        high = int(digits[i + 1]) if i + 1 < len(digits) else 0x0F
+        out.append((high << 4) | low)
+    return bytes(out)
+
+
+def f_teid(interface_type: int, teid: int, address: str) -> bytes:
+    """F-TEID：旗標(1) ＋ TEID(4) ＋ IPv4(4)。
+
+    旗標的最高位是「帶 IPv4」，低六位是介面型別 —— **介面型別分得出
+    控制面與使用者面**（10 = S11 MME GTP-C，11 = S11/S4 SGW GTP-C，
+    6/7 = S5/S8 的 SGW/PGW GTP-C）。
+    """
+    return struct.pack("!BI", 0x80 | (interface_type & 0x3F), teid) + \
+        bytes(int(x) for x in address.split("."))
+
+
+#: 需要的 IE 型別（TS 29.274 §8.1）。
+IE_IMSI = 1
+IE_CAUSE = 2
+IE_APN = 71
+IE_EBI = 73
+IE_F_TEID = 87
+IE_BEARER_CONTEXT = 93
+
+#: 需要的訊息型別（來源：`tshark -G values | awk -F'\t' '$2=="gtpv2.message_type"'`）。
+MSG_CREATE_SESSION_REQ = 32
+MSG_CREATE_SESSION_RSP = 33
+MSG_DELETE_SESSION_REQ = 36
+MSG_DELETE_SESSION_RSP = 37
+
+#: Cause（`gtpv2.cause`）。16 = 接受、73 = 沒有資源。
+CAUSE_ACCEPTED = 16
+CAUSE_NO_RESOURCES = 73
+
+
+def apn(name: str) -> bytes:
+    """APN 是 DNS 風格的標籤串：每段前面一個長度位元組。"""
+    return b"".join(bytes([len(part)]) + part.encode() for part in name.split("."))
+
+
 # ── 各介面的識別碼 ─────────────────────────────────────────────────────
 
 MME = "10.0.0.2"
 ENB_A = "10.0.0.1"
 ENB_B = "10.0.0.3"
+SGW = "10.0.0.4"
+PGW = "10.0.0.5"
+
+#: 各方替自己配的控制面 TEID。**收 TEID 的那一端擁有它** —— 送往某人時
+#: 用的是他配給你的號碼，所以 key 的範圍是**目的位址**（比照 `gtp.py`）。
+TEID_MME_S11 = 0x11110001
+TEID_SGW_S11 = 0x22220001
+TEID_SGW_S5 = 0x22225001
+TEID_PGW_S5 = 0x33335001
+
+#: **使用者面**的 TEID。刻意與 `TEID_SGW_S11` 用**同一個數字**，
+#: 而且掛在同一台 SGW 的同一個位址上 —— 那正是「GTP-C 走 2123、GTP-U 走
+#: 2152，同一台機器同一個 IP」的真實形狀。共用一個 `IdKind` 的話這兩條就會
+#: 被併成同一條隧道，而圖照樣畫得出來（T3 建 `GTP_TEID_C` 就是為了擋它）。
+TEID_SGW_S1U = TEID_SGW_S11
 
 #: TAI：擴充/選用旗標(1 byte) ＋ PLMN(3) ＋ TAC(2)。PLMN 是 MCC 001 / MNC 01。
 TAI_VALUE = bytes([0x00, 0x00, 0xF1, 0x10, 0x00, 0x01])
@@ -356,6 +450,64 @@ def build() -> list[tuple[str, str, bytes]]:
     return out
 
 
+def build_gtpv2() -> list[tuple[str, str, bytes]]:
+    """S11（MME↔SGW）與 S5/S8（SGW↔PGW）的承載建立與釋放。
+
+    **刻意與 S1AP 放在同一份擷取檔裡。** Create Session Request 帶著 IMSI，
+    所以訂戶一的 S11 會話應該與他的 S1-MME 流程**併成同一條** ——
+    那是 4G 版的「N4↔N2 靠 GTP-U 隧道端點搭橋」（§5），而這裡的橋是 IMSI。
+    分成兩份檔就驗不到那件事，而那正是這個工具與「另一個封包解碼器」的分界。
+    """
+    out: list[tuple[str, str, bytes]] = []
+    bearer = gtpv2_ie(IE_BEARER_CONTEXT, gtpv2_ie(IE_EBI, bytes([5])))
+
+    # ① 訂戶一：S11 建立 → S5/S8 建立 → 正常釋放
+    out.append((MME, SGW, gtpv2_message(MSG_CREATE_SESSION_REQ, 0, 1, [
+        gtpv2_ie(IE_IMSI, tbcd(TEST_IMSIS[1])),
+        gtpv2_ie(IE_APN, apn("internet.mnc001.mcc001.gprs")),
+        gtpv2_ie(IE_F_TEID, f_teid(10, TEID_MME_S11, MME)),   # S11 MME GTP-C
+        bearer,
+    ])))
+    out.append((SGW, PGW, gtpv2_message(MSG_CREATE_SESSION_REQ, 0, 2, [
+        gtpv2_ie(IE_IMSI, tbcd(TEST_IMSIS[1])),
+        gtpv2_ie(IE_F_TEID, f_teid(6, TEID_SGW_S5, SGW)),     # S5/S8 SGW GTP-C
+        bearer,
+    ])))
+    out.append((PGW, SGW, gtpv2_message(MSG_CREATE_SESSION_RSP, TEID_SGW_S5, 2, [
+        gtpv2_ie(IE_CAUSE, bytes([CAUSE_ACCEPTED, 0])),
+        gtpv2_ie(IE_F_TEID, f_teid(7, TEID_PGW_S5, PGW)),     # S5/S8 PGW GTP-C
+        bearer,
+    ])))
+    out.append((SGW, MME, gtpv2_message(MSG_CREATE_SESSION_RSP, TEID_MME_S11, 1, [
+        gtpv2_ie(IE_CAUSE, bytes([CAUSE_ACCEPTED, 0])),
+        gtpv2_ie(IE_F_TEID, f_teid(11, TEID_SGW_S11, SGW)),   # S11/S4 SGW GTP-C
+        # **同一則訊息裡同時帶控制面與使用者面的 F-TEID** —— 那是真實的形狀，
+        # 也是這份 fixture 唯一能踩到「兩個號碼空間不可混用」的地方。
+        gtpv2_ie(IE_BEARER_CONTEXT,
+                 gtpv2_ie(IE_EBI, bytes([5]))
+                 + gtpv2_ie(IE_F_TEID, f_teid(1, TEID_SGW_S1U, SGW))),  # S1-U SGW GTP-U
+    ])))
+    out.append((MME, SGW, gtpv2_message(MSG_DELETE_SESSION_REQ, TEID_SGW_S11, 3, [
+        gtpv2_ie(IE_EBI, bytes([5])),
+    ])))
+    out.append((SGW, MME, gtpv2_message(MSG_DELETE_SESSION_RSP, TEID_MME_S11, 3, [
+        gtpv2_ie(IE_CAUSE, bytes([CAUSE_ACCEPTED, 0])),
+    ])))
+
+    # ② 訂戶二：S11 建立**失敗** —— 與他在 S1AP 上的失敗是同一個人的兩層
+    out.append((MME, SGW, gtpv2_message(MSG_CREATE_SESSION_REQ, 0, 4, [
+        gtpv2_ie(IE_IMSI, tbcd(TEST_IMSIS[2])),
+        gtpv2_ie(IE_APN, apn("internet.mnc001.mcc001.gprs")),
+        gtpv2_ie(IE_F_TEID, f_teid(10, TEID_MME_S11 + 1, MME)),
+        bearer,
+    ])))
+    out.append((SGW, MME, gtpv2_message(MSG_CREATE_SESSION_RSP, TEID_MME_S11 + 1, 4, [
+        gtpv2_ie(IE_CAUSE, bytes([CAUSE_NO_RESOURCES, 0])),
+    ])))
+
+    return out
+
+
 def write_pcap(path: Path, packets: list[bytes]) -> None:
     data = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 1)
     for index, packet in enumerate(packets):
@@ -370,6 +522,9 @@ def main() -> None:
     packets = []
     for index, (src, dst, pdu) in enumerate(build(), start=1):
         packets.append(ip_packet(src, dst, sctp_data(S1AP_PORT, S1AP_PORT, index, pdu)))
+    for src, dst, pdu in build_gtpv2():
+        packets.append(ip_packet(
+            src, dst, udp_datagram(GTPV2C_PORT, GTPV2C_PORT, pdu), protocol=17))
     target = HERE / "capture.pcap"
     write_pcap(target, packets)
     print(f"寫出 {target.relative_to(HERE.parent.parent.parent)}：{len(packets)} 格")

@@ -1,9 +1,9 @@
-# s1ap-eps-attach — 4G S1-MME 的 Attach、失敗與號碼重用
+# 4g-attach-s1ap-s11 — 4G S1-MME 的 Attach、失敗與號碼重用
 
 由 `make.py` 逐位元組寫成，**14 格**，全部走 SCTP／PPID 18／埠 36412。
 授權同本 repo（`../../../LICENSE`）。
 
-重建：`python tests/fixtures/s1ap-eps-attach/make.py`
+重建：`python tests/fixtures/4g-attach-s1ap-s11/make.py`
 
 ## 為什麼是寫出來的
 

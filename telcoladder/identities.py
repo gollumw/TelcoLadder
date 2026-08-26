@@ -52,8 +52,9 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     IdKind.SIP_CALL_ID,
     # ENB/MME_UE_S1AP_ID **已於 2026-08-24 移出** —— `adapters/s1ap.py` 落地，
     # 開始產生它們。抓到這件事的正是同步測試（T3 就預告過「T4 落地那天會紅」）。
-    # GTP_TEID_C 還留著：GTPv2-C adapter 是 T6。
-    IdKind.GTP_TEID_C,
+    # GTP_TEID_C **已於 2026-08-24 移出** —— `adapters/gtpv2.py` 落地（T6）。
+    # T3 就預告過「T6 會走同一種建構子」，而掃描範圍在那時已經擴及
+    # `identity.py`，所以這次是乾淨地被抓到，不是又踩一次同樣的坑。
 )
 
 #: 給人看的類別名稱。

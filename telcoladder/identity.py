@@ -102,10 +102,32 @@ def gtp_tunnel(address: str, teid: object) -> IdKey | None:
     值解不出來就回 None —— 呼叫端不加這個 key。**寧可少一個關聯，
     也不要加一個算錯的**。
     """
+    return _tunnel(IdKind.GTP_TEID, address, teid)
+
+
+def gtp_control_tunnel(address: str, teid: object) -> IdKey | None:
+    """S11／S5-S8 的 **GTP-C** 端點 —— 與上面那個是**兩個號碼空間**。
+
+    分開的理由不是潔癖，是會接錯人：GTP-C 走 2123、GTP-U 走 2152，而
+    **同一台 SGW 兩者常是同一個 IP**。範圍是位址（與使用者面同一個設計），
+    所以共用 `IdKind` 的話，一條 S11 控制 session 與一條不相干的使用者面
+    隧道只要 TEID 數字撞號就會被 `correlate` 併成同一條 —— §5 那句
+    「最危險的失敗不是沒接上，而是接錯人」。
+
+    key 是 `(IdKind, str)`，所以 kind 不同就不會撞。T3 建 `GTP_TEID_C`
+    就是為了這一刻（CLAUDE.md §12）。
+
+    **正規化與 `gtp_tunnel` 共用 `_tunnel`** —— 讓兩邊各寫一份的話，
+    症狀是「明明是同一條 session，就是併不起來」，沒有任何一層會報錯。
+    """
+    return _tunnel(IdKind.GTP_TEID_C, address, teid)
+
+
+def _tunnel(kind: IdKind, address: str, teid: object) -> IdKey | None:
     number = _teid_int(teid)
     if number is None or not address:
         return None
-    return scoped(IdKind.GTP_TEID, address, number)
+    return scoped(kind, address, number)
 
 
 def _teid_int(value: object) -> int | None:

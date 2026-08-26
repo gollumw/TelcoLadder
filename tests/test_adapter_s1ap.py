@@ -29,7 +29,7 @@ from telcoladder.model import IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
-FIXTURE = Path(__file__).parent / "fixtures" / "s1ap-eps-attach" / "capture.pcap"
+FIXTURE = Path(__file__).parent / "fixtures" / "4g-attach-s1ap-s11" / "capture.pcap"
 
 
 @pytest.fixture(scope="module")
@@ -159,9 +159,13 @@ def test_two_enbs_reusing_the_same_ue_id_stay_apart(analysis) -> None:
         "掉到 2 通常代表兩個 eNB 的 UE ID 1 被併成同一條。"
     )
 
+    # **只看 S1AP 那幾則。** 這份 fixture 自 T6 起還帶著 S11／S5-S8，
+    # 而那些訊息的兩端是 MME／SGW／PGW —— 拿它們去找 eNB 會撈到別的東西。
+    # 一條流程跨多個介面**正是對的**（同一個訂戶），另有測試守那件事。
     by_enb = {}
     for flow in analysis.flows:
-        enbs = {m.src.ip for m in flow.messages} | {m.dst.ip for m in flow.messages}
+        s1ap = [m for m in flow.messages if m.protocol == "s1ap"]
+        enbs = {m.src.ip for m in s1ap} | {m.dst.ip for m in s1ap}
         enbs.discard("10.0.0.2")  # MME
         assert len(enbs) == 1, f"一條流程跨了多個 eNB：{enbs}"
         by_enb.setdefault(enbs.pop(), []).append(flow)
@@ -258,9 +262,12 @@ def test_roles_resolve_and_the_release_reply_points_the_right_way(analysis) -> N
                 if endpoint.role:
                     roles[endpoint.ip] = endpoint.role
 
-    assert roles == {"10.0.0.1": "eNB", "10.0.0.2": "MME", "10.0.0.3": "eNB"}, (
-        f"角色判定：{roles}。全空或缺一個通常代表某則訊息投出了矛盾的票。"
-    )
+    # SGW／PGW 是 T6 加的（S11／S5-S8），它們的角色來源不同 ——
+    # GTPv2-C 的 F-TEID IE 直接指名，見 `test_adapter_gtpv2.py`。
+    assert roles == {
+        "10.0.0.1": "eNB", "10.0.0.2": "MME", "10.0.0.3": "eNB",
+        "10.0.0.4": "SGW", "10.0.0.5": "PGW",
+    }, f"角色判定：{roles}。全空或缺一個通常代表某則訊息投出了矛盾的票。"
 
     complete = next(m for flow in analysis.flows for m in flow.messages
                     if m.label == "UEContextReleaseComplete")

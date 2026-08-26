@@ -6,6 +6,7 @@
   "adapters.carrier",
   "adapters.diameter",
   "adapters.gtp",
+  "adapters.gtpv2",
   "adapters.nas5gs",
   "adapters.naseps",
   "adapters.ngap",

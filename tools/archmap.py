@@ -64,7 +64,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("L2", "adapters", "entry point 註冊，加協定不必改核心", (
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",
         "adapters.pfcp", "adapters.gtp", "adapters.diameter", "adapters.s1ap",
-        "adapters.naseps", "adapters.carrier",
+        "adapters.naseps", "adapters.gtpv2", "adapters.carrier",
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
@@ -140,8 +140,10 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "掛在 S1AP 底下，走 `adapters/carrier.py` 的共用機制。**IMSI 進 `SUPI`**"
      "（T3 的單向門）。加密計數走 `blind_spots()` 鉤子 —— **核心一行沒改**。"
      "**cause 查表還沒有**（T-4G-CAUSE）。"),
-    ("4G 控制面", "adapters.gtpv2", "S11 · S5/S8", "T6",
-     "承載建立，TEID-C 關聯。與 GTP-U 是不同協定。"),
+    ("4G 控制面", "adapters.gtpv2", "S11 · S5/S8", "shipped",
+     "承載建立。**控制面與使用者面的 TEID 分成兩個號碼空間**（T3 的 `GTP_TEID_C`）——"
+     "同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，"
+     "走通用的 `NF_ROLE_HINTS_KEY`，**`nf.py` 不認得 GTPv2**。"),
     ("IMS 訊令", "adapters.sip", "Gm · Mw", "T7",
      "註冊與 INVITE，Call-ID 關聯，SDP 取媒體埠備用。**要先有第七道網**（已完成）。"),
     ("IMS 媒體", "adapters.rtp", "—", "deferred",
@@ -153,7 +155,7 @@ _DOMAIN_GROUPS = [
     ("G5", "5G 核網 · 已交付", ("5G 核網",), "ok"),
     ("GU", "使用者面 · 跨世代", ("使用者面",), "ok"),
     ("G4D", "4G / IMS 訂閱與政策 · 已交付", ("4G EPC · IMS",), "ok"),
-    ("G4", "4G 控制面 · S1AP ＋ NAS-EPS 已落地，GTPv2-C 待做", ("4G 控制面",), "ok"),
+    ("G4", "4G 控制面 · 三個 adapter 全部落地（E1 完成）", ("4G 控制面",), "ok"),
     ("GI", "IMS 訊令與媒體 · 全空", ("IMS 訊令", "IMS 媒體"), "todo"),
 ]
 
@@ -213,7 +215,7 @@ ROADMAP: list[tuple[str, str, str, str, str, str, tuple[str, ...]]] = [
     ("T3", "P1", "4G IdKind ＋ 參考點 ＋ adapter 契約鉤子", "2h", "40m", "done", ()),
     ("T4", "P1", "S1AP adapter ＋ 自製 fixture（ASN.1 PER）", "1w", "1 session", "done", ("T3",)),
     ("T5", "P1", "NAS-EPS adapter ＋ 載體機制抽共用", "3d", "½ session", "done", ("T3", "T4")),
-    ("T6", "P1", "GTPv2-C adapter（S11／S5-S8，TEID-C 關聯）", "3d", "½ session", "todo", ("T2", "T3")),
+    ("T6", "P1", "GTPv2-C adapter（S11／S5-S8，跨介面關聯）", "3d", "½ session", "done", ("T3",)),
     ("T7", "P1", "SIP adapter（註冊與 INVITE，Call-ID 關聯）", "1w", "1 session", "todo", ("T1", "T2")),
     ("T8", "P2", "工作階段表依失敗／重傳／未獲回應排序", "3d", "½ session", "todo", ("T12",)),
     ("T9", "P2", "證據包匯出 ＋ 強制 manifest（含排除格數）", "4d", "½ session", "todo", ("T12",)),

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from telcoladder.model import Endpoint, Message
+from telcoladder.model import NF_ROLE_HINTS_KEY, Endpoint, Message
 
 #: N2 介面上 AMF 固定監聽的 SCTP 埠（TS 38.412）。
 NGAP_PORT = 38412
@@ -226,6 +226,19 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
             elif base in _AMF_INITIATED:
                 vote(initiator, "AMF")
                 vote(responder, "gNB")
+
+        # ── 線路上直接說了誰是誰 ──
+        #
+        # **這一段不認得任何 adapter。** 有些協定把網元角色寫在訊息內容裡
+        # （GTPv2-C 的 F-TEID IE：`S11 MME GTP-C interface` 直接指名那個位址
+        # 是 MME），而那種 IE 只有 adapter 讀得到。宣告這個鍵就等於在說
+        # 「這不是我推的，是線路上寫的」—— 與 `reference_point` 同一個模式。
+        #
+        # 排在所有推論之前：**寫著的比推出來的可信。**
+        for pair in msg.detail.get(NF_ROLE_HINTS_KEY, "").split(";"):
+            address, _sep, role = pair.partition("=")
+            if address and role:
+                vote(address, role)
 
         # ── S1AP：程序碼決定兩方是誰，回應方向相反 ──
         if msg.protocol == "s1ap":

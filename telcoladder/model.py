@@ -171,6 +171,21 @@ BLIND_UNDECODED_STREAM = "undecoded_stream"
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。
 IdKey = tuple[IdKind, str]
 
+#: `Message.detail` 裡記載「線路上直接說了某個位址是哪個網元」的鍵。
+#:
+#: 值的形狀是 `位址=角色` 用分號隔開，例如 `10.0.0.2=MME;10.0.0.4=SGW`。
+#:
+#: **為什麼是 adapter 交出來而不是 `nf.py` 自己推**：NGAP／S1AP／Diameter 的
+#: 角色是從「誰發起哪個程序」推的，而那件事 `nf` 看得到（訊息名與方向都在
+#: `Message` 上）。GTPv2-C 不一樣 —— 角色寫在 **F-TEID IE 裡面**
+#: （`S11 MME GTP-C interface` 直接說了那個位址是 MME），而 IE 只有 adapter
+#: 讀得到。
+#:
+#: 所以這是**傳遞線路事實，不是替 `nf` 做判斷** —— 與 `reference_point`
+#: 同一個模式（見 `interfaces.py` 的「為什麼 Diameter 不走這張表」）。
+#: 鍵名是共用詞彙，`nf` 一律通用處理，**不認得任何一個 adapter**。
+NF_ROLE_HINTS_KEY = "nf_role_hints"
+
 #: `Message.detail` 裡記載「這則訊息的訂戶身分是跟誰借來的」的鍵。
 #:
 #: 有些訊息自己認不出是誰 —— 例如 SBI 夾帶的下行 NAS，內容裡沒有任何識別碼，
