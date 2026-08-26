@@ -183,14 +183,14 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit 533e5bd</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 8074195</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
   <code>tools/archmap.py</code>，這一頁就跟著走。</p>
 </header>
 
-<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,201</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>—</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>9</b><span>TODOS 未關閉</span></div></div>
+<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,201</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>—</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>8</b><span>TODOS 未關閉</span></div></div>
 
 <section>
   <h2><span class="num">01</span>分層相依</h2>
@@ -493,12 +493,12 @@ graph LR
   <p class="sub">直接讀 <code>TODOS.md</code> 的標題 —— 劃掉的不算，所以關掉一項這裡就少一列。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">ID</th><th>是什麼</th><th class="mono">優先</th></tr></thead>
-    <tbody><tr><td class="mono">T-PURGE</td><td class="wrap-ok">GitHub 尚未清除 pre-rewrite 的物件</td><td><span class="tag t-fault">P0</span></td></tr><tr><td class="mono">T-CI1</td><td class="wrap-ok">轉 public 後把跨平台測試合回每次 push</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-PUBLISH</td><td class="wrap-ok">PyPI 發布管線</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">雙 gNB 擷取檔 —— 讓 `scoped()` 前綴真的被真實資料守住</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">`docker run` 一行跑 analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">Phase 3 若碰加密，先查出口管制</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">公開的失敗擷取語料庫</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">訂戶切不出程序段時，畫面什麼都不說</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
+    <tbody><tr><td class="mono">T-CI1</td><td class="wrap-ok">轉 public 後把跨平台測試合回每次 push</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-PUBLISH</td><td class="wrap-ok">PyPI 發布管線</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">雙 gNB 擷取檔 —— 讓 `scoped()` 前綴真的被真實資料守住</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">`docker run` 一行跑 analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">Phase 3 若碰加密，先查出口管制</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">公開的失敗擷取語料庫</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">訂戶切不出程序段時，畫面什麼都不說</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
   </table></div>
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit 533e5bd</span>
+  <span>tools/archmap.py</span><span>commit 8074195</span>
   <span>51 模組 · 14,201 行</span>
   <span>測試數未量到</span>
 </footer>
