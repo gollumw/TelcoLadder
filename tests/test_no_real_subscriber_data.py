@@ -140,7 +140,7 @@ def _tracked_text_files() -> list[Path]:
     它們被 ignore 的原因。用 rglob 會把那些一起掃進來然後永遠是紅的。
     """
     out = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=True
+        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, encoding="utf-8", check=True
     )
     files = []
     for name in out.stdout.split("\0"):
@@ -219,7 +219,7 @@ def _capture_names_in_repo() -> set[str]:
     而它就是 `tests/fixtures/*/capture.pcap`，逐一列進白名單只是噪音。
     """
     out = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=True
+        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, encoding="utf-8", check=True
     )
     return {Path(name).name for name in out.stdout.split("\0") if name}
 
@@ -484,8 +484,17 @@ def test_the_installer_exists_and_is_executable() -> None:
     CONTRIBUTING 指名了這支腳本；它不見了的話那份文件就在說謊。
     """
     assert _INSTALLER.is_file(), "tools/install-hooks.sh 不見了"
-    mode = _INSTALLER.stat().st_mode
-    assert mode & 0o111, "tools/install-hooks.sh 沒有執行權限"
+    # **問 git 記錄的 mode，不問檔案系統的。** Windows 的 stat 沒有執行位
+    # （NTFS 恆回 0o666，CI 實測），而 clone 傳播的本來就是 git 那份 ——
+    # 檔案系統的位元只是它在這台機器上的投影。
+    tracked_mode = subprocess.run(
+        ["git", "ls-files", "--stage", "tools/install-hooks.sh"], cwd=REPO,
+        capture_output=True, text=True, check=True, encoding="utf-8",
+    ).stdout.split()
+    assert tracked_mode and tracked_mode[0] == "100755", (
+        f"git 記錄的 mode 是 {tracked_mode[:1] or '（沒這個檔）'}，"
+        "clone 下來會沒有執行權限"
+    )
     text = _INSTALLER.read_text(encoding="utf-8")
     assert "tools/hooks" in text, "安裝腳本沒有從 tools/hooks 取用"
     # **要驗的是「可執行的那一行」，不是「提到這個名字」。**

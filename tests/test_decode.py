@@ -83,14 +83,20 @@ def test_reassembly_context_is_preserved() -> None:
     上下文有被讀進去。
     """
     pcap = require_capture("5gc-e2e/capture.pcap")
+    from telcoladder.adapters import default_decode_as
     from telcoladder.packets import read_packet_rows
 
-    http2 = [r.number for r in read_packet_rows(pcap) if "http2" in r.protocols]
+    # 帶上管線的 decode-as —— 少了它，4.2（無 HTTP/2 啟發式）上這裡
+    # 一格 http2 都找不到，整條測試 skip 掉，而 HPACK 狀態正是
+    # 老版本上最需要驗的東西。
+    rules = tuple(default_decode_as())
+    http2 = [r.number for r in read_packet_rows(pcap, decode_as=rules)
+             if "http2" in r.protocols]
     if not http2:
         pytest.skip("這份擷取沒有 HTTP/2 封包")
     # 取最後一格 —— 它最依賴前面建立起來的 HPACK 狀態。
     target = http2[-1]
-    names = _names(decode_frames(pcap, [target])[target])
+    names = _names(decode_frames(pcap, [target], decode_as=rules)[target])
     assert any(n.startswith("http2") for n in names), "HTTP/2 完全沒解出來"
     assert "http2.header.name" in names or "http2.headers.path" in names, (
         "HTTP/2 的 header 解不出來 —— HPACK 狀態沒有建立起來，"
@@ -304,20 +310,41 @@ def test_json_objects_show_their_content_not_their_hex(e2e_pcap) -> None:
 
     這是使用者回報的那個症狀：`Object` 那一列只有 hex，讀不出裡面是什麼。
     """
-    frame = _first_frame_matching(e2e_pcap, "json")
-    trees = decode_frames(e2e_pcap, [frame])
+    frame = _first_frame_matching(e2e_pcap, "json.object")
+    # 樹也要吃同一組 decode-as —— `decode_frames` 的註解自己寫著
+    # 「四條路徑用不同參數就是同一份檔的四個答案」，這條測試漏傳了。
+    from telcoladder.adapters import default_decode_as
+    trees = decode_frames(e2e_pcap, [frame], decode_as=default_decode_as())
     objects = [n for n in _walk(trees[frame]) if n.name == "json.object"]
     assert objects, f"frame {frame} 沒有 json.object —— 這條測試選錯 fixture 了"
 
+    # **先問 tshark 自己給不給內容。** `json.object` 的 PDML `show` 帶完整
+    # JSON 是 4.4+ 的能力；4.2（Ubuntu 24.04 LTS）給的是 `show=""`。
+    # 我們的樹只是忠實轉送 —— 所以這裡測的是「tshark 給了就要到使用者手上」，
+    # 不是「tshark 必須給」。直接跑同參數的 PDML 當 oracle，不猜版本號。
+    pdml = subprocess.run(
+        [str(find_tshark().path), "-r", str(e2e_pcap),
+         *(a for rule in default_decode_as() for a in ("-d", rule)),
+         "-Y", f"frame.number=={frame}", "-T", "pdml"],
+        capture_output=True, text=True, check=True, encoding="utf-8",
+    ).stdout
+    tshark_has_content = 'name="json.object"' in pdml and 'show="{' in pdml
+
     with_content = [n for n in objects if n.detail]
-    assert with_content, (
-        "所有 json.object 都沒有 detail —— 使用者只看得到 hex，"
-        "看不到 JSON 內容，正是這條測試要擋的回歸"
-    )
-    top = max(with_content, key=lambda n: len(n.detail))
-    assert top.detail.startswith("{"), f"detail 不是 JSON 而是 {top.detail[:40]!r}"
-    # hex 仍然存在（hex 面板要用），只是不再是樹上顯示的東西。
-    assert top.value and top.value != top.detail, "原始 hex 不該消失，它是 hex 面板的來源"
+    if tshark_has_content:
+        assert with_content, (
+            "tshark 的 PDML 給了 JSON 內容而樹上沒有 —— 使用者只看得到 hex，"
+            "正是這條測試要擋的回歸"
+        )
+        top = max(with_content, key=lambda n: len(n.detail))
+        assert top.detail.startswith("{"), f"detail 不是 JSON 而是 {top.detail[:40]!r}"
+        # hex 仍然存在（hex 面板要用），只是不再是樹上顯示的東西。
+        assert top.value and top.value != top.detail, "原始 hex 不該消失，它是 hex 面板的來源"
+    else:
+        # 老 tshark 沒給內容 —— 樹上不該憑空出現（那會是編造），
+        # 結構（member 子節點）仍然要在。
+        assert not with_content, "tshark 沒給內容，樹上的 detail 是哪來的？"
+        assert any(n.name == "json.member" for n in _walk(trees[frame]))
 
 
 def test_detail_stays_silent_when_the_label_already_said_it() -> None:
@@ -352,10 +379,16 @@ def _first_frame_matching(pcap, display_filter: str) -> int:
     **不寫死格號** —— fixture 重新產生時格號會變，而寫死的話那時紅的會是
     「找不到 json.object」，看起來像功能壞了。
     """
+    # **帶上管線無條件套用的那組 decode-as**（`default_decode_as()`）——
+    # 不帶的話這條查詢與分析吃的參數不同（§5.5 的 prefilter 教訓），
+    # 而且 HTTP/2 的啟發式偵測是 tshark 4.4 才加的：4.2（Ubuntu 24.04 LTS）
+    # 上裸查 `-Y json` 一格都找不到，症狀看起來像功能壞了。
+    from telcoladder.adapters import default_decode_as
+    decode_args = [arg for rule in default_decode_as() for arg in ("-d", rule)]
     out = subprocess.run(
-        [str(find_tshark().path), "-r", str(pcap), "-Y", display_filter,
-         "-T", "fields", "-e", "frame.number"],
-        capture_output=True, text=True, check=True,
+        [str(find_tshark().path), "-r", str(pcap), *decode_args,
+         "-Y", display_filter, "-T", "fields", "-e", "frame.number"],
+        capture_output=True, text=True, check=True, encoding="utf-8",
     ).stdout.split()
     assert out, f"這份 fixture 沒有符合 {display_filter!r} 的封包"
     return int(out[0])

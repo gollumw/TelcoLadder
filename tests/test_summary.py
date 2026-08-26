@@ -280,7 +280,7 @@ def test_e2e_says_what_it_could_not_read(e2e) -> None:
     assert "HPACK gap" in md
 
 
-def test_undecoded_traffic_says_whether_decode_as_would_help(e2e) -> None:
+def test_undecoded_traffic_says_whether_decode_as_would_help(e2e, e2e_pcap) -> None:
     """5gc-e2e：449 格沒解碼裡有 212 格是埠 7777，而那個埠**已經**在解 HTTP/2。
 
     「加 --decode-as」與「改擷取方式」是相反的處置。只給 449 這個數字，agent 會
@@ -292,7 +292,22 @@ def test_undecoded_traffic_says_whether_decode_as_would_help(e2e) -> None:
     assert port_7777, f"沒列出埠 7777：{traffic}"
     assert port_7777[0]["already_decoded"] is True
     assert port_7777[0]["decode_as_hint"] is None, "已經在解的埠不該再建議 --decode-as"
-    assert port_7777[0]["frames"] == 212
+    # **這個數字是「這一版 tshark 讀不懂的格數」，版本間會動**（4.6 實測 212、
+    # 4.2 實測 352 —— 4.4 起的 HTTP/2 啟發式會把 DATA-only 的格認領走）。
+    # 所以不釘常數，改拿同一版 tshark 用**另一條查詢路徑**（`-Y`，census 用的
+    # 是 `-z io,phs`）算同一個定義 —— 交叉驗證的是 census 的解析與歸埠邏輯，
+    # 不是 tshark 的解讀能力。
+    import subprocess
+    from telcoladder.adapters import display_filter as _claimed
+    from telcoladder.tshark import find_tshark
+    oracle = subprocess.run(
+        [str(find_tshark().path), "-r", str(e2e_pcap), "-Y",
+         f"tcp.port==7777 && data && !({_claimed()})",
+         "-T", "fields", "-e", "frame.number"],
+        capture_output=True, text=True, check=True, encoding="utf-8",
+    ).stdout.split()
+    assert port_7777[0]["frames"] == len(oracle)
+    assert port_7777[0]["frames"] >= 212, "7777 的未解讀質量消失了 —— census 在漏報"
     md = summary.render_markdown(doc)
     assert "7777" in md
     assert "change how you capture" in md

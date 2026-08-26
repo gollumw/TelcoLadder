@@ -60,7 +60,7 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
     )
     drifted = []
     for rel, expected in manifest["files"].items():
-        actual = hashlib.sha256((_WEB / rel).read_bytes()).hexdigest()
+        actual = _sha256_lf(_WEB / rel)
         if actual != expected:
             drifted.append(rel)
     assert not drifted, (
@@ -104,6 +104,17 @@ def test_every_web_source_file_is_accounted_for() -> None:
     )
 
 
+def _sha256_lf(path) -> str:
+    """雜湊前把 CRLF 正規化成 LF。
+
+    PORTED.json 的雜湊是對 LF 內容算的；Windows CI 的 checkout 走
+    core.autocrlf=true，文字檔落地帶 CRLF —— 對位元組直接算的話**九個檔
+    全部誤報漂移**（實測）。LF 檔案上這個正規化是恆等變換。
+    """
+    import hashlib as _h
+    return _h.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def test_diverged_files_are_pinned_too() -> None:
     """**已分岔不等於不管了。**
 
@@ -114,7 +125,7 @@ def test_diverged_files_are_pinned_too() -> None:
     """
     drifted = []
     for rel, record in _manifest().get("diverged", {}).items():
-        actual = hashlib.sha256((_WEB / rel).read_bytes()).hexdigest()
+        actual = _sha256_lf(_WEB / rel)
         if actual != record["current_sha256"]:
             drifted.append(rel)
     assert not drifted, (

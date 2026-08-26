@@ -54,7 +54,7 @@ def analysis():
 def _tshark_values(field: str) -> dict[int, str]:
     tshark = find_tshark()
     proc = subprocess.run(
-        [str(tshark.path), "-G", "values"], capture_output=True, text=True, check=True,
+        [str(tshark.path), "-G", "values"], capture_output=True, text=True, encoding="utf-8", check=True,
     )
     out = {}
     for line in proc.stdout.splitlines():
@@ -118,7 +118,7 @@ def test_message_names_agree_with_tshark_info(messages) -> None:
     proc = subprocess.run(
         [str(tshark.path), "-r", str(FIXTURE), "-Y", "nas-eps",
          "-T", "fields", "-e", "frame.number", "-e", "_ws.col.info"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     info = {}
     for line in proc.stdout.splitlines():

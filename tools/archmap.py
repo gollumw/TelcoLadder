@@ -487,8 +487,11 @@ def render(data: dict) -> str:
     strata = []
     for lid, label, why, layer_mods in reversed(LAYERS):
         present = [m for m in layer_mods if m in mods]
+        # 運算式裡不放反斜線 —— f-string 內的 \" 是 PEP 701（3.12+）才合法，
+        # 3.11 直接 SyntaxError。CI 的 3.11 矩陣抓到過。
+        hot = ' class="hot"'
         chips = "".join(
-            f'<span{" class=\"hot\"" if mods[m]["loc"] > 400 else ""}>{_esc(m)}</span>'
+            f'<span{hot if mods[m]["loc"] > 400 else ""}>{_esc(m)}</span>'
             for m in sorted(present, key=lambda m: -mods[m]["loc"])
         )
         strata.append(

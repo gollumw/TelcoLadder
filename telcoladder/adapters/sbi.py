@@ -285,6 +285,20 @@ def _assoc_imsi(block: dict[str, Any]) -> str | None:
             imsi = first(js.get("e212_e212_assoc_imsi"))
             if imsi:
                 return str(imsi)
+            # `e212.assoc_imsi` 是 tshark 4.4 才加的欄位 —— Ubuntu 24.04 LTS 的
+            # 4.2 沒有（CI 實測：同一格在 4.6 有、4.2 無，`tshark -G fields`
+            # 查無此欄）。少了它，CreateSMContext 那條 sm-context 鏈接不回
+            # 訂戶，症狀是流程多一條而圖照樣畫得出來（§4 那一類）。
+            # JSON 成員本身兩版都有解，所以自己讀：值形如
+            # `supi:imsi-001011234567895`，取 `imsi-` 後的數字即與
+            # `e212.assoc_imsi` 同值。**只認 supi 成員** —— gpsi/pei 是
+            # 別的識別碼空間，混進來會把不相干的人併成一條。
+            members = js.get("json_json_member_with_value")
+            for member in (members if isinstance(members, list) else [members]):
+                if isinstance(member, str) and member.startswith("supi:imsi-"):
+                    digits = member[len("supi:imsi-"):]
+                    if digits.isdigit():
+                        return digits
     return None
 
 

@@ -61,7 +61,7 @@ def test_message_names_agree_with_tshark(messages) -> None:
     proc = subprocess.run(
         [str(tshark.path), "-r", str(FIXTURE), "-Y", "s1ap",
          "-T", "fields", "-e", "frame.number", "-e", "_ws.col.info"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     info_by_frame = {}
     for line in proc.stdout.splitlines():
@@ -98,7 +98,7 @@ def test_the_fixture_only_uses_message_names_we_have_evidence_for(messages) -> N
          "-e", "s1ap.procedureCode",
          "-e", "s1ap.successfulOutcome_element",
          "-e", "s1ap.unsuccessfulOutcome_element"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     observed = set()
     for line in proc.stdout.splitlines():
@@ -127,7 +127,7 @@ def test_the_procedure_code_table_is_the_full_one_from_tshark() -> None:
     """
     tshark = find_tshark()
     proc = subprocess.run(
-        [str(tshark.path), "-G", "values"], capture_output=True, text=True, check=True,
+        [str(tshark.path), "-G", "values"], capture_output=True, text=True, encoding="utf-8", check=True,
     )
     from_tshark = {}
     for line in proc.stdout.splitlines():

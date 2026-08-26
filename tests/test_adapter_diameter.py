@@ -60,7 +60,7 @@ def _tshark_value_table(field: str) -> dict[int, str]:
     `V<TAB>欄位<TAB>值<TAB>名稱`。"""
     out = subprocess.run(
         [str(find_tshark().path), "-G", "values"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     table: dict[int, str] = {}
     for line in out.stdout.splitlines():
@@ -164,7 +164,7 @@ def test_labels_appear_in_tsharks_info_column() -> None:
     out = subprocess.run(
         [str(find_tshark().path), "-r", str(FIXTURE), "-T", "fields",
          "-e", "frame.number", "-e", "_ws.col.info"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     info = {}
     for line in out.stdout.splitlines():
@@ -190,7 +190,7 @@ def test_application_ids_match_wiresharks_registry() -> None:
     """
     folders = subprocess.run(
         [str(find_tshark().path), "-G", "folders"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     ).stdout
     global_config = next(
         (line.split("\t", 1)[1].strip() for line in folders.splitlines()

@@ -146,7 +146,11 @@ def test_no_failures_is_not_silence(tmp_path) -> None:
 @pytest.mark.parametrize("arguments, fragment", [
     ({}, "pcap_path is required"),
     ({"pcap_path": "relative/x.pcap"}, "must be absolute"),
-    ({"pcap_path": "/definitely/not/here.pcap"}, "No such file"),
+    # 絕對路徑要用建構的 —— `/definitely/not/here.pcap` 在 Windows 上
+    # **不是**絕對路徑（沒有磁碟機代號），會走到「must be absolute」那條分支，
+    # 於是這一筆在 Windows CI 上測錯了東西。
+    ({"pcap_path": str(Path(__file__).resolve().parent / "definitely-not-here.pcap")},
+     "No such file"),
 ])
 def test_bad_paths_are_tool_errors(arguments, fragment) -> None:
     result = _call("summarize_capture", **arguments)["result"]
