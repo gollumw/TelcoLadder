@@ -146,7 +146,8 @@ on it.
 ## Install
 
 Requires Python 3.11+ and `tshark` (Wireshark 4.0 or newer recommended).
-Tested on macOS, Linux, and Windows.
+Tested on macOS, Linux, and Windows — Windows users: a full PowerShell
+walkthrough is [below](#windows-step-by-step).
 
 ```bash
 brew install --cask wireshark                       # macOS
@@ -165,6 +166,36 @@ telcoladder check                  # verifies tshark and dissectors
 macOS hides it inside `Wireshark.app`, and the Windows installer leaves the
 "Add to PATH" box unchecked by default. TelcoLadder looks in the standard install
 directories, so it finds it anyway.
+
+### Windows, step by step
+
+The one-liner above works on Windows too, but if you prefer an isolated
+install (or `pip` is not on your PATH), use a venv. In PowerShell:
+
+```powershell
+winget install WiresharkFoundation.Wireshark
+winget install Python.Python.3.12          # skip if you already have 3.11+
+
+git clone https://github.com/gollumw/TelcoLadder.git
+cd TelcoLadder
+py -m venv .venv
+.venv\Scripts\pip install -e .
+.venv\Scripts\telcoladder check           # ✓ tshark + ✓ dissectors = ready
+```
+
+Then either activate the venv (`.venv\Scripts\Activate.ps1`) and use
+`telcoladder` directly, or call `.venv\Scripts\telcoladder` each time:
+
+```powershell
+.venv\Scripts\telcoladder analyze capture.pcapng
+.venv\Scripts\telcoladder serve           # browser interface on 127.0.0.1:3005
+```
+
+Three Windows-specific things are already handled — nothing to do:
+the unchecked "Add to PATH" box (searched automatically), console
+encoding (output pinned to UTF-8, so `>` redirection works), and quotes
+from Explorer's "Copy as path" (stripped automatically). More detail in
+the [user guide](docs/user-guide.md#2-installation-and-environment-check).
 
 If you installed somewhere else, or you need to pin a specific Wireshark
 version, point `TELCOLADDER_TSHARK` at the binary:
@@ -410,7 +441,7 @@ Open5GS + UERANSIM testbed, so they carry this repo's licence and no third-party
 constraints.
 
 **What the badge does and does not mean.** Every push runs the full suite on
-Python 3.11/3.12/3.13 on Linux, plus macOS and Windows on 3.13.
+Python 3.11/3.12/3.13 on Linux on every push; macOS and Windows on 3.13 run on demand (workflow dispatch).
 The cross-checks above genuinely run there — the fixtures are in the
 repo, so nothing is skipped for want of a capture. It does **not** cover IMS,
 TLS-protected SBI, ECIES-protected SUCIs, or any deployment other than the one

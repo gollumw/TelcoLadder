@@ -55,6 +55,9 @@ from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP 
 STATIC_TYPES = {
     "app.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
+    # 主題預載腳本（web/public/theme.js，Vite 建置時原樣複製進 static/）。
+    # 它必須是靜態檔：viewer 頁的 CSP 是 `script-src 'self'`，inline 一律被擋。
+    "theme.js": "application/javascript; charset=utf-8",
 }
 
 #: 讓「零外部請求」在互動表面上變成**瀏覽器強制**的，而不只是我們自律。
@@ -519,6 +522,10 @@ def app_page(session: Session, *, idle_ttl: float) -> str:
     資產路徑一致 —— `class="dark"` 是 `darkMode: "class"` 的開關，掉了整個
     配色會變成亮色而且不會報錯。由 `tests/test_web_assets.py` 釘住。
 
+    2026-08-28 起 `class="dark"` 只是 **theme.js 載入失敗時的後備**：正常情況
+    head 裡的 `/static/theme.js` 會在第一次繪製前依 localStorage／OS 把
+    class 改成 dark 或 light（與首頁共用同一份腳本、同一個 storage key）。
+
     `idle_ttl` 目前用不到 —— 生命週期的提示原本住在舊外殼上，React 那側
     還沒接。**簽名留著參數是刻意的**：拿掉它等於讓「工作階段會自己過期」
     這件事在呈現層徹底消失，而那正是使用者最需要知道卻最容易忘的一件事。
@@ -530,6 +537,7 @@ def app_page(session: Session, *, idle_ttl: float) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TelcoLadder — {esc(session.display_name)}</title>
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="font-sans antialiased">

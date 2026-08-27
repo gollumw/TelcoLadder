@@ -21,11 +21,12 @@
     },
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "64e1552106c48071f9a7f855a1f1eff234b2ede46b5a8397a8c4b8bb53de6b88",
+      "current_sha256": "7695735d669d6f76facb0a007040d9b1a1c0778c547f6ec7cf202a0a56e60490",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
-      "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。"
+      "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。",
+      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
@@ -45,25 +46,28 @@
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "cb8d92cc20ae1be25e55710e8f6d0e15e778cf3dba57a085f70c50f4fe245a76",
+      "current_sha256": "8515f24993d00c7a75f852b57aa88ac7ad60bc019811497f204b27f196a01d16",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。協定快篩鈕與身分搜尋的下拉選單改由引擎供應（`Dataset.protocolFilters` / `identityKinds`），拿掉兩份寫死的 5G 清單（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
-      "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。 2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。"
+      "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。 2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。",
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（色票改 CSS 變數後 -bg 是固定 alpha，修飾會靜默失效）"
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
-      "current_sha256": "21c0775102ce2cfc485cae1c5ffd03ecb73193d554797e972a89472a0b214b98",
+      "current_sha256": "37d0224813dd99bdceee28d8c32f62bb30acf80f189ea40154a4a3298beee998",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。；2026-08-21（Phase 4）:把上述四個欄位畫出來 —— 慢間隔以 `+2.50s` 標在參考點欄位旁（只標超過門檻的，每列都標等於沒標），協定堆疊與身分來源進事件詳情列。同時拆開事件詳情列的兩個把關條件:原本 `selectedEvent && selectedPacket` 綁在一起，而 `selectedPacket` 來自封包清單的**載入視窗**（前幾百列）—— 幾千格的擷取檔裡，視窗外的事件永遠配不到封包，症狀是使用者點了梯形圖卻看到「選一個信令事件」。參考點／身分來源／協定堆疊／cause 全部來自事件，照常顯示；封包徽章與解碼樹才等封包，而且「還沒載入」與「在視窗外」講成兩句不同的話。；2026-08-21（M0 最後一哩）:程序切段接進畫面 —— 梯形圖上方多一條程序選擇列（一段一個按鈕,結局用外框色與符號標示,✓/✗/⋯ 三態;incomplete 刻意不用 ✗,「沒等到結局」與「失敗」是兩件事）,選中時事件依 frame 範圍過濾。程序先於 Domain:程序是範圍,Domain 是那段之內的視角。程序按鈕的亮起條件看推導出來的 `current` 而不是 raw state `activeProcedure` —— 兩者在換訂戶時會分家（frame 編號不在新訂戶的段裡），用 raw state 會導致「畫面顯示全部但沒有任何按鈕亮」。；2026-08-22（轉 public 前置）:清掉兩處客戶識別資訊 —— 註解裡的客戶擷取檔名，以及截斷說明範例裡真實生產網路的 DNN。**兩處都是註解，建置產物不受影響**（`telcoladder/static/app.js` 逐位元組不變，已驗）。實測數字（119 字元、放大 4.1 倍）全部保留 —— 拿掉的只有身分，不是證據。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：LANE_STYLE 語意色調整、SVG 梯形圖、程序選擇列、解碼檢視器與關聯矩陣更新為 signal palette 語意色。行為未變。Domain 分頁清單加入 CORE_DIAMETER「Diameter (S6a/Cx/Gx)」（2026-08-23）。事件詳情列下方新增失敗白話與常見根因的區塊（T-LADDER-CAUSE：原本後端送 fallback 鏈，而出處永遠有值，所以白話從來沒出現在瀏覽器上）（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。後端 `callflow._DOMAIN_BY_PROTOCOL` 吐得出 CORE_DIAMETER 而前端不認得的話，那些事件在每一個分頁都不會出現，而且不報錯 —— 所以這兩個檔必須跟著後端一起改。",
-      "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道）；繪製模式說明與「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」；SVG 不再用 width=100% 拉伸（泳道少時會放大 4 倍）、超長 SBI 網址截斷但保留 title、加上交替列底紋與提亮的標籤顏色。 T7（2026-08-24）：新增 4G 與 IMS 的三個 Domain（ACCESS_S1_EPS／BEARER_S11_S5S8／IMS_SIP）。**T4–T6 三輪都漏了這裡** —— `domain` 是 None 的事件在 `events.filter((e) => e.domain === domain)` 底下永遠不匹配任何分頁，只在「All Domains」看得到（實測 4G 的 13 個事件全中）。刻意不重用 5G 的三個：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的。分頁鈕同時改成**只顯示這份擷取檔真的有的 Domain** —— 七個裡通常只用到兩三個，全部列出來等於要人在四個空鈕裡找那兩個。"
+      "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道）；繪製模式說明與「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」；SVG 不再用 width=100% 拉伸（泳道少時會放大 4 倍）、超長 SBI 網址截斷但保留 title、加上交替列底紋與提亮的標籤顏色。 T7（2026-08-24）：新增 4G 與 IMS 的三個 Domain（ACCESS_S1_EPS／BEARER_S11_S5S8／IMS_SIP）。**T4–T6 三輪都漏了這裡** —— `domain` 是 None 的事件在 `events.filter((e) => e.domain === domain)` 底下永遠不匹配任何分頁，只在「All Domains」看得到（實測 4G 的 13 個事件全中）。刻意不重用 5G 的三個：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的。分頁鈕同時改成**只顯示這份擷取檔真的有的 Domain** —— 七個裡通常只用到兩三個，全部列出來等於要人在四個空鈕裡找那兩個。",
+      "why": "2026-08-28 雙主題（SVG 寫死色全改 var(--ladder-*/--lane-*) 經 style 引用）＋梯形圖縮放＋解碼面板依縮放停靠側欄（sticky）或頁尾"
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
-      "current_sha256": "fa6cf3d555ddbddb15fee4745073db401244f3ca23e5a4e6c5415e5d99443b7b",
+      "current_sha256": "54f47b8b5f92e959141fe8b0d418c293eb88cc950646bc75a6dab2b0ec742d5f",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。",
-      "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。"
+      "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。",
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）"
     },
     "src/components/ProtocolTree.tsx": {
       "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",

@@ -207,6 +207,7 @@ CATALOG: dict[str, str] = {
         '\n收工。',
     'Language':
         '語言',
+    'Toggle theme': '切換深淺色',
     'No frame {frame} in the capture.':
         '擷取檔裡沒有 frame {frame}。',
     'Full dissection has not finished; identity information is not available yet.':

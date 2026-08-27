@@ -132,6 +132,13 @@ const zh_TW: Record<string, string> = {
   "Re-correlated {n} packets": "已重新關聯 {n} 個封包",
   "Upload PCAP / re-correlate": "上傳 PCAP / 重新關聯",
   "Language": "語言",
+  "Zoom in": "放大",
+  "Zoom out": "縮小",
+  "Reset zoom": "重設縮放",
+  "Inspector docked below": "解碼面板停靠在下方",
+  "Inspector follows at the side": "解碼面板在側欄跟著捲動",
+  "Switch to light theme": "切換到淺色",
+  "Switch to dark theme": "切換到深色",
 
   // DiscoveredSessionsPanel
   "Packet count": "封包數",

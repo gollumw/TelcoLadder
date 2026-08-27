@@ -34,37 +34,64 @@ import html
 #:
 #: **變數只留首頁真的用得到的那些。** 完整的網元／狀態調色盤隨梯形圖
 #: 走了 —— React 那側有自己的一份(Tailwind config),不從這裡取。
-CHROME_CSS = """
-:root {
-  color-scheme: light dark;
-  --bg: #f3f5f9;
-  --surface: #ffffff;
-  --border: #dbe2ed;
-  --text: #0f172a;
-  --dim: #475569;
-  --faint: #94a3b8;
-  --accent: #0891b2;
-  --fail: #e11d48;
-  --fail-bg: rgba(225, 29, 72, .07);
-  --fail-line: rgba(225, 29, 72, .22);
-  --hover: rgba(8, 145, 178, .08);
+#: 兩組色票。淺色是首頁原本的樣子，深色與 React 介面（web/ 的 Tailwind
+#: 色票）同一組值 —— 這正是「兩個畫面色系一致」的機制本身。
+#:
+#: **深色值只寫這一份**，下面的 CSS 從這兩個 dict 產生三個區塊
+#: （:root 淺色 / `@media` 系統偏好深色 / `.dark` 使用者明選深色）。
+#: 手寫三個區塊的話，media 那份與 .dark 那份必然漂移，而漂移不報錯。
+_LIGHT_VARS = {
+    "bg": "#f3f5f9",
+    "surface": "#ffffff",
+    "border": "#dbe2ed",
+    "text": "#0f172a",
+    "dim": "#475569",
+    "faint": "#94a3b8",
+    "accent": "#0891b2",
+    "fail": "#e11d48",
+    "fail-bg": "rgba(225, 29, 72, .07)",
+    "fail-line": "rgba(225, 29, 72, .22)",
+    "hover": "rgba(8, 145, 178, .08)",
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #090d16;
-    --surface: #101622;
-    --border: #202a3c;
-    --text: #edf1f7;
-    --dim: #9eaec7;
-    --faint: #6a7c98;
-    --accent: #39b6d0;
-    --fail: #f67a73;
-    --fail-bg: rgba(246, 122, 115, .12);
-    --fail-line: rgba(246, 122, 115, .36);
-    --hover: rgba(57, 182, 208, .10);
-  }
+_DARK_VARS = {
+    "bg": "#090d16",
+    "surface": "#101622",
+    "border": "#202a3c",
+    "text": "#edf1f7",
+    "dim": "#9eaec7",
+    "faint": "#6a7c98",
+    "accent": "#39b6d0",
+    "fail": "#f67a73",
+    "fail-bg": "rgba(246, 122, 115, .12)",
+    "fail-line": "rgba(246, 122, 115, .36)",
+    "hover": "rgba(57, 182, 208, .10)",
 }
 
+
+def _css_vars(mapping: dict[str, str], indent: str = "  ") -> str:
+    return "\n".join(f"{indent}--{name}: {value};" for name, value in mapping.items())
+
+
+#: 主題三態（同 Artifact 的慣例）：
+#:   1. 沒選過 → 跟 OS（`prefers-color-scheme`，`:not(.light)` 讓明選淺色贏）
+#:   2. 明選淺色 → `<html class="light">`（media 區塊被 :not 排除）
+#:   3. 明選深色 → `<html class="dark">`
+#: class 由 `/static/theme.js` 在繪製前套上；**不載 JS 時退回第 1 態**，
+#: 首頁的貼路徑表單本來就不需要 JS，主題跟著 OS 走即可。
+CHROME_CSS = f"""
+:root {{
+  color-scheme: light dark;
+{_css_vars(_LIGHT_VARS)}
+}}
+@media (prefers-color-scheme: dark) {{
+  :root:not(.light) {{
+{_css_vars(_DARK_VARS, "    ")}
+  }}
+}}
+:root.dark {{
+{_css_vars(_DARK_VARS)}
+}}
+""" + """
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -86,6 +113,15 @@ header { margin-bottom: 24px; }
 .lang { font-size: 12px; color: var(--dim); }
 .lang a { color: var(--dim); text-decoration: none; }
 .lang a.on { color: var(--text); font-weight: 600; }
+
+/* Theme toggle, sharing the language-switch line. Wired by /static/theme.js
+   (the button does nothing without JS - the page then follows the OS). */
+.theme {
+  margin-left: 10px; padding: 1px 8px; font-size: 12px; line-height: 1.5;
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  background: var(--surface); color: var(--dim);
+}
+.theme:hover { color: var(--text); border-color: var(--accent); }
 """
 
 

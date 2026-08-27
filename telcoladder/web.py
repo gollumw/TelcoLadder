@@ -705,6 +705,7 @@ def _shell(title: str, body: str) -> str:
         "<!doctype html>\n"
         f'<html lang="{i18n.HTML_LANG[i18n.current()]}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<script src="/static/theme.js"></script>'
         f"<title>{esc(title)}</title>"
         f"<style>{CHROME_CSS}{_EXTRA_CSS}</style></head><body><div class='wrap'>"
         '<header><div class="brand"><span class="dot"></span><h1>TelcoLadder</h1></div></header>'
@@ -744,7 +745,11 @@ def _language_switch() -> str:
         f'<a href="/?lang={code}"{" class=on" if code == current else ""}>{label}</a>'
         for code, label in (("en", "English"), ("zh_TW", "中文"))
     )
-    return f'<p class="lang" style="text-align:right;margin:-6px 0 10px">{esc(_("Language"))}: {links}</p>'
+    toggle = f'<button class="theme" id="theme-toggle" type="button" aria-label="{esc(_("Toggle theme"))}">◐</button>'
+    return (
+        f'<p class="lang" style="text-align:right;margin:-6px 0 10px">'
+        f'{esc(_("Language"))}: {links}{toggle}</p>'
+    )
 
 
 # 首頁樣式與腳本的設計筆記（原本寫在 CSS／JS 註解裡，會隨頁面送到瀏覽器 ——

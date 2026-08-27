@@ -2,7 +2,8 @@
 
 import { setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
-import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary } from "lucide-react";
+import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary, Moon, Sun } from "lucide-react";
+import { setTheme, useTheme } from "../theme";
 import { cn } from "@/lib/utils";
 import type { Dataset, PacketPage } from "@/data/source";
 import type { RawPacket } from "@/lib/types";
@@ -63,6 +64,7 @@ export default function SessionAnalyzer({
   onRequestTree?: (frame: number) => void;
 }) {
   const lang = useLang();
+  const theme = useTheme();
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   // Data Mining is home (資料母體); Session Analysis is a drill-down (Projection View).
@@ -140,6 +142,16 @@ export default function SessionAnalyzer({
                   {code === "en" ? "EN" : "中文"}
                 </button>
               ))}
+              {/* 主題切換 —— 與首頁共用 storage key（theme.ts），兩個畫面永遠同色系 */}
+              <button
+                type="button"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                title={theme === "dark" ? t("Switch to light theme") : t("Switch to dark theme")}
+                aria-label={theme === "dark" ? t("Switch to light theme") : t("Switch to dark theme")}
+                className="ml-1 rounded border border-border bg-surface-2 p-1.5 text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+              >
+                {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
             </div>
 
             {/* Top-level mode switch */}

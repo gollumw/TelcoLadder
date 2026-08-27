@@ -104,6 +104,41 @@ def test_reassembly_context_is_preserved() -> None:
     )
 
 
+def test_cross_frame_reassembly_is_annotated() -> None:
+    """跨格長訊息的分段必須標出「本體在哪一格重組完成」。
+
+    這是 `-2`（兩趟分析）存在的理由：單趟時那是未來的知識，tshark 寫不
+    出來 —— 實測同一格單趟 0 個標註、兩趟 11 個，而 Wireshark GUI 本來
+    就是兩趟。少了它，一份 SBI 擷取裡跨 TCP 分段的長 JSON 在樹上是一截
+    沒有去向的分段：**使用者以為工具解不出來，實際上是解得出來、講不出來**
+    （2026-08-28，使用者實際回報的形狀）。
+
+    斷言的是 `http2.body.reassembled.in` 這個 filter 名稱，不是 showname
+    的英文措辭（檔頭那條規則）。fixture 是 http2-multistream —— 它的長
+    JSON 本體真的跨格（tshark -2 整檔實測 108 個標註）。
+    """
+    pcap = require_capture("http2-multistream/capture.pcap")
+    from telcoladder.adapters import default_decode_as
+    from telcoladder.packets import read_packet_rows
+
+    rules = tuple(default_decode_as())
+    http2 = [r.number for r in read_packet_rows(pcap, decode_as=rules)
+             if "http2" in r.protocols]
+    if not http2:
+        pytest.skip("這份擷取沒有 HTTP/2 封包")
+
+    # 找一格「分段本體」—— 從頭掃，第一個帶重組標註的就好。
+    # 不寫死格號：fixture 重新產生時格號會變。
+    for target in http2:
+        names = _names(decode_frames(pcap, [target], decode_as=rules).get(target, ()))
+        if "http2.body.reassembled.in" in names:
+            return  # 標註在，兩趟分析生效
+    raise AssertionError(
+        "整份 HTTP/2 擷取找不到任何 http2.body.reassembled.in —— "
+        "-2 沒有生效（或被拿掉了），跨格長訊息的去向又講不出來了"
+    )
+
+
 def test_decoding_several_frames_at_once_returns_each_one() -> None:
     pcap = require_capture("ki-mismatch/capture.pcap")
     trees = decode_frames(pcap, [7, 9, 10])

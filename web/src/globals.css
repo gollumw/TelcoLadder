@@ -2,27 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * 兩組色票（2026-08-28 起）。`:root` 是淺色 —— 與首頁（chrome.py 的
+ * `_LIGHT_VARS`）同一個世界；`:root.dark` 是原本的深色。class 由
+ * `/static/theme.js` 在繪製前套上，React 內的切換走 `src/theme.ts`。
+ *
+ * **基礎色票是 RGB 三元組**（`243 245 249` 而非 `#f3f5f9`），因為
+ * tailwind.config 用 `rgb(var(--x) / <alpha-value>)` 接它們 ——
+ * `bg-surface-1/95` 這類透明度修飾才做得出來。寫成 `#hex` 的話那些
+ * class 會**靜默消失**（Tailwind 解析不了就不產出，不報錯）。
+ *
+ * `--ladder-*` 與 `--lane-*` 是完整色值（非三元組）：它們只被
+ * SessionAnalysisView 的 SVG 以 style={{...}} 引用，不走 Tailwind。
+ */
 @layer base {
   :root {
-    --canvas: #090d16;
-    --surface-1: #101622;
-    --surface-2: #0c111c;
-    --surface-hover: #192131;
-    --border: #202a3c;
-    --border-subtle: #17202f;
-    --border-focus: #3c4d68;
-    --fg-primary: #edf1f7;
-    --fg-muted: #9eaec7;
-    --fg-dim: #6a7c98;
-    --signal-cyan: #39b6d0;
-    --signal-red: #f67a73;
-    --signal-amber: #d59733;
-    --signal-mint: #3ac178;
+    color-scheme: light;
+    --canvas: 243 245 249;
+    --surface-1: 255 255 255;
+    --surface-2: 238 242 247;
+    --surface-hover: 227 233 241;
+    --border: 213 219 229;
+    --border-subtle: 226 231 238;
+    --border-focus: 159 176 200;
+    --fg: 23 32 46;
+    --fg-muted: 71 86 110;
+    --fg-dim: 108 122 144;
+    --signal-cyan: 8 145 178;
+    --signal-cyan-dim: 12 116 142;
+    --signal-red: 199 62 56;
+    --signal-red-dim: 164 48 43;
+    --signal-amber: 154 106 27;
+    --signal-amber-dim: 122 82 16;
+    --signal-mint: 22 133 82;
+    --signal-mint-dim: 20 108 67;
+    --signal-slate: 91 107 134;
+    --signal-slate-dim: 122 137 160;
+
+    --ladder-lifeline: #cfd8e4;
+    --ladder-band: rgba(23, 32, 46, 0.04);
+    --ladder-label: #3d4a60;
+    --ladder-label-selected: #0b1526;
+    --ladder-selected-bg: #dde5ef;
+    --ladder-error: #c73e38;
+    --ladder-error-bg: rgba(199, 62, 56, 0.1);
+    --ladder-error-label: #a8231c;
+    --ladder-error-sub: #bb3a33;
+    --ladder-slow: #b45309;
+    --ladder-midstream: #c2610c;
+
+    --lane-ue: #0891b2;
+    --lane-gnb: #7c5cd6;
+    --lane-amf: #1e8a55;
+    --lane-ausf: #0d9488;
+    --lane-smf: #b07314;
+    --lane-upf: #c73e38;
+    --lane-known: #5a63d8;
+    --lane-unknown: #7c8ba3;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+    --canvas: 9 13 22;
+    --surface-1: 16 22 34;
+    --surface-2: 12 17 28;
+    --surface-hover: 25 33 49;
+    --border: 32 42 60;
+    --border-subtle: 23 32 47;
+    --border-focus: 60 77 104;
+    --fg: 237 241 247;
+    --fg-muted: 158 174 199;
+    --fg-dim: 106 124 152;
+    --signal-cyan: 57 182 208;
+    --signal-cyan-dim: 14 130 154;
+    --signal-red: 246 122 115;
+    --signal-red-dim: 201 75 69;
+    --signal-amber: 213 151 51;
+    --signal-amber-dim: 154 106 27;
+    --signal-mint: 58 193 120;
+    --signal-mint-dim: 34 138 82;
+    --signal-slate: 158 174 199;
+    --signal-slate-dim: 106 124 152;
+
+    --ladder-lifeline: #202a3c;
+    --ladder-band: rgba(255, 255, 255, 0.02);
+    --ladder-label: #c7d2e3;
+    --ladder-label-selected: #ffffff;
+    --ladder-selected-bg: #192131;
+    --ladder-error: #f67a73;
+    --ladder-error-bg: rgba(246, 122, 115, 0.14);
+    --ladder-error-label: #fecdd3;
+    --ladder-error-sub: #fca5a5;
+    --ladder-slow: #f59e0b;
+    --ladder-midstream: #fb923c;
+
+    --lane-ue: #39b6d0;
+    --lane-gnb: #a78bfa;
+    --lane-amf: #3ac178;
+    --lane-ausf: #2dd4bf;
+    --lane-smf: #d59733;
+    --lane-upf: #f67a73;
+    --lane-known: #818cf8;
+    --lane-unknown: #6a7c98;
   }
 
   body {
-    background-color: #090d16;
-    color: #edf1f7;
+    background-color: rgb(var(--canvas));
+    color: rgb(var(--fg));
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
@@ -36,10 +122,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #202a3c;
+  background: rgb(var(--border));
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3c4d68;
+  background: rgb(var(--border-focus));
 }
-

@@ -72,10 +72,11 @@ full path):
 
 ## 2. Installation and environment check
 
-**Windows and macOS/Linux are both CI-verified platforms** (500+ tests).
+**Windows and macOS/Linux are both CI-verified platforms** (700+ tests).
 The cadence differs: every push runs Ubuntu on three Python versions;
-macOS and Windows run Mondays and on demand — the cost is that
-regressions on those two platforms can surface up to a week late.
+macOS and Windows run on demand (workflow dispatch) — the cost is that
+regressions on those two platforms surface only when someone triggers
+the cross-platform job.
 
 ### Windows (first install)
 

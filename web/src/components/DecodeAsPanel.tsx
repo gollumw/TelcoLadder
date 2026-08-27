@@ -245,7 +245,7 @@ export function DecodeAsPanel({
             // **這是「把我驗證過的經驗傳給別人」那個動作。**
             // 使用者規則存在 ~/.config，那不會跟著程式走；出貨清單在版控裡，
             // 所以要 commit 才會真的給到別人 —— 這件事必須講出來。
-            <div className="rounded border border-signal-mint-border bg-signal-mint-bg/30 p-2.5">
+            <div className="rounded border border-signal-mint-border bg-signal-mint/30 p-2.5">
               <p className="text-[11px] leading-relaxed text-signal-mint font-medium">
                 {t("Auto-detection found {n} rule(s) not yet adopted. Once adopted they ", { n: promotable.length })}
                 <strong className="font-semibold">{t("ship with the program to every user")}</strong>
@@ -279,7 +279,7 @@ export function DecodeAsPanel({
               className={cn(
                 "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
                 dirty && !busy
-                  ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border hover:bg-signal-cyan-bg/80 shadow-sm"
+                  ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border hover:bg-signal-cyan/80 shadow-sm"
                   : "cursor-not-allowed bg-surface-2 text-fg-dim border border-border/40",
               )}
             >

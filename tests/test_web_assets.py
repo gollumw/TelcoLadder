@@ -72,6 +72,7 @@ def test_ported_sources_are_byte_identical_to_the_recorded_commit() -> None:
 #: 我們自己寫的檔，不在移植範圍 —— 入口、外層殼、資料來源層。
 _OURS = {
     "src/i18n.ts",  # 介面語言（2026-08-22）
+    "src/theme.ts",  # 深淺色主題（2026-08-28）—— 與 web/public/theme.js 共用約定
     "src/main.tsx",
     "src/App.tsx",
     "src/data/source.ts",

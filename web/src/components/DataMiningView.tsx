@@ -448,9 +448,9 @@ export function DataMiningView({
                       isSelected
                         ? "bg-signal-cyan-bg text-fg font-medium"
                         : p.status === "ERROR"
-                          ? "bg-signal-red-bg/70 hover:bg-signal-red-bg"
+                          ? "bg-signal-red/70 hover:bg-signal-red-bg"
                           : isFocusedSession
-                            ? "bg-signal-mint-bg/60 hover:bg-signal-mint-bg"
+                            ? "bg-signal-mint/60 hover:bg-signal-mint-bg"
                             : index % 2 === 1
                               ? "bg-surface-2/60 hover:bg-surface-hover"
                               : "hover:bg-surface-hover",

@@ -115,7 +115,7 @@ export function DiscoveredSessionsPanel({
                     key={s.supi}
                     className={cn(
                       "rounded-lg border p-3 transition-colors",
-                      isFocused ? "border-signal-mint bg-signal-mint-bg/30" : "border-border bg-surface-2",
+                      isFocused ? "border-signal-mint bg-signal-mint/30" : "border-border bg-surface-2",
                     )}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">

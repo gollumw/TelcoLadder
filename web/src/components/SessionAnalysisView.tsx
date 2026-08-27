@@ -2,7 +2,7 @@
 
 import { t, useLang } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
-import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, type LucideIcon } from "lucide-react";
+import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
 import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
@@ -20,19 +20,22 @@ import type { CallFlowParticipant, CallFlowProcedure } from "@/data/source";
  * 也就是 **0 號泳道**。於是一則送往 UDM 的訊息會被畫成送往 UE ——
  * 箭頭畫得出來，圖看起來完全合理。
  */
+// `hex` 一律是 `var(--lane-*)`（globals.css 深淺各一組值）。**必須經
+// style={{...}} 使用** —— SVG 的 presentation attribute（`fill="var(…)"`）
+// 不解析 var()，寫在屬性上的症狀是整條泳道變黑而 console 一個字都不說。
 const LANE_STYLE: Record<string, { icon: LucideIcon; hex: string; text: string }> = {
-  UE: { icon: Smartphone, hex: "#39b6d0", text: "text-signal-cyan" },
-  gNB: { icon: RadioTower, hex: "#a78bfa", text: "text-purple-400" },
-  AMF: { icon: ShieldCheck, hex: "#3ac178", text: "text-signal-mint" },
-  AUSF: { icon: KeyRound, hex: "#2dd4bf", text: "text-teal-400" },
-  SMF: { icon: GitBranch, hex: "#d59733", text: "text-signal-amber" },
-  UPF: { icon: Router, hex: "#f67a73", text: "text-signal-red" },
+  UE: { icon: Smartphone, hex: "var(--lane-ue)", text: "text-signal-cyan" },
+  gNB: { icon: RadioTower, hex: "var(--lane-gnb)", text: "text-purple-400" },
+  AMF: { icon: ShieldCheck, hex: "var(--lane-amf)", text: "text-signal-mint" },
+  AUSF: { icon: KeyRound, hex: "var(--lane-ausf)", text: "text-teal-400" },
+  SMF: { icon: GitBranch, hex: "var(--lane-smf)", text: "text-signal-amber" },
+  UPF: { icon: Router, hex: "var(--lane-upf)", text: "text-signal-red" },
 };
 
 /** 認得出角色但沒配色的網元（SCP／UDM／PCF…）。 */
-const KNOWN_FALLBACK = { icon: Boxes, hex: "#818cf8", text: "text-indigo-400" };
+const KNOWN_FALLBACK = { icon: Boxes, hex: "var(--lane-known)", text: "text-indigo-400" };
 /** 連角色都推不出來 —— 泳道標題會是 IP。**長得不一樣是刻意的。** */
-const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "#6a7c98", text: "text-fg-dim" };
+const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "var(--lane-unknown)", text: "text-fg-dim" };
 
 interface Lane {
   id: string;
@@ -103,8 +106,14 @@ const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {
   INFO: "text-fg-dim",
 };
 
-const ERROR_HEX = "#f67a73";
-const ERROR_BG = "rgba(246,122,115,0.14)";
+const ERROR_HEX = "var(--ladder-error)";
+const ERROR_BG = "var(--ladder-error-bg)";
+
+//: 縮放級距。**1 是分界**：>1（放大）時解碼面板讓位到頁面最下方（梯形圖
+//: 需要整個寬度）；≤1 時面板在側欄 sticky 跟著捲動（NF 多、圖很長時，
+//: 點一支箭不用捲回頂端看解碼）。級距是離散的 —— 連續縮放做得到，
+//: 但「目前在哪一級」講不出來，重設也沒有明確的家。
+const ZOOM_LEVELS = [0.6, 0.75, 0.9, 1, 1.15, 1.35, 1.6] as const;
 
 const LANE_GAP = 150;
 const LANE_MARGIN = 70;
@@ -200,6 +209,8 @@ export function SessionAnalysisView({
   //: 選中的程序（`startFrame`，唯一）。null ＝ 全部，也就是切段前的行為。
   const [activeProcedure, setActiveProcedure] = useState<number | null>(null);
   const [hover, setHover] = useState<{ frame: number; x: number; y: number } | null>(null);
+  //: 梯形圖縮放。放大（>1）同時切換版面 —— 見 ZOOM_LEVELS 的說明。
+  const [zoom, setZoom] = useState<number>(1);
   const [activePduSessionId, setActivePduSessionId] = useState<number | null>(null);
 
   const identity = supi ? identities.find((i) => i.supi === supi) : undefined;
@@ -280,6 +291,9 @@ export function SessionAnalysisView({
   );
   const height = TOP_PAD + Math.max(filteredEvents.length + rowOffset, 1) * ROW_HEIGHT + 20;
 
+  //: >1 = 放大 = 解碼面板讓位到最下方。用推導不另設狀態 —— 兩個狀態會分家。
+  const expanded = zoom > 1;
+
   const sessionEntries = supi ? correlationEntries.filter((e) => e.supi === supi) : [];
   const activeSession = sessionEntries.find((e) => e.pduSessionId === activePduSessionId) ?? sessionEntries[0];
 
@@ -316,9 +330,44 @@ export function SessionAnalysisView({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <section className="rounded-lg border border-border bg-surface-1 p-4 xl:col-span-3">
-          <h2 className="mb-1 text-sm font-semibold text-fg">{t("Call Flow Ladder Diagram")}</h2>
+      <div className={expanded ? "space-y-4" : "grid grid-cols-1 gap-4 xl:grid-cols-5"}>
+        <section className={cn("rounded-lg border border-border bg-surface-1 p-4", !expanded && "xl:col-span-3")}>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-fg">{t("Call Flow Ladder Diagram")}</h2>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title={t("Zoom out")}
+                aria-label={t("Zoom out")}
+                disabled={zoom <= ZOOM_LEVELS[0]}
+                onClick={() => setZoom((z) => ZOOM_LEVELS[Math.max(ZOOM_LEVELS.indexOf(z as (typeof ZOOM_LEVELS)[number]) - 1, 0)])}
+                className="rounded border border-border bg-surface-2 p-1 text-fg-muted hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-40 transition-colors"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                title={t("Reset zoom")}
+                onClick={() => setZoom(1)}
+                className="min-w-[3.5rem] rounded border border-border bg-surface-2 px-2 py-1 text-[11px] font-medium tabular-nums text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                title={t("Zoom in")}
+                aria-label={t("Zoom in")}
+                disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+                onClick={() => setZoom((z) => ZOOM_LEVELS[Math.min(ZOOM_LEVELS.indexOf(z as (typeof ZOOM_LEVELS)[number]) + 1, ZOOM_LEVELS.length - 1)])}
+                className="rounded border border-border bg-surface-2 p-1 text-fg-muted hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-40 transition-colors"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+              <span className="ml-1 hidden text-[11px] text-fg-dim lg:inline">
+                {expanded ? t("Inspector docked below") : t("Inspector follows at the side")}
+              </span>
+            </div>
+          </div>
 
           {/* **模式必須講出來。** wire 模式下 SBI 夾帶的 NAS 會畫成
               AMF→SCP→SMF（那是它實際走的路），不知道模式的人會以為工具
@@ -465,8 +514,8 @@ export function SessionAnalysisView({
               // 改成畫在它自己的尺寸上，容器已經有 overflow-x-auto 會捲。
               <svg
                 viewBox={`0 0 ${width} ${height}`}
-                width={width}
-                height={height}
+                width={Math.round(width * zoom)}
+                height={Math.round(height * zoom)}
                 className="max-w-none"
                 role="img"
                 aria-label="5G SA call flow ladder diagram"
@@ -474,11 +523,11 @@ export function SessionAnalysisView({
                 <defs>
                   {activeLanes.map((lane) => (
                     <marker key={lane.id} id={markerId(lane.id)} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                      <path d="M0,0 L8,4 L0,8 Z" fill={lane.hex} />
+                      <path d="M0,0 L8,4 L0,8 Z" style={{ fill: lane.hex }} />
                     </marker>
                   ))}
                   <marker id="arrow-error" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                    <path d="M0,0 L8,4 L0,8 Z" fill={ERROR_HEX} />
+                    <path d="M0,0 L8,4 L0,8 Z" style={{ fill: ERROR_HEX }} />
                   </marker>
                 </defs>
 
@@ -494,7 +543,7 @@ export function SessionAnalysisView({
                       y={TOP_PAD + (i + rowOffset) * ROW_HEIGHT - ROW_HEIGHT / 2}
                       width={width}
                       height={ROW_HEIGHT}
-                      fill="rgba(255,255,255,0.02)"
+                      style={{ fill: "var(--ladder-band)" }}
                     />
                   ) : null
                 ))}
@@ -503,8 +552,8 @@ export function SessionAnalysisView({
                   const x = LANE_MARGIN + i * LANE_GAP;
                   return (
                     <g key={lane.id}>
-                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} stroke="#202a3c" strokeWidth={1} />
-                      <text x={x} y={24} textAnchor="middle" fill={lane.hex} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
+                      <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} style={{ stroke: "var(--ladder-lifeline)" }} strokeWidth={1} />
+                      <text x={x} y={24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
                         {lane.label}
                       </text>
                     </g>
@@ -519,7 +568,7 @@ export function SessionAnalysisView({
                       width={Math.max((activeLanes.length - 1) * LANE_GAP + 80, 120)}
                       height={28}
                       fill="none"
-                      stroke="#f59e0b"
+                      style={{ stroke: "var(--ladder-midstream)" }}
                       strokeDasharray="4 3"
                       rx={4}
                     />
@@ -528,7 +577,7 @@ export function SessionAnalysisView({
                       y={TOP_PAD + 4}
                       textAnchor="middle"
                       fontSize={10.5}
-                      fill="#fb923c"
+                      style={{ fill: "var(--ladder-midstream)" }}
                       className="select-none font-mono"
                     >
                       {t("[ Pre-established session - no Registration/Attach captured ]")}
@@ -564,7 +613,7 @@ export function SessionAnalysisView({
                         y={y - 18}
                         width={Math.max(Math.abs(toX - fromX) + 12, 20)}
                         height={isError ? 30 : 20}
-                        fill={isError ? ERROR_BG : isSelected ? "#192131" : "transparent"}
+                        style={{ fill: isError ? ERROR_BG : isSelected ? "var(--ladder-selected-bg)" : "transparent" }}
                         rx={4}
                       />
                       <line
@@ -572,7 +621,7 @@ export function SessionAnalysisView({
                         y1={y}
                         x2={toX}
                         y2={y}
-                        stroke={lineColor}
+                        style={{ stroke: lineColor }}
                         strokeWidth={isError ? 3 : isSelected ? 2.5 : 1.5}
                         markerEnd={isError ? "url(#arrow-error)" : `url(#${markerId(event.toNode)})`}
                       />
@@ -582,7 +631,7 @@ export function SessionAnalysisView({
                         textAnchor="middle"
                         fontSize={11}
                         fontWeight={isError ? 700 : 400}
-                        fill={isError ? "#fecdd3" : isSelected ? "#ffffff" : "#c7d2e3"}
+                        style={{ fill: isError ? "var(--ladder-error-label)" : isSelected ? "var(--ladder-label-selected)" : "var(--ladder-label)" }}
                         className="select-none font-mono"
                       >
                         <title>{event.messageName}</title>
@@ -597,17 +646,17 @@ export function SessionAnalysisView({
                         )}
                       </text>
                       {isError && event.causeText && (
-                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} fill="#fca5a5" fontWeight={600} className="select-none font-mono">
+                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} style={{ fill: "var(--ladder-error-sub)" }} fontWeight={600} className="select-none font-mono">
                           ⚠ {event.causeText}
                         </text>
                       )}
-                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} fill="#6a7c98" className="select-none font-mono">
+                      <text x={LANE_MARGIN + (activeLanes.length - 1) * LANE_GAP + 14} y={y + 4} fontSize={10} style={{ fill: "rgb(var(--fg-dim))" }} className="select-none font-mono">
                         {event.interfaceName}
                         {/* **只標超過門檻的**。每一列都標等於沒有標 ——
                             這一欄要一眼就看得出「哪裡卡住了」。3GPP 的 timer
                             逾時是秒級的，隔了兩秒才回應多半不是網路慢。 */}
                         {event.slow && event.deltaSeconds !== undefined && (
-                          <tspan fill="#f59e0b" fontWeight={700}>
+                          <tspan style={{ fill: "var(--ladder-slow)" }} fontWeight={700}>
                             {"  +"}{event.deltaSeconds.toFixed(2)}s
                           </tspan>
                         )}
@@ -636,7 +685,14 @@ export function SessionAnalysisView({
           </div>
         </section>
 
-        <section className="rounded-lg border border-border bg-surface-1 p-4 xl:col-span-2">
+        {/* ≤1 時 sticky 跟捲（`self-start` 必要 —— grid 預設拉伸高度，
+            拉伸的元素沒有 sticky 空間可言）；>1 時它就是頁尾的全寬面板。 */}
+        <section
+          className={cn(
+            "rounded-lg border border-border bg-surface-1 p-4",
+            !expanded && "xl:col-span-2 xl:sticky xl:top-4 self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto",
+          )}
+        >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-fg">
               {t("Protocol Decode & IE Inspector")}

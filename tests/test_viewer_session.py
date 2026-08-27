@@ -478,16 +478,23 @@ def test_static_route_serves_the_allowlisted_files(server) -> None:
 
 
 def test_the_static_allowlist_holds_only_the_react_bundle() -> None:
-    """白名單只剩 Vite 的兩份產物。
+    """白名單只有 Vite 的產物，一筆一筆點名。
 
     **白名單放寬就是把防路徑穿越那道線往後退** —— `/static/<name>` 是字典
     查表而不是路徑拼接，正是因為拼接一定會有人寫出穿越。Phase 4 之後
-    `viewer.js` / `viewer.css` / `report.css` 都退場了，表就該剩兩筆。
+    `viewer.js` / `viewer.css` / `report.css` 都退場了。
+
+    2026-08-28 加回一筆 `theme.js`：主題預載腳本（`web/public/theme.js`，
+    Vite 建置時原樣複製進 static/）。它必須是靜態檔 —— viewer 頁的 CSP 是
+    `script-src 'self'`，inline 一律被擋；固定檔名、走同一個字典查表，
+    防穿越結構未動。**這條紅過一次，理由想清楚了才改的**（本測試 docstring
+    的要求就是這個流程）。
 
     加回任何一筆會讓這條紅 —— 那個紅是要人停下來想清楚，不是要人改測試。
     """
-    assert set(viewer_mod.STATIC_TYPES) == {"app.js", "app.css"}, (
-        f"白名單多了東西：{sorted(set(viewer_mod.STATIC_TYPES) - {'app.js', 'app.css'})}"
+    expected = {"app.js", "app.css", "theme.js"}
+    assert set(viewer_mod.STATIC_TYPES) == expected, (
+        f"白名單與預期不符：{sorted(set(viewer_mod.STATIC_TYPES) ^ expected)}"
     )
 
 
