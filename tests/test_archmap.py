@@ -49,6 +49,34 @@ def live() -> dict:
     return archmap.measure(count_tests=False)
 
 
+def test_the_todo_scanner_actually_finds_the_open_items() -> None:
+    """掃描器抓到的數量，必須等於 TODOS.md 裡沒被劃掉的 `## T-` 標題數。
+
+    **這條是事後補的**：`_open_todos()` 原本只認全形標點（`｜`、`（P1）`），
+    而 2026-08-27 的英文化把它們換成 ASCII —— 架構圖上「TODOS 未關閉」
+    從那天起一直顯示 0，連續兩週沒有人發現。沒有任何一層會報錯：
+    產生器成功、圖照樣漂亮、數字只是變成 0。
+
+    數法刻意與 `_open_todos()` 不同（一個數 `## T-` 開頭又沒有 `~~` 的行，
+    一個跑完整正則）—— 兩邊用同一個正則的話，這條測試只會確認它等於自己。
+    """
+    from tools.archmap import _open_todos
+
+    text = (REPO / "TODOS.md").read_text(encoding="utf-8")
+    headings = [
+        line for line in text.splitlines()
+        if line.startswith("## ") and "~~" not in line and line[3:].startswith("T-")
+    ]
+    found = _open_todos()
+    assert len(found) == len(headings), (
+        f"掃到 {len(found)} 條，但 TODOS.md 有 {len(headings)} 個沒劃掉的條目。"
+        "標題行的寫法變了而正則沒跟上 —— 架構圖會靜默顯示 0。\n"
+        f"沒被抓到的：{[h for h in headings if not any(f['id'] in h for f in found)]}"
+    )
+    # 陽性對照：至少要有一條，否則上面那個等式在「兩邊都是 0」時空跑。
+    assert found, "TODOS.md 一條開著的都沒有？那這條測試無法分辨掃描器壞了沒"
+
+
 def test_every_module_belongs_to_exactly_one_layer(live: dict) -> None:
     """新增的模組必須被分到某一層。
 

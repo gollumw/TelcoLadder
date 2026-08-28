@@ -284,6 +284,17 @@ def measure(*, count_tests: bool = True) -> dict:
     }
 
 
+#: `## T-XXX | 標題 (P1…)` 這一行的形狀。**全形與半形標點都收**：
+#: 這份文件 2026-08-27 全面英文化時把 `｜`／`（）` 換成 ASCII，而原本只認全形的
+#: 正則就此一條都抓不到 —— 架構圖上「TODOS 未關閉」從那天起一直顯示 0，
+#: 而那正是這個產生器存在的理由（手繪的東西會靜默過期）。id 也要收連字號
+#: （`T-4G-CAUSE`），舊的 `[A-Z0-9]+` 在第一個 `-` 就斷。
+#: 由 `test_archmap.py` 的 `test_the_todo_scanner_actually_finds_the_open_items` 釘住。
+_TODO_LINE = re.compile(
+    r"^## (?!~~)(T-[A-Z0-9-]+)\s*[|｜]\s*(.+?)\s*[（(](P\d)[^）)]*[）)]"
+)
+
+
 def _open_todos() -> list[dict]:
     """`TODOS.md` 裡還開著的條目。劃掉的（`~~`）不算。"""
     path = REPO / "TODOS.md"
@@ -291,7 +302,7 @@ def _open_todos() -> list[dict]:
         return []
     out = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^## (?!~~)(T-[A-Z0-9]+)｜(.+?)（(P\d)[^）]*）\s*$", line)
+        m = _TODO_LINE.match(line)
         if m:
             out.append({"id": m.group(1), "title": m.group(2), "priority": m.group(3)})
     return out

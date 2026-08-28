@@ -633,24 +633,26 @@ demand-signal channel.
 
 ---
 
-## T-PUBLISH | PyPI release pipeline (P2)
+## ~~T-PUBLISH | PyPI release pipeline (P2)~~ — **completed and closed (2026-08-29)**
 
-**What**: GitHub Actions building and publishing `telcoladder` to PyPI
-(later also `telcoladder-ims`).
+**What was done**: `.github/workflows/release.yml` publishes to PyPI on
+every published GitHub release, via **Trusted Publishing (OIDC)** — no API
+token is stored anywhere. Build and publish are separate jobs, so what
+reaches PyPI is the artifact CI built, not a local `dist/`.
 
-**Why**: manual releases eventually go wrong once, and the plugin contract
-means two packages will need version synchronisation.
+`telcoladder` **0.1.0 is live on PyPI**. Verified end to end: `twine check`
+passes on both artifacts, a clean venv installing from PyPI runs
+`telcoladder check` and `analyze` successfully, and the wheel carries the
+React bundle plus every cause table.
 
-**Why not now**: `/plan-eng-review` (2026-08-17) finding 4 ruled — test CI
-and plugin-compatibility CI first; the release pipeline waits until PyPI
-publication is actually imminent. CI's value ("PRs get a green check", the
-two-package compatibility matrix) is needed now; a release pipeline is
-useless before the first release.
+The original entry deferred this until "publication is actually imminent"
+and made it depend on the plugin contract's versioning strategy. Both
+conditions were met: the contract landed 2026-08-17, and the repo went
+public 2026-08-29.
 
-**Depends on**: the T1 plugin contract finalising (the versioning strategy
-shapes the release flow).
-
-**Effort**: human ~4 hours / CC ~20 minutes
+**Second package note**: the entry anticipated `telcoladder-ims` needing
+version synchronisation. That never materialised — IMS shipped as an
+in-tree adapter (T7), so there is one package to version.
 
 ---
 
