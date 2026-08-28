@@ -156,13 +156,13 @@ brew install --cask wireshark                       # macOS
 sudo apt install tshark                             # Debian/Ubuntu
 winget install WiresharkFoundation.Wireshark        # Windows
 
-pip install git+https://github.com/gollumw/TelcoLadder
+pip install telcoladder
 telcoladder check                  # verifies tshark and dissectors
 ```
 
-> **Not on PyPI yet.** Install from git until the first tagged release. There
-> is no build step: the browser interface is committed as a built bundle, so
-> you do not need Node.
+> There is no build step: the browser interface ships as a built bundle, so
+> you do not need Node. Installing from git
+> (`pip install git+https://github.com/gollumw/TelcoLadder`) works too.
 
 **Neither the macOS nor the Windows installer puts `tshark` on your `PATH`** —
 macOS hides it inside `Wireshark.app`, and the Windows installer leaves the
