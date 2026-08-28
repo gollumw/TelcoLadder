@@ -310,12 +310,24 @@ opened.
 
 ---
 
-## T-DIAM-CLAUSE | the Diameter cause tables carry no clause numbers (P2)
+## T-DIAM-CLAUSE | the oracle-built cause tables carry no clause numbers (P2)
 
-**What**: `diameter_base.yaml` and `diameter_3gpp.yaml` have `spec` only
-(`RFC 6733` / `3GPP TS 29.230`), no `clause`. Names are pinned entry by
-entry against `tshark -G values`, but that oracle cannot supply clause
-numbers.
+> **Scope widened 2026-08-29** (was Diameter-only): the four 4G table
+> groups landed the same way — names oracle-pinned, clauses deliberately
+> absent, each guarded by a `*_prints_no_clause_number` test that must be
+> flipped (not deleted) when the verified clauses go in.
+
+**What**: `diameter_base.yaml` / `diameter_3gpp.yaml` **plus**
+`nas_eps_emm.yaml` / `nas_eps_esm.yaml` (TS 24.301), `gtpv2.yaml`
+(TS 29.274) and the five `s1ap_*.yaml` (TS 36.413) have `spec` only, no
+`clause`. Names are pinned entry by entry against `tshark -G values`, but
+that oracle cannot supply clause numbers.
+
+**Likely single anchors, to be personally verified before filling**: the
+EMM causes live in one annex/table of TS 24.301, ESM likewise; GTPv2's
+cause values sit in one table of TS 29.274 §8.4; S1AP's five groups share
+TS 36.413 §9.2.1.3 — one confirmation per document may cover a whole
+table, unlike Diameter's per-entry situation.
 
 **Why not now**: CLAUDE.md §2.3 — AI must not generate clause numbers.
 Filling them requires human verification against the specification text,

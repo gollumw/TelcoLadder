@@ -35,10 +35,24 @@ causes:
     common_causes: []
     common_causes_zh: []
   4:
-    name: "ue-not-in-plmn-serving-area"
+    # name 2026-08-29 由 "ue-not-in-plmn-serving-area" 修正 —— 手抄漂移，
+    # oracle（tshark -G values）的原文是駝峰＋大寫 PLMN。
+    name: "uE-not-in-PLMN-serving-area"
     plain: "The UE is outside this PLMN's serving area."
     plain_zh: "UE 不在此 PLMN 的服務區內。"
     common_causes:
       - "Roaming or regional restrictions"
     common_causes_zh:
       - "漫遊或區域限制"
+
+  # ── 2026-08-29 補齊：oracle 的另外兩條（IAB） ──
+  5:
+    name: "mobile-IAB-not-authorized"
+    plain: 'The device presented itself as a mobile IAB node and is not authorized to act as one here.'
+    plain_zh: '這台設備自稱行動 IAB 節點，但沒有被授權在這裡以那個身分運作。'
+
+  6:
+    name: "iAB-not-authorized"
+    plain: 'The device presented itself as an IAB node (a relay that backhauls over the radio network) and is not authorized to act as one here.'
+    plain_zh: '這台設備自稱 IAB 節點（用無線網路做回傳的中繼），但沒有被授權在這裡以那個身分運作。'
+

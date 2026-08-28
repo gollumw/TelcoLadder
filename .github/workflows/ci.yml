@@ -30,8 +30,9 @@
 #   - 加密的 SUCI：SBI 與 NAS 都只驗過 null-scheme。ECIES 保護過的
 #     拼不回 SUPI，跨協定關聯會退回只靠 NGAP ID。
 #   - TLS 保護的 SBI：看不到內容，整個 SBI 半邊會消失。
-#   - PFCP 的 cause 語意：型別與 SEID 有驗，但 TS 29.244 的 cause 表
-#     尚未人工建立，失敗訊息標得出來、給不出條文出處。
+#   - PFCP 的 cause 表已於 2026-08-29 建立（29 條，oracle 釘住）——
+#     這一條自「守不住」清單移除；仍守不住的是各表的 clause 條號
+#     （見 TODOS 的 T-DIAM-CLAUSE，範圍已擴大到所有 oracle 建的表）。
 #   - IMS（SIP/Diameter/H.248）：adapter 與 fixture 都還沒有。
 #
 # 尚未加入：

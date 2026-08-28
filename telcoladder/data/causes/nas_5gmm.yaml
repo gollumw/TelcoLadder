@@ -81,7 +81,9 @@ causes:
       - "AMF 之間 context 轉移失敗"
 
   10:
-    name: "Implicitly de-registered"
+    # name 2026-08-29 由 "Implicitly de-registered" 修正 —— 手抄漂移，
+    # oracle 無連字號。
+    name: "Implicitly deregistered"
     plain: 'The network deregistered this UE implicitly a while ago, but the UE still thinks it is attached.'
     plain_zh: '網路早已把這個 UE 隱含地登出，UE 卻還以為自己在線上。'
     common_causes:
@@ -347,3 +349,101 @@ causes:
       - "編碼／解碼不相容，常見於不同廠商設備互連"
       - "必要 IE 缺漏或長度欄位算錯"
       - "3GPP release 版本落差導致新 IE 被舊端拒收"
+
+  # ── 2026-08-29 補齊：oracle 50 條中先前未收的 18 條 ──
+  26:
+    name: "Non-5G authentication unacceptable"
+    plain: 'During a procedure spanning access types, the authentication offered for the non-5G side was not acceptable.'
+    plain_zh: '跨接取類型的程序中，非 5G 那側提供的鑑權方式不被接受。'
+
+  36:
+    name: "IAB-node operation not authorized"
+    plain: 'The device identified itself as an IAB node (a relay that backhauls over the radio network) and is not authorized to operate as one here.'
+    plain_zh: '這台設備自稱 IAB 節點（用無線網路做回傳的中繼），但沒有被授權在這裡以那個身分運作。'
+
+  62:
+    name: "No network slices available"
+    plain: 'None of the slices the UE asked for are available to it here.'
+    plain_zh: 'UE 要求的網路切片，在這裡沒有任何一個可用。'
+    common_causes:
+      - 'The requested S-NSSAI is not deployed in this tracking area'
+      - 'The subscription carries no slice the network currently offers'
+    common_causes_zh:
+      - '要求的 S-NSSAI 沒有部署在這個追蹤區'
+      - '訂閱裡沒有任何一個網路目前提供的切片'
+
+  67:
+    name: "Insufficient resources for specific slice and DNN"
+    plain: 'The specific slice-and-DNN combination has no capacity left; other combinations may be fine.'
+    plain_zh: '這個特定的切片＋DNN 組合沒有剩餘容量，其他組合可能沒事。'
+
+  69:
+    name: "Insufficient resources for specific slice"
+    plain: 'This particular slice has no capacity left.'
+    plain_zh: '這個特定切片沒有剩餘容量。'
+
+  71:
+    name: "ngKSI already in use"
+    plain: 'The key set identifier the UE proposed is already taken; the UE should retry with another.'
+    plain_zh: 'UE 提議的金鑰組識別碼（ngKSI）已被占用，UE 應換一個重試。'
+
+  74:
+    name: "Temporarily not authorized for this SNPN"
+    plain: 'Access to this stand-alone non-public network is refused for now; it may succeed later.'
+    plain_zh: '暫時不被授權接取這個獨立非公共網路（SNPN），之後可能就可以。'
+
+  75:
+    name: "Permanently not authorized for this SNPN"
+    plain: 'Access to this stand-alone non-public network is refused permanently; the UE should stop trying.'
+    plain_zh: '永久不被授權接取這個 SNPN，UE 不該再試。'
+
+  76:
+    name: "Not authorized for this CAG or authorized for CAG cells only"
+    plain: 'Either this closed access group is not allowed for this subscriber, or the subscriber may only use CAG cells and this is not one.'
+    plain_zh: '這個封閉接取群組（CAG）不允許這個用戶，或者這個用戶只能用 CAG cell 而這裡不是。'
+
+  77:
+    name: "Wireline access area not allowed"
+    plain: 'The wireline access this request came over is outside the allowed area.'
+    plain_zh: '這個請求經由的有線接取不在允許的區域內。'
+
+  78:
+    name: "PLMN not allowed to operate at the present UE location"
+    plain: 'This network is not permitted to serve UEs at the location this one is in - a regulatory boundary rather than a subscription problem.'
+    plain_zh: '這個網路不被允許在 UE 目前所在的位置提供服務 —— 這是法規邊界，不是訂閱問題。'
+
+  79:
+    name: "UAS services not allowed"
+    plain: 'Uncrewed-aircraft services are not allowed for this subscriber or location.'
+    plain_zh: '無人機（UAS）服務對這個用戶或這個位置不被允許。'
+
+  80:
+    name: "Disaster roaming for the determined PLMN with disaster condition not allowed"
+    plain: 'Disaster roaming onto this network is not permitted for this UE.'
+    plain_zh: '這台 UE 不被允許以災難漫遊方式接取這個網路。'
+
+  81:
+    name: "Selected N3IWF is not compatible with the allowed NSSAI"
+    plain: 'The non-3GPP interworking function the UE picked cannot serve any slice the UE is allowed to use - the UE should select another.'
+    plain_zh: 'UE 選的 N3IWF 服務不了它被允許的任何切片 —— UE 應另選一個。'
+
+  82:
+    name: "Selected TNGF is not compatible with the allowed NSSAI"
+    plain: 'The trusted non-3GPP gateway the UE picked cannot serve any slice the UE is allowed to use - the UE should select another.'
+    plain_zh: 'UE 選的 TNGF 服務不了它被允許的任何切片 —— UE 應另選一個。'
+
+  92:
+    name: "Insufficient user-plane resources for the PDU session"
+    plain: 'The user plane has no capacity left for this PDU session even though the control plane accepted it this far.'
+    plain_zh: '控制面走到這裡都沒問題，但使用者面已經沒有容量給這個 PDU session。'
+
+  93:
+    name: "Onboarding services terminated"
+    plain: 'The limited onboarding registration is over; the UE must register normally now that it has its credentials.'
+    plain_zh: '限定用途的 onboarding 註冊結束了 —— UE 已取得憑證，接下來必須走正常註冊。'
+
+  94:
+    name: "User plane positioning not authorized"
+    plain: 'User-plane positioning is not authorized for this subscriber.'
+    plain_zh: '這個用戶未被授權使用使用者面定位。'
+

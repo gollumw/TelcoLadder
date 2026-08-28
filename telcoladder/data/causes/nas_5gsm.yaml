@@ -255,3 +255,123 @@ causes:
     common_causes_zh:
       - "編碼／解碼不相容，常見於跨廠商互連"
       - "必要 IE 缺漏"
+
+  # ── 2026-08-29 補齊：oracle 46 條中先前未收的 20 條（多數與 ESM 是孿生條目，措辭一致） ──
+  34:
+    name: "Service option temporarily out of order"
+    plain: 'The service exists and is subscribed, but is temporarily unavailable. Retrying later is the right response.'
+    plain_zh: '服務存在也有訂閱，只是暫時不可用。稍後重試才是正確的反應。'
+
+  35:
+    name: "PTI already in use"
+    plain: 'The procedure transaction identifier this request used is already taken by another procedure in flight.'
+    plain_zh: '這個請求用的程序交易識別碼（PTI）已經被另一個進行中的程序佔用。'
+
+  37:
+    name: "5GS QoS not accepted"
+    plain: 'The UE would not accept the QoS the network offered.'
+    plain_zh: 'UE 不接受網路提供的 QoS。'
+
+  41:
+    name: "Semantic error in the TFT operation"
+    plain: 'The traffic flow template operation does not make sense - for example deleting a filter that is not there.'
+    plain_zh: 'TFT（流量範本）操作講不通 —— 例如刪除一個根本不存在的過濾器。'
+
+  42:
+    name: "Syntactical error in the TFT operation"
+    plain: 'The traffic flow template is malformed.'
+    plain_zh: 'TFT（流量範本）格式錯誤。'
+
+  44:
+    name: "Semantic errors in packet filter(s)"
+    plain: 'A packet filter is internally contradictory - it parses, but it cannot mean anything.'
+    plain_zh: '封包過濾器自相矛盾 —— 解得開，但沒有任何意義。'
+
+  45:
+    name: "Syntactical error in packet filter(s)"
+    plain: 'A packet filter is malformed.'
+    plain_zh: '封包過濾器格式錯誤。'
+
+  47:
+    name: "PTI mismatch"
+    plain: 'The procedure transaction identifier does not match the procedure it claims to belong to.'
+    plain_zh: '程序交易識別碼與它宣稱所屬的程序對不上。'
+
+  58:
+    name: "PDU session type Unstructured only allowed"
+    plain: 'Only the Unstructured PDU session type is permitted here - typically a cellular IoT deployment.'
+    plain_zh: '這裡只允許 Unstructured 型別的 PDU session —— 通常是蜂巢式 IoT 的部署。'
+
+  59:
+    name: "Unsupported 5QI value"
+    plain: 'The QoS identifier asked for is not supported here.'
+    plain_zh: '要求的 5QI（QoS 識別碼）在這裡不支援。'
+    common_causes:
+      - 'The 5QI is configured in one part of the network but not another'
+    common_causes_zh:
+      - '這個 5QI 只在網路的一部分有設定，另一部分沒有'
+
+  61:
+    name: "PDU session type Ethernet only allowed"
+    plain: 'Only Ethernet PDU session type is permitted here.'
+    plain_zh: '這裡只允許 Ethernet 型別的 PDU session。'
+
+  81:
+    name: "Invalid PTI value"
+    plain: 'The procedure transaction identifier is outside the valid range.'
+    plain_zh: '程序交易識別碼超出合法範圍。'
+
+  83:
+    name: "Semantic error in the QoS operation"
+    plain: 'The QoS operation does not make sense - for example modifying a QoS rule that is not there.'
+    plain_zh: 'QoS 操作講不通 —— 例如修改一條根本不存在的 QoS 規則。'
+
+  84:
+    name: "Syntactical error in the QoS operation"
+    plain: 'The QoS operation is malformed.'
+    plain_zh: 'QoS 操作格式錯誤。'
+
+  85:
+    name: "Invalid mapped EPS bearer identity"
+    plain: 'The EPS bearer this 5G session maps to does not exist - the 4G/5G interworking mapping is broken.'
+    plain_zh: '這個 5G session 映射到的 EPS 承載不存在 —— 4G/5G 互通的映射斷了。'
+    common_causes:
+      - 'An interworking handover left the mapping half-updated'
+    common_causes_zh:
+      - '互通換手把映射弄到半更新狀態'
+
+  86:
+    name: "UAS services not allowed"
+    plain: 'Uncrewed-aircraft services are not allowed for this session.'
+    plain_zh: '無人機（UAS）服務對這個 session 不被允許。'
+
+  98:
+    name: "Message type not compatible with the protocol state"
+    plain: 'The message type is understood, but arriving now makes no sense given where the two sides are in the procedure.'
+    plain_zh: '訊息型別看得懂，但以雙方目前在程序中的位置來說，這時候收到它講不通。'
+    common_causes:
+      - 'A retransmission that arrived after the procedure had already moved on'
+      - 'The two sides disagree about the current state, often after a lost message'
+    common_causes_zh:
+      - '重送的訊息在程序已經往前走之後才到'
+      - '雙方對目前狀態的認知不一致，常見於前面掉了一則訊息'
+
+  99:
+    name: "Information element non-existent or not implemented"
+    plain: 'The message carried an information element the receiver does not recognise.'
+    plain_zh: '訊息裡帶了接收端不認得的資訊元素。'
+    common_causes:
+      - 'One side supports a newer release than the other'
+    common_causes_zh:
+      - '一側支援的版本比另一側新'
+
+  100:
+    name: "Conditional IE error"
+    plain: 'An information element that is required under these particular conditions is missing or malformed.'
+    plain_zh: '在這個特定條件下該出現的資訊元素缺席或格式錯誤。'
+
+  101:
+    name: "Message not compatible with the protocol state"
+    plain: 'The message itself is valid but does not belong in the state the protocol is currently in.'
+    plain_zh: '訊息本身合法，但不屬於協定目前所在的狀態。'
+

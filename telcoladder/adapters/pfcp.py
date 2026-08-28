@@ -4,10 +4,15 @@
 它已經備好 PFCP 的判定規則（8805 埠與 Session Establishment 的發起方向），
 本檔不重複那件事。
 
-**目前不接 cause 表。** PFCP 的 cause 值在 TS 29.244，而條號一律要人工核對
-照抄（見專案 CLAUDE.md §2.3 與 `data/causes/*.yaml` 開頭的宣告）。
-在那份表建起來之前，這裡只標「這則是不是失敗」，不給任何條文出處 ——
-不給解釋只是不方便，給一個幻覺出來的條號會讓人得出錯誤結論。
+**cause 表於 2026-08-29 建立**（`data/causes/pfcp.yaml`，名稱逐字取自
+`tshark -G values` 並由測試重跑 oracle 比對）。這裡原本的宣告是「表建起來
+之前不給出處」—— 現在翻面：`CauseRef(table="pfcp")` 交給查表，**條號仍然
+不給**（表只有 `spec`，理由見該檔檔頭與 CLAUDE.md §2.3）。
+
+**失敗的邊界是 64**，與 GTPv2 同形：#1 是成功，#2「More Usage Report to
+send」與 #3「Request partially accepted」是資訊性的 —— 舊判準
+`cause != 1` 會把它們標紅，而「每一則帶部分接受的回應都看起來像失敗」
+正是 ngap／sip／gtpv2 都踩過的那一類錯（詳見各檔的同名判斷）。
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import connection_scope, gtp_tunnel, scoped
-from telcoladder.model import Endpoint, IdKey, IdKind, Message
+from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "pfcp"
 
@@ -66,6 +71,8 @@ MESSAGE_TYPES: dict[int, str] = {
 #: tshark 自己把這個值算繪成「Request accepted(success)」（`tshark -V` 可驗）。
 #: 這裡只拿它判斷成敗，**不輸出任何條文出處** —— 見本檔開頭的說明。
 _CAUSE_ACCEPTED = 1
+#: 拒絕段的起點（TS 29.244；1–3 是成功與資訊性）。
+_CAUSE_REJECTION_FROM = 64
 
 #: 「還不知道對方的 SEID」時填的佔位值。**絕對不能拿它當關聯 key**：
 #: 每一個 Session Establishment Request 都填 0，拿它建 key 會把所有
@@ -200,8 +207,11 @@ def parse(frame: Frame) -> list[Message]:
                 label=label,
                 identity_keys=frozenset(identity),
                 releases=frozenset(releases),
-                cause=None,  # 見本檔開頭：cause 表建起來之前不給出處
-                is_failure=cause is not None and cause != _CAUSE_ACCEPTED,
+                cause=(CauseRef(table="pfcp", value=cause)
+                       if cause is not None else None),
+                # 64 起才是拒絕（TS 29.244 的段界，與 GTPv2 同形）——
+                # #2/#3 是資訊性的，用 `!= 1` 判會把它們標紅（見檔頭）。
+                is_failure=cause is not None and cause >= _CAUSE_REJECTION_FROM,
                 detail=detail,
             )
         )

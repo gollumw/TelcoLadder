@@ -274,3 +274,179 @@ causes:
       - "The ARP priority makes this bearer pre-emptable"
     common_causes_zh:
       - "ARP 優先權設定使此承載可被搶佔"
+
+  # ── 2026-08-29 補齊：oracle 59 條中先前未收的 30 條 ──
+  1:
+    name: "txnrelocoverall-expiry"
+    plain: 'An Xn handover ran out of time overall. The handover was attempted and did not finish.'
+    plain_zh: 'Xn 換手的整體計時器到期。換手嘗試過，但沒有完成。'
+    common_causes:
+      - 'The target gNB did not respond in time'
+      - 'The UE lost the radio link mid-handover'
+    common_causes_zh:
+      - '目標 gNB 沒有及時回應'
+      - 'UE 在換手途中失去無線連線'
+
+  6:
+    name: "partial-handover"
+    plain: 'Only some of the QoS flows moved across; the rest did not.'
+    plain_zh: '只有部分 QoS flow 搬過去了，其餘沒有。'
+
+  7:
+    name: "ho-failure-in-target-5GC-ngran-node-or-target-system"
+    plain: 'The handover failed on the target side. The reason lives in the target node, not in this message.'
+    plain_zh: '換手在目標側失敗。原因在目標節點那邊，不在這則訊息裡。'
+    common_causes:
+      - 'The target cell had no radio resources at that moment'
+      - 'The target node rejected the incoming context'
+    common_causes_zh:
+      - '目標 cell 當下沒有無線資源'
+      - '目標節點拒絕了移入的上下文'
+
+  9:
+    name: "tngrelocoverall-expiry"
+    plain: 'An NG handover ran out of time overall.'
+    plain_zh: 'NG 換手的整體計時器到期。'
+
+  10:
+    name: "tngrelocprep-expiry"
+    plain: 'The preparation phase of an NG handover timed out - the handover never got as far as being executed.'
+    plain_zh: 'NG 換手的準備階段逾時 —— 換手根本還沒走到執行那一步。'
+    common_causes:
+      - 'The target AMF or gNB did not answer the preparation request'
+    common_causes_zh:
+      - '目標 AMF 或 gNB 沒有回應準備請求'
+
+  16:
+    name: "handover-desirable-for-radio-reason"
+    plain: 'The radio side wants to move this UE because another cell would serve it better. Routine mobility, not a fault.'
+    plain_zh: '無線側想把這個 UE 搬走，因為別的 cell 服務它會更好。例行的移動性管理，不是故障。'
+
+  17:
+    name: "time-critical-handover"
+    plain: 'A handover that had to happen urgently, typically because the radio link was about to fail.'
+    plain_zh: '必須緊急執行的換手，通常是因為無線連線快要斷了。'
+
+  18:
+    name: "resource-optimisation-handover"
+    plain: 'The network moved the UE to make better use of its resources. A deliberate optimisation, not a fault.'
+    plain_zh: '網路為了更有效運用資源而把 UE 搬走。這是刻意的最佳化，不是故障。'
+
+  19:
+    name: "reduce-load-in-serving-cell"
+    plain: 'The UE was moved off to relieve load on the cell it was in. Load management, not a fault.'
+    plain_zh: '把 UE 搬走以減輕原本 cell 的負載。這是負載管理，不是故障。'
+
+  27:
+    name: "unkown-qos-flow-ID"
+    plain: 'The QoS flow identifier in this message does not exist on the receiving side. (The misspelling of unknown is the specification''s own.)'
+    plain_zh: '訊息裡的 QoS flow 識別碼在接收端不存在。（unkown 這個拼字錯誤是規範自己的。）'
+    common_causes:
+      - 'The flow was already released and a late message still refers to it'
+    common_causes_zh:
+      - 'QoS flow 已經釋放，但有一則遲到的訊息還在指涉它'
+
+  28:
+    name: "multiple-PDU-session-ID-instances"
+    plain: 'The same PDU session identifier appeared more than once where only one was allowed.'
+    plain_zh: '同一個 PDU session 識別碼在只該出現一次的地方出現了多次。'
+
+  29:
+    name: "multiple-qos-flow-ID-instances"
+    plain: 'The same QoS flow identifier appeared more than once where only one was allowed.'
+    plain_zh: '同一個 QoS flow 識別碼在只該出現一次的地方出現了多次。'
+
+  31:
+    name: "ng-intra-system-handover-triggered"
+    plain: 'Released because an NG handover within the same system is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為同系統內的 NG 換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  32:
+    name: "ng-inter-system-handover-triggered"
+    plain: 'Released because a handover to a different system is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為往另一個系統的換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  33:
+    name: "xn-handover-triggered"
+    plain: 'Released because an Xn handover between gNBs is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為 gNB 之間的 Xn 換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  35:
+    name: "ue-context-transfer"
+    plain: 'The UE context is being transferred to another node; this side releases its copy. Part of a mobility procedure, not a fault.'
+    plain_zh: 'UE 上下文正轉移到另一個節點，這一側釋放自己那份。這是移動性程序的一部分，不是故障。'
+
+  43:
+    name: "ue-max-integrity-protected-data-rate-reason"
+    plain: 'The UE''s maximum integrity-protected data rate cannot accommodate what was asked for.'
+    plain_zh: 'UE 的完整性保護資料速率上限，容納不下所要求的東西。'
+
+  44:
+    name: "release-due-to-cn-detected-mobility"
+    plain: 'The core network detected the UE has moved and releases this context accordingly. Part of a mobility procedure, not a fault.'
+    plain_zh: '核網偵測到 UE 已經移動，據此釋放這個上下文。這是移動性程序的一部分，不是故障。'
+
+  47:
+    name: "multiple-location-reporting-reference-ID-instances"
+    plain: 'The same location-reporting reference identifier appeared more than once.'
+    plain_zh: '同一個位置回報參考識別碼出現了多次。'
+
+  48:
+    name: "rsn-not-available-for-the-up"
+    plain: 'The redundant sequence number requested for user-plane redundancy is not available.'
+    plain_zh: '使用者面冗餘所要求的 RSN 不可用。'
+
+  49:
+    name: "npn-access-denied"
+    plain: 'Access to this non-public network is denied for this subscriber.'
+    plain_zh: '這個用戶被拒絕接取這個非公共網路（NPN）。'
+    common_causes:
+      - 'The subscriber is not in the NPN''s allowed list'
+    common_causes_zh:
+      - '用戶不在這個 NPN 的允許清單裡'
+
+  50:
+    name: "cag-only-access-denied"
+    plain: 'This subscriber may only use CAG cells, and this cell is not one - or the reverse.'
+    plain_zh: '這個用戶只能用 CAG cell，而這個 cell 不是 —— 或者情況恰好相反。'
+
+  51:
+    name: "insufficient-ue-capabilities"
+    plain: 'The UE does not support something this procedure requires.'
+    plain_zh: 'UE 缺少這個程序所需的某項能力。'
+
+  52:
+    name: "redcap-ue-not-supported"
+    plain: 'This cell or network does not support reduced-capability (RedCap) UEs.'
+    plain_zh: '這個 cell 或網路不支援精簡能力（RedCap）的 UE。'
+
+  53:
+    name: "unknown-MBS-Session-ID"
+    plain: 'The multicast/broadcast session identifier is not one the receiver knows.'
+    plain_zh: '接收端不認得這個多播／廣播 session 識別碼。'
+
+  54:
+    name: "indicated-MBS-session-area-information-not-served-by-the-gNB"
+    plain: 'The multicast/broadcast service area indicated is not one this gNB serves.'
+    plain_zh: '指定的多播／廣播服務區域不在這個 gNB 的服務範圍內。'
+
+  55:
+    name: "inconsistent-slice-info-for-the-session"
+    plain: 'The slice information carried for this session contradicts itself or what the network holds.'
+    plain_zh: '這個 session 帶的切片資訊自相矛盾，或與網路持有的不一致。'
+
+  56:
+    name: "misaligned-association-for-multicast-unicast"
+    plain: 'The multicast and unicast legs of this service are not aligned with each other.'
+    plain_zh: '這個服務的多播腿與單播腿彼此沒有對齊。'
+
+  57:
+    name: "eredcap-ue-not-supported"
+    plain: 'This cell or network does not support enhanced reduced-capability (eRedCap) UEs.'
+    plain_zh: '這個 cell 或網路不支援增強精簡能力（eRedCap）的 UE。'
+
+  58:
+    name: "two-rx-xr-ue-not-supported"
+    plain: 'This cell or network does not support two-receiver XR UEs.'
+    plain_zh: '這個 cell 或網路不支援雙接收機的 XR UE。'
+

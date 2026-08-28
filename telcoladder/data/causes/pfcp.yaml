@@ -1,0 +1,210 @@
+# PFCP cause values — 3GPP TS 29.244 (N4 / Sxa / Sxb).
+#
+# 名稱逐字取自 `tshark -G values` 的 `pfcp.cause`，由
+# `tests/test_causes.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# 這張表補上的是 CI 檔頭記了很久的缺口：「PFCP 的 cause 語意 —— 失敗訊息
+# 標得出來、給不出條文出處」。`pfcp.py` 檔頭那句「cause 表建起來之前不給出處」
+# 同日翻面。
+#
+# **刻意不收 #0 `Reserved`**（規範保留，無語意可解釋 —— 比照 `gtpv2.yaml`
+# 的省略判斷，並由測試釘住省略集合）。**#1–#3 是接受段**：`Request accepted
+# (success)`、`More Usage Report to send`、`Request partially accepted` 都不是
+# 拒絕 —— 白話講明，理由同 gtpv2 低段。拒絕從 #64 起。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照本目錄其他 oracle 建的表）。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: pfcp
+spec: "3GPP TS 29.244"
+
+causes:
+  1:
+    name: "Request accepted(success)"
+    plain: 'The request succeeded. This is the normal success code.'
+    plain_zh: '請求成功。這是正常的成功代碼。'
+
+  2:
+    name: "More Usage Report to send"
+    plain: 'The node has more usage reports queued than fit in this message. Informational, not a failure.'
+    plain_zh: '節點排隊中的用量報告多到這則訊息裝不下。這是資訊性的，不是失敗。'
+
+  3:
+    name: "Request partially accepted"
+    plain: 'Some of what was asked for was granted and some was not - check the per-rule responses, because the overall message still reads as a success.'
+    plain_zh: '要求的東西只有一部分被接受 —— 要看逐規則的回應，因為整則訊息仍然算成功。'
+
+  64:
+    name: "Request rejected(reason not specified)"
+    plain: 'Rejected without saying why. The peer''s own logs are the only place the reason exists.'
+    plain_zh: '拒絕但不說理由。原因只存在於對端自己的 log 裡。'
+
+  65:
+    name: "Session context not found"
+    plain: 'The peer has no session for the SEID this message refers to. The SMF and UPF disagree about whether the session exists.'
+    plain_zh: '對端沒有這則訊息指涉的 SEID 對應的 session。SMF 與 UPF 對「session 是否存在」的認知不一致。'
+    common_causes:
+      - 'The UPF restarted and lost its sessions while the SMF kept them'
+      - 'A message arrived after the session was already deleted'
+    common_causes_zh:
+      - 'UPF 重啟、session 全丟了，而 SMF 還留著'
+      - 'session 已經刪除之後訊息才到'
+
+  66:
+    name: "Mandatory IE missing"
+    plain: 'A mandatory information element is simply not in the message.'
+    plain_zh: '必要的資訊元素根本沒出現在訊息裡。'
+    common_causes:
+      - 'One side implements an older release that did not yet require this IE'
+    common_causes_zh:
+      - '一側實作的是還沒要求這個 IE 的舊版本'
+
+  67:
+    name: "Conditional IE missing"
+    plain: 'An information element that is required under these particular conditions is not in the message.'
+    plain_zh: '在這個特定條件下該出現的資訊元素沒有出現在訊息裡。'
+
+  68:
+    name: "Invalid length"
+    plain: 'A length field does not match the actual content.'
+    plain_zh: '長度欄位與實際內容對不上。'
+
+  69:
+    name: "Mandatory IE incorrect"
+    plain: 'A mandatory information element is present but its content is wrong.'
+    plain_zh: '必要的資訊元素有帶，但內容不對。'
+    common_causes:
+      - 'A protocol version difference where a field''s encoding or meaning changed'
+    common_causes_zh:
+      - '協定版本差異，某個欄位的編碼或意義變了'
+
+  70:
+    name: "Invalid Forwarding Policy"
+    plain: 'The forwarding policy identifier this rule refers to is not configured on the UPF.'
+    plain_zh: '規則指涉的轉送政策識別碼在 UPF 上沒有設定。'
+    common_causes:
+      - 'The SMF and UPF are configured from different policy sets'
+    common_causes_zh:
+      - 'SMF 與 UPF 的政策設定來自不同的集合'
+
+  71:
+    name: "Invalid F-TEID allocation option"
+    plain: 'The two sides disagree about who allocates the tunnel endpoint - both tried, or neither did.'
+    plain_zh: '兩側對「誰負責配置隧道端點」的認知不一致 —— 兩邊都配了，或都沒配。'
+
+  72:
+    name: "No established PFCP Association"
+    plain: 'The SMF sent session signalling to a UPF it has no association with. The association handshake must come first.'
+    plain_zh: 'SMF 對一台沒有建立關聯的 UPF 送 session 訊令。要先完成 association 握手。'
+    common_causes:
+      - 'The association dropped (heartbeat timeout) and the SMF kept sending'
+      - 'A UPF restart cleared the association while the SMF did not notice'
+    common_causes_zh:
+      - '關聯已斷（heartbeat 逾時），SMF 還在送'
+      - 'UPF 重啟清掉了關聯，SMF 沒察覺'
+
+  73:
+    name: "Rule creation / modification Failure"
+    plain: 'The UPF could not create or modify the rule as asked.'
+    plain_zh: 'UPF 無法照要求建立或修改規則。'
+    common_causes:
+      - 'The rule references something that does not exist on the UPF'
+      - 'A capability mismatch - the SMF asked for a feature this UPF lacks'
+    common_causes_zh:
+      - '規則指涉了 UPF 上不存在的東西'
+      - '能力不匹配 —— SMF 要求了這台 UPF 沒有的功能'
+
+  74:
+    name: "PFCP entity in congestion"
+    plain: 'The node is congested and shedding load. Usually paired with retry-after behaviour.'
+    plain_zh: '節點壅塞，正在卸載。通常伴隨稍後重試的行為。'
+
+  75:
+    name: "No resources available"
+    plain: 'The peer has no capacity to take this session or rule right now.'
+    plain_zh: '對端目前沒有容量接下這個 session 或規則。'
+    common_causes:
+      - 'The UPF hit a session or rule limit'
+    common_causes_zh:
+      - 'UPF 碰到 session 或規則上限'
+
+  76:
+    name: "Service not supported"
+    plain: 'The peer does not support the service this request asks for.'
+    plain_zh: '對端不支援這個請求所要的服務。'
+
+  77:
+    name: "System failure"
+    plain: 'The peer hit an internal failure it will not describe further. Its own logs will say more than the packet does.'
+    plain_zh: '對端遇到內部故障，而且不再多說。它自己的 log 會比封包說得多。'
+
+  78:
+    name: "Redirection Requested"
+    plain: 'The peer wants this signalling to go to another node instead.'
+    plain_zh: '對端希望這些訊令改送到另一個節點。'
+
+  79:
+    name: "All dynamic addresses are occupied"
+    plain: 'The address pool is exhausted - there is no IP left to give this session.'
+    plain_zh: '位址池用完了 —— 沒有 IP 可以配給這個 session。'
+    common_causes:
+      - 'The pool is too small for the number of simultaneous sessions'
+      - 'Addresses leaked because sessions were not torn down cleanly'
+    common_causes_zh:
+      - '位址池對同時 session 數來說太小'
+      - 'session 沒有乾淨拆除，位址洩漏了'
+
+  80:
+    name: "Unknown Pre-defined Rule"
+    plain: 'The pre-defined rule name this message activates is not configured on the UPF.'
+    plain_zh: '訊息要啟用的預定義規則名稱在 UPF 上沒有設定。'
+    common_causes:
+      - 'The rule exists on the SMF side but was never provisioned on this UPF'
+    common_causes_zh:
+      - '規則在 SMF 側存在，但從未佈建到這台 UPF'
+
+  81:
+    name: "Unknown Application ID"
+    plain: 'The application identifier this rule refers to is not configured on the UPF.'
+    plain_zh: '規則指涉的應用識別碼在 UPF 上沒有設定。'
+
+  82:
+    name: "L2TP tunnel Establishment failure"
+    plain: 'The L2TP tunnel this session needs could not be established.'
+    plain_zh: '這個 session 需要的 L2TP 隧道建立失敗。'
+
+  83:
+    name: "L2TP session Establishment failure"
+    plain: 'The L2TP session inside the tunnel could not be established.'
+    plain_zh: '隧道內的 L2TP session 建立失敗。'
+
+  84:
+    name: "L2TP tunnel release"
+    plain: 'The L2TP tunnel was released, taking this session''s transport with it.'
+    plain_zh: 'L2TP 隧道被釋放，這個 session 的傳輸跟著沒了。'
+
+  85:
+    name: "L2TP session release"
+    plain: 'The L2TP session was released.'
+    plain_zh: 'L2TP session 被釋放。'
+
+  86:
+    name: "PFCP session restoration failure"
+    plain: 'An attempt to restore this session after a failure did not succeed.'
+    plain_zh: '故障後嘗試還原這個 session，沒有成功。'
+
+  87:
+    name: "L2TP tunnel Establishment failure - Tunnel Auth Failure"
+    plain: 'The L2TP tunnel failed to establish because tunnel-level authentication did not pass.'
+    plain_zh: 'L2TP 隧道建立失敗，因為隧道層級的認證沒過。'
+
+  88:
+    name: "L2TP Session Establishment failure - Session Auth Failure"
+    plain: 'The L2TP session failed to establish because session-level authentication did not pass.'
+    plain_zh: 'L2TP session 建立失敗，因為 session 層級的認證沒過。'
+
+  89:
+    name: "L2TP tunnel Establishment failure - LNS not reachable"
+    plain: 'The L2TP network server could not be reached.'
+    plain_zh: '連不上 L2TP 網路伺服器（LNS）。'

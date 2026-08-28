@@ -8,12 +8,15 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 import yaml
 
 from telcoladder.causes import DATA_DIR, annotate, describe, lookup, table_names
 from telcoladder.model import CauseRef, Endpoint, Message
+
+_CAUSES_DIR = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes"
 from telcoladder.render_mermaid import render
 from telcoladder.model import Flow
 
@@ -116,7 +119,85 @@ def test_all_expected_tables_are_present():
         # ESM（第四批，2026-08-29）—— T-4G-CAUSE 收尾。這張是 EMM #19
         # 「ESM failure」白話裡那句「真正的原因在 ESM cause 裡」的去處。
         "nas_eps_esm",
+        # PFCP（2026-08-29）—— 補上 CI 檔頭記了很久的缺口：「失敗訊息標得
+        # 出來、給不出條文出處」。adapter 的 CauseRef 同日接上。
+        "pfcp",
     }
+
+
+# ── oracle 完整性（5G ＋ PFCP，2026-08-29）────────────────────────────
+#
+# 4G 各表的 oracle 比對住在各自的 adapter 測試檔；5G 這五張與 NAS 兩張
+# 建表早於「對 oracle 重跑比對」的紀律，結果**四張不完整、兩處手抄漂移**
+# 存在了兩週沒人發現（ngap_radioNetwork 29/59、nas_5gmm 32/50、
+# nas_5gsm 26/46、ngap_nas 5/7 —— 全部靜默：查不到就「未收錄」，
+# 而「未收錄」看起來像是刻意的）。這一節讓那件事從此會亮紅。
+
+_ORACLE_COMPLETE = {
+    "ngap_radioNetwork": "ngap.radioNetwork",
+    "ngap_transport": "ngap.transport",
+    "ngap_nas": "ngap.nas",
+    "ngap_protocol": "ngap.protocol",
+    "ngap_misc": "ngap.misc",
+    "nas_5gmm": "nas-5gs.mm.5gmm_cause",
+    "nas_5gsm": "nas-5gs.sm.5gsm_cause",
+}
+
+
+def _tshark_value_table(field: str) -> dict[int, str]:
+    import subprocess
+
+    from telcoladder.tshark import find_tshark
+
+    proc = subprocess.run(
+        [str(find_tshark().path), "-G", "values"], capture_output=True,
+        text=True, encoding="utf-8", check=True,
+    )
+    out = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4 and parts[0] == "V" and parts[1] == field:
+            out[int(parts[2])] = parts[3]
+    return out
+
+
+@pytest.mark.parametrize("table, field", sorted(_ORACLE_COMPLETE.items()))
+def test_the_5g_tables_are_complete_and_verbatim(table, field):
+    """每張 5G 表必須收滿 oracle 的每一個號碼，名稱逐字相同。"""
+    raw = yaml.safe_load((_CAUSES_DIR / f"{table}.yaml").read_text(encoding="utf-8"))
+    mine = {v: b["name"] for v, b in raw["causes"].items()}
+    assert mine == _tshark_value_table(field), (
+        f"{table} 與 tshark 的 {field} 對不上（缺條目或名稱漂移）。"
+    )
+
+
+def test_the_pfcp_omission_is_exactly_reserved():
+    """PFCP 收 29/30 —— 唯一省略的必須剛好是無語意的 #0 Reserved。"""
+    raw = yaml.safe_load((_CAUSES_DIR / "pfcp.yaml").read_text(encoding="utf-8"))
+    oracle = _tshark_value_table("pfcp.cause")
+    mine = {v: b["name"] for v, b in raw["causes"].items()}
+    assert set(oracle) - set(mine) == {0}, "省略的不只 Reserved —— 有語意的號碼缺了"
+    assert not set(mine) - set(oracle)
+    mismatched = {v for v in mine if mine[v].strip() != oracle[v].strip()}
+    assert not mismatched, f"名稱與 tshark 對不上：{sorted(mismatched)}"
+
+
+def test_pfcp_informational_causes_are_not_failures():
+    """#2/#3 是資訊性的 —— adapter 的失敗邊界是 64，不是「不等於 1」。
+
+    舊判準 `cause != 1` 會把「More Usage Report to send」與
+    「Request partially accepted」標紅：每一則帶部分接受的回應都看起來
+    像失敗 —— ngap／sip／gtpv2 都踩過的同一類錯，這是第四次。
+    """
+    from telcoladder.adapters.pfcp import _CAUSE_REJECTION_FROM
+
+    assert _CAUSE_REJECTION_FROM == 64
+    raw = yaml.safe_load((_CAUSES_DIR / "pfcp.yaml").read_text(encoding="utf-8"))
+    for value in (2, 3):
+        plain = raw["causes"][value]["plain"].lower()
+        assert "not a failure" in plain or "success" in plain or "informational" in plain, (
+            f"pfcp #{value} 的白話沒講清楚它不是失敗：{plain}"
+        )
 
 
 # ── 與 renderer 的接合 ─────────────────────────────────────────────────
