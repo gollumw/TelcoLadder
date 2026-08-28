@@ -1,0 +1,50 @@
+# Publish to PyPI on every GitHub release, via Trusted Publishing (OIDC).
+#
+# No API token is stored anywhere: PyPI trusts this exact repository +
+# workflow + environment combination (configured once on pypi.org under
+# "Publishing" → repository gollumw/TelcoLadder, workflow release.yml,
+# environment pypi). The `id-token: write` permission is what lets the
+# job prove its identity to PyPI.
+#
+# Build and publish are separate jobs on purpose: the artifact that gets
+# uploaded is the one built in CI, not whatever happened to be in a local
+# dist/ directory.
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
