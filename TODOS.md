@@ -814,3 +814,79 @@ completes it.
 **Depends on**: one testbed restart.
 
 **Effort**: CC ~30 minutes
+
+---
+
+## T-ROOTCAUSE | `root_cause` asserts a causation the data does not support (P2)
+
+**What**: `summary.build()` gives each procedure a `root_cause` field
+holding the explanation of the procedure's *first* failure. On
+`ki-mismatch` that reads:
+
+```
+"cause":      "Protocol error; the spec does not say more than that…"   (#111)
+"root_cause": "The sequence number is out of sync; the UE is asking
+               the network to resynchronise."                           (#21)
+```
+
+**#21 is the symptom, not the root cause.** The capture's own cause table
+says so — `#111`'s first `common_causes` entry reads "A #21 immediately
+followed by #111 is almost always a key problem". The summary therefore
+contradicts, under a field name asserting causation, what the same
+document states three keys away.
+
+**Why it matters**: the field name is a claim. A reader who acts on it
+resynchronises the UDM's SQN — a maintenance action that fixes nothing,
+after which the failure returns unchanged. Measured: given this summary
+without further guidance, a competent reader ranked "reset the SQN and
+retry" as the first recommended action.
+
+This is the class of failure the fixture exists to catch, and the fixture
+did catch it — just not through a test. Nothing reddens today.
+
+**Why not now**: the fix needs a rule for what "root cause" means when a
+procedure carries several causes, and the honest options differ in cost:
+drop the field when `failures > 1`; rename it to something that claims
+less (`first_failure`); or teach it the ordered-pair judgements already
+written in the cause tables. The first two are cheap and truthful; the
+third is the useful one and needs a place to put pair rules.
+
+Either way it changes `summarize`'s stable field set, so it is a
+`summary_version` bump and a breaking change for MCP consumers.
+
+**Depends on**: a decision on which of the three above.
+
+**Effort**: CC ~1 hour for the rename/drop; ~half a day for pair rules.
+
+---
+
+## T-MCPRULES | three rules the MCP instructions do not yet state (P3)
+
+**What**: `mcp.INSTRUCTIONS` reaches every client's system prompt. It
+already carries the `not_visible` rule. Three more earn their place:
+
+1. **A cause number alone is not a conclusion — read what follows it.**
+   `#21` then success is a routine resynchronisation; `#21` then `#111`
+   is a key mismatch. The same number, two opposite answers.
+2. **Never emit a specification clause not present in the facts.**
+3. **"The network behaved correctly" is a valid finding.** A rejection
+   can be the network working exactly as specified, with the gap in
+   provisioning.
+
+**Why**: measured against the same summaries. Without them a capable
+reader hedged the key-mismatch case into a three-way differential and led
+with the wrong repair; and cited `§5.5.1.2.5`, a clause present in
+neither the summary nor any cause table. With them, both cases resolved
+to a single correct action and every citation traced back to the payload.
+
+Rule 3 matters more than it looks: `supi-not-provisioned` is a capture
+where the correct answer is that nothing is broken, and a reader
+predisposed to find a fault will manufacture one.
+
+**Why not now**: no user has hit this — 0.1.0 shipped days ago. It is
+also cheap enough to fold into whatever next touches `mcp.py` rather
+than standing alone.
+
+**Depends on**: nothing.
+
+**Effort**: CC ~20 minutes.
