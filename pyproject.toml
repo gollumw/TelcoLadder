@@ -9,6 +9,20 @@ authors = [{ name = "gollumw" }]
 keywords = ["5g", "4g", "lte", "ngap", "s1ap", "nas", "gtp", "sip", "pcap", "wireshark",
             "mermaid", "sequence-diagram", "ims", "volte", "diameter"]
 
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Telecommunications Industry",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking :: Monitoring",
+    "Topic :: Communications :: Telephony",
+]
+
 # 相依刻意保持極少。tshark 是外部執行檔，不是 Python 套件。
 # 不用 pyshark：它只是 tshark 的慢包裝，多一層依賴無收益。
 dependencies = [

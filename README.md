@@ -8,6 +8,8 @@ each cause code resolved to the 3GPP clause it comes from, each network function
 named instead of shown as an IP. The output is Mermaid you can paste into GitHub,
 or an interactive viewer in your browser.
 
+![Drop a capture, get each subscriber's correlated ladder — failures explained with their 3GPP clause and the most common field causes](docs/demo.gif)
+
 ```bash
 telcoladder analyze failed_attach.pcapng
 ```

@@ -125,7 +125,7 @@ _KNOWN_CAPTURES = {
 #: 而 `mergecap` 曾經把來源檔的絕對路徑寫了進去（T-PCAPMETA，2026-08-22）——
 #: 前三道網因為這個豁免全部看不見它。檔頭由本檔最後一條測試單獨掃，
 #: 只走非封包區塊，所以不會被封包裡的隨機位元組淹沒。
-_SKIP_SUFFIXES = {".pcap", ".pcapng", ".cap", ".png", ".jpg", ".ico"}
+_SKIP_SUFFIXES = {".pcap", ".pcapng", ".cap", ".png", ".jpg", ".ico", ".gif"}
 _SKIP_PATHS = {"telcoladder/static/app.js", "telcoladder/static/app.css"}
 
 #: 前後不得再接數字 —— 否則 16 位的微秒時戳會被切出一個 15 位的子字串。
