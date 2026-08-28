@@ -77,7 +77,7 @@ def test_failure_and_cause_survive_the_collapse():
 
 
 def test_flow_view_is_still_reachable_and_uncollapsed():
-    """流程視圖沒有消失，只是不再是預設（決策，2026-08-17）。
+    """流程視圖沒有消失，只是不再是預設（2026-08-17 定案）。
 
     `wire=False` 必須拿回一則訊息一列 —— 同一格的載體與載荷各自成列，
     所以 frame 編號會重複。這條同時守住「翻預設沒有把另一個視圖弄丟」。

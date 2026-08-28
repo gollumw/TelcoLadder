@@ -579,7 +579,7 @@ def test_no_home_directory_path_in_any_tracked_text_file() -> None:
 # SIP 的 `To:` / `From:` 是 `sip:+886…@`、`P-Asserted-Identity` 是 `tel:+886…`、
 # Diameter 的 `Subscription-Id-Data` 帶 MSISDN。
 #
-# **這道網刻意在 SIP adapter 之前補**（scope review 2026-08-23 的 F6）。前六道
+# **這道網刻意在 SIP adapter 之前補**（2026-08-23 範疇審查的 F6）。前六道
 # 每一道都是事發之後才補的 —— 這是第一道趕在載體落地前先到位的。
 #
 # ## 為什麼分成「有 scheme」與「裸號碼」兩種形狀
