@@ -108,6 +108,14 @@ def test_all_expected_tables_are_present():
         # Spare／Reserved／Shall-not-be-used 刻意不收，而那個省略由
         # `test_adapter_gtpv2.py` 逐條檢查過。
         "gtpv2",
+        # S1AP（第三批，2026-08-29）。**五組各一張，與 NGAP 同理**（§3.2）——
+        # `s1ap.cause` 只是外層選擇子，五個群組各自從 0 起算，合成一張就會
+        # 把 radioNetwork 的 #21 解釋成另一組的 #21，而那看起來完全合理。
+        "s1ap_radioNetwork", "s1ap_transport", "s1ap_nas",
+        "s1ap_protocol", "s1ap_misc",
+        # ESM（第四批，2026-08-29）—— T-4G-CAUSE 收尾。這張是 EMM #19
+        # 「ESM failure」白話裡那句「真正的原因在 ESM cause 裡」的去處。
+        "nas_eps_esm",
     }
 
 

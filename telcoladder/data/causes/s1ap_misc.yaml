@@ -1,0 +1,61 @@
+# S1AP misc cause values — 3GPP TS 36.413.
+#
+# 名稱逐字取自 `tshark -G values` 的 `s1ap.misc`，由
+# `tests/test_adapter_s1ap.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **五組各一張表，這是刻意的**（CLAUDE.md §3.2 的同一個理由）：`s1ap.cause` 只是
+# 外層選擇子，真正的號碼在五個群組裡各自從 0 起算。合成一張的話，radioNetwork
+# 的 #21 會被解釋成另一組的 #21 —— 而那個解釋看起來完全合理，沒有人會發現。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照 `nas_eps_emm.yaml`、
+# `gtpv2.yaml`、`diameter_3gpp.yaml`）。5G 的 `ngap_*.yaml` 有條號，因為那幾張
+# 是當時人工核對過的 —— 兩者的差別是**核對的有無**，不是重要性的高低。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: s1ap_misc
+spec: "3GPP TS 36.413"
+
+causes:
+  0:
+    name: "control-processing-overload"
+    plain: 'The node''s control-plane processing is overloaded and it is shedding work.'
+    plain_zh: '節點的控制面處理過載，正在卸載工作。'
+    common_causes:
+      - 'A signalling storm - many UEs attaching at once after an outage'
+      - 'The node is undersized for the load it is carrying'
+    common_causes_zh:
+      - '訊令風暴 —— 故障排除後大量 UE 同時附著'
+      - '節點規格不足以承擔目前的負載'
+
+  1:
+    name: "not-enough-user-plane-processing-resources"
+    plain: 'The node has control-plane capacity but not enough user-plane processing left.'
+    plain_zh: '節點的控制面還有餘裕，但使用者面的處理資源不夠了。'
+
+  2:
+    name: "hardware-failure"
+    plain: 'A hardware fault on the node. The node''s own alarms will say more than the packet does.'
+    plain_zh: '節點硬體故障。節點自己的告警會比封包說得多。'
+
+  3:
+    name: "om-intervention"
+    plain: 'An operator or management action caused this - a planned maintenance or a manual command, not a fault.'
+    plain_zh: '這是操作或維運動作造成的 —— 計畫性維護或人工指令，不是故障。'
+    common_causes:
+      - 'A cell or node was locked for maintenance'
+      - 'A software upgrade or configuration change in progress'
+    common_causes_zh:
+      - 'cell 或節點因維護被鎖定'
+      - '正在進行軟體升級或設定變更'
+
+  4:
+    name: "unspecified"
+    plain: 'A miscellaneous reason with no further detail.'
+    plain_zh: '其他原因，但沒有進一步說明。'
+
+  5:
+    name: "unknown-PLMN"
+    plain: 'The PLMN identity involved is not one this node recognises.'
+    plain_zh: '涉及的 PLMN 識別碼不是這個節點認得的。'
+

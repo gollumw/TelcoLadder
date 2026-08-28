@@ -252,76 +252,61 @@ verification).
 
 ---
 
-## T-4G-CAUSE | 4G explains EMM and GTPv2-C; S1AP and ESM remain (P1, **part of E1's value**)
+## ~~T-4G-CAUSE | 4G could not explain a single cause~~ — **completed and closed (2026-08-29)**
 
-> **Batch 1 landed 2026-08-29: EMM, all 39 values.**
-> `telcoladder/data/causes/nas_eps_emm.yaml` — names taken verbatim from
-> `tshark -G values` and pinned against that oracle by
-> `test_the_emm_cause_names_are_the_ones_tshark_has`; plain language and
-> common root causes written by hand, bilingual. **9 of the 39 deliberately
-> carry no `common_causes`** — mostly protocol errors and reserved states
-> with no stable field story; inventing one there would be guessing in an
-> authoritative voice.
-> **No `clause` numbers**, following `diameter_3gpp.yaml`: clauses were not
-> verified one by one, and `test_the_emm_table_prints_no_clause_number`
-> keeps the next person from "improving" that. Verified end to end: the
-> fixture's Attach reject now reads
-> `PLMN not allowed (#11) — 3GPP TS 24.301`.
->
-> **Batch 2 landed the same day: GTPv2-C, all 82 substantive values.**
-> `telcoladder/data/causes/gtpv2.yaml` — the plan said "rejection range
-> (64+)"; the acceptance range went in too, because that is where the trap
-> lives: #12 `PGW not responding` and #13 `Network Failure` sound like
-> faults but sit below the 64 boundary, so they are **reasons for a
-> network-initiated procedure, not rejections**
-> (`test_the_low_range_reads_as_a_reason_not_a_rejection` pins that the
-> plain language says so).
->
-> **82 of the oracle's 132**: `Spare` (20–63), `Reserved` (0–1) and
-> `Shall not be used` (71/79/99/118) carry no meaning to explain.
-> `test_the_omitted_gtpv2_values_are_exactly_the_meaningless_ones` checks
-> the omission set precisely — **the day 3GPP assigns one of those Spare
-> numbers, the test reddens** rather than the gap staying silent.
->
-> One documented deviation: names are stored stripped. tshark's #112 is
-> `'Request rejected for a PMIPv6 reason '` with a trailing space;
-> reproducing it verbatim would put a double space on the diagram and read
-> as our bug. The oracle comparison strips both sides.
->
-> **Remaining: 115** — S1AP 67, ESM 48. Batch 3 is S1AP radioNetwork (45),
-> the largest single group.
+**What was done**: all **236 substantive 4G cause values** are catalogued
+across seven tables, in four batches on one day.
 
-**What**: S1AP (five groups, 67 values) and NAS-EPS ESM (48) causes still
-have **no lookup tables** — **115 remaining**.
-The numbers extract and `CauseRef` carries the right table name, but
-`describe()` only answers "not in this tool's cause table yet".
+| Table | Values | Spec |
+|---|---|---|
+| `nas_eps_emm` | 39 | TS 24.301 |
+| `nas_eps_esm` | 48 | TS 24.301 |
+| `gtpv2` | 82 (of the oracle's 132) | TS 29.274 |
+| `s1ap_radioNetwork` / `_transport` / `_nas` / `_protocol` / `_misc` | 45 / 2 / 7 / 7 / 6 | TS 36.413 |
 
-**Why this is not polish**: the line between this tool and another packet
-decoder is **explanations with specification provenance** (§6's
-positioning). A finished 4G control plane that cannot explain one failure
-discards the differentiation — `EMM cause #11` is then no better than
-Wireshark's output.
+**Names are measured, not transcribed.** Every one comes verbatim from
+`tshark -G values`, and a test per table re-runs that oracle to compare —
+otherwise "taken from the oracle" is a claim nobody ever checks again, and
+a tshark version change or a hand edit would pass silently.
 
-**Why it was not done in passing**: `tests/test_causes.py` requires `plain`
-+ `plain_zh` on every entry (T-CAUSE-EN's discipline). 154 bilingual
-explanations are **content work**; mass-generating them as an adapter
-by-product produces a batch of plausible, unverified explanations — **a
-wrong explanation is worse than none** (§2.3's discipline).
+**Three judgements worth keeping:**
 
-**The cheap part**: **names are free** — `tshark -G values` has them all:
+1. **The omission set is checked, not assumed.** `gtpv2` catalogues 82 of
+   132: `Spare` (20–63), `Reserved` (0–1) and `Shall not be used` carry no
+   meaning to explain. `test_the_omitted_gtpv2_values_are_exactly_the_meaningless_ones`
+   pins that exact set, so **the day 3GPP assigns one of those numbers the
+   test reddens** instead of the gap staying silent. ESM's single `Unused`
+   (#46) is the opposite call and is catalogued: seeing it on the wire is
+   itself a signal (the sender has a defect), so it has something to say.
+2. **"Not a fault" is stated wherever a cause reads like one.**
+   `successful-handover`, `user-inactivity`, `load-balancing-tau-required`,
+   GTPv2's #12 `PGW not responding` and #13 `Network Failure` (both below
+   the 64 rejection boundary) — explaining these as failures sends the
+   reader hunting for a fault that never happened. Two tests pin that the
+   plain language says so. Same family as `ngap.py`'s cause-bearing
+   successfulOutcome and `sip.py`'s 401.
+3. **No clause numbers.** They were not verified one by one, so they are
+   not printed — the `diameter_3gpp.yaml` precedent (§2.3). Every table
+   carries a test asserting `clause` is absent, so the next person cannot
+   "improve" it without doing the verification first. The 5G `ngap_*`
+   tables do have clauses because those were checked at the time; **the
+   difference is the checking, not the importance.**
 
-    tshark -G values | awk -F'\t' '$2=="nas-eps.emm.cause"'
-    tshark -G values | awk -F'\t' '$2=="s1ap.radioNetwork"'
+**Cross-reference guarded**: EMM #19 `ESM failure` says "the real reason is
+in the ESM cause" — `test_emm_19_points_at_a_table_that_now_exists` ties
+that sentence to the table it points at, so the guidance cannot rot into a
+dead end.
 
-So only the plain language and common root causes must be written, and
-**common root causes are optional** — leave uncertain ones empty rather
-than inventing.
+Verified end to end: the 4G fixture's ladder now carries
+`PLMN not allowed (#11) — 3GPP TS 24.301`,
+`radio-connection-with-ue-lost (#21) — 3GPP TS 36.413` and
+`No resources available (#73) — 3GPP TS 29.274`, with **zero "not
+catalogued" left on the diagram**. 785 tests.
 
-**Effort**: ~2 human days (286 entries, verified one by one).
-**Recommended in three batches**: EMM first (39 entries — the common
-Attach/TAU failures live there), then GTPv2-C's rejection range (64+,
-bearer-establishment failures), then S1AP radioNetwork (45). ESM and the
-rest can wait.
+**Still open, and deliberately separate**: `T-DIAM-CLAUSE` (clause numbers
+for the Diameter tables) now has four more tables in the same situation.
+Its scope should widen to cover all of them rather than a new item being
+opened.
 
 ---
 

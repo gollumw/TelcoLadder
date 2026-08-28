@@ -183,14 +183,14 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit 572923c</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 91e3002</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
   <code>tools/archmap.py</code>，這一頁就跟著走。</p>
 </header>
 
-<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,274</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>741</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>10</b><span>TODOS 未關閉</span></div></div>
+<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,274</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>786</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>9</b><span>TODOS 未關閉</span></div></div>
 
 <section>
   <h2><span class="num">01</span>分層相依</h2>
@@ -493,13 +493,13 @@ graph LR
   <p class="sub">直接讀 <code>TODOS.md</code> 的標題 —— 劃掉的不算，所以關掉一項這裡就少一列。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">ID</th><th>是什麼</th><th class="mono">優先</th></tr></thead>
-    <tbody><tr><td class="mono">T-4G-CAUSE</td><td class="wrap-ok">4G explains EMM and GTPv2-C; S1AP and ESM remain</td><td><span class="tag t-mute">P1</span></td></tr><tr><td class="mono">T-DIAM-CLAUSE</td><td class="wrap-ok">the Diameter cause tables carry no clause numbers</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">a dual-gNB capture — so real data guards the `scoped()` prefix</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-GUTI-UI</td><td class="wrap-ok">the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DIAM-MORE</td><td class="wrap-ok">the other twenty-odd Diameter interfaces</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">one-line `docker run` analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">if Phase 3 touches cryptography, check export control first</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">a public corpus of failure captures</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">when a subscriber yields no procedure segments, the screen says nothing</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
+    <tbody><tr><td class="mono">T-DIAM-CLAUSE</td><td class="wrap-ok">the Diameter cause tables carry no clause numbers</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">a dual-gNB capture — so real data guards the `scoped()` prefix</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-GUTI-UI</td><td class="wrap-ok">the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DIAM-MORE</td><td class="wrap-ok">the other twenty-odd Diameter interfaces</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">one-line `docker run` analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">if Phase 3 touches cryptography, check export control first</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">a public corpus of failure captures</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">when a subscriber yields no procedure segments, the screen says nothing</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
   </table></div>
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit 572923c</span>
+  <span>tools/archmap.py</span><span>commit 91e3002</span>
   <span>51 模組 · 14,274 行</span>
-  <span>741 測試</span>
+  <span>786 測試</span>
 </footer>
 </div>

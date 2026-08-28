@@ -1,0 +1,353 @@
+# ESM cause values — 3GPP TS 24.301 (EPS Session Management).
+#
+# 名稱逐字取自 `tshark -G values` 的 `nas-eps.esm.cause`，由
+# `tests/test_adapter_naseps.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **這張表是 EMM #19 的去處。** `ESM failure` 的白話寫著「真正的原因在同時帶著的
+# ESM cause 裡」—— 那句話指的就是這裡。少了這張表，那個指引會指向一個
+# 「未收錄」，等於把讀者送進死路。
+#
+# **48 條全收，包含 #46 `Unused`**：規範標為未使用的號碼出現在線上，本身就是
+# 一個訊號（送出端有缺陷），所以它有話可說 —— 與 `gtpv2.yaml` 省略 `Spare`
+# 的判斷不衝突：那邊有 44 個且全部沉默，這裡只有一個而且講得出意義。
+#
+# **95–111 與 `nas_eps_emm.yaml` 是同號同名的協定錯誤**，白話刻意寫成一致 ——
+# 同一個錯誤在兩張表裡給出兩種說法，讀者會以為那是兩件不同的事。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照本目錄其他 4G 表）。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: nas_eps_esm
+spec: "3GPP TS 24.301"
+
+causes:
+  8:
+    name: "Operator Determined Barring"
+    plain: 'The operator has barred this service for this subscriber - a business decision applied in the network, not a technical fault.'
+    plain_zh: '營運商對這個用戶封鎖了這項服務 —— 這是套用在網路上的商業決定，不是技術故障。'
+    common_causes:
+      - 'Unpaid account or a data cap reached'
+      - 'A parental or corporate policy applied to the subscription'
+    common_causes_zh:
+      - '欠費，或流量已達上限'
+      - '訂閱上套用了家長或企業政策'
+
+  26:
+    name: "Insufficient resources"
+    plain: 'The network has no capacity to set this session up right now.'
+    plain_zh: '網路目前沒有容量建立這個 session。'
+    common_causes:
+      - 'The SGW or PGW is at a session or bearer limit'
+      - 'A load peak - the same request often succeeds moments later'
+    common_causes_zh:
+      - 'SGW 或 PGW 已達 session 或承載上限'
+      - '負載尖峰 —— 同樣的請求過一會兒常常就成功了'
+
+  27:
+    name: "Missing or unknown APN"
+    plain: 'The APN in the request is missing, or the network does not know it. One of the most common reasons an attach fails at the bearer stage.'
+    plain_zh: '請求裡的 APN 缺席，或網路不認得它。這是附著在承載階段失敗最常見的原因之一。'
+    common_causes:
+      - 'The APN is not configured on the PGW or in DNS'
+      - 'A typo in the APN on the device, or the operator changed the APN name'
+      - 'The subscription does not carry this APN, so no PGW can be selected'
+    common_causes_zh:
+      - 'PGW 或 DNS 上沒有設定這個 APN'
+      - '裝置上的 APN 打錯，或營運商換過 APN 名稱'
+      - '訂閱資料裡沒有這個 APN，因此選不到 PGW'
+
+  28:
+    name: "Unknown PDN type"
+    plain: 'The PDN type requested is not one the network recognises.'
+    plain_zh: '請求的 PDN 型別不是網路認得的種類。'
+
+  29:
+    name: "User authentication or authorization failed"
+    plain: 'Authentication or authorization for this session failed at the packet-core level - distinct from the NAS authentication between UE and MME.'
+    plain_zh: '這個 session 在封包核網層級的認證或授權失敗 —— 與 UE↔MME 之間的 NAS 鑑權是兩回事。'
+    common_causes:
+      - 'PAP/CHAP credentials for the APN are wrong'
+      - 'An external AAA or RADIUS server rejected the user'
+    common_causes_zh:
+      - 'APN 的 PAP/CHAP 認證資料錯誤'
+      - '外部 AAA 或 RADIUS 伺服器拒絕了這個用戶'
+
+  30:
+    name: "Request rejected by Serving GW or PDN GW"
+    plain: 'A gateway refused the session. The reason lives in the gateway - look at the GTPv2 cause on S11 or S5/S8 for the specific one.'
+    plain_zh: '閘道拒絕了這個 session。原因在閘道那裡 —— 具體理由要看 S11 或 S5/S8 上的 GTPv2 cause。'
+    common_causes:
+      - 'The PGW rejected the APN or the requested QoS'
+      - 'An address pool or resource limit hit on the gateway'
+    common_causes_zh:
+      - 'PGW 拒絕了這個 APN 或要求的 QoS'
+      - '閘道上碰到位址池或資源上限'
+
+  31:
+    name: "Request rejected, unspecified"
+    plain: 'Rejected without saying why. The rejecting node''s own logs are the only place the reason exists.'
+    plain_zh: '拒絕但不說理由。原因只存在於做出拒絕的那個節點的 log 裡。'
+
+  32:
+    name: "Service option not supported"
+    plain: 'The network does not support the service this session would provide.'
+    plain_zh: '網路不支援這個 session 要提供的服務。'
+
+  33:
+    name: "Requested service option not subscribed"
+    plain: 'The network supports this service, but this subscriber has not subscribed to it.'
+    plain_zh: '網路支援這個服務，但這個用戶沒有訂閱它。'
+    common_causes:
+      - 'The APN or service is missing from the subscription profile in the HSS'
+    common_causes_zh:
+      - 'HSS 的訂閱資料裡沒有這個 APN 或服務'
+
+  34:
+    name: "Service option temporarily out of order"
+    plain: 'The service exists and is subscribed, but is temporarily unavailable. Retrying later is the right response.'
+    plain_zh: '服務存在也有訂閱，只是暫時不可用。稍後重試才是正確的反應。'
+
+  35:
+    name: "PTI already in use"
+    plain: 'The procedure transaction identifier this request used is already taken by another procedure in flight.'
+    plain_zh: '這個請求用的程序交易識別碼（PTI）已經被另一個進行中的程序佔用。'
+
+  36:
+    name: "Regular deactivation"
+    plain: 'The session was deactivated in the ordinary way. This is a normal teardown, not a failure.'
+    plain_zh: '以正常方式停用這個 session。這是正常拆除，不是失敗。'
+
+  37:
+    name: "EPS QoS not accepted"
+    plain: 'The UE would not accept the QoS the network offered.'
+    plain_zh: 'UE 不接受網路提供的 QoS。'
+
+  38:
+    name: "Network failure"
+    plain: 'Something failed on the network side and it is not saying what. The honest catch-all when an upstream node errored or timed out.'
+    plain_zh: '網路側出了問題但沒說是什麼。上游節點出錯或逾時時，這是誠實的萬用答案。'
+
+  39:
+    name: "Reactivation requested"
+    plain: 'The network released this session but wants it established again straight away - a deliberate re-establish, not a failure.'
+    plain_zh: '網路釋放了這個 session，但要它立刻重新建立 —— 這是刻意的重建，不是失敗。'
+    common_causes:
+      - 'A policy or PGW change that needs the session rebuilt with new parameters'
+    common_causes_zh:
+      - '政策或 PGW 變更，需要用新參數重建 session'
+
+  41:
+    name: "Semantic error in the TFT operation"
+    plain: 'The traffic flow template operation does not make sense - for example deleting a filter that is not there.'
+    plain_zh: 'TFT（流量範本）操作講不通 —— 例如刪除一個根本不存在的過濾器。'
+
+  42:
+    name: "Syntactical error in the TFT operation"
+    plain: 'The traffic flow template is malformed.'
+    plain_zh: 'TFT（流量範本）格式錯誤。'
+
+  43:
+    name: "Invalid EPS bearer identity"
+    plain: 'The bearer identifier in this message is not one the receiver holds.'
+    plain_zh: '訊息裡的承載識別碼不是接收端持有的。'
+    common_causes:
+      - 'The bearer was already released and a late message still refers to it'
+    common_causes_zh:
+      - '承載已經釋放，但有一則遲到的訊息還在指涉它'
+
+  44:
+    name: "Semantic errors in packet filter(s)"
+    plain: 'A packet filter is internally contradictory - it parses, but it cannot mean anything.'
+    plain_zh: '封包過濾器自相矛盾 —— 解得開，但沒有任何意義。'
+
+  45:
+    name: "Syntactical errors in packet filter(s)"
+    plain: 'A packet filter is malformed.'
+    plain_zh: '封包過濾器格式錯誤。'
+
+  46:
+    name: "Unused"
+    plain: 'The specification marks this value as unused. Seeing it on the wire means the sender put a value here it should not have - treat it as an implementation defect, not as a diagnosis.'
+    plain_zh: '規範把這個值標為未使用。它出現在線上代表送出端填了不該填的值 —— 把它當成實作缺陷，不是診斷結果。'
+
+  47:
+    name: "PTI mismatch"
+    plain: 'The procedure transaction identifier does not match the procedure it claims to belong to.'
+    plain_zh: '程序交易識別碼與它宣稱所屬的程序對不上。'
+
+  49:
+    name: "Last PDN disconnection not allowed"
+    plain: 'The UE tried to disconnect its only remaining PDN connection, which would leave it attached with no bearer. The network refuses.'
+    plain_zh: 'UE 想斷開它僅剩的一條 PDN 連線，那會讓它附著著卻沒有任何承載。網路拒絕。'
+
+  50:
+    name: "PDN type IPv4 only allowed"
+    plain: 'Only IPv4 is permitted here; the requested type was something else.'
+    plain_zh: '這裡只允許 IPv4，而請求的是別種型別。'
+
+  51:
+    name: "PDN type IPv6 only allowed"
+    plain: 'Only IPv6 is permitted here; the requested type was something else.'
+    plain_zh: '這裡只允許 IPv6，而請求的是別種型別。'
+
+  52:
+    name: "Single address bearers only allowed"
+    plain: 'Dual-stack is not available here - the session must use one address family, not both.'
+    plain_zh: '這裡沒有雙堆疊 —— session 只能用一種位址家族，不能兩種都要。'
+
+  53:
+    name: "ESM information not received"
+    plain: 'The network asked the UE for the session details (APN, protocol configuration) and did not get them.'
+    plain_zh: '網路向 UE 索取 session 細節（APN、協定設定），但沒有拿到。'
+    common_causes:
+      - 'The UE did not answer the ESM information request in time'
+      - 'A ciphering problem meant the request never reached the UE readably'
+    common_causes_zh:
+      - 'UE 沒有及時回應 ESM information request'
+      - '加密問題導致請求送到 UE 時它讀不出來'
+
+  54:
+    name: "PDN connection does not exist"
+    plain: 'The PDN connection this message refers to is not one the network holds. The two sides disagree about whether it exists.'
+    plain_zh: '這則訊息指涉的 PDN 連線，網路這邊沒有。兩邊對它是否存在的認知不一致。'
+
+  55:
+    name: "Multiple PDN connections for a given APN not allowed"
+    plain: 'The UE already has a connection to this APN and the network does not permit a second one.'
+    plain_zh: 'UE 已經有一條連到這個 APN 的連線，而網路不允許第二條。'
+
+  56:
+    name: "Collision with network initiated request"
+    plain: 'Both sides started a procedure for this session at the same time; this one loses and must be retried.'
+    plain_zh: '兩側同時對這個 session 發起程序，這一個讓步，之後要重試。'
+
+  57:
+    name: "PDN type IPv4v6 only allowed"
+    plain: 'Only dual-stack is permitted here; a single-family request is refused.'
+    plain_zh: '這裡只允許雙堆疊，單一位址家族的請求會被拒絕。'
+
+  58:
+    name: "PDN type non IP only allowed"
+    plain: 'Only non-IP PDN types are permitted here - typically a cellular IoT deployment.'
+    plain_zh: '這裡只允許非 IP 的 PDN 型別 —— 通常是蜂巢式 IoT 的部署。'
+
+  59:
+    name: "Unsupported QCI value"
+    plain: 'The QoS class identifier asked for is not supported here.'
+    plain_zh: '要求的 QCI（QoS 類別識別碼）在這裡不支援。'
+    common_causes:
+      - 'The QCI is configured in one part of the network but not another'
+    common_causes_zh:
+      - '這個 QCI 只在網路的一部分有設定，另一部分沒有'
+
+  60:
+    name: "Bearer handling not supported"
+    plain: 'The network does not support the kind of bearer handling this request needs.'
+    plain_zh: '網路不支援這個請求所需的承載處理方式。'
+
+  61:
+    name: "PDN type Ethernet only allowed"
+    plain: 'Only Ethernet PDN type is permitted here.'
+    plain_zh: '這裡只允許 Ethernet 型別的 PDN。'
+
+  65:
+    name: "Maximum number of EPS bearers reached"
+    plain: 'This UE already has as many bearers as it is allowed. Nothing is broken - the limit was reached.'
+    plain_zh: '這個 UE 的承載數已達上限。沒有東西壞掉 —— 只是到頂了。'
+
+  66:
+    name: "Requested APN not supported in current RAT and PLMN combination"
+    plain: 'The APN is fine in general, but not on the radio technology and network the UE is currently on.'
+    plain_zh: 'APN 本身沒問題，但在 UE 目前所在的無線技術與網路組合下不支援。'
+    common_causes:
+      - 'An APN restricted to certain access types, hit while roaming or on a fallback RAT'
+    common_causes_zh:
+      - 'APN 限定了接取類型，而 UE 正在漫遊或落在後備的 RAT 上'
+
+  81:
+    name: "Invalid PTI value"
+    plain: 'The procedure transaction identifier is outside the valid range.'
+    plain_zh: '程序交易識別碼超出合法範圍。'
+
+  95:
+    name: "Semantically incorrect message"
+    plain: 'The message parsed but does not make sense - the fields are individually valid and collectively contradictory.'
+    plain_zh: '訊息解得開，但講不通 —— 各欄位單獨看都合法，湊在一起自相矛盾。'
+    common_causes:
+      - 'An implementation difference between two vendors, usually visible only in interop testing'
+    common_causes_zh:
+      - '兩家廠商的實作差異，通常只有在互通測試時才看得到'
+
+  96:
+    name: "Invalid mandatory information"
+    plain: 'A mandatory field is present but its content is not valid.'
+    plain_zh: '必填欄位有帶，但內容不合法。'
+    common_causes:
+      - 'An encoding bug on the sending side'
+      - 'A protocol version mismatch where a field''s meaning changed'
+    common_causes_zh:
+      - '送出端的編碼缺陷'
+      - '協定版本不一致，某個欄位的意義變了'
+
+  97:
+    name: "Message type non-existent or not implemented"
+    plain: 'The receiver does not know this message type, or knows it and has not implemented it.'
+    plain_zh: '接收端不認得這個訊息型別，或認得但沒實作。'
+    common_causes:
+      - 'One side supports a newer release than the other'
+    common_causes_zh:
+      - '一側支援的版本比另一側新'
+
+  98:
+    name: "Message type not compatible with the protocol state"
+    plain: 'The message type is understood, but arriving now makes no sense given where the two sides are in the procedure.'
+    plain_zh: '訊息型別看得懂，但以雙方目前在程序中的位置來說，這時候收到它講不通。'
+    common_causes:
+      - 'A retransmission that arrived after the procedure had already moved on'
+      - 'The two sides disagree about the current state, often after a lost message'
+    common_causes_zh:
+      - '重送的訊息在程序已經往前走之後才到'
+      - '雙方對目前狀態的認知不一致，常見於前面掉了一則訊息'
+
+  99:
+    name: "Information element non-existent or not implemented"
+    plain: 'The message carried an information element the receiver does not recognise.'
+    plain_zh: '訊息裡帶了接收端不認得的資訊元素。'
+    common_causes:
+      - 'One side supports a newer release than the other'
+    common_causes_zh:
+      - '一側支援的版本比另一側新'
+
+  100:
+    name: "Conditional IE error"
+    plain: 'An information element that is required under these particular conditions is missing or malformed.'
+    plain_zh: '在這個特定條件下該出現的資訊元素缺席或格式錯誤。'
+
+  101:
+    name: "Message not compatible with the protocol state"
+    plain: 'The message itself is valid but does not belong in the state the protocol is currently in.'
+    plain_zh: '訊息本身合法，但不屬於協定目前所在的狀態。'
+
+  111:
+    name: "Protocol error, unspecified"
+    plain: 'A protocol error the sender could not classify into any of the specific codes above.'
+    plain_zh: '送出端無法歸入上面任何一個具體代碼的協定錯誤。'
+    common_causes:
+      - 'The catch-all a node falls back to when its own parser gave up - the node''s logs will say more than the packet does'
+    common_causes_zh:
+      - '節點自己的解析器放棄時的萬用退路 —— 這時節點的 log 會比封包說得多'
+
+  112:
+    name: "APN restriction value incompatible with active EPS bearer context"
+    plain: 'This APN''s restriction class cannot coexist with a bearer the UE already has open.'
+    plain_zh: '這個 APN 的限制類別，與 UE 已經開著的某條承載不能並存。'
+    common_causes:
+      - 'The UE opened a restricted APN first, and the second one is not allowed alongside it'
+    common_causes_zh:
+      - 'UE 先開了一個受限的 APN，第二個不允許與它並存'
+
+  113:
+    name: "Multiple accesses to a PDN connection not allowed"
+    plain: 'The same PDN connection cannot be reached from more than one access at once.'
+    plain_zh: '同一條 PDN 連線不允許同時從多個接取進入。'

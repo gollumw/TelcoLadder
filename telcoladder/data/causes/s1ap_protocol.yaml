@@ -1,0 +1,64 @@
+# S1AP protocol cause values — 3GPP TS 36.413.
+#
+# 名稱逐字取自 `tshark -G values` 的 `s1ap.protocol`，由
+# `tests/test_adapter_s1ap.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **五組各一張表，這是刻意的**（CLAUDE.md §3.2 的同一個理由）：`s1ap.cause` 只是
+# 外層選擇子，真正的號碼在五個群組裡各自從 0 起算。合成一張的話，radioNetwork
+# 的 #21 會被解釋成另一組的 #21 —— 而那個解釋看起來完全合理，沒有人會發現。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照 `nas_eps_emm.yaml`、
+# `gtpv2.yaml`、`diameter_3gpp.yaml`）。5G 的 `ngap_*.yaml` 有條號，因為那幾張
+# 是當時人工核對過的 —— 兩者的差別是**核對的有無**，不是重要性的高低。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: s1ap_protocol
+spec: "3GPP TS 36.413"
+
+causes:
+  0:
+    name: "transfer-syntax-error"
+    plain: 'The message could not be decoded as valid ASN.1 - the bytes on the wire do not form a well-formed S1AP message.'
+    plain_zh: '訊息無法當成合法的 ASN.1 解碼 —— 線上的位元組組不成一則格式正確的 S1AP 訊息。'
+    common_causes:
+      - 'An encoding bug on the sending side, most often visible between two vendors'
+    common_causes_zh:
+      - '送出端的編碼缺陷，最常在兩家廠商之間現形'
+
+  1:
+    name: "abstract-syntax-error-reject"
+    plain: 'The message decoded but violates the protocol definition, and the receiver rejected it outright.'
+    plain_zh: '訊息解得開，但違反協定定義，接收端直接拒絕。'
+
+  2:
+    name: "abstract-syntax-error-ignore-and-notify"
+    plain: 'The message violates the protocol definition; the receiver ignored the offending part and carried on, telling us about it.'
+    plain_zh: '訊息違反協定定義；接收端忽略了出問題的部分繼續執行，並告知我們。'
+
+  3:
+    name: "message-not-compatible-with-receiver-state"
+    plain: 'The message is understood but arriving now makes no sense given where the receiver is in the procedure.'
+    plain_zh: '訊息看得懂，但以接收端目前在程序中的位置來說，這時候收到它講不通。'
+    common_causes:
+      - 'A retransmission that arrived after the procedure moved on'
+      - 'The two sides disagree about the current state, often after a lost message'
+    common_causes_zh:
+      - '重送的訊息在程序往前走之後才到'
+      - '雙方對目前狀態的認知不一致，常見於前面掉了一則訊息'
+
+  4:
+    name: "semantic-error"
+    plain: 'The message parses and is structurally valid, but what it says is contradictory.'
+    plain_zh: '訊息解得開、結構也合法，但它講的內容自相矛盾。'
+
+  5:
+    name: "abstract-syntax-error-falsely-constructed-message"
+    plain: 'The message was assembled wrongly - the pieces are individually valid but do not belong together.'
+    plain_zh: '訊息組裝錯了 —— 各部分單獨看合法，但湊在一起不該是這樣。'
+
+  6:
+    name: "unspecified"
+    plain: 'A protocol error the sender could not classify further.'
+    plain_zh: '送出端無法再細分的協定錯誤。'
+

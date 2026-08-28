@@ -1,0 +1,343 @@
+# S1AP radioNetwork cause values — 3GPP TS 36.413.
+#
+# 名稱逐字取自 `tshark -G values` 的 `s1ap.radioNetwork`，由
+# `tests/test_adapter_s1ap.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **五組各一張表，這是刻意的**（CLAUDE.md §3.2 的同一個理由）：`s1ap.cause` 只是
+# 外層選擇子，真正的號碼在五個群組裡各自從 0 起算。合成一張的話，radioNetwork
+# 的 #21 會被解釋成另一組的 #21 —— 而那個解釋看起來完全合理，沒有人會發現。
+#
+# **這一組最常出現，而且多數不是故障。** 換手成功、使用者閒置、負載平衡都在
+# 這裡，而它們會出現在 `UE Context Release` 這種帶 cause 的正常訊息上。
+# 每一條的 plain 都先講「這是不是問題」——把 `successful-handover` 解釋成
+# 失敗，讀者會去追一個不存在的故障（與 `ngap.py` 那條「帶 cause 的
+# successfulOutcome 不該標紅」同一個判斷）。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照 `nas_eps_emm.yaml`、
+# `gtpv2.yaml`）。5G 的 `ngap_*.yaml` 有條號，因為那幾張當時人工核對過 ——
+# 差別是**核對的有無**，不是重要性的高低。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: s1ap_radioNetwork
+spec: "3GPP TS 36.413"
+
+causes:
+  0:
+    name: "unspecified"
+    plain: 'No reason given. Carries as much information as saying nothing.'
+    plain_zh: '沒有給理由。這句話帶的資訊量等於什麼都沒說。'
+    common_causes:
+      - 'A peer implementation that sends this for every situation rather than picking a specific cause'
+    common_causes_zh:
+      - '對端實作偷懶，任何情況都送這一個，而不去挑具體的 cause'
+
+  1:
+    name: "tx2relocoverall-expiry"
+    plain: 'An X2 handover ran out of time overall. The handover was attempted and did not finish.'
+    plain_zh: 'X2 換手的整體計時器到期。換手嘗試過，但沒有完成。'
+    common_causes:
+      - 'The target eNodeB did not respond in time'
+      - 'The UE lost the radio link mid-handover'
+    common_causes_zh:
+      - '目標 eNodeB 沒有及時回應'
+      - 'UE 在換手途中失去無線連線'
+
+  2:
+    name: "successful-handover"
+    plain: 'The context is being released because the handover succeeded and the UE now lives on another node. This is a success, not a failure.'
+    plain_zh: '因為換手成功、UE 已經在另一個節點上，所以釋放這裡的上下文。這是成功，不是失敗。'
+
+  3:
+    name: "release-due-to-eutran-generated-reason"
+    plain: 'The radio network side decided to release, for a reason of its own that it is not spelling out here.'
+    plain_zh: '無線網路側決定釋放，理由是它自己的，而且沒有在這裡說明。'
+
+  4:
+    name: "handover-cancelled"
+    plain: 'A handover that had started was called off. Often the source side changed its mind because conditions improved.'
+    plain_zh: '已經開始的換手被取消。常常是來源側因為條件改善而改變主意。'
+
+  5:
+    name: "partial-handover"
+    plain: 'Only some of the bearers moved across; the rest did not.'
+    plain_zh: '只有部分承載搬過去了，其餘沒有。'
+
+  6:
+    name: "ho-failure-in-target-EPC-eNB-or-target-system"
+    plain: 'The handover failed on the target side. The reason lives in the target node, not in this message.'
+    plain_zh: '換手在目標側失敗。原因在目標節點那邊，不在這則訊息裡。'
+    common_causes:
+      - 'The target cell had no radio resources at that moment'
+      - 'The target node rejected the incoming context'
+    common_causes_zh:
+      - '目標 cell 當下沒有無線資源'
+      - '目標節點拒絕了移入的上下文'
+
+  7:
+    name: "ho-target-not-allowed"
+    plain: 'The handover target is not permitted for this subscriber or in this configuration.'
+    plain_zh: '這個換手目標對這個用戶、或在這個設定下不被允許。'
+    common_causes:
+      - 'The target cell belongs to a PLMN or CSG this subscriber may not use'
+      - 'A neighbour relation is configured as barred for handover'
+    common_causes_zh:
+      - '目標 cell 屬於這個用戶不能用的 PLMN 或 CSG'
+      - '鄰區關係被設定為禁止換手'
+
+  8:
+    name: "tS1relocoverall-expiry"
+    plain: 'An S1 handover ran out of time overall.'
+    plain_zh: 'S1 換手的整體計時器到期。'
+    common_causes:
+      - 'The target side did not complete the preparation in time'
+    common_causes_zh:
+      - '目標側沒有及時完成準備'
+
+  9:
+    name: "tS1relocprep-expiry"
+    plain: 'The preparation phase of an S1 handover timed out - the handover never got as far as being executed.'
+    plain_zh: 'S1 換手的準備階段逾時 —— 換手根本還沒走到執行那一步。'
+    common_causes:
+      - 'The target MME or eNodeB did not answer the preparation request'
+    common_causes_zh:
+      - '目標 MME 或 eNodeB 沒有回應準備請求'
+
+  10:
+    name: "cell-not-available"
+    plain: 'The cell involved is not available - barred, locked, or out of service.'
+    plain_zh: '涉及的 cell 不可用 —— 被禁止、鎖定或停止服務。'
+
+  11:
+    name: "unknown-targetID"
+    plain: 'The target identifier in the request does not correspond to anything the receiver knows.'
+    plain_zh: '請求裡的目標識別碼，接收端對應不到任何東西。'
+    common_causes:
+      - 'A neighbour relation configured on one side but not the other'
+      - 'A stale target ID after a cell was reconfigured'
+    common_causes_zh:
+      - '鄰區關係只設在一側，另一側沒有'
+      - 'cell 重新設定後，目標 ID 已經過期'
+
+  12:
+    name: "no-radio-resources-available-in-target-cell"
+    plain: 'The target cell is full. The handover was refused for capacity, not for policy.'
+    plain_zh: '目標 cell 滿了。換手是因為容量被拒，不是因為政策。'
+    common_causes:
+      - 'The target cell is at its connected-user limit'
+      - 'A congestion hotspot at a particular time of day'
+    common_causes_zh:
+      - '目標 cell 已達連線用戶上限'
+      - '某個時段的壅塞熱點'
+
+  13:
+    name: "unknown-mme-ue-s1ap-id"
+    plain: 'The MME-side UE identifier in this message means nothing to the receiver - the two ends disagree about which UE context exists.'
+    plain_zh: '訊息裡 MME 側的 UE 識別碼，接收端認不得 —— 兩端對「哪個 UE 上下文存在」的認知不一致。'
+    common_causes:
+      - 'The MME restarted and lost its contexts while the eNodeB kept them'
+      - 'A message arrived after the context had already been released'
+    common_causes_zh:
+      - 'MME 重啟、上下文沒了，而 eNodeB 還留著'
+      - '上下文已經釋放之後訊息才到'
+
+  14:
+    name: "unknown-enb-ue-s1ap-id"
+    plain: 'The eNodeB-side UE identifier means nothing to the receiver. The mirror image of the previous cause.'
+    plain_zh: 'eNodeB 側的 UE 識別碼接收端認不得。與上一條互為鏡像。'
+    common_causes:
+      - 'The eNodeB restarted or reset the S1 interface while the MME kept the contexts'
+    common_causes_zh:
+      - 'eNodeB 重啟或重置了 S1 介面，而 MME 還留著上下文'
+
+  15:
+    name: "unknown-pair-ue-s1ap-id"
+    plain: 'Neither half of the identifier pair resolves to a context the receiver holds.'
+    plain_zh: '識別碼配對的兩半，接收端都對應不到任何上下文。'
+
+  16:
+    name: "handover-desirable-for-radio-reason"
+    plain: 'The radio side wants to move this UE because another cell would serve it better. Routine mobility, not a fault.'
+    plain_zh: '無線側想把這個 UE 搬走，因為別的 cell 服務它會更好。例行的移動性管理，不是故障。'
+
+  17:
+    name: "time-critical-handover"
+    plain: 'A handover that had to happen urgently, typically because the radio link was about to fail.'
+    plain_zh: '必須緊急執行的換手，通常是因為無線連線快要斷了。'
+
+  18:
+    name: "resource-optimisation-handover"
+    plain: 'The network moved the UE to make better use of its resources. A deliberate optimisation, not a fault.'
+    plain_zh: '網路為了更有效運用資源而把 UE 搬走。這是刻意的最佳化，不是故障。'
+
+  19:
+    name: "reduce-load-in-serving-cell"
+    plain: 'The UE was moved off to relieve load on the cell it was in. Load management, not a fault.'
+    plain_zh: '把 UE 搬走以減輕原本 cell 的負載。這是負載管理，不是故障。'
+
+  20:
+    name: "user-inactivity"
+    plain: 'Released after the user was idle too long. Normal behaviour, not a fault - one of the most common release reasons in any capture.'
+    plain_zh: '使用者閒置太久而釋放。這是正常行為不是故障 —— 任何擷取檔裡最常見的釋放原因之一。'
+
+  21:
+    name: "radio-connection-with-ue-lost"
+    plain: 'The radio connection to the UE was lost. One of the most common release reasons in the field.'
+    plain_zh: '與 UE 的無線連線中斷。這是現場最常見的釋放原因之一。'
+    common_causes:
+      - 'Poor coverage - the UE walked out of range'
+      - 'The UE lost power, or went into a lift or basement'
+      - 'Sudden interference on the radio path'
+    common_causes_zh:
+      - '涵蓋不良 —— UE 走出訊號範圍'
+      - 'UE 沒電，或進了電梯、地下室'
+      - '無線路徑上突然出現干擾'
+
+  22:
+    name: "load-balancing-tau-required"
+    plain: 'The MME is shedding load and wants this UE to re-attach elsewhere. A deliberate rebalance, not a fault.'
+    plain_zh: 'MME 正在卸載，要這個 UE 到別處重新附著。這是刻意的再平衡，不是故障。'
+    common_causes:
+      - 'An MME pool member being drained for maintenance'
+    common_causes_zh:
+      - 'MME 池中的一台正因維護而被排空'
+
+  23:
+    name: "cs-fallback-triggered"
+    plain: 'The UE is being moved to the circuit-switched domain to take or make a voice call. Expected behaviour where VoLTE is not in use.'
+    plain_zh: 'UE 正被移往電路交換網域以進行語音通話。在沒有 VoLTE 的網路裡這是預期行為。'
+
+  24:
+    name: "ue-not-available-for-ps-service"
+    plain: 'The UE cannot take packet service right now, typically because it is busy on the circuit-switched side.'
+    plain_zh: 'UE 目前無法接受封包服務，通常是因為它正忙於電路交換側的事。'
+
+  25:
+    name: "radio-resources-not-available"
+    plain: 'The serving cell has no radio resources left for this request.'
+    plain_zh: '服務中的 cell 沒有剩餘的無線資源可以滿足這個請求。'
+    common_causes:
+      - 'The cell is at capacity'
+      - 'The requested QoS needs more resource than is free right now'
+    common_causes_zh:
+      - 'cell 已達容量上限'
+      - '要求的 QoS 需要的資源比目前空閒的多'
+
+  26:
+    name: "failure-in-radio-interface-procedure"
+    plain: 'Something in the radio procedure between the eNodeB and the UE failed. The detail is in the eNodeB, not in this message.'
+    plain_zh: 'eNodeB 與 UE 之間的無線程序有一步失敗了。細節在 eNodeB 那裡，不在這則訊息裡。'
+
+  27:
+    name: "invalid-qos-combination"
+    plain: 'The combination of QoS parameters asked for does not make sense together.'
+    plain_zh: '要求的 QoS 參數組合湊在一起講不通。'
+
+  28:
+    name: "interrat-redirection"
+    plain: 'The UE is being redirected to another radio technology - typically down to 3G or 2G. A deliberate move, not a fault.'
+    plain_zh: 'UE 正被導向另一種無線技術，通常是降到 3G 或 2G。這是刻意的動作，不是故障。'
+
+  29:
+    name: "interaction-with-other-procedure"
+    plain: 'Another procedure for this UE was already running and this one gave way. A timing collision - retry usually works.'
+    plain_zh: '這個 UE 已經有另一個程序在跑，這一個讓步了。這是時序衝突，重試通常就過。'
+
+  30:
+    name: "unknown-E-RAB-ID"
+    plain: 'The bearer identifier in this message does not exist on the receiving side.'
+    plain_zh: '訊息裡的承載識別碼在接收端不存在。'
+    common_causes:
+      - 'The bearer was already released and a late message still refers to it'
+    common_causes_zh:
+      - '承載已經釋放，但有一則遲到的訊息還在指涉它'
+
+  31:
+    name: "multiple-E-RAB-ID-instances"
+    plain: 'The same bearer identifier appeared more than once where only one was allowed.'
+    plain_zh: '同一個承載識別碼在只該出現一次的地方出現了多次。'
+
+  32:
+    name: "encryption-and-or-integrity-protection-algorithms-not-supported"
+    plain: 'The two sides share no security algorithm they can both use.'
+    plain_zh: '兩側沒有共同支援的安全演算法。'
+    common_causes:
+      - 'A configuration that permits only algorithms this UE does not implement'
+      - 'An old device on a network that has retired the weaker algorithms'
+    common_causes_zh:
+      - '設定只允許這台 UE 沒有實作的演算法'
+      - '舊裝置遇上已經淘汰弱演算法的網路'
+
+  33:
+    name: "s1-intra-system-handover-triggered"
+    plain: 'Released because an S1 handover within the same system is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為同系統內的 S1 換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  34:
+    name: "s1-inter-system-handover-triggered"
+    plain: 'Released because a handover to a different system is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為往另一個系統的換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  35:
+    name: "x2-handover-triggered"
+    plain: 'Released because an X2 handover between eNodeBs is taking over. Part of a mobility procedure, not a fault.'
+    plain_zh: '因為 eNodeB 之間的 X2 換手接手而釋放。這是移動性程序的一部分，不是故障。'
+
+  36:
+    name: "redirection-towards-1xRTT"
+    plain: 'The UE is being redirected to a CDMA 1xRTT network, typically for a voice call.'
+    plain_zh: 'UE 正被導向 CDMA 1xRTT 網路，通常是為了語音通話。'
+
+  37:
+    name: "not-supported-QCI-value"
+    plain: 'The QoS class identifier asked for is not supported here.'
+    plain_zh: '要求的 QCI（QoS 類別識別碼）在這裡不支援。'
+    common_causes:
+      - 'The QCI is configured in the core but not on the radio side'
+    common_causes_zh:
+      - '核網設了這個 QCI，但無線側沒有'
+
+  38:
+    name: "invalid-CSG-Id"
+    plain: 'The closed subscriber group identifier is not valid or not recognised.'
+    plain_zh: '封閉用戶群識別碼無效或不被認得。'
+
+  39:
+    name: "release-due-to-pre-emption"
+    plain: 'This bearer was pushed out to make room for a higher-priority one. The network chose to drop it - working as designed under contention.'
+    plain_zh: '這條承載被擠掉，讓位給優先權更高的。網路是刻意放棄它的 —— 資源競爭下的預期行為。'
+    common_causes:
+      - 'An emergency or priority bearer arrived while the cell was full'
+    common_causes_zh:
+      - 'cell 滿載時來了緊急或高優先權的承載'
+
+  40:
+    name: "n26-interface-not-available"
+    plain: 'The N26 interface between the 4G and 5G cores is not available, so interworking mobility cannot proceed.'
+    plain_zh: '4G 與 5G 核網之間的 N26 介面不可用，因此互通的移動性程序走不下去。'
+    common_causes:
+      - 'N26 is not deployed - some operators interwork without it'
+      - 'The interface is configured but the peer AMF is unreachable'
+    common_causes_zh:
+      - '沒有部署 N26 —— 有些營運商的互通方案不用它'
+      - '介面有設定，但對端 AMF 連不上'
+
+  41:
+    name: "insufficient-ue-capabilities"
+    plain: 'The UE does not support something this procedure requires.'
+    plain_zh: 'UE 缺少這個程序所需的某項能力。'
+
+  42:
+    name: "maximum-bearer-pre-emption-rate-exceeded"
+    plain: 'Too many bearers were being pre-empted too quickly, and the network stopped doing it.'
+    plain_zh: '被擠掉的承載在短時間內太多，網路因此停止繼續擠。'
+
+  43:
+    name: "up-integrity-protection-not-possible"
+    plain: 'User-plane integrity protection was required but cannot be provided here.'
+    plain_zh: '要求了使用者面完整性保護，但這裡提供不了。'
+
+  44:
+    name: "release-due-to-discontinuous-coverage"
+    plain: 'Released because coverage here is by design intermittent - a satellite or non-terrestrial deployment where the cell comes and goes.'
+    plain_zh: '因為這裡的涵蓋本來就是斷續的而釋放 —— 衛星或非地面網路部署，cell 會來來去去。'

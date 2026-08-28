@@ -1,0 +1,35 @@
+# S1AP transport cause values — 3GPP TS 36.413.
+#
+# 名稱逐字取自 `tshark -G values` 的 `s1ap.transport`，由
+# `tests/test_adapter_s1ap.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **五組各一張表，這是刻意的**（CLAUDE.md §3.2 的同一個理由）：`s1ap.cause` 只是
+# 外層選擇子，真正的號碼在五個群組裡各自從 0 起算。合成一張的話，radioNetwork
+# 的 #21 會被解釋成另一組的 #21 —— 而那個解釋看起來完全合理，沒有人會發現。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照 `nas_eps_emm.yaml`、
+# `gtpv2.yaml`、`diameter_3gpp.yaml`）。5G 的 `ngap_*.yaml` 有條號，因為那幾張
+# 是當時人工核對過的 —— 兩者的差別是**核對的有無**，不是重要性的高低。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: s1ap_transport
+spec: "3GPP TS 36.413"
+
+causes:
+  0:
+    name: "transport-resource-unavailable"
+    plain: 'The transport network could not provide the resources this procedure needed - the SCTP or IP path underneath, not the radio.'
+    plain_zh: '傳輸網路提供不了這個程序所需的資源 —— 問題在底下的 SCTP／IP 路徑，不是無線側。'
+    common_causes:
+      - 'The S1 transport link is congested or partially down'
+      - 'An SCTP association problem between the eNodeB and the MME'
+    common_causes_zh:
+      - 'S1 傳輸鏈路壅塞或部分中斷'
+      - 'eNodeB 與 MME 之間的 SCTP 關聯有問題'
+
+  1:
+    name: "unspecified"
+    plain: 'A transport-layer problem with no further detail. Carries as much information as saying nothing.'
+    plain_zh: '傳輸層有問題但沒有進一步說明。這句話帶的資訊量等於什麼都沒說。'
+

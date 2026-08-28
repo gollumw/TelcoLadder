@@ -49,6 +49,104 @@ def analysis():
 # ── oracle：tshark 說的與我們說的要一致 ────────────────────────────────
 
 
+def _tshark_values(field: str) -> dict[int, str]:
+    """`tshark -G values` 的某個欄位。與 `test_adapter_naseps.py` / `_gtpv2` 同一份形狀。"""
+    tshark = find_tshark()
+    proc = subprocess.run(
+        [str(tshark.path), "-G", "values"], capture_output=True, text=True,
+        encoding="utf-8", check=True,
+    )
+    out = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4 and parts[0] == "V" and parts[1] == field:
+            out[int(parts[2])] = parts[3]
+    return out
+
+
+_CAUSE_GROUP_FIELDS = {
+    "s1ap_radioNetwork": "s1ap.radioNetwork",
+    "s1ap_transport": "s1ap.transport",
+    "s1ap_nas": "s1ap.nas",
+    "s1ap_protocol": "s1ap.protocol",
+    "s1ap_misc": "s1ap.misc",
+}
+
+
+def _cause_yaml(table: str) -> dict:
+    import yaml
+    path = (Path(__file__).resolve().parent.parent / "telcoladder" / "data"
+            / "causes" / f"{table}.yaml")
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("table, field", sorted(_CAUSE_GROUP_FIELDS.items()))
+def test_the_s1ap_cause_names_are_the_ones_tshark_has(table, field) -> None:
+    """五組的名稱都要與 tshark 逐字相同，且**每一組都要完整**。
+
+    S1AP 的 cause 沒有 GTPv2 那種 Spare 段 —— 67 個號碼全部有語意，所以這裡
+    要求完全相等，不像 gtpv2 那樣允許刻意省略。
+    """
+    mine = {v: b["name"] for v, b in _cause_yaml(table)["causes"].items()}
+    assert mine == _tshark_values(field), (
+        f"{table} 與 tshark 的 {field} 對不上 —— 確認是 tshark 換版本，"
+        "而不是有人手改了一筆。"
+    )
+
+
+def test_the_five_s1ap_groups_stay_five_separate_tables() -> None:
+    """**同一個號碼在五組裡意思完全不同，合表就是製造看起來合理的錯誤解釋。**
+
+    這是 CLAUDE.md §3.2 對 NGAP 記過的同一個陷阱，S1AP 是它的孿生。
+    具體踩點：radioNetwork 的 #21 是「與 UE 的無線連線中斷」，而 nas 組
+    根本沒有 #21 —— 若查表時弄錯組別，讀者會拿到一個完全無關的原因，
+    而圖上什麼異常都看不出來。
+    """
+    from telcoladder.causes import lookup
+    from telcoladder.model import CauseRef
+
+    radio = lookup(CauseRef("s1ap_radioNetwork", 21))
+    assert radio is not None and radio.name == "radio-connection-with-ue-lost"
+    # nas 組只到 #6 —— 查同一個號碼必須是「沒有」，不是借用別組的答案
+    assert lookup(CauseRef("s1ap_nas", 21)) is None
+
+    # 五組的 #0 都叫 unspecified 或各有其名，但它們是五個不同的條目
+    zeros = {t: lookup(CauseRef(t, 0)) for t in _CAUSE_GROUP_FIELDS}
+    assert all(z is not None for z in zeros.values())
+    assert zeros["s1ap_transport"].name == "transport-resource-unavailable"
+    assert zeros["s1ap_nas"].name == "normal-release"
+    assert zeros["s1ap_misc"].name == "control-processing-overload"
+
+
+def test_the_common_release_reasons_read_as_normal_not_as_faults() -> None:
+    """`successful-handover` 與 `user-inactivity` 是**成功與例行行為**。
+
+    它們會出現在 `UE Context Release` 這種帶 cause 的正常訊息上，而這一組
+    正是任何擷取檔裡出現最多的 cause。解釋成失敗的話，讀者會去追一個不存在
+    的故障 —— 與 `ngap.py` 那條「帶 cause 的 successfulOutcome 不該被標紅」、
+    `gtpv2.yaml` 低段那條「理由不是拒絕」同一個判斷。
+    """
+    causes = _cause_yaml("s1ap_radioNetwork")["causes"]
+    for value in (2, 18, 19, 20, 22):
+        plain = causes[value]["plain"].lower()
+        assert ("not a fault" in plain or "not a failure" in plain
+                or "success" in plain or "routine" in plain), (
+            f"#{value}（{causes[value]['name']}）的白話沒有講清楚它不是故障：{plain}"
+        )
+
+
+@pytest.mark.parametrize("table", sorted(_CAUSE_GROUP_FIELDS))
+def test_the_s1ap_tables_print_no_clause_number(table) -> None:
+    """條號刻意沒有，理由同 `nas_eps_emm` 與 `gtpv2`（CLAUDE.md §2.3）。
+
+    5G 的 `ngap_*.yaml` 有條號，因為那幾張當時人工核對過 ——
+    **差別是核對的有無，不是重要性的高低**。
+    """
+    assert "clause" not in _cause_yaml(table), (
+        f"有人給 {table} 補了 clause。條號必須人工逐條核對過才准印。"
+    )
+
+
 def test_message_names_agree_with_tshark(messages) -> None:
     """我們給每一則訊息的名字，必須出現在 tshark 自己的 info 欄位裡。
 

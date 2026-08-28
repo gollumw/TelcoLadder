@@ -379,5 +379,7 @@ def test_a_real_gtpv2_cause_now_explains_itself() -> None:
     assert info.spec == "3GPP TS 29.274"
     text = describe(CauseRef(table="gtpv2", value=73))
     assert "No resources available" in text and "29.274" in text
-    # S1AP 與 ESM 還沒有 —— 剩下的缺口必須維持看得見
-    assert "not in this tool" in describe(CauseRef(table="s1ap_radioNetwork", value=21))
+    # 2026-08-29 稍晚 S1AP 與 ESM 也落地了 —— 這一行原本斷言「缺口還在」，
+    # 現在斷言 **4G 三個協定的 cause 都答得出來**。E1 的解釋能力到齊。
+    assert "not in this tool" not in describe(CauseRef(table="s1ap_radioNetwork", value=21))
+    assert "not in this tool" not in describe(CauseRef(table="nas_eps_esm", value=27))

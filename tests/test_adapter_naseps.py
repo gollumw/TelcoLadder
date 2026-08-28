@@ -108,6 +108,50 @@ def test_the_emm_cause_names_are_the_ones_tshark_has() -> None:
     )
 
 
+def test_the_esm_cause_names_are_the_ones_tshark_has() -> None:
+    """ESM 的 48 條名稱要與 tshark 逐字相同（T-4G-CAUSE 第四批，2026-08-29）。
+
+    **全 48 條都收，包含 #46 `Unused`**：規範標為未使用的號碼出現在線上本身
+    就是訊號（送出端有缺陷），所以它有話可說 —— 與 `gtpv2.yaml` 省略 44 個
+    `Spare` 的判斷不衝突，那些是沉默的，這個不是。
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_esm.yaml"
+    mine = {v: b["name"] for v, b in yaml.safe_load(path.read_text(encoding="utf-8"))["causes"].items()}
+    assert mine == _tshark_values("nas-eps.esm.cause"), (
+        "ESM cause 名稱與 tshark 對不上。重跑產生指令（見 yaml 檔頭）。"
+    )
+
+
+def test_emm_19_points_at_a_table_that_now_exists() -> None:
+    """**EMM #19 的白話說「真正的原因在 ESM cause 裡」—— 那句話不能指向死路。**
+
+    在 ESM 表存在之前，那個指引會把讀者送到一個「未收錄」。這條測試把
+    「白話裡的交叉指引」與「被指到的表真的在」綁在一起：日後若有人拆掉
+    ESM 表，紅的會是這裡，而不是使用者在現場才發現指引沒有用。
+    """
+    from telcoladder.causes import describe, lookup
+    from telcoladder.model import CauseRef
+
+    emm19 = lookup(CauseRef(table="nas_eps_emm", value=19))
+    assert emm19 is not None and "ESM cause" in emm19.plain
+
+    esm = lookup(CauseRef(table="nas_eps_esm", value=27))
+    assert esm is not None and esm.name == "Missing or unknown APN"
+    assert "not in this tool" not in describe(CauseRef(table="nas_eps_esm", value=27))
+
+
+def test_the_esm_table_prints_no_clause_number() -> None:
+    """條號刻意沒有，理由同本目錄其他 4G 表（CLAUDE.md §2.3）。"""
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_esm.yaml"
+    assert "clause" not in yaml.safe_load(path.read_text(encoding="utf-8")), (
+        "有人補了 clause。條號必須人工逐條核對過才准印。"
+    )
+
+
 def test_a_real_emm_cause_now_explains_itself() -> None:
     """實際查一條：號碼要換得到名稱、白話與出處。
 

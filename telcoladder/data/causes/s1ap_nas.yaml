@@ -1,0 +1,58 @@
+# S1AP nas cause values — 3GPP TS 36.413.
+#
+# 名稱逐字取自 `tshark -G values` 的 `s1ap.nas`，由
+# `tests/test_adapter_s1ap.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+# **五組各一張表，這是刻意的**（CLAUDE.md §3.2 的同一個理由）：`s1ap.cause` 只是
+# 外層選擇子，真正的號碼在五個群組裡各自從 0 起算。合成一張的話，radioNetwork
+# 的 #21 會被解釋成另一組的 #21 —— 而那個解釋看起來完全合理，沒有人會發現。
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對（比照 `nas_eps_emm.yaml`、
+# `gtpv2.yaml`、`diameter_3gpp.yaml`）。5G 的 `ngap_*.yaml` 有條號，因為那幾張
+# 是當時人工核對過的 —— 兩者的差別是**核對的有無**，不是重要性的高低。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: s1ap_nas
+spec: "3GPP TS 36.413"
+
+causes:
+  0:
+    name: "normal-release"
+    plain: 'The NAS layer released this connection in the ordinary way. Not a fault.'
+    plain_zh: 'NAS 層以正常方式釋放了這條連線。不是故障。'
+
+  1:
+    name: "authentication-failure"
+    plain: 'The NAS-level authentication did not pass, and the S1 connection is being torn down because of it. The real reason is in the EMM cause on the same flow.'
+    plain_zh: 'NAS 層鑑權沒過，因此拆掉 S1 連線。真正的原因在同一條流程上的 EMM cause 裡。'
+    common_causes:
+      - 'Look for MAC failure or Synch failure in the NAS messages alongside this one'
+    common_causes_zh:
+      - '在同一批 NAS 訊息裡找 MAC failure 或 Synch failure'
+
+  2:
+    name: "detach"
+    plain: 'The UE or the network detached, and the S1 connection follows it down.'
+    plain_zh: 'UE 或網路執行了卸離，S1 連線跟著收掉。'
+
+  3:
+    name: "unspecified"
+    plain: 'A NAS-layer reason with no further detail.'
+    plain_zh: 'NAS 層的原因，但沒有進一步說明。'
+
+  4:
+    name: "csg-subscription-expiry"
+    plain: 'The subscriber''s membership of the closed subscriber group serving this cell has expired.'
+    plain_zh: '用戶對這個 cell 所屬封閉用戶群的成員資格已經到期。'
+
+  5:
+    name: "uE-not-in-PLMN-serving-area"
+    plain: 'The UE is outside the area this PLMN is allowed to serve it in.'
+    plain_zh: 'UE 不在這個 PLMN 被允許服務它的區域內。'
+
+  6:
+    name: "iab-not-authorized"
+    plain: 'The device presented itself as an IAB node and is not authorized to act as one here.'
+    plain_zh: '這台設備自稱 IAB 節點，但沒有被授權在這裡以那個身分運作。'
+
