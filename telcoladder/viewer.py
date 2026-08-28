@@ -40,6 +40,7 @@ from telcoladder.model import Flow, IdKind
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP re-export
+from telcoladder.nf import resolve_roles_with_basis
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
 #: 想加檔案就加在這裡；不在這裡的名字一律 404。
@@ -216,6 +217,44 @@ def bytes_json(session: Session, frame: int) -> dict:
     return {"frame": frame, "hex": cached}
 
 
+def _basis_sentence(basis: str) -> str:
+    """把 `nf.py` 的機器形式依據（`kind[:param]`）變成當前語言的句子。
+
+    **為什麼在這裡翻而不是引擎裡**：`Analysis` 會被跨語言快取（MCP 的教訓，
+    CLAUDE.md §9）—— 引擎層帶語言，第一個請求的語言就會凍結給所有人。
+    這裡每個請求各翻各的。
+
+    查無此 kind 時原樣顯示 —— 引擎日後加新證據種類時，畫面**降級成機器碼
+    而不是消失**（與 `PROCEDURE_LABEL` 的 fallback 同一個判斷）。
+    """
+    kind, _sep, param = basis.partition(":")
+    template = {
+        "mirror": _("forwards requests verbatim ({param} distinct paths seen in and out)"),
+        "relay-target": _("requests to it name another target (3gpp-Sbi-Target-apiRoot)"),
+        "relay-record": _("its forwarded messages carry Route-Record (RFC 6733)"),
+        "ngap-dir": _("initiator direction of {param} (TS 38.413)"),
+        "wire-hint": _("stated in message content, relayed verbatim by the adapter"),
+        "s1ap-dir": _("initiator direction of S1AP procedure {param} (TS 36.413)"),
+        "pfcp-dir": _("initiator of PFCP Session Establishment (TS 29.244)"),
+        "n2-port": _("listens on 38412, the N2 port (TS 38.412)"),
+        "service": _("serves /{param} (TS 29.5xx service naming)"),
+        "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),
+        "diameter-dir": _("initiator direction of {param} (RFC 6733 / TS 29.272)"),
+    }.get(kind)
+    if template is None:
+        return basis
+    return template.format(param=param)
+
+
+def nf_map_json(analysis) -> dict[str, dict[str, str]]:
+    """IP → {role, basis}。判不出的 IP 不出現 —— 前端顯示裸 IP，不猜。"""
+    messages = [m for flow in analysis.flows for m in flow.messages]
+    return {
+        ip: {"role": role, "basis": _basis_sentence(basis)}
+        for ip, (role, basis) in resolve_roles_with_basis(messages).items()
+    }
+
+
 def identities_json(session: Session, *, q: str = "") -> dict:
     """左欄的資料：有哪些身分、哪些取不到、為什麼。
 
@@ -232,6 +271,10 @@ def identities_json(session: Session, *, q: str = "") -> dict:
         "groups": availability(analysis),
         "ciphered": analysis.ciphered,
         "protected_suci": analysis.protected_suci,
+        # 封包清單的 Source/Destination 要能標網元角色（2026-08-30）。
+        # 掛在這裡而不是另開端點：前端本來就等 identities ready 才組 Dataset，
+        # 而角色與身分一樣要等完整解剖。
+        "nf_map": nf_map_json(analysis),
     }
     if q:
         hits = lookup(analysis, q)

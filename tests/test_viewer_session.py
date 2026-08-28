@@ -625,3 +625,37 @@ def test_touch_extends_the_idle_deadline() -> None:
     assert store.sweep() == 0, "剛剛才被取用過，不該被回收"
     time.sleep(0.08)
     assert store.sweep() == 1, "真的閒置之後要被回收"
+
+
+def test_identities_payload_carries_the_nf_map_with_a_basis(server):
+    """`/identities` 要帶 `nf_map`：IP → {role, basis}，依據句依請求語言翻。
+
+    封包清單的 Source/Destination 靠它標網元角色（2026-08-30）。
+    **依據不可省** —— 一個標成 AMF 的位址，使用者要看得到是「38412 在聽」
+    還是「User-Agent 說的」，兩者的可信度與出錯方式都不同。
+    """
+    import json as _json
+    import time as _time
+
+    sid = _open_path_session(server, FIXTURE)
+    for _ in range(600):
+        _s, raw, _h = _request(server, f"/api/{sid}/identities")
+        body = _json.loads(raw)
+        if body.get("ready"):
+            break
+        _time.sleep(0.1)
+    else:
+        raise AssertionError("identities 一直沒 ready")
+
+    nf_map = body["nf_map"]
+    assert nf_map, "這份 fixture 判得出網元，nf_map 不該是空的"
+    for ip, entry in nf_map.items():
+        assert set(entry) == {"role", "basis"}, (ip, entry)
+        assert entry["role"] and entry["basis"]
+        # 機器形式（`kind:param` 無空白）必須已被翻成句子
+        assert " " in entry["basis"], (ip, entry["basis"])
+
+    _s, raw_zh, _h = _request(server, f"/api/{sid}/identities?lang=zh_TW")
+    zh_texts = {e["basis"] for e in _json.loads(raw_zh)["nf_map"].values()}
+    en_texts = {e["basis"] for e in nf_map.values()}
+    assert zh_texts != en_texts, "zh 請求拿到的依據句與 en 相同 —— 語言沒有生效"

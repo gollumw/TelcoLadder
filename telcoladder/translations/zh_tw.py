@@ -208,6 +208,29 @@ CATALOG: dict[str, str] = {
     'Language':
         '語言',
     'Toggle theme': '切換深淺色',
+    # ── nf_map 的判定依據句（viewer._basis_sentence）──
+    'forwards requests verbatim ({param} distinct paths seen in and out)':
+        '它把收到的請求逐字轉發（{param} 種不同路徑先進後出）',
+    'requests to it name another target (3gpp-Sbi-Target-apiRoot)':
+        '打向它的請求指名的是別的目標（3gpp-Sbi-Target-apiRoot）',
+    'its forwarded messages carry Route-Record (RFC 6733)':
+        '它轉發的訊息帶著 Route-Record（RFC 6733）',
+    'initiator direction of {param} (TS 38.413)':
+        '{param} 的發起方向（TS 38.413）',
+    'stated in message content, relayed verbatim by the adapter':
+        '訊息內容裡寫明的，由 adapter 原樣轉述',
+    'initiator direction of S1AP procedure {param} (TS 36.413)':
+        'S1AP 程序 {param} 的發起方向（TS 36.413）',
+    'initiator of PFCP Session Establishment (TS 29.244)':
+        'PFCP Session Establishment 的發起端（TS 29.244）',
+    'listens on 38412, the N2 port (TS 38.412)':
+        '在 38412（N2 埠）上監聽（TS 38.412）',
+    'serves /{param} (TS 29.5xx service naming)':
+        '提供 /{param} 服務（TS 29.5xx 服務命名）',
+    'declares itself in User-Agent: {param} (TS 29.500)':
+        '自己在 User-Agent 裡聲明：{param}（TS 29.500）',
+    'initiator direction of {param} (RFC 6733 / TS 29.272)':
+        '{param} 的發起方向（RFC 6733 / TS 29.272）',
     'No frame {frame} in the capture.':
         '擷取檔裡沒有 frame {frame}。',
     'Full dissection has not finished; identity information is not available yet.':

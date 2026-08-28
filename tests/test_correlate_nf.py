@@ -316,3 +316,91 @@ def test_messages_without_identity_are_kept_not_dropped():
     msgs = [Message(frame=1, ts=0.0, protocol="ngap", src=ep, dst=ep, label="NGSetup")]
     flows = correlate(msgs)
     assert sum(len(f.messages) for f in flows) == 1
+
+
+# ── 轉送者的鏡像證據與判定依據（2026-08-30）─────────────────────────────
+
+
+def _sbi_req(frame, ts, src, dst, path):
+    from telcoladder.model import Endpoint, Message
+
+    return Message(
+        frame=frame, ts=ts, protocol="sbi",
+        src=Endpoint(src, 40000), dst=Endpoint(dst, 7777),
+        label=f"PUT {path}", detail={"path": path},
+    )
+
+
+def test_a_verbatim_forwarder_is_recognised_as_a_relay_without_any_header():
+    """同一則請求「先進後出」×2 種路徑 → SCP，**不需要任何轉送標頭**。
+
+    這條證據存在的理由：`3gpp-Sbi-Target-apiRoot` 不是每個部署都送 ——
+    實測 userplane fixture 整份只有 1 個，SCP 因此漏抓，接著收下八種
+    服務的矛盾票全部互相抵銷，連後面的真 NRF 都跟著判不出（污染擴散）。
+    鏡像不看標頭，只看線路事實。
+    """
+    from telcoladder.nf import find_relays
+
+    msgs = [
+        _sbi_req(1, 1.0, "10.0.0.1", "10.0.0.9", "/nnrf-nfm/v1/nf-instances/aaa"),
+        _sbi_req(2, 1.1, "10.0.0.9", "10.0.0.5", "/nnrf-nfm/v1/nf-instances/aaa"),
+        _sbi_req(3, 2.0, "10.0.0.2", "10.0.0.9", "/nnrf-nfm/v1/nf-instances/bbb"),
+        _sbi_req(4, 2.1, "10.0.0.9", "10.0.0.5", "/nnrf-nfm/v1/nf-instances/bbb"),
+    ]
+    assert find_relays(msgs) == {"10.0.0.9": ("SCP", "mirror:2")}
+
+
+def test_one_mirrored_path_is_not_enough_to_call_something_a_relay():
+    """**門檻是兩種路徑。** 單一路徑的巧合（重試打到別台）不夠格 ——
+
+    把真網元錯標成 SCP 比漏標一台 SCP 更糟（§4：標錯讓人得出錯誤結論，
+    漏標只是不方便）。
+    """
+    from telcoladder.nf import find_relays
+
+    msgs = [
+        _sbi_req(1, 1.0, "10.0.0.1", "10.0.0.9", "/nnrf-nfm/v1/nf-instances/aaa"),
+        _sbi_req(2, 1.1, "10.0.0.9", "10.0.0.5", "/nnrf-nfm/v1/nf-instances/aaa"),
+    ]
+    assert find_relays(msgs) == {}
+
+
+def test_a_normal_nf_making_its_own_requests_is_not_a_mirror():
+    """自己發自己的請求（路徑各不相同）不構成鏡像 —— 那是正常網元。"""
+    from telcoladder.nf import find_relays
+
+    msgs = [
+        _sbi_req(1, 1.0, "10.0.0.1", "10.0.0.9", "/nudm-sdm/v2/imsi-001010000000001/am-data"),
+        _sbi_req(2, 1.1, "10.0.0.9", "10.0.0.5", "/nudr-dr/v1/subscription-data/imsi-001010000000001/am-data"),
+        _sbi_req(3, 2.0, "10.0.0.2", "10.0.0.9", "/nudm-uecm/v1/imsi-001010000000002/registrations"),
+        _sbi_req(4, 2.1, "10.0.0.9", "10.0.0.5", "/nudr-dr/v1/subscription-data/imsi-001010000000002/context-data"),
+    ]
+    assert find_relays(msgs) == {}
+
+
+def test_the_userplane_scp_resolves_via_the_mirror_and_stops_the_vote_poisoning():
+    """真實 fixture 上的回歸鎖：SCP 判出，且不再污染其他判定。
+
+    修之前的實測：.35 收到**八種**服務的矛盾票、整批棄權，userplane 的
+    判出率 9/12。修之後 .35=SCP（鏡像 20 種路徑）、判出率 10/12。
+    剩下判不出的兩個是誠實的：它們只送心跳，而轉發腿的 `:method` 是
+    HPACK 動態表引用、表建立在擷取開始之前 —— tshark 自己都解不回來
+    （`<unknown>`），這屬於 `undecoded_header_streams` 盲點的一種。
+    """
+    from pathlib import Path as _P
+
+    import pytest as _pytest
+
+    from telcoladder.nf import resolve_roles_with_basis
+    from telcoladder.pipeline import analyse
+
+    pcap = _P(__file__).resolve().parent / "fixtures" / "userplane" / "capture.pcap"
+    if not pcap.exists():
+        _pytest.skip("userplane fixture 不在")
+    a = analyse(pcap)
+    msgs = [m for f in a.flows for m in f.messages]
+    resolved = resolve_roles_with_basis(msgs)
+    role, basis = resolved["172.22.0.35"]
+    assert role == "SCP" and basis.startswith("mirror:")
+    # 判定依據必須跟著角色一起存在 —— 它是「工具講得出依據」的載體
+    assert all(isinstance(v, tuple) and len(v) == 2 for v in resolved.values())

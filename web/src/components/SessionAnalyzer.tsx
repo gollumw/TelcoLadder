@@ -223,6 +223,7 @@ export default function SessionAnalyzer({
             identities={sessionIdentities}
             identityKinds={data.identityKinds}
             protocolFilters={data.protocolFilters}
+            nfMap={data.nfMap}
             correlationEntries={correlationEntries}
             displayFilter={displayFilter}
             onDisplayFilterChange={setDisplayFilter}

@@ -225,6 +225,35 @@ back to Chinese and are listed by a test — never silently.
 
 ---
 
+## T-NF-PROFILE | the NRF registration body names every NF outright, and we do not read it (P2)
+
+**What**: `PUT /nnrf-nfm/v1/nf-instances/<uuid>` carries the registering
+node's own profile — `nfType` ("UPF", "SMF", …) and `ipv4Addresses`. That
+is not inference; it is **the network declaring who it is**, stronger than
+every rung of `nf.py`'s ladder.
+
+**Why not now**: measured on `5gc-e2e` and `userplane` — **the profile
+body is not in these captures**. The registrations present are heartbeats
+(`PATCH` with `{"op":"replace","path":"/nfStatus"}`) and the initial `PUT`
+whose `:method` sits in an HPACK dynamic-table entry established before
+the capture began; tshark itself resolves those headers to `<unknown>`.
+So there is nothing to parse yet, and writing a parser against packets
+that do not exist is guesswork (§4's class).
+
+**What it would fix**: the two IPs still unresolved in `5gc-e2e` /
+`userplane` (172.22.0.12, 172.22.0.28) speak only heartbeats. The profile
+would name them outright.
+
+**Approach when a capture has it**: `sbi.py` reads `nfType` +
+`ipv4Addresses` from the JSON body and emits `NF_ROLE_HINTS_KEY` — the
+existing generic mechanism (T6), so `nf.py` does not change. It would sit
+**above** the whole ladder, alongside "stated in message content".
+
+**Depends on**: T2 (a testbed capture that includes NF registration), or
+any real capture that starts before the NFs register.
+
+---
+
 ## T-GUTI-UI | the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A" (P3)
 
 > **2026-08-23 re-verification: still open.** The same-day GUI round changed

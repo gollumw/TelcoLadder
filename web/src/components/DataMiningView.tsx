@@ -60,6 +60,7 @@ export function DataMiningView({
   identities,
   identityKinds,
   protocolFilters,
+  nfMap,
   correlationEntries,
   displayFilter,
   onDisplayFilterChange,
@@ -92,6 +93,8 @@ export function DataMiningView({
   identityKinds: IdentityKind[];
   /** 這份擷取檔真的有的協定與各自的 display filter。見 `source.ts`。 */
   protocolFilters: ProtocolFilter[];
+  /** IP → 網元角色與依據。判不出的 IP 不在表裡 —— 顯示裸 IP。 */
+  nfMap: Record<string, import("@/data/source").NfMapEntry>;
   correlationEntries: CorrelationEntry[];
   displayFilter: string;
   onDisplayFilterChange: (value: string) => void;
@@ -463,10 +466,10 @@ export function DataMiningView({
                     </td>
                     <td className="px-2 py-1 text-fg-dim">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
                     <td className="px-2 py-1 text-fg-muted">
-                      {p.srcPort ? `${p.srcIp}:${p.srcPort}` : p.srcIp}
+                      <EndpointCell ip={p.srcIp} port={p.srcPort} nf={nfMap[p.srcIp]} />
                     </td>
                     <td className="px-2 py-1 text-fg-muted">
-                      {p.dstPort ? `${p.dstIp}:${p.dstPort}` : p.dstIp}
+                      <EndpointCell ip={p.dstIp} port={p.dstPort} nf={nfMap[p.dstIp]} />
                     </td>
                     <td className="px-2 py-1 text-signal-cyan-fg font-medium">{p.protocol}</td>
                     <td className="px-2 py-1 text-fg-dim">{p.length}</td>
@@ -540,3 +543,29 @@ export function DataMiningView({
     </div>
   );
 }
+
+
+/** Source／Destination 儲存格：判得出網元就標角色，滑過去看**依據**。
+
+    角色放前、IP 淡化 —— 工程師掃表時找的是「AMF 對 SMF 說了什麼」，
+    不是位址。但 IP 不能拿掉：多實例部署（兩台 AMF）只有位址分得開。
+    判不出角色就顯示裸 IP —— **不猜**（`nf.py` 的同一條紀律）。 */
+function EndpointCell({
+  ip,
+  port,
+  nf,
+}: {
+  ip: string;
+  port?: number;
+  nf?: import("@/data/source").NfMapEntry;
+}) {
+  const address = port ? `${ip}:${port}` : ip;
+  if (!nf) return <>{address}</>;
+  return (
+    <span title={`${nf.role} — ${nf.basis}`}>
+      <span className="font-medium text-signal-cyan">{nf.role}</span>
+      <span className="text-fg-dim"> · {address}</span>
+    </span>
+  );
+}
+

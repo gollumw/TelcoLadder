@@ -432,7 +432,7 @@ def test_the_relay_is_found_from_route_record_not_from_destination_host(messages
     """
     from telcoladder.nf import find_relays
 
-    assert find_relays(messages) == {"198.51.100.61": "DRA"}
+    assert find_relays(messages) == {"198.51.100.61": ("DRA", "relay-record")}
 
     # 變異：拿掉 Route-Record 的證據，DRA 就消失 —— 證明是它在起作用。
     stripped = []

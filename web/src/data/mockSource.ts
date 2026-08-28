@@ -62,6 +62,8 @@ export function mockSource(): DataSource {
       const page = await loadPacketPage(0, PAGE);
       return {
         ...mockData,
+        // mock 的 IP 是設計樣本 —— 不假裝有網元判定，顯示裸 IP
+        nfMap: {},
         rawPackets: page.rows,
         page,
         // mock 是編譯期常數，沒有解碼這回事。

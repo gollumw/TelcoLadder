@@ -21,12 +21,12 @@
     },
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "7695735d669d6f76facb0a007040d9b1a1c0778c547f6ec7cf202a0a56e60490",
+      "current_sha256": "1907eb82936223a0e3cb1b8289de3d5abe445a9332612222e448d03a21cac258",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。",
-      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）"
+      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
@@ -47,12 +47,12 @@
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "8515f24993d00c7a75f852b57aa88ac7ad60bc019811497f204b27f196a01d16",
+      "current_sha256": "5a4dddf7548fe5a3a68964eb008446f0eff3c7ca1e474eeb90f9d1e068d0131f",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。協定快篩鈕與身分搜尋的下拉選單改由引擎供應（`Dataset.protocolFilters` / `identityKinds`），拿掉兩份寫死的 5G 清單（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
       "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。 2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。",
-      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（色票改 CSS 變數後 -bg 是固定 alpha，修飾會靜默失效）"
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（色票改 CSS 變數後 -bg 是固定 alpha，修飾會靜默失效）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）"
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",

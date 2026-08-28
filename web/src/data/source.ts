@@ -68,8 +68,19 @@ export interface PacketPage {
  * 不直接沿用 `MockDataset` 這個名字是因為它已經不只是 mock；但也不改
  * `lib/types.ts`，那個檔仍與 TelcoShark-Sandbox 逐位元組相同（見 PORTED.json）。
  */
+/** 一個 IP 的網元判定：角色與**判定依據**（工具講得出依據，使用者才反駁得了）。 */
+export interface NfMapEntry {
+  role: string;
+  basis: string;
+}
+
 export interface Dataset {
   sessionIdentities: SessionIdentity[];
+  /**
+   * IP → 網元角色（`/identities` 的 `nf_map`，引擎的 `resolve_roles_with_basis`）。
+   * **判不出的 IP 不在表裡** —— 顯示裸 IP，不猜（標錯比不標糟）。
+   */
+  nfMap: Record<string, NfMapEntry>;
   callFlowEvents: CallFlowEvent[];
   correlationEntries: CorrelationEntry[];
   /**

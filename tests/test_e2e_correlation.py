@@ -231,7 +231,7 @@ def test_direct_communication_is_not_mistaken_for_relaying():
         identity_keys=frozenset(), cause=None, is_failure=False,
         detail={"relay-target": "172.22.0.11"},
     )
-    assert find_relays([relayed]) == {"172.22.0.35": "SCP"}
+    assert find_relays([relayed]) == {"172.22.0.35": ("SCP", "relay-target")}
 
 
 def test_every_service_this_capture_emits_is_in_the_map(e2e_pcap):

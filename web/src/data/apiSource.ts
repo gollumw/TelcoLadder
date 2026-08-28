@@ -211,6 +211,8 @@ export function apiSource(sid: string | null): DataSource {
       // 身分清單：目前只取 SUPI。MSISDN／IMEI／GUTI 在 5G 核網的擷取裡
       // 多半根本不出現（它們在 UDM 側），有就有、沒有就留空 ——
       // 不編一個看起來合理的值（`lib/types.ts` 對 SessionIdentity 的註解）。
+      const nfMap = (identities as { nf_map?: Record<string, { role: string; basis: string }> })
+        .nf_map ?? {};
       const sessionIdentities: SessionIdentity[] = (identities.groups ?? [])
         .filter((group) => group.kind === "supi")
         .flatMap((group) =>
@@ -238,6 +240,7 @@ export function apiSource(sid: string | null): DataSource {
         ),
         firstFrameBySupi: firstFrameBySupi(subscribers),
         sessionIdentities,
+        nfMap,
         // 協定快篩與身分類別都由引擎供應 —— 前端不再自己維護一份 5G 清單
         // （見 `Dataset.protocolFilters` 的說明）。
         protocolFilters: flows.protocols ?? [],

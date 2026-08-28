@@ -100,7 +100,7 @@ RELAY_ROLE_BY_PROTOCOL: dict[str, str] = {
 }
 
 
-def find_relays(messages: list[Message]) -> dict[str, str]:
+def find_relays(messages: list[Message]) -> dict[str, tuple[str, str]]:
     """找出轉送者：**收到一則指名別人的訊息的那一端**。
 
     判準只有一條，而且是協定中立的 —— adapter 在 `detail["relay-target"]`
@@ -121,6 +121,52 @@ def find_relays(messages: list[Message]) -> dict[str, str]:
     的哲學：證據矛盾時標錯比不標更糟。
     """
     candidates: dict[str, set[str]] = defaultdict(set)
+    basis: dict[str, str] = {}
+
+    def mark(ip: str, role: str, why: str) -> None:
+        candidates[ip].add(role)
+        basis.setdefault(ip, why)
+
+    # ── 證據 C 的前置掃描：同一則請求「先進後出」的鏡像 ──
+    #
+    # 收到 (protocol, path) 的請求後，同一個位址又把**逐字相同的 path**
+    # 送給第三方。一般網元不會替別人用相同的完整資源路徑發請求 ——
+    # 心跳 `PUT /nnrf-nfm/v1/nf-instances/<uuid>` 的 uuid 是發送者自己的
+    # instance id，只有轉送會原樣重現。
+    #
+    # 為什麼需要它 —— 證據 A 依賴 `3gpp-Sbi-Target-apiRoot`，而**那個標頭
+    # 不是每個部署都送**：實測 userplane fixture 整份只有 1 個，SCP 因此
+    # 漏抓，接著收下八種服務的矛盾票、整批互相抵銷，NRF 也跟著判不出來
+    # （污染擴散正是第一趟存在的理由）。鏡像不看任何標頭，只看線路事實。
+    #
+    # **門檻是兩個不同 path**：單一 path 的巧合（例如重試打到別台）不夠格。
+    # 錯標一台真網元成 SCP 比漏標一台 SCP 更糟（§4）。
+    mirrored: dict[str, set[str]] = defaultdict(set)
+    seen_paths: dict[tuple[str, str], list] = defaultdict(list)
+    for msg in messages:
+        if msg.protocol not in RELAY_ROLE_BY_PROTOCOL:
+            continue
+        path = msg.detail.get("path")
+        if not path:
+            continue
+        seen_paths[(msg.protocol, path)].append(msg)
+    for (proto, path), msgs in seen_paths.items():
+        arrived_at: set[str] = set()
+        for msg in sorted(msgs, key=lambda m: m.ts):
+            if msg.src.ip in arrived_at and msg.dst.ip not in arrived_at:
+                mirrored[msg.src.ip].add(path)
+            arrived_at.add(msg.dst.ip)
+    for ip, paths in mirrored.items():
+        if len(paths) >= 2:
+            # 這個位址對它收過的請求做了逐字轉發，而且不只一種
+            for proto, role in RELAY_ROLE_BY_PROTOCOL.items():
+                if any(m.protocol == proto for ms in
+                       (seen_paths[(proto, pa)] for pa in paths if (proto, pa) in seen_paths)
+                       for m in ms):
+                    mark(ip, role,
+                         f"mirror:{len(paths)}")
+                    break
+
     for msg in messages:
         role = RELAY_ROLE_BY_PROTOCOL.get(msg.protocol)
         if not role:
@@ -130,7 +176,8 @@ def find_relays(messages: list[Message]) -> dict[str, str]:
         target = msg.detail.get("relay-target")
         if target and target != msg.dst.ip:
             # 目標就是收件者本人 → 直接通訊。少了這個判斷會把真正的網元標成 SCP。
-            candidates[msg.dst.ip].add(role)
+            mark(msg.dst.ip, role,
+                 "relay-target")
 
         # ── 證據 B：訊息自己說它被轉送過（`relay-record`）──
         #
@@ -143,9 +190,10 @@ def find_relays(messages: list[Message]) -> dict[str, str]:
         # 「指名的收件者」看起來就在線路的另一端。實測 fixture 上證據 A
         # 找到 0 個中繼，而那份檔裡確實有一台。
         if msg.detail.get("relay-record"):
-            candidates[msg.src.ip].add(role)
+            mark(msg.src.ip, role, "relay-record")
 
-    return {ip: next(iter(roles)) for ip, roles in candidates.items() if len(roles) == 1}
+    return {ip: (next(iter(roles)), basis[ip])
+            for ip, roles in candidates.items() if len(roles) == 1}
 
 
 def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
@@ -168,8 +216,9 @@ def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
     is_answer = msg.label.endswith(" Answer")
     initiator = dst_ip if is_answer else src_ip
     responder = src_ip if is_answer else dst_ip
-    vote(initiator, initiator_role)
-    vote(responder, responder_role)
+    why = f"diameter-dir:{msg.label.removesuffix(' Answer')}"
+    vote(initiator, initiator_role, why)
+    vote(responder, responder_role, why)
 
 
 def _endpoint_key(endpoint: Endpoint) -> str:
@@ -177,9 +226,21 @@ def _endpoint_key(endpoint: Endpoint) -> str:
 
 
 def resolve_roles(messages: list[Message]) -> dict[str, str]:
-    """掃過所有訊息，判定每個 IP 的網元角色。
+    """`resolve_roles_with_basis` 的舊介面：只回 IP → 角色。"""
+    return {ip: role for ip, (role, _basis) in resolve_roles_with_basis(messages).items()}
 
-    回傳 IP → 角色名稱。判不出來的 IP 不會出現在結果裡。
+
+def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, str]]:
+    """掃過所有訊息，判定每個 IP 的網元角色，**連同判定依據**。
+
+    回傳 IP → (角色, 依據句)。判不出來的 IP 不會出現在結果裡。
+
+    依據是**機器形式** `kind[:param]`（如 `n2-port`、`service:nudm-sdm`、
+    `mirror:20`）—— 語言無關，句子由呈現層依請求語言產生（`viewer.BASIS_TEXT`，
+    與 `annotate()` 的語言規則同族：引擎層不做翻譯）。它存在的理由與
+    「身分是跟誰借的」同一條：**工具講得出依據，使用者才有辦法反駁它**。
+    一個標成 AMF 的位址，滑鼠停上去要看得到是「38412 在聽」還是
+    「User-Agent 說的」—— 兩者的可信度不同，錯的方式也不同。
 
     **分兩趟，順序有語意。** 先找出轉送者（`find_relays`），再跑判定階梯 ——
     因為階梯上的證據對轉送者是無效的，而不知道誰是轉送者就分不出哪些票被
@@ -188,18 +249,21 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
     而它會因此同時收到五種 NF 的票、全部互相抵銷。
     """
     relays = find_relays(messages)
-    votes: dict[str, set[str]] = defaultdict(set)
+    votes: dict[str, dict[str, str]] = defaultdict(dict)
 
-    def vote(ip: str, role: str) -> None:
-        """記一票。**落在轉送者身上的一律丟掉。**
+    def vote(ip: str, role: str, why: str) -> None:
+        """記一票（含依據）。**落在轉送者身上的一律丟掉。**
 
         轉送者的角色已由第一趟決定，而階梯上的每一條規則都在推論
         「這個位址扮演哪個網元」—— 對一個只是把訊息傳下去的中間人來說，
         那個推論從前提就不成立。
+
+        同一個 (ip, role) 的多張票只留**第一個**依據 —— 依據是給人看的
+        單句，不是證據清單；要完整證據去看封包本身。
         """
         if ip in relays:
             return
-        votes[ip].add(role)
+        votes[ip].setdefault(role, why)
 
     for msg in messages:
         src_ip, dst_ip = _endpoint_key(msg.src), _endpoint_key(msg.dst)
@@ -221,11 +285,13 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
             initiator = dst_ip if is_reply else src_ip
             responder = src_ip if is_reply else dst_ip
             if base in _GNB_INITIATED:
-                vote(initiator, "gNB")
-                vote(responder, "AMF")
+                why = f"ngap-dir:{base}"
+                vote(initiator, "gNB", why)
+                vote(responder, "AMF", why)
             elif base in _AMF_INITIATED:
-                vote(initiator, "AMF")
-                vote(responder, "gNB")
+                why = f"ngap-dir:{base}"
+                vote(initiator, "AMF", why)
+                vote(responder, "gNB", why)
 
         # ── 線路上直接說了誰是誰 ──
         #
@@ -238,7 +304,7 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
         for pair in msg.detail.get(NF_ROLE_HINTS_KEY, "").split(";"):
             address, _sep, role = pair.partition("=")
             if address and role:
-                vote(address, role)
+                vote(address, role, "wire-hint")
 
         # ── S1AP：程序碼決定兩方是誰，回應方向相反 ──
         if msg.protocol == "s1ap":
@@ -249,23 +315,25 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
                 is_reply = msg.detail.get("outcome", "initiating") != "initiating"
                 initiator = dst_ip if is_reply else src_ip
                 responder = src_ip if is_reply else dst_ip
-                vote(initiator, initiator_role)
-                vote(responder, responder_role)
+                why = f"s1ap-dir:{code}"
+                vote(initiator, initiator_role, why)
+                vote(responder, responder_role, why)
 
         # ── Diameter：(Application-Id, Command-Code) 決定兩方是誰 ──
         if msg.protocol == "diameter":
             _diameter_vote(msg, vote, src_ip, dst_ip)
 
         if msg.protocol == "pfcp" and msg.label.startswith("Session Establishment Request"):
-            vote(src_ip, "SMF")
-            vote(dst_ip, "UPF")
+            why = "pfcp-dir"
+            vote(src_ip, "SMF", why)
+            vote(dst_ip, "UPF", why)
 
         # ── 階梯 2：標準埠 ──
         if msg.protocol == "ngap":
             if msg.dst.port == NGAP_PORT:
-                vote(dst_ip, "AMF")
+                vote(dst_ip, "AMF", "n2-port")
             if msg.src.port == NGAP_PORT:
-                vote(src_ip, "AMF")
+                vote(src_ip, "AMF", "n2-port")
         # S1AP **不能**照 NGAP 那樣用埠號判。實測 Open5GS 與本專案的 fixture：
         # eNB 與 MME 的 src/dst 都是 36412（與 PFCP 的 8805 同一種情況），
         # 照 dst 埠判會讓 eNB 也收到一票 MME。36412 只證明「這是 S1AP」。
@@ -282,7 +350,8 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
             if service and service in SBI_SERVICE_TO_NF:
                 # 請求打向誰，誰就是那個服務的提供者 —— **除非那是轉送者**，
                 # 那時服務名描述的是它後面的最終目標。`vote()` 會擋掉。
-                vote(dst_ip, SBI_SERVICE_TO_NF[service])
+                vote(dst_ip, SBI_SERVICE_TO_NF[service],
+                     f"service:{service}")
             agent = msg.detail.get("user-agent")
             if agent:
                 nf_type = agent.split("-")[0].split("/")[0].strip().upper()
@@ -290,14 +359,15 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
                     # 轉送出來的請求會保留**原始發送端**的 User-Agent
                     # （實測：`SCP → NRF` 帶著 `user-agent: SMF`），
                     # 照收會把 SMF 這一票投在 SCP 身上。`vote()` 會擋掉。
-                    vote(src_ip, nf_type)
+                    vote(src_ip, nf_type, f"user-agent:{agent}")
 
     # 只採納沒有矛盾的判定。同一個 IP 收到兩種角色代表推論鏈有問題，
     # 這時寧可不標 —— 標錯比不標更糟。
-    resolved: dict[str, str] = dict(relays)
+    resolved: dict[str, tuple[str, str]] = dict(relays)
     for ip, candidates in votes.items():
         if len(candidates) == 1:
-            resolved[ip] = next(iter(candidates))
+            role, why = next(iter(candidates.items()))
+            resolved[ip] = (role, why)
     return resolved
 
 
