@@ -252,7 +252,7 @@ verification).
 
 ---
 
-## T-4G-CAUSE | 4G explains EMM but not yet the other 247 causes (P1, **part of E1's value**)
+## T-4G-CAUSE | 4G explains EMM and GTPv2-C; S1AP and ESM remain (P1, **part of E1's value**)
 
 > **Batch 1 landed 2026-08-29: EMM, all 39 values.**
 > `telcoladder/data/causes/nas_eps_emm.yaml` — names taken verbatim from
@@ -268,11 +268,31 @@ verification).
 > fixture's Attach reject now reads
 > `PLMN not allowed (#11) — 3GPP TS 24.301`.
 >
-> **Remaining: 247** — GTPv2-C 132, S1AP 67, ESM 48. Batch 2 is GTPv2-C's
-> rejection range (64+), batch 3 S1AP radioNetwork (45).
+> **Batch 2 landed the same day: GTPv2-C, all 82 substantive values.**
+> `telcoladder/data/causes/gtpv2.yaml` — the plan said "rejection range
+> (64+)"; the acceptance range went in too, because that is where the trap
+> lives: #12 `PGW not responding` and #13 `Network Failure` sound like
+> faults but sit below the 64 boundary, so they are **reasons for a
+> network-initiated procedure, not rejections**
+> (`test_the_low_range_reads_as_a_reason_not_a_rejection` pins that the
+> plain language says so).
+>
+> **82 of the oracle's 132**: `Spare` (20–63), `Reserved` (0–1) and
+> `Shall not be used` (71/79/99/118) carry no meaning to explain.
+> `test_the_omitted_gtpv2_values_are_exactly_the_meaningless_ones` checks
+> the omission set precisely — **the day 3GPP assigns one of those Spare
+> numbers, the test reddens** rather than the gap staying silent.
+>
+> One documented deviation: names are stored stripped. tshark's #112 is
+> `'Request rejected for a PMIPv6 reason '` with a trailing space;
+> reproducing it verbatim would put a double space on the diagram and read
+> as our bug. The oracle comparison strips both sides.
+>
+> **Remaining: 115** — S1AP 67, ESM 48. Batch 3 is S1AP radioNetwork (45),
+> the largest single group.
 
-**What**: S1AP (five groups, 67 values), NAS-EPS (ESM 48), and
-GTPv2-C (132) causes still have **no lookup tables** — **247 remaining**.
+**What**: S1AP (five groups, 67 values) and NAS-EPS ESM (48) causes still
+have **no lookup tables** — **115 remaining**.
 The numbers extract and `CauseRef` carries the right table name, but
 `describe()` only answers "not in this tool's cause table yet".
 

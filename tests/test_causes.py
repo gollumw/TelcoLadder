@@ -104,6 +104,10 @@ def test_all_expected_tables_are_present():
         # 常見失敗都落在這張表。S1AP 五張與 ESM 一張還沒有，`describe()`
         # 對它們照實回答「未收錄」。
         "nas_eps_emm",
+        # GTPv2-C（第二批，2026-08-29）。**82 條，不是 oracle 的 132** ——
+        # Spare／Reserved／Shall-not-be-used 刻意不收，而那個省略由
+        # `test_adapter_gtpv2.py` 逐條檢查過。
+        "gtpv2",
     }
 
 

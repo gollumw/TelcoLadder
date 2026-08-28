@@ -1,0 +1,570 @@
+# GTPv2-C cause values — 3GPP TS 29.274 (S11 / S5-S8 / S4 …).
+#
+# 名稱逐字取自 `tshark -G values` 的 `gtpv2.cause`，由
+# `tests/test_adapter_gtpv2.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，是量的。
+#
+#     tshark -G values | awk -F'\t' '$1=="V" && $2=="gtpv2.cause"'
+#
+# **刻意沒有 `clause`**：條號未經人工逐條核對，比照 `diameter_3gpp.yaml` 與
+# `nas_eps_emm.yaml` 的同一個決定（CLAUDE.md §2.3）。`spec` 是文件層級的事實。
+#
+# ## 這張表刻意不收 50 個號碼
+#
+# oracle 有 132 個，這裡收 82 個。沒收的是 `Spare`（20–63，44 個）、
+# `Reserved`（0–1）與 `Shall not be used`（71／79／99／118）—— 它們在規範裡
+# 就沒有語意，寫白話等於替一個不存在的東西編故事。**這個省略由
+# `test_the_omitted_gtpv2_values_are_exactly_the_meaningless_ones` 釘住**：
+# 哪天 3GPP 把某個 Spare 指派出去、tshark 跟著更新，那條測試會紅 ——
+# 省略是**檢查過的決定**，不是漏收。
+#
+# ## 名稱儲存時去掉頭尾空白
+#
+# oracle 的 #112 是 `'Request rejected for a PMIPv6 reason '`（尾隨一個空白，
+# tshark 值表自己的瑕疵）。原樣存進來的話，梯形圖上會出現
+# `Request rejected for a PMIPv6 reason  (#112)` 兩個空格 —— 看起來像**我們**
+# 的 bug。所以存去空白版，而 oracle 比對也對兩邊 `strip()`：**這是一個記錄在案、
+# 有測試守著的偏離，不是對不上**。
+#
+# ## 低段不是「成功」，也不全是「失敗」
+#
+# 0–63 是接受與資訊性的（§15 量過），但裡面有幾條聽起來很像故障 ——
+# #12 `PGW not responding`、#13 `Network Failure`。**它們是網路端主動發起
+# 某個程序的「理由」，不是對請求的拒絕**：與 `ngap.py` 那條「帶 cause 的
+# successfulOutcome 不該被標紅」、`sip.py` 那條「401 不是失敗」同一個形狀。
+# 每一條的 plain 都把這件事講出來。
+#
+# plain 與 common_causes 一律純文字（會被畫進 Mermaid 標籤與 SVG `<text>`）。
+
+table: gtpv2
+spec: "3GPP TS 29.274"
+
+causes:
+  # ── 接受與資訊性（0–63）。這裡沒有一條是「請求被拒絕」 ────────────────
+  2:
+    name: "Local Detach"
+    plain: 'The peer is telling us it detached this subscriber on its own side. This is a notification, not a refusal.'
+    plain_zh: '對端告訴我們它在自己那側把這個用戶卸離了。這是通知，不是拒絕。'
+
+  3:
+    name: "Complete Detach"
+    plain: 'A full detach across both the packet and any non-packet side. A notification, not a refusal.'
+    plain_zh: '封包側與非封包側一起完整卸離。這是通知，不是拒絕。'
+
+  4:
+    name: "RAT changed from 3GPP to Non-3GPP"
+    plain: 'The subscriber moved off the 3GPP radio onto something else (Wi-Fi offload, for example), so this session is being torn down here.'
+    plain_zh: '用戶從 3GPP 無線接取換到別的接取（例如 Wi-Fi offload），所以這邊的 session 收掉。'
+
+  5:
+    name: "ISR deactivation"
+    plain: 'Idle-mode Signalling Reduction is being turned off, so the redundant context is released.'
+    plain_zh: 'ISR（閒置模式訊令精簡）關閉，因此釋放多餘的上下文。'
+
+  6:
+    name: "Error Indication received from RNC/eNodeB/S4-SGSN"
+    plain: 'A GTP-U Error Indication came back from the access side - the far end has no tunnel for the packets we are sending it. The user plane is broken even though the control plane looks fine.'
+    plain_zh: '接取側回了 GTP-U Error Indication —— 對端沒有我們正在送的那條隧道。控制面看起來正常，但使用者面已經斷了。'
+    common_causes:
+      - 'The eNodeB or RNC restarted and lost its tunnel state while the core still holds the session'
+      - 'A TEID mismatch after a handover that only half completed'
+    common_causes_zh:
+      - 'eNodeB 或 RNC 重啟、隧道狀態沒了，而核網這邊還留著 session'
+      - '換手只完成一半，兩邊的 TEID 對不上'
+
+  7:
+    name: "IMSI Detach Only"
+    plain: 'Only the IMSI-level attachment is being removed; other contexts stay.'
+    plain_zh: '只移除 IMSI 層級的附著，其他上下文保留。'
+
+  8:
+    name: "Reactivation Requested"
+    plain: 'The network released this session but wants the UE to establish it again straight away - a deliberate re-establish, not a failure.'
+    plain_zh: '網路釋放了這個 session，但要 UE 馬上重新建立 —— 這是刻意的重建，不是失敗。'
+    common_causes:
+      - 'A PGW or policy change that needs the session rebuilt with new parameters'
+    common_causes_zh:
+      - 'PGW 或政策變更，需要用新參數重建 session'
+
+  9:
+    name: "PDN reconnection to this APN disallowed"
+    plain: 'The session is being released and the UE must not immediately reconnect to the same APN.'
+    plain_zh: 'session 正在釋放，而且 UE 不得立刻重連同一個 APN。'
+
+  10:
+    name: "Access changed from Non-3GPP to 3GPP"
+    plain: 'The subscriber came back onto the 3GPP radio from another access, so the other side''s session is released.'
+    plain_zh: '用戶從其他接取回到 3GPP 無線接取，因此釋放另一側的 session。'
+
+  11:
+    name: "PDN connection inactivity timer expires"
+    plain: 'The session sat idle long enough that the network released it. Routine housekeeping.'
+    plain_zh: 'session 閒置夠久，網路把它收掉了。例行的資源回收。'
+
+  12:
+    name: "PGW not responding"
+    plain: 'The SGW is telling the MME that the PGW did not answer. This is the reason for a network-initiated release - it is not a rejection of anything the MME asked for.'
+    plain_zh: 'SGW 在告訴 MME「PGW 沒有回應」。這是網路端主動釋放的理由，不是對 MME 任何請求的拒絕。'
+    common_causes:
+      - 'The PGW is down, restarting, or unreachable on S5/S8'
+      - 'An echo/heartbeat timeout on the S5/S8 path'
+    common_causes_zh:
+      - 'PGW 掛了、正在重啟，或 S5/S8 上不通'
+      - 'S5/S8 路徑上的 echo／heartbeat 逾時'
+
+  13:
+    name: "Network Failure"
+    plain: 'A network-side failure given as the reason for a network-initiated procedure. Despite the name it sits in the acceptance range - it explains why the network is acting, not that it refused a request.'
+    plain_zh: '網路端故障，作為網路主動發起某個程序的理由。名字聽起來像失敗，但它落在接受段 —— 它解釋網路為什麼採取行動，不是說它拒絕了請求。'
+
+  14:
+    name: "QoS parameter mismatch"
+    plain: 'The QoS parameters the two sides hold do not agree, so the affected bearer is being cleaned up.'
+    plain_zh: '兩側持有的 QoS 參數不一致，因此清理受影響的承載。'
+
+  15:
+    name: "EPS to 5GS Mobility"
+    plain: 'The subscriber is moving from the 4G core to the 5G core; this context is released as part of that move.'
+    plain_zh: '用戶正從 4G 核網移往 5G 核網，這個上下文因為那次移動而釋放。'
+
+  16:
+    name: "Request accepted"
+    plain: 'The request succeeded. This is the normal success code.'
+    plain_zh: '請求成功。這是正常的成功代碼。'
+
+  17:
+    name: "Request accepted partially"
+    plain: 'Some of what was asked for was granted and some was not - check the per-bearer causes, because the overall message still reads as a success.'
+    plain_zh: '要求的東西只有一部分被接受 —— 要看逐承載的 cause，因為整則訊息仍然算成功。'
+
+  18:
+    name: "New PDN type due to network preference"
+    plain: 'The session was established, but with a different PDN type than requested because the network prefers that one.'
+    plain_zh: 'session 建起來了，但 PDN 型別與要求的不同，因為網路偏好另一種。'
+
+  19:
+    name: "New PDN type due to single address bearer only"
+    plain: 'The session was established with a single-address PDN type because dual-stack was not available here.'
+    plain_zh: 'session 用單一位址的 PDN 型別建立，因為這裡沒有雙堆疊可用。'
+
+  # ── 拒絕（64 起）。§15 量過：Context Not Found 之後才是真的拒絕 ────────
+  64:
+    name: "Context Not Found"
+    plain: 'The peer has no context for the TEID or session this message refers to. The two sides disagree about whether the session exists.'
+    plain_zh: '對端找不到這則訊息指涉的 TEID 或 session 上下文。兩邊對「session 是否存在」的認知不一致。'
+    common_causes:
+      - 'The peer restarted and lost its sessions while this side kept them'
+      - 'A message arrived after the session was already deleted'
+    common_causes_zh:
+      - '對端重啟、session 全丟了，而這一側還留著'
+      - 'session 已經刪除之後訊息才到'
+
+  65:
+    name: "Invalid Message Format"
+    plain: 'The message could not be parsed as valid GTPv2-C.'
+    plain_zh: '這則訊息無法當成合法的 GTPv2-C 解析。'
+    common_causes:
+      - 'An encoding bug on the sending side, most often seen between two vendors'
+    common_causes_zh:
+      - '送出端的編碼缺陷，最常出現在兩家廠商之間'
+
+  66:
+    name: "Version not supported by next peer"
+    plain: 'The next node along does not speak this GTP version.'
+    plain_zh: '下一個節點不支援這個 GTP 版本。'
+
+  67:
+    name: "Invalid length"
+    plain: 'A length field does not match the actual content.'
+    plain_zh: '長度欄位與實際內容對不上。'
+
+  68:
+    name: "Service not supported"
+    plain: 'The peer does not support the service this request asks for.'
+    plain_zh: '對端不支援這個請求所要的服務。'
+
+  69:
+    name: "Mandatory IE incorrect"
+    plain: 'A mandatory information element is present but its content is wrong.'
+    plain_zh: '必要的資訊元素有帶，但內容不對。'
+    common_causes:
+      - 'A protocol version difference where a field''s encoding or meaning changed'
+    common_causes_zh:
+      - '協定版本差異，某個欄位的編碼或意義變了'
+
+  70:
+    name: "Mandatory IE missing"
+    plain: 'A mandatory information element is simply not in the message.'
+    plain_zh: '必要的資訊元素根本沒出現在訊息裡。'
+    common_causes:
+      - 'One side implements an older release that did not yet require this IE'
+    common_causes_zh:
+      - '一側實作的是還沒要求這個 IE 的舊版本'
+
+  72:
+    name: "System failure"
+    plain: 'The peer hit an internal failure it will not describe further. Its own logs will say more than the packet does.'
+    plain_zh: '對端遇到內部故障，而且不再多說。它自己的 log 會比封包說得多。'
+
+  73:
+    name: "No resources available"
+    plain: 'The peer has no capacity to take this session right now.'
+    plain_zh: '對端目前沒有容量接下這個 session。'
+    common_causes:
+      - 'The node hit a configured session or bearer limit'
+      - 'Resource exhaustion under load - often the first symptom of an undersized node'
+    common_causes_zh:
+      - '節點碰到設定的 session 或承載上限'
+      - '負載下資源耗盡 —— 常是節點規格不足的第一個徵兆'
+
+  74:
+    name: "Semantic error in the TFT operation"
+    plain: 'The traffic flow template operation does not make sense - for example deleting a filter that is not there.'
+    plain_zh: 'TFT（流量範本）操作講不通 —— 例如刪除一個根本不存在的過濾器。'
+
+  75:
+    name: "Syntactic error in the TFT operation"
+    plain: 'The traffic flow template is malformed.'
+    plain_zh: 'TFT（流量範本）格式錯誤。'
+
+  76:
+    name: "Semantic errors in packet filter(s)"
+    plain: 'A packet filter is internally contradictory - it parses, but it cannot mean anything.'
+    plain_zh: '封包過濾器自相矛盾 —— 解得開，但沒有任何意義。'
+
+  77:
+    name: "Syntactic errors in packet filter(s)"
+    plain: 'A packet filter is malformed.'
+    plain_zh: '封包過濾器格式錯誤。'
+
+  78:
+    name: "Missing or unknown APN"
+    plain: 'The APN in the request is missing, or the network does not know it. One of the most common real rejections on S11.'
+    plain_zh: '請求裡的 APN 缺席，或網路不認得它。這是 S11 上最常見的真實拒絕之一。'
+    common_causes:
+      - 'The APN is not configured on the PGW or in DNS'
+      - 'A typo in the APN on the device, or the operator changed the APN name'
+      - 'The subscription does not carry this APN, so no PGW can be selected for it'
+    common_causes_zh:
+      - 'PGW 或 DNS 上沒有設定這個 APN'
+      - '裝置上的 APN 打錯，或營運商換過 APN 名稱'
+      - '訂閱資料裡沒有這個 APN，因此選不到 PGW'
+
+  80:
+    name: "GRE key not found"
+    plain: 'The GRE key this message refers to does not exist on the peer (a PMIPv6-style deployment).'
+    plain_zh: '對端沒有這則訊息指涉的 GRE key（PMIPv6 形式的部署）。'
+
+  81:
+    name: "Relocation failure"
+    plain: 'A relocation - a handover moving this session to another node - did not complete.'
+    plain_zh: '重定位（把這個 session 搬到另一個節點的換手）沒有完成。'
+
+  82:
+    name: "Denied in RAT"
+    plain: 'The service is not allowed on the radio access technology the UE is currently using.'
+    plain_zh: '在 UE 目前使用的無線接取技術上，這個服務不被允許。'
+
+  83:
+    name: "Preferred PDN type not supported"
+    plain: 'The PDN type the request preferred (IPv4, IPv6 or both) is not supported here.'
+    plain_zh: '請求偏好的 PDN 型別（IPv4／IPv6／雙堆疊）在這裡不支援。'
+
+  84:
+    name: "All dynamic addresses are occupied"
+    plain: 'The address pool is exhausted - there is no IP left to give this subscriber.'
+    plain_zh: '位址池用完了 —— 沒有 IP 可以配給這個用戶。'
+    common_causes:
+      - 'The pool is too small for the number of simultaneous sessions'
+      - 'Addresses leaked because sessions were not torn down cleanly'
+    common_causes_zh:
+      - '位址池對同時 session 數來說太小'
+      - 'session 沒有乾淨拆除，位址洩漏了'
+
+  85:
+    name: "UE context without TFT already activated"
+    plain: 'A context with no traffic flow template is already active, and this request conflicts with it.'
+    plain_zh: '已經有一個沒有 TFT 的上下文在作用中，這個請求與它衝突。'
+
+  86:
+    name: "Protocol type not supported"
+    plain: 'The protocol type asked for is not supported by the peer.'
+    plain_zh: '對端不支援請求的協定型別。'
+
+  87:
+    name: "UE not responding"
+    plain: 'The network tried to reach the UE and got nothing back.'
+    plain_zh: '網路嘗試聯絡 UE，但沒有任何回應。'
+    common_causes:
+      - 'The UE lost coverage or powered off without detaching'
+      - 'Paging did not reach it - a tracking area or paging configuration problem'
+    common_causes_zh:
+      - 'UE 失去涵蓋或直接關機，沒有正常卸離'
+      - 'paging 沒送到 —— 追蹤區或 paging 設定的問題'
+
+  88:
+    name: "UE refuses"
+    plain: 'The UE was reached and declined. The reason lives on the UE side, not in this message.'
+    plain_zh: 'UE 收到了，但它拒絕。理由在 UE 那側，不在這則訊息裡。'
+
+  89:
+    name: "Service denied"
+    plain: 'The requested service is denied for this subscriber.'
+    plain_zh: '這個用戶被拒絕使用所要求的服務。'
+
+  90:
+    name: "Unable to page UE"
+    plain: 'The network could not page the UE at all - not that the UE ignored it, but that paging could not be attempted properly.'
+    plain_zh: '網路根本無法對 UE 發出 paging —— 不是 UE 沒理它，而是 paging 這件事本身做不成。'
+    common_causes:
+      - 'No valid tracking area list for this UE'
+      - 'The MME holds no usable location for the subscriber'
+    common_causes_zh:
+      - '這個 UE 沒有有效的追蹤區清單'
+      - 'MME 手上沒有這個用戶可用的位置資訊'
+
+  91:
+    name: "No memory available"
+    plain: 'The peer ran out of memory handling this request.'
+    plain_zh: '對端在處理這個請求時記憶體不足。'
+
+  92:
+    name: "User authentication failed"
+    plain: 'Authentication for this user did not pass at the packet-core level (distinct from the NAS-level authentication between UE and MME).'
+    plain_zh: '這個用戶在封包核網層級的認證沒過（與 UE↔MME 之間的 NAS 層鑑權是兩回事）。'
+    common_causes:
+      - 'PAP/CHAP credentials for the APN are wrong'
+      - 'An external AAA server rejected the user'
+    common_causes_zh:
+      - 'APN 的 PAP/CHAP 認證資料錯誤'
+      - '外部 AAA 伺服器拒絕了這個用戶'
+
+  93:
+    name: "APN access denied - no subscription"
+    plain: 'The APN exists and the subscriber exists, but this subscriber is not subscribed to this APN.'
+    plain_zh: 'APN 存在、用戶也存在，但這個用戶沒有訂閱這個 APN。'
+    common_causes:
+      - 'The APN is missing from the subscription profile in the HSS'
+      - 'The device is configured with an APN meant for a different tariff or service'
+    common_causes_zh:
+      - 'HSS 的訂閱資料裡沒有這個 APN'
+      - '裝置設定的 APN 屬於另一種資費或服務'
+
+  94:
+    name: "Request rejected(reason not specified)"
+    plain: 'Rejected without saying why. The peer''s own logs are the only place the reason exists.'
+    plain_zh: '拒絕但不說理由。原因只存在於對端自己的 log 裡。'
+
+  95:
+    name: "P-TMSI Signature mismatch"
+    plain: 'The temporary identity signature the UE presented does not match what the network holds.'
+    plain_zh: 'UE 出示的臨時識別碼簽章與網路持有的不符。'
+
+  96:
+    name: "IMSI/IMEI not known"
+    plain: 'The peer does not know this subscriber or device identity.'
+    plain_zh: '對端不認得這個用戶或設備識別碼。'
+
+  97:
+    name: "Semantic error in the TAD operation"
+    plain: 'The traffic aggregate description operation does not make sense.'
+    plain_zh: 'TAD（流量彙總描述）操作講不通。'
+
+  98:
+    name: "Syntactic error in the TAD operation"
+    plain: 'The traffic aggregate description is malformed.'
+    plain_zh: 'TAD（流量彙總描述）格式錯誤。'
+
+  100:
+    name: "Remote peer not responding"
+    plain: 'A node further along the chain did not answer, so this request cannot be completed. The failure is not here - it is one hop beyond.'
+    plain_zh: '更上游的節點沒有回應，所以這個請求完成不了。故障不在這裡，在再過去一跳。'
+    common_causes:
+      - 'The PGW did not answer the SGW on S5/S8'
+      - 'A DNS or path failure between the two core nodes'
+    common_causes_zh:
+      - 'PGW 沒有在 S5/S8 上回應 SGW'
+      - '兩個核網節點之間的 DNS 或路徑故障'
+
+  101:
+    name: "Collision with network initiated request"
+    plain: 'Both sides started a procedure for this session at the same time; this one loses and must be retried.'
+    plain_zh: '兩側同時對這個 session 發起程序，這一個讓步，之後要重試。'
+
+  102:
+    name: "Unable to page UE due to Suspension"
+    plain: 'The UE cannot be paged because its session is suspended (typically during a CS fallback call).'
+    plain_zh: '因為 session 處於暫停狀態（通常是 CS fallback 通話期間），無法對 UE 發出 paging。'
+
+  103:
+    name: "Conditional IE missing"
+    plain: 'An information element that is required under these particular conditions is not in the message.'
+    plain_zh: '在這個特定條件下該出現的資訊元素沒有出現在訊息裡。'
+
+  104:
+    name: "APN Restriction type Incompatible with currently active PDN connection"
+    plain: 'This APN''s restriction class cannot coexist with a PDN connection the UE already has open.'
+    plain_zh: '這個 APN 的限制類別，與 UE 已經開著的某個 PDN 連線不能並存。'
+    common_causes:
+      - 'The UE opened a restricted APN first, and the second one is not allowed alongside it'
+    common_causes_zh:
+      - 'UE 先開了一個受限的 APN，第二個不允許與它並存'
+
+  105:
+    name: "Invalid overall length of the triggered response message and a piggybacked initial message"
+    plain: 'A response carrying a piggybacked message has an inconsistent overall length.'
+    plain_zh: '夾帶 piggyback 訊息的回應，整體長度不一致。'
+
+  106:
+    name: "Data forwarding not supported"
+    plain: 'The peer cannot forward user data during this procedure (typically indirect forwarding in a handover).'
+    plain_zh: '對端在這個程序中無法轉送使用者資料（通常是換手時的間接轉送）。'
+
+  107:
+    name: "Invalid reply from remote peer"
+    plain: 'A node further along answered, but with something this node could not use.'
+    plain_zh: '上游節點有回應，但內容是這個節點無法使用的。'
+
+  108:
+    name: "Fallback to GTPv1"
+    plain: 'The peer wants this session run over GTPv1 instead - typically an older SGSN in the path.'
+    plain_zh: '對端希望改用 GTPv1 —— 路徑上通常有一台較舊的 SGSN。'
+
+  109:
+    name: "Invalid peer"
+    plain: 'The sender is not a peer this node is willing to talk to.'
+    plain_zh: '送出端不是這個節點願意對話的對等節點。'
+    common_causes:
+      - 'The peer is not in the configured node list, or comes from an unexpected address'
+    common_causes_zh:
+      - '對端不在設定的節點清單裡，或來自預期之外的位址'
+
+  110:
+    name: "Temporarily rejected due to handover/TAU/RAU procedure in progress"
+    plain: 'Another mobility procedure is already running for this subscriber. Retry once it finishes - this is a timing collision, not a real refusal.'
+    plain_zh: '這個用戶已經有另一個移動性程序在跑。等它結束再重試 —— 這是時序衝突，不是真正的拒絕。'
+
+  111:
+    name: "Modifications not limited to S1-U bearers"
+    plain: 'The modification requested reaches beyond the S1-U bearers this procedure is allowed to touch.'
+    plain_zh: '請求的修改超出了這個程序被允許碰觸的 S1-U 承載範圍。'
+
+  112:
+    name: "Request rejected for a PMIPv6 reason"
+    plain: 'The rejection came from the PMIPv6 side of the deployment; the specific reason is carried in the PMIPv6 status, not here.'
+    plain_zh: '拒絕來自部署中的 PMIPv6 那側，具體理由在 PMIPv6 的狀態碼裡，不在這裡。'
+
+  113:
+    name: "APN Congestion"
+    plain: 'This particular APN is congested. Other APNs on the same node may be fine.'
+    plain_zh: '這個特定 APN 壅塞。同一個節點上的其他 APN 可能沒事。'
+    common_causes:
+      - 'Per-APN admission control or a rate limit kicked in'
+    common_causes_zh:
+      - '逐 APN 的允入控制或速率限制啟動了'
+
+  114:
+    name: "Bearer handling not supported"
+    plain: 'The peer does not support the kind of bearer handling this request needs.'
+    plain_zh: '對端不支援這個請求所需的承載處理方式。'
+
+  115:
+    name: "UE already re-attached"
+    plain: 'The UE has already re-attached, so this message refers to a context that has been superseded.'
+    plain_zh: 'UE 已經重新附著了，所以這則訊息指的是一個已經被取代的上下文。'
+
+  116:
+    name: "Multiple PDN connections for a given APN not allowed"
+    plain: 'The UE already has a connection to this APN and the network does not permit a second one.'
+    plain_zh: 'UE 已經有一條連到這個 APN 的連線，而網路不允許第二條。'
+
+  117:
+    name: "Target access restricted for the subscriber"
+    plain: 'The access the subscriber is moving to is restricted for them.'
+    plain_zh: '用戶要移往的那個接取，對他而言是受限的。'
+
+  119:
+    name: "MME/SGSN refuses due to VPLMN Policy"
+    plain: 'The visited network''s own policy refuses this - a roaming policy decision rather than a subscription problem.'
+    plain_zh: '拜訪網路自己的政策拒絕了這件事 —— 這是漫遊政策的決定，不是訂閱問題。'
+
+  120:
+    name: "GTP-C Entity Congestion"
+    plain: 'The GTP-C node itself is congested and is shedding load. Usually paired with a back-off timer.'
+    plain_zh: 'GTP-C 節點本身壅塞，正在卸載。通常會附一個 back-off timer。'
+    common_causes:
+      - 'Overload control kicked in on the SGW or PGW'
+      - 'A signalling storm after an outage was fixed'
+    common_causes_zh:
+      - 'SGW 或 PGW 的過載控制啟動了'
+      - '故障排除後的訊令風暴'
+
+  121:
+    name: "Late Overlapping Request"
+    plain: 'A newer request for this session already arrived, so this older one is discarded.'
+    plain_zh: '這個 session 已經來了更新的請求，所以這個較舊的被丟棄。'
+
+  122:
+    name: "Timed out Request"
+    plain: 'The request sat too long before it could be handled and has now expired.'
+    plain_zh: '請求擱置太久才輪到處理，已經過期了。'
+
+  123:
+    name: "UE is temporarily not reachable due to power saving"
+    plain: 'The UE is in a power-saving state and deliberately unreachable for now. It is not a fault - the network should retry later.'
+    plain_zh: 'UE 處於省電狀態，此刻刻意不可達。這不是故障 —— 網路應該稍後重試。'
+    common_causes:
+      - 'The device uses PSM or eDRX (common in IoT deployments)'
+    common_causes_zh:
+      - '裝置使用 PSM 或 eDRX（IoT 部署常見）'
+
+  124:
+    name: "Relocation failure due to NAS message redirection"
+    plain: 'The relocation was abandoned because a NAS message redirected the procedure elsewhere.'
+    plain_zh: '因為 NAS 訊息把程序導向別處，重定位被放棄。'
+
+  125:
+    name: "UE not authorised by OCS or external AAA Server"
+    plain: 'An external system - online charging or AAA - refused this subscriber. The decision was made outside the core network nodes in this capture.'
+    plain_zh: '外部系統（線上計費或 AAA）拒絕了這個用戶。這個決定是在本次擷取的核網節點之外做出的。'
+    common_causes:
+      - 'Prepaid balance exhausted'
+      - 'The external AAA has no record of this user, or its policy blocked them'
+    common_causes_zh:
+      - '預付餘額用盡'
+      - '外部 AAA 沒有這個用戶的資料，或政策把他擋下'
+
+  126:
+    name: "Multiple accesses to a PDN connection not allowed"
+    plain: 'The same PDN connection cannot be reached from more than one access at once.'
+    plain_zh: '同一條 PDN 連線不允許同時從多個接取進入。'
+
+  127:
+    name: "Request rejected due to UE capability"
+    plain: 'The UE does not have a capability this request requires.'
+    plain_zh: 'UE 缺少這個請求所需的某項能力。'
+
+  128:
+    name: "S1-U Path Failure"
+    plain: 'The user-plane path on S1-U is down. The control plane may still look healthy, which is what makes this one confusing.'
+    plain_zh: 'S1-U 上的使用者面路徑斷了。控制面可能看起來仍然健康 —— 這正是這一條容易讓人困惑的地方。'
+    common_causes:
+      - 'Transport failure between the eNodeB and the SGW'
+      - 'GTP-U echo failed while the GTP-C session stayed up'
+    common_causes_zh:
+      - 'eNodeB 與 SGW 之間的傳輸故障'
+      - 'GTP-U echo 失敗，而 GTP-C 的 session 還活著'
+
+  129:
+    name: "5GC not allowed"
+    plain: 'The subscriber is not permitted to use the 5G core, so a procedure that would move them there is refused.'
+    plain_zh: '這個用戶不被允許使用 5G 核網，因此把他移過去的程序被拒絕。'
+
+  130:
+    name: "PGW mismatch with network slice subscribed by the UE"
+    plain: 'The PGW selected does not match the network slice this subscriber is subscribed to.'
+    plain_zh: '選到的 PGW 與這個用戶訂閱的網路切片不相符。'
+
+  131:
+    name: "Rejection due to paging restriction"
+    plain: 'A paging restriction the UE itself asked for prevents this procedure from going ahead.'
+    plain_zh: 'UE 自己要求的 paging 限制，讓這個程序無法進行。'

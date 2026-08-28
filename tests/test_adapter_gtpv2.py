@@ -63,6 +63,78 @@ def _tshark_values(field: str) -> dict[int, str]:
 # ── oracle ─────────────────────────────────────────────────────────────
 
 
+def _cause_yaml() -> dict:
+    import yaml
+    path = (Path(__file__).resolve().parent.parent / "telcoladder" / "data"
+            / "causes" / "gtpv2.yaml")
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_the_gtpv2_cause_names_are_the_ones_tshark_has() -> None:
+    """收錄的每一條名稱都要與 tshark 逐字相同 —— 名稱不是抄的，是量的。
+
+    **比對前兩邊都 `strip()`**：oracle 的 #112 是
+    `'Request rejected for a PMIPv6 reason '`（尾隨一個空白，tshark 值表自己的
+    瑕疵）。原樣存進來的話梯形圖上會出現兩個空格，看起來像**我們**的 bug ——
+    所以存去空白版。這是記錄在案、有測試守著的偏離，不是對不上。
+    """
+    mine = {v: b["name"] for v, b in _cause_yaml()["causes"].items()}
+    oracle = _tshark_values("gtpv2.cause")
+    assert set(mine) <= set(oracle), (
+        f"表裡有 oracle 沒有的號碼：{sorted(set(mine) - set(oracle))}"
+    )
+    mismatched = {v: (mine[v], oracle[v]) for v in mine if mine[v].strip() != oracle[v].strip()}
+    assert not mismatched, f"名稱與 tshark 對不上：{mismatched}"
+
+
+def test_the_omitted_gtpv2_values_are_exactly_the_meaningless_ones() -> None:
+    """**省略必須是檢查過的決定，不是漏收。**
+
+    oracle 有 132 個號碼，表裡收 82 個。沒收的應該剛好是規範裡沒有語意的那些：
+    `Spare`（20–63）、`Reserved`（0–1）、`Shall not be used`（71/79/99/118）。
+
+    哪天 3GPP 把某個 Spare 指派出去、tshark 跟著更新，這條會紅 —— 那正是
+    要的：新號碼有了語意，就該有人來寫它的白話，而不是靜靜地繼續缺著。
+    """
+    oracle = _tshark_values("gtpv2.cause")
+    meaningless = {
+        v for v, n in oracle.items()
+        if n in {"Spare", "Reserved"} or n.startswith("Shall not be used")
+    }
+    omitted = set(oracle) - set(_cause_yaml()["causes"])
+    assert omitted == meaningless, (
+        "省略的集合與「規範裡沒有語意的號碼」不一致。\n"
+        f"有語意卻沒收：{sorted(omitted - meaningless)}\n"
+        f"沒語意卻收了：{sorted(meaningless - omitted)}"
+    )
+
+
+def test_the_low_range_reads_as_a_reason_not_a_rejection() -> None:
+    """#12／#13 名字聽起來像故障，但它們在接受段 —— 白話必須把這件事講出來。
+
+    §15 量過這條邊界：0–63 是接受與資訊性的，`Context Not Found` 之後才是
+    拒絕。`PGW not responding` 與 `Network Failure` 是**網路端主動發起某個
+    程序的理由**，不是對請求的拒絕 —— 與 `ngap.py` 的「帶 cause 的
+    successfulOutcome 不該標紅」、`sip.py` 的「401 不是失敗」同一個形狀。
+
+    把它們解釋成拒絕，讀者會去查一個不存在的失敗。
+    """
+    causes = _cause_yaml()["causes"]
+    for value in (12, 13):
+        plain = causes[value]["plain"].lower()
+        assert "not a rejection" in plain or "not a refusal" in plain or "reason for" in plain, (
+            f"#{value}（{causes[value]['name']}）的白話沒有講清楚它是理由不是拒絕：{plain}"
+        )
+
+
+def test_the_gtpv2_table_prints_no_clause_number() -> None:
+    """條號刻意沒有，理由同 `nas_eps_emm` 與 `diameter_3gpp`（CLAUDE.md §2.3）。"""
+    assert "clause" not in _cause_yaml(), (
+        "有人補了 clause。條號必須人工逐條核對過才准印 —— "
+        "核對完請同時更新 TODOS 的 T-4G-CAUSE，並把這條改成正面斷言。"
+    )
+
+
 def test_the_message_table_is_the_one_tshark_has() -> None:
     """訊息型別表要與 tshark 逐筆相同（產生指令記在 adapter 的註解裡）。"""
     assert MESSAGE_TYPES == _tshark_values("gtpv2.message_type")
@@ -289,15 +361,23 @@ def test_only_the_rejection_is_flagged_as_a_failure(messages) -> None:
     assert not accepted.is_failure
 
 
-def test_the_cause_table_is_not_there_yet_and_that_is_visible() -> None:
-    """GTPv2 的 132 個 cause 也還沒查表 —— 同 S1AP 與 NAS-EPS（T-4G-CAUSE）。
+def test_a_real_gtpv2_cause_now_explains_itself() -> None:
+    """實際查一條：號碼要換得到名稱、白話與出處（T-4G-CAUSE 第二批，2026-08-29）。
 
-    `describe()` 誠實回「尚未收錄」。名稱從 `tshark -G values` 隨時取得回來，
-    要寫的只有白話。
+    這條**翻面自**原本斷言「這張表還不存在」的測試。當時守的是「缺口要看得
+    見」；表填上之後，該守的變成「填進去的東西真的接得上引擎」—— 檔名與
+    `table` 欄位不一致就會接不上，而症狀是畫面照樣顯示、只是永遠寫「未收錄」。
+
+    挑 #73 是因為 fixture 裡就有它（`4g-volte-end-to-end` 的 S11 拒絕）。
     """
-    from telcoladder.causes import describe, table_names
+    from telcoladder.causes import describe, lookup, table_names
     from telcoladder.model import CauseRef
 
-    assert "gtpv2" not in table_names()
-    assert "not in this tool" in describe(CauseRef(table="gtpv2", value=73))
-    assert len(_tshark_values("gtpv2.cause")) == 132
+    assert "gtpv2" in table_names()
+    info = lookup(CauseRef(table="gtpv2", value=73))
+    assert info is not None and info.name == "No resources available"
+    assert info.spec == "3GPP TS 29.274"
+    text = describe(CauseRef(table="gtpv2", value=73))
+    assert "No resources available" in text and "29.274" in text
+    # S1AP 與 ESM 還沒有 —— 剩下的缺口必須維持看得見
+    assert "not in this tool" in describe(CauseRef(table="s1ap_radioNetwork", value=21))
