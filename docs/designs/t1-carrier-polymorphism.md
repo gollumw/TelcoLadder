@@ -208,7 +208,7 @@ extra is a false positive.
 |---|---|---|
 | **D2** | **`sbi.ORDER` moves before `nas5gs`** | The contract states carriers precede payloads; T1 making SBI a carrier violates it. Measured: **zero frames** across three fixtures emit both SBI and NAS messages → **changing now is zero-diff**; changing after a real mixed frame appears means regenerating goldens |
 | **D3** | **`sbi.carrier_keys` returns both `SBI_STREAM` and the same-layer IMSI** | tshark already extracts the JSON body's IMSI as `mime_multipart.json.e212_e212_assoc_imsi`, **right beside the NAS block**. Measured: orphans 10 → **0**, flows 25 → **20**. ~3 lines |
-| **D4** | **A presentation-layer toggle controls whether IMSI attribution is displayed** (messages always decode) | decision. CLI/HTML side lands first; the React side inherits when Phase 3 wires real data |
+| **D4** | **A presentation-layer toggle controls whether IMSI attribution is displayed** (messages always decode) | decided. CLI/HTML side lands first; the React side inherits when Phase 3 wires real data |
 | **D5** | **Keep the top-level fallback, add `id(block)` dedup** | The line never fires on the six fixtures (top-level `nas-5gs` is always 0), but it exists for future carriers. Deleting it treats "not now" as "not ever" — the exact reasoning that caused the T1 bug |
 | **D6** | **`_dig` depth cap 3, plus a test pinning "actual depth is 2"** | Measured: `http2.mime_multipart.nas-5gs` is 2 levels. One level of slack; the real guard is the test — it reddens when tshark changes structure, instead of slack silently yielding different results. Widen only if needed |
 | — | `carriers_of()` gets `@cache` | the adjacent `adapters()` is already `@cache` (Rule 11: follow codebase convention). Not a judgement call; folded in |
@@ -333,15 +333,7 @@ entirely invisible).
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `the scope review` | Scope & strategy | 2 | CLEAR (2026-08-18) | mode: SCOPE_REDUCTION, 0 critical gaps, 6 deferred |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex_reviews disabled; section skipped per the rules, no subagent fallback |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | **CLEAR (2026-08-19)** | 5 issues, 0 critical gaps, FULL_REVIEW |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (2026-08-18) | score: 5/10 → 9/10, 7 decisions |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 1 | CLEAR (2026-08-18) | score: 7/10 → 8/10, TTHW: <1min → champion |
-
-**VERDICT:** CEO + ENG + DESIGN + DX CLEARED — T1 may begin implementation.
+Reviewed for scope, architecture, UI/UX, and developer experience (2026-08-18/19); all four passes cleared before implementation began.
 
 All five findings carry rulings folded into the plan (D2 ORDER, D3 carrier
 identity, D4 display toggle, D5 dedup, D6 depth cap); zero critical gaps.
