@@ -25,12 +25,8 @@ adapter 換了介面歸屬，圖上通通看不出來，而讀圖的人會以為
     python tools/archmap.py            # 重新產出 docs/architecture.{json,html}
     python tools/archmap.py --check    # 只檢查有沒有漂移，不寫檔（測試用這條）
 
-改完程式之後跑第一條，然後把 `docs/architecture.html` **重新發布到這個網址**：
-
-    (internal)
-
-發布時必須指定那個 URL，不指定會新開一個 —— 已經分享出去的連結就此停在舊版，
-而且兩邊都不報錯。
+改完程式之後跑第一條，讓 `docs/architecture.html` 跟上現況 ——
+手繪的架構圖從畫完那一刻開始悄悄過期，這個產生器存在的理由就是這件事。
 """
 
 from __future__ import annotations

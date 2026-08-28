@@ -150,7 +150,7 @@ def _not_visible(analysis: Analysis) -> dict:
         # 是埠 7777 的 TCP payload，而那個埠**已經**在解 HTTP/2 了 —— 讀不出來是因為
         # 擷取起點晚於連線建立，HPACK 標頭表從沒被看到。「加 --decode-as」與
         # 「改擷取方式」是相反的處置；只給一個數字，agent 會建議錯的那一個。
-        # （2026-08-23 複審：我自己列的第一個不放心，外部複審 判為可省 —— 不對，
+        # （2026-08-23 複審：我自己列的第一個不放心，外部複審判為可省 —— 不對，
         # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
         "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],

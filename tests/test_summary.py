@@ -336,7 +336,7 @@ def test_an_n2_only_capture_says_the_core_is_not_in_the_file(e2e) -> None:
 
     它的故障是 SMF 拒絕 PDU session —— 發生在 SBI 上，回到 UE 的 reject 又是加密的。
     摘要不講「核網內部不在這份檔裡」，agent 會把「看不到失敗」讀成「沒有失敗」。
-    （外部複審 2026-08-23 複審提出的反例。）
+    （外部複審 2026-08-23 提出的反例。）
     """
     analysis = analyse(FIXTURES / "unknown-dnn" / "capture.pcap")
     doc = summary.build(analysis, source_name="x")

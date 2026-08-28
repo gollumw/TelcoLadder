@@ -245,8 +245,7 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
 
 
 # ── 迴歸：ISSUE-002 —— 最後一段吸收到檔尾，duration 灌水 ──────────────
-# Found by /qa on 2026-08-22
-# Report: a local QA report
+# Found during browser QA on 2026-08-22
 
 
 def test_a_procedure_ends_at_the_quiet_period_after_its_outcome() -> None:
