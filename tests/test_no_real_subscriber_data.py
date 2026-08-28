@@ -457,6 +457,42 @@ def test_no_absolute_paths_in_capture_file_metadata() -> None:
 # 這一條守的是**那兩個檔還在、而且還指向這個測試檔**。少了它，有人重構掉
 # hook、或把測試路徑改掉，防線就靜默消失了 —— 而症狀是「什麼都沒發生」。
 
+# ── 第八道網：帶分隔符的真實 PLMN 與裸台灣行動門號（2026-08-28）──────────
+#
+# 2026-08-24 清 mock 資料換掉了**連續數字**的識別碼，漏了帶分隔符的形狀：
+# GUTI「466／92 分隔寫法」、SUCI「suci-0-466／92-…」，以及一個裸門號（無 +、無
+# scheme —— 第七道網刻意不抓裸國內格式，那個取捨仍然成立，所以這裡只釘
+# 事發的具體形狀：8869 開頭的 12 位，不試圖抓所有裸號碼）。
+# 外部複審（2026-08-28）抓到，事後補網 —— 與前七道同一個模式：
+# 每次事故長出一道網。範例與期望值一律用串接組出，理由同第七道網。
+
+_SEPARATED_REAL_PLMN = re.compile(r"(?<!\d)466[-_ ]92(?!\d)")
+_BARE_TW_MOBILE = re.compile(r"(?<!\d)8869\d{8}(?!\d)")
+
+
+def test_the_eighth_net_recognises_the_shapes() -> None:
+    """先證明分得出「存在」，掃描結果才可採信。"""
+    assert _SEPARATED_REAL_PLMN.search("guti: " + "466" + "-" + "92" + "-8001")
+    assert _SEPARATED_REAL_PLMN.search("suci-0-" + "466" + "-" + "92" + "-0000")
+    assert not _SEPARATED_REAL_PLMN.search("001-01-8001")          # 測試網
+    assert not _SEPARATED_REAL_PLMN.search("1" + "466" + "-92")              # 前面還有數字
+    assert _BARE_TW_MOBILE.search("msisdn: " + "8869" + "12345678")
+    assert not _BARE_TW_MOBILE.search("1755565512120155501239")   # 長數字的一段不算
+    assert not _BARE_TW_MOBILE.search("+" + "1201" + "5550123")   # 虛構保留號段
+
+
+def test_no_separated_plmn_or_bare_tw_mobile_anywhere() -> None:
+    """帶分隔符的真實 PLMN 與 8869 開頭 12 位裸號，任何追蹤檔都不得出現。"""
+    hits: list[str] = []
+    for path in _tracked_text_files():
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern in (_SEPARATED_REAL_PLMN, _BARE_TW_MOBILE):
+            for match in pattern.finditer(text):
+                start = max(match.start() - 30, 0)
+                hits.append(f"{path.relative_to(REPO)}: …{text[start:match.end() + 20]}…")
+    assert not hits, "真實 PLMN／門號形狀又長回來了：\n" + "\n".join(hits)
+
+
 _HOOK = REPO / "tools" / "hooks" / "pre-commit"
 _INSTALLER = REPO / "tools" / "install-hooks.sh"
 
@@ -651,13 +687,16 @@ def test_the_phone_shape_is_the_one_volte_captures_carry() -> None:
     """形狀要認得 VoLTE 擷取檔裡真的會出現的寫法，也要放過不是電話的東西。"""
     # 範例用串接組出來 —— 這個檔自己也在被掃的名單上，直接寫會被自己抓到。
     # 數字本身也要切開 —— 只切 scheme 不夠，裸 E.164 那條樣式一樣會咬到自己。
-    tw = "+" + "12015550123"
-    assert _phone_numbers("tel:" + tw) == {"12015550123"}
-    assert _phone_numbers("sip:" + tw + "@ims.example") == {"12015550123"}
+    # 數字再切一段 —— 第八道網（裸台灣門號形狀）也掃這個檔，
+    # 完整字面會被它抓到；切開後兩道網都咬不到範例本身。
+    tw_digits = "8869" + "12345678"
+    tw = "+" + tw_digits
+    assert _phone_numbers("tel:" + tw) == {tw_digits}
+    assert _phone_numbers("sip:" + tw + "@ims.example") == {tw_digits}
     # RFC 3966 允許視覺分隔符，scheme 是錨點所以放寬是安全的。
     assert _phone_numbers("tel:" + "+1-201-555-0123") == {"12015550123"}
     # 裸的 E.164 也要認得。
-    assert _phone_numbers("call " + tw + " now") == {"12015550123"}
+    assert _phone_numbers("call " + tw + " now") == {tw_digits}
 
     # 測試網推導的 IMPU 放行（與第一道網同一個豁免）。
     assert _phone_numbers("sip:" + "001011234567895" + "@ims.mnc001.mcc001.3gppnetwork.org") == set()
