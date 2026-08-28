@@ -252,12 +252,29 @@ verification).
 
 ---
 
-## T-4G-CAUSE | 4G cannot explain a single cause (P1, **part of E1's value**)
+## T-4G-CAUSE | 4G explains EMM but not yet the other 247 causes (P1, **part of E1's value**)
 
-**What**: S1AP (five groups, 67 values), NAS-EPS (EMM 39, ESM 48), and
-GTPv2-C (132) causes have **no lookup tables** — **286 total**. The numbers
-extract and `CauseRef` carries the right table name, but `describe()` only
-answers "not in this tool's cause table yet".
+> **Batch 1 landed 2026-08-29: EMM, all 39 values.**
+> `telcoladder/data/causes/nas_eps_emm.yaml` — names taken verbatim from
+> `tshark -G values` and pinned against that oracle by
+> `test_the_emm_cause_names_are_the_ones_tshark_has`; plain language and
+> common root causes written by hand, bilingual. **9 of the 39 deliberately
+> carry no `common_causes`** — mostly protocol errors and reserved states
+> with no stable field story; inventing one there would be guessing in an
+> authoritative voice.
+> **No `clause` numbers**, following `diameter_3gpp.yaml`: clauses were not
+> verified one by one, and `test_the_emm_table_prints_no_clause_number`
+> keeps the next person from "improving" that. Verified end to end: the
+> fixture's Attach reject now reads
+> `PLMN not allowed (#11) — 3GPP TS 24.301`.
+>
+> **Remaining: 247** — GTPv2-C 132, S1AP 67, ESM 48. Batch 2 is GTPv2-C's
+> rejection range (64+), batch 3 S1AP radioNetwork (45).
+
+**What**: S1AP (five groups, 67 values), NAS-EPS (ESM 48), and
+GTPv2-C (132) causes still have **no lookup tables** — **247 remaining**.
+The numbers extract and `CauseRef` carries the right table name, but
+`describe()` only answers "not in this tool's cause table yet".
 
 **Why this is not polish**: the line between this tool and another packet
 decoder is **explanations with specification provenance** (§6's

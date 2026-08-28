@@ -1,0 +1,377 @@
+# EMM cause values — 3GPP TS 24.301 (EPS Mobility Management).
+#
+# 這份表是人工核對的規範資產。**名稱逐字取自 `tshark -G values` 的
+# `nas-eps.emm.cause`**（Wireshark 的 NAS-EPS dissector 實作 TS 24.301），
+# 由 `tests/test_adapter_naseps.py` 對同一個 oracle 重跑比對 —— 名稱不是抄的，
+# 是量的。
+#
+#     tshark -G values | awk -F'\t' '$2=="nas-eps.emm.cause"'
+#
+# **刻意沒有 `clause` 欄位。** 條號未經人工逐條核對，而一個幻覺出來的
+# 「TS 24.301 §9.9.3.x」會讓電信工程師直接關掉這個工具 —— 比照
+# `diameter_3gpp.yaml` 的同一個決定（CLAUDE.md §2.3）。`spec` 給得出來是因為
+# 「EMM cause 定義在 TS 24.301」是文件層級的事實，不是節號層級的宣稱。
+# 條號待補，記在 TODOS 的 T-4G-CAUSE。
+#
+# `plain` 講「實際上發生了什麼」，`common_causes` 是現場經驗不是規範內容 ——
+# **沒把握的就留空，不編**。第 39 條裡有 11 條刻意沒有 common_causes：
+# 那些（多為協定錯誤與規範保留的狀態碼）在現場沒有一個穩定的常見根因，
+# 硬寫等於用權威的口吻猜。
+#
+# plain 與 common_causes 一律寫**純文字**：它們會被原樣畫進 Mermaid 標籤與
+# SVG `<text>`，兩個地方都不解析 markdown。
+
+table: nas_eps_emm
+spec: "3GPP TS 24.301"
+
+causes:
+  2:
+    name: "IMSI unknown in HSS"
+    plain: 'The HSS has no record of this IMSI at all.'
+    plain_zh: 'HSS 裡根本沒有這個 IMSI 的資料。'
+    common_causes:
+      - 'The subscriber was never provisioned (a test SIM never written into the HSS)'
+      - 'The IMSI series routes to a different HSS than the one that answered'
+      - 'The SIM was deleted from the subscription database while the UE stayed attached'
+    common_causes_zh:
+      - '這個用戶從來沒開通過（測試 SIM 沒寫進 HSS）'
+      - 'IMSI 號段被導到另一台 HSS，回答的不是持有資料的那一台'
+      - 'UE 還附著著，但 SIM 已從訂閱資料庫刪除'
+
+  3:
+    name: "Illegal UE"
+    plain: 'The network refuses this subscriber identity - either authentication did not pass, or the subscriber is administratively barred.'
+    plain_zh: '網路拒絕這個用戶身分：鑑權沒過，或這個用戶被行政性停權。'
+    common_causes:
+      - 'An authentication failure upstream (see any MAC failure or Synch failure on the same flow)'
+      - 'The subscriber is barred in the HSS - unpaid account, or a deliberate block'
+    common_causes_zh:
+      - '前面的鑑權失敗了（同一條流程上通常找得到 MAC failure 或 Synch failure）'
+      - 'HSS 裡把這個用戶停權了 —— 欠費或人為封鎖'
+
+  5:
+    name: "IMEI not accepted"
+    plain: 'The network will not accept this device''s identifier (the IMEI).'
+    plain_zh: '網路不接受這台設備的識別碼（IMEI）。'
+    common_causes:
+      - 'The IMEI is blacklisted in the EIR (reported stolen, or a test device on a block list)'
+      - 'IMEI checking is mandatory in this network but the EIR did not answer'
+    common_causes_zh:
+      - 'EIR 裡這個 IMEI 在黑名單（報失竊，或測試機被列管）'
+      - '這個網路強制查 IMEI，但 EIR 沒回應'
+
+  6:
+    name: "Illegal ME"
+    plain: 'The equipment itself is barred, usually because the IMEI is blacklisted.'
+    plain_zh: '設備本身被擋，通常是 IMEI 進了黑名單。'
+    common_causes:
+      - 'The IMEI is on the EIR blacklist'
+      - 'The device type is not permitted on this network'
+    common_causes_zh:
+      - 'IMEI 落在 EIR 黑名單'
+      - '這個網路不允許這一類設備接入'
+
+  7:
+    name: "EPS services not allowed"
+    plain: 'The subscription does not include EPS (LTE data) service, so the attach is refused even though the subscriber exists.'
+    plain_zh: '這個訂閱沒有 EPS（LTE 資料）服務，所以就算用戶存在，附著還是被拒。'
+    common_causes:
+      - 'The subscription profile has no EPS/APN entry - provisioned for 2G/3G only'
+      - 'A test SIM provisioned in the HSS but without an APN configuration'
+    common_causes_zh:
+      - '訂閱資料裡沒有 EPS／APN 項目 —— 只開通了 2G/3G'
+      - '測試 SIM 在 HSS 建了，但沒設 APN'
+
+  8:
+    name: "EPS services and non-EPS services not allowed"
+    plain: 'Neither the packet side nor the circuit-switched side is allowed for this subscriber - the subscription permits nothing here.'
+    plain_zh: '封包側與電路交換側都不允許 —— 這個訂閱在這裡什麼都不能用。'
+    common_causes:
+      - 'The subscription is suspended entirely rather than restricted to one domain'
+    common_causes_zh:
+      - '整個訂閱被停用，不是只限制某一個網域'
+
+  9:
+    name: "UE identity cannot be derived by the network"
+    plain: 'The UE presented a temporary identity (GUTI) that the network cannot resolve to any context.'
+    plain_zh: 'UE 拿了一個臨時識別碼（GUTI）來，但網路對不到任何上下文。'
+    common_causes:
+      - 'The MME restarted and lost its contexts; the UE is still using the old GUTI'
+      - 'The UE moved from another MME and the context could not be fetched across S10'
+    common_causes_zh:
+      - 'MME 重啟過、上下文沒了，而 UE 還在用舊的 GUTI'
+      - 'UE 從別台 MME 移過來，但 S10 上取不到原本的上下文'
+
+  10:
+    name: "Implicitly detached"
+    plain: 'The network had already dropped this UE''s context; as far as it is concerned the UE was detached some time ago.'
+    plain_zh: '網路早就把這個 UE 的上下文丟掉了 —— 在它看來，這個 UE 已經離線一陣子。'
+    common_causes:
+      - 'The implicit detach timer expired after the UE went unreachable'
+      - 'An MME restart purged the context while the UE believed it was still attached'
+    common_causes_zh:
+      - 'UE 失聯後 implicit detach timer 到期'
+      - 'MME 重啟清掉了上下文，而 UE 以為自己還附著著'
+
+  11:
+    name: "PLMN not allowed"
+    plain: 'This SIM is not allowed on this network.'
+    plain_zh: '這張 SIM 不允許使用這個網路。'
+    common_causes:
+      - 'No roaming agreement covers this PLMN'
+      - 'The MCC/MNC in a test setup does not match what is written on the SIM'
+    common_causes_zh:
+      - '沒有涵蓋這個 PLMN 的漫遊協議'
+      - '測試環境的 MCC/MNC 與 SIM 上寫的對不起來'
+
+  12:
+    name: "Tracking Area not allowed"
+    plain: 'This particular tracking area is barred for this subscriber, even though the PLMN itself is allowed.'
+    plain_zh: 'PLMN 本身是允許的，但這個追蹤區對這個用戶被禁止。'
+    common_causes:
+      - 'The TA is in the subscription''s forbidden list (a regional restriction)'
+    common_causes_zh:
+      - '這個 TA 在訂閱的禁用清單裡（區域限制）'
+
+  13:
+    name: "Roaming not allowed in this tracking area"
+    plain: 'Roaming subscribers are not served in this tracking area, though local subscribers are.'
+    plain_zh: '這個追蹤區不服務漫遊用戶，但本地用戶可以。'
+    common_causes:
+      - 'A regional roaming restriction configured on the tracking area'
+    common_causes_zh:
+      - '這個追蹤區設了區域性的漫遊限制'
+
+  14:
+    name: "EPS services not allowed in this PLMN"
+    plain: 'The subscriber may use this PLMN, but not for EPS (LTE data) service.'
+    plain_zh: '這個用戶可以用這個 PLMN，但不能用 EPS（LTE 資料）服務。'
+    common_causes:
+      - 'The roaming agreement covers voice/SMS but not packet service'
+    common_causes_zh:
+      - '漫遊協議只涵蓋語音／簡訊，不含封包服務'
+
+  15:
+    name: "No Suitable Cells In tracking area"
+    plain: 'The UE is told to look for a cell elsewhere - no cell in this tracking area will serve it.'
+    plain_zh: '網路要 UE 去別處找 cell —— 這個追蹤區裡沒有能服務它的。'
+    common_causes:
+      - 'Cell barring or access-class restriction applied across the tracking area'
+    common_causes_zh:
+      - '整個追蹤區套用了 cell barring 或接入等級限制'
+
+  16:
+    name: "MSC temporarily not reachable"
+    plain: 'This is a combined attach (packet plus circuit-switched), and the MSC/VLR side could not be reached. The packet side may still work.'
+    plain_zh: '這是 combined attach（封包＋電路交換），但 MSC/VLR 那側連不上。封包側通常還是可以用。'
+    common_causes:
+      - 'The SGs interface between MME and MSC/VLR is down'
+      - 'The MSC is restarting or overloaded'
+    common_causes_zh:
+      - 'MME 與 MSC/VLR 之間的 SGs 介面斷了'
+      - 'MSC 正在重啟或過載'
+
+  17:
+    name: "Network failure"
+    plain: 'Something failed on the network side and it is not saying what. This is the honest catch-all when an upstream node errored or timed out.'
+    plain_zh: '網路側出了問題，但它沒說是什麼。上游節點出錯或逾時時，這是誠實的萬用答案。'
+    common_causes:
+      - 'An HSS or S6a timeout the MME chose not to translate into a more specific cause'
+      - 'An internal error in the MME - the node''s own logs will say more than the packet does'
+    common_causes_zh:
+      - 'HSS 或 S6a 逾時，而 MME 沒有把它翻成更具體的 cause'
+      - 'MME 內部錯誤 —— 這時節點的 log 會比封包說得多'
+
+  18:
+    name: "CS domain not available"
+    plain: 'The circuit-switched domain is not available for the combined procedure this UE asked for.'
+    plain_zh: 'UE 要求的 combined 程序需要電路交換網域，但它不可用。'
+    common_causes:
+      - 'The network does not offer CS fallback, but the UE asked for a combined attach'
+    common_causes_zh:
+      - '這個網路沒有提供 CS fallback，但 UE 送了 combined attach'
+
+  19:
+    name: "ESM failure"
+    plain: 'The mobility half succeeded but the bearer half did not. The real reason is in the ESM cause carried alongside - look there, not here.'
+    plain_zh: '移動性那半成功了，承載那半沒有。真正的原因在同時帶著的 ESM cause 裡 —— 要看那個，不是這個。'
+    common_causes:
+      - 'The requested APN is not in the subscription'
+      - 'PGW selection failed, or the PGW refused the session'
+    common_causes_zh:
+      - '要求的 APN 不在訂閱資料裡'
+      - 'PGW 選擇失敗，或 PGW 拒絕了這個 session'
+
+  20:
+    name: "MAC failure"
+    plain: 'The UE could not verify the integrity of the authentication message - as far as the UE is concerned, that was not its home network.'
+    plain_zh: 'UE 驗不過鑑權訊息的完整性 —— 在它看來，那不是它的歸屬網路。'
+    common_causes:
+      - 'The K on the SIM does not match the one in the HSS (the most common one in test setups)'
+      - 'OPc and OP mixed up, or OPc computed wrongly'
+    common_causes_zh:
+      - 'SIM 上的 K 與 HSS 裡的對不上（測試環境最常見的一種）'
+      - 'OPc 與 OP 搞混，或 OPc 算錯'
+
+  21:
+    name: "Synch failure"
+    plain: 'The sequence number is out of sync; the UE is asking the network to resynchronise.'
+    plain_zh: '序號不同步，UE 要求網路重新同步。'
+    common_causes:
+      - 'The same SIM in use on two core networks at once'
+      - 'An HSS database rollback that moved SQN backwards'
+    common_causes_zh:
+      - '同一張 SIM 同時被兩個核網使用'
+      - 'HSS 資料庫回滾，把 SQN 倒退了'
+
+  22:
+    name: "Congestion"
+    plain: 'The network is overloaded and is holding this request off for now. Usually comes with a back-off timer.'
+    plain_zh: '網路過載，暫時把這個請求擋下來。通常會附一個 back-off timer。'
+    common_causes:
+      - 'MME or SGW overload protection kicked in'
+      - 'Many UEs re-attaching at once (an avalanche after an outage is fixed)'
+    common_causes_zh:
+      - 'MME 或 SGW 的過載保護啟動了'
+      - '大量 UE 同時重新附著（故障排除後的雪崩）'
+
+  23:
+    name: "UE security capabilities mismatch"
+    plain: 'The security capabilities the network echoed back do not match what the UE originally sent - the protection against an attacker downgrading the ciphering.'
+    plain_zh: '網路回送的安全能力與 UE 原本送出的不一致 —— 這是防止攻擊者把加密強度降級的保護機制。'
+    common_causes:
+      - 'A node in between rewrote or truncated the capabilities IE'
+      - 'An implementation bug on either side, most often surfacing between two vendors'
+    common_causes_zh:
+      - '中間某個節點改寫或截斷了能力 IE'
+      - '任一側的實作缺陷，最常在兩家廠商之間現形'
+
+  24:
+    name: "Security mode rejected, unspecified"
+    plain: 'The UE rejected the security mode the network proposed and did not say why.'
+    plain_zh: 'UE 拒絕了網路提出的安全模式，而且沒說為什麼。'
+
+  25:
+    name: "Not authorized for this CSG"
+    plain: 'This cell belongs to a closed subscriber group (an enterprise or home cell) and this subscriber is not a member.'
+    plain_zh: '這個 cell 屬於封閉用戶群（企業或家庭基地台），而這個用戶不在成員名單裡。'
+    common_causes:
+      - 'The CSG membership list does not include this subscriber, or the membership expired'
+    common_causes_zh:
+      - 'CSG 成員名單裡沒有這個用戶，或成員資格已過期'
+
+  26:
+    name: "Non-EPS authentication unacceptable"
+    plain: 'During a combined procedure, the authentication offered for the non-EPS (circuit-switched) side was not acceptable to the UE.'
+    plain_zh: 'combined 程序中，非 EPS（電路交換）那側提供的鑑權方式 UE 不接受。'
+
+  31:
+    name: "Redirection to 5GCN required"
+    plain: 'The network wants this UE served by the 5G core instead, and is redirecting it rather than attaching it here.'
+    plain_zh: '網路希望這個 UE 改由 5G 核網服務，所以把它導過去而不是在這裡附著。'
+    common_causes:
+      - 'A deployment policy that steers 5G-capable devices onto the 5G core'
+    common_causes_zh:
+      - '部署策略把支援 5G 的裝置導向 5G 核網'
+
+  35:
+    name: "Requested service option not authorized in this PLMN"
+    plain: 'The specific service the UE asked for is not authorized here, even though the subscriber and the PLMN are otherwise fine.'
+    plain_zh: '用戶與 PLMN 本身都沒問題，但 UE 要求的那個特定服務在這裡未經授權。'
+
+  36:
+    name: "IAB-node operation not authorized"
+    plain: 'The device identified itself as an IAB node (a relay that backhauls over the radio network) and is not authorized to operate as one here.'
+    plain_zh: '這台設備自稱是 IAB 節點（用無線網路做回傳的中繼），但沒有被授權在這裡以那個身分運作。'
+
+  39:
+    name: "CS service temporarily not available"
+    plain: 'Circuit-switched service is temporarily unavailable; the packet side is unaffected.'
+    plain_zh: '電路交換服務暫時不可用，封包側不受影響。'
+
+  40:
+    name: "No EPS bearer context activated"
+    plain: 'The network holds no bearer for this UE, while the UE believes it has one. The two sides disagree about whether a session exists.'
+    plain_zh: '網路這邊沒有這個 UE 的承載，但 UE 以為自己有。兩邊對「有沒有 session」的認知不一致。'
+    common_causes:
+      - 'The network released the session (idle timeout, or an SGW/PGW restart) without the UE noticing'
+    common_causes_zh:
+      - '網路釋放了 session（閒置逾時，或 SGW/PGW 重啟），而 UE 沒察覺'
+
+  42:
+    name: "Severe network failure"
+    plain: 'A serious network-side failure, more emphatic than the plain Network failure - the network is telling the UE not to retry immediately.'
+    plain_zh: '嚴重的網路側故障，比單純的 Network failure 更強烈 —— 網路在告訴 UE 不要立刻重試。'
+
+  78:
+    name: "PLMN not allowed to operate at the present UE location"
+    plain: 'This network is not permitted to serve UEs at the location this one is in - a regulatory boundary rather than a subscription problem.'
+    plain_zh: '這個網路不被允許在 UE 目前所在的位置提供服務 —— 這是法規邊界，不是訂閱問題。'
+
+  95:
+    name: "Semantically incorrect message"
+    plain: 'The message parsed but does not make sense - the fields are individually valid and collectively contradictory.'
+    plain_zh: '訊息解得開，但講不通 —— 各欄位單獨看都合法，湊在一起自相矛盾。'
+    common_causes:
+      - 'An implementation difference between two vendors, usually visible only in interop testing'
+    common_causes_zh:
+      - '兩家廠商的實作差異，通常只有在互通測試時才看得到'
+
+  96:
+    name: "Invalid mandatory information"
+    plain: 'A mandatory field is present but its content is not valid.'
+    plain_zh: '必填欄位有帶，但內容不合法。'
+    common_causes:
+      - 'An encoding bug on the sending side'
+      - 'A protocol version mismatch where a field''s meaning changed'
+    common_causes_zh:
+      - '送出端的編碼缺陷'
+      - '協定版本不一致，某個欄位的意義變了'
+
+  97:
+    name: "Message type non-existent or not implemented"
+    plain: 'The receiver does not know this message type, or knows it and has not implemented it.'
+    plain_zh: '接收端不認得這個訊息型別，或認得但沒實作。'
+    common_causes:
+      - 'One side supports a newer release than the other'
+    common_causes_zh:
+      - '一側支援的版本比另一側新'
+
+  98:
+    name: "Message type not compatible with the protocol state"
+    plain: 'The message type is understood, but arriving now makes no sense given where the two sides are in the procedure.'
+    plain_zh: '訊息型別看得懂，但以雙方目前在程序中的位置來說，這時候收到它講不通。'
+    common_causes:
+      - 'A retransmission that arrived after the procedure had already moved on'
+      - 'The two sides disagree about the current state, often after a lost message'
+    common_causes_zh:
+      - '重送的訊息在程序已經往前走之後才到'
+      - '雙方對目前狀態的認知不一致，常見於前面掉了一則訊息'
+
+  99:
+    name: "Information element non-existent or not implemented"
+    plain: 'The message carried an information element the receiver does not recognise.'
+    plain_zh: '訊息裡帶了接收端不認得的資訊元素。'
+    common_causes:
+      - 'One side supports a newer release than the other'
+    common_causes_zh:
+      - '一側支援的版本比另一側新'
+
+  100:
+    name: "Conditional IE error"
+    plain: 'An information element that is required under these particular conditions is missing or malformed.'
+    plain_zh: '在這個特定條件下該出現的資訊元素缺席或格式錯誤。'
+
+  101:
+    name: "Message not compatible with the protocol state"
+    plain: 'The message itself is valid but does not belong in the state the protocol is currently in.'
+    plain_zh: '訊息本身合法，但不屬於協定目前所在的狀態。'
+
+  111:
+    name: "Protocol error, unspecified"
+    plain: 'A protocol error the sender could not classify into any of the specific codes above.'
+    plain_zh: '送出端無法歸入上面任何一個具體代碼的協定錯誤。'
+    common_causes:
+      - 'The catch-all a node falls back to when its own parser gave up - the node''s logs will say more than the packet does'
+    common_causes_zh:
+      - '節點自己的解析器放棄時的萬用退路 —— 這時節點的 log 會比封包說得多'

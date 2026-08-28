@@ -100,6 +100,10 @@ def test_all_expected_tables_are_present():
         # `Result-Code` 與 `Experimental-Result-Code` 裡意思完全不同，
         # 合成一張就等於讓工具給出看起來合理的錯誤解釋。
         "diameter_base", "diameter_3gpp",
+        # 4G（T-4G-CAUSE 第一批，2026-08-29）。EMM 先做 —— Attach/TAU 的
+        # 常見失敗都落在這張表。S1AP 五張與 ESM 一張還沒有，`describe()`
+        # 對它們照實回答「未收錄」。
+        "nas_eps_emm",
     }
 
 

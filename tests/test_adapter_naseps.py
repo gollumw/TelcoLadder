@@ -84,32 +84,71 @@ def test_message_tables_are_the_ones_tshark_has(table, field) -> None:
     )
 
 
-def test_the_cause_tables_are_not_there_yet_and_that_is_visible() -> None:
-    """**4G 的 cause 還沒有查表，而這件事要看得見。**
+def test_the_emm_cause_names_are_the_ones_tshark_has() -> None:
+    """EMM 的 39 條名稱要與 tshark 逐字相同 —— 名稱不是抄的，是量的。
 
-    `describe()` 對查不到的號碼會印「本工具尚未收錄」——
-    那是誠實的缺口，不是靜默錯誤（§9 第 2 條）。
+    表在 2026-08-29 落地（T-4G-CAUSE 第一批）。當初的判斷是「名稱是免費的，
+    `tshark -G values` 有完整 39 條」，**而這條測試就是那句話的執行** ——
+    少了它，「取自 oracle」只是一句沒有人會回頭核對的話，而換個 tshark 版本
+    或有人手改一筆，都不會有任何一層說話（§4 的交叉驗證紀律）。
 
-    刻意**不**先出貨一張只有 `name` 的表：`tests/test_causes.py` 要求每一條
-    都有 `plain` ＋ `plain_zh`，那是 T-CAUSE-EN 的紀律，而 87 條雙語白話是
-    **內容工作，不該當成 adapter 的副產品大量生成** —— 一個看起來很合理的
-    錯誤解釋比沒有解釋更糟（§2.3 的同一條紀律）。
-
-    **但這是 E1 價值的一部分，不是拋光。** 這個工具與「另一個封包解碼器」的
-    分界就是帶規範出處的解釋（§6）；4G 控制面做完卻一個失敗原因都講不出來，
-    等於把差異化丟掉。記在 `TODOS.md` 的 T-4G-CAUSE。
-
-    好消息是**名稱是免費的**：`tshark -G values` 有完整的 39 條 EMM 與 48 條
-    ESM，做內容時不必手抄，只要寫白話。
+    這條同時取代了原本斷言「這張表還不存在」的測試。**不是刪掉，是翻面**：
+    當時守的是「缺口要看得見」，現在守的是「填上去的內容與 oracle 一致」。
     """
+    import yaml
     from telcoladder.causes import table_names
+
+    assert "nas_eps_emm" in table_names(), "EMM 表不見了 —— 是不是檔名或 table 欄位被改動？"
+
+    path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_emm.yaml"
+    mine = {v: b["name"] for v, b in yaml.safe_load(path.read_text(encoding="utf-8"))["causes"].items()}
+    assert mine == _tshark_values("nas-eps.emm.cause"), (
+        "EMM cause 名稱與 tshark 對不上。重跑產生指令（見 yaml 檔頭），"
+        "並確認是 tshark 換版本而不是有人手改了一筆。"
+    )
+
+
+def test_a_real_emm_cause_now_explains_itself() -> None:
+    """實際查一條：號碼要換得到名稱、白話與出處。
+
+    這是 §6 定位的具體形狀 —— 「附規範出處的解釋」。少了這條，表可以
+    存在卻接不上引擎（檔名與 `table` 欄位不一致就會這樣），而症狀是
+    畫面照樣顯示、只是永遠寫「未收錄」。
+    """
+    from telcoladder.causes import lookup
     from telcoladder.model import CauseRef
 
-    assert "nas_eps_emm" not in table_names()
-    assert "not in this tool" in describe(CauseRef(table="nas_eps_emm", value=11))
+    info = lookup(CauseRef(table="nas_eps_emm", value=20))
+    assert info is not None and info.name == "MAC failure"
+    assert info.spec == "3GPP TS 24.301"
+    assert "integrity" in info.plain.lower()
+    text = describe(CauseRef(table="nas_eps_emm", value=20))
+    assert "MAC failure" in text and "24.301" in text
 
-    # 名稱隨時取得回來 —— 這條順便釘住那個前提還成立。
-    assert _tshark_values("nas-eps.emm.cause")[11] == "PLMN not allowed"
+
+def test_the_emm_table_prints_no_clause_number() -> None:
+    """**條號刻意沒有，而且不能因為「看起來該有」就被補上。**
+
+    5GMM 那張有 `clause`（人工核對過）；EMM 這張沒有，理由與
+    `diameter_3gpp.yaml` 相同：條號未經逐條核對，而一個幻覺出來的
+    「§9.9.3.x」會讓讀者失去對整個工具的信任（§2.3）。`spec` 給得出來，
+    因為那是文件層級的事實，不是節號層級的宣稱。
+
+    這條測試存在的理由是**下一個人**：把條號補上去很容易，看起來也很像
+    在改善品質 —— 這裡要求那個動作先經過人工核對，並更新 T-4G-CAUSE。
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_emm.yaml"
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "clause" not in raw, (
+        "有人補了 clause。條號必須人工逐條核對過才准印 —— "
+        "核對完請同時更新 TODOS 的 T-4G-CAUSE，並把這條測試改成正面斷言。"
+    )
+    # 出處那一行不該因為缺 clause 而留下尾隨空白（Diameter 踩過的同一件事）
+    from telcoladder.model import CauseRef
+    text = describe(CauseRef(table="nas_eps_emm", value=11))
+    assert not any(line != line.rstrip() for line in text.splitlines()), text
 
 
 def test_message_names_agree_with_tshark_info(messages) -> None:
