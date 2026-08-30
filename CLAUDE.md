@@ -22,8 +22,18 @@ plugin contract in [docs/plugin-contract.md](docs/plugin-contract.md).
 4. **Record numbers, not identifiers.** "Measured: 14 events, 1 lane" is
    fine; a real IMSI, customer filename, or production DNN in a comment,
    commit message, or test is not. Guarded by
-   `tests/test_no_real_subscriber_data.py` (seven nets) and a pre-commit
+   `tests/test_no_real_subscriber_data.py` (eight nets) and a pre-commit
    hook (`tools/install-hooks.sh`).
+5. **A capture someone else gave you is their employer's data, not yours.**
+   It goes in `local/intake/<date>-<initials>/` (ignored) beside a one-line
+   `CONSENT.txt` — who gave it, when, what they agreed to — and is deleted
+   once the finding is written. From it you may record **numbers and shapes**
+   ("14 events, 1 lane"; "SBI carried NAS and we missed it") and nothing
+   else: no addresses, hostnames, DNNs, PLMN identifiers, filenames,
+   topology, or employer. Rule 4 is the general form; this is the case where
+   the data is not yours to trade off, so there is no judgement call to make.
+   Every leak this project has had came from **writing about** a capture, not
+   from committing one.
 
 ## Architecture
 
