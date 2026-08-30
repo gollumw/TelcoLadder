@@ -200,7 +200,7 @@ export interface CallFlowProcedureJson {
   kind: string;
   outcome: "success" | "failure" | "incomplete";
   cause: string | null;
-  root_cause: string | null;
+  first_failure: string | null;
   pdu_session_id: string | null;
   start_frame: number;
   end_frame: number;
@@ -215,7 +215,7 @@ export function toCallFlowProcedure(p: CallFlowProcedureJson) {
     kind: p.kind,
     outcome: p.outcome,
     cause: p.cause,
-    rootCause: p.root_cause,
+    firstFailure: p.first_failure,
     pduSessionId: p.pdu_session_id,
     startFrame: p.start_frame,
     endFrame: p.end_frame,

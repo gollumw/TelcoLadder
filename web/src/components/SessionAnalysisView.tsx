@@ -430,7 +430,7 @@ export function SessionAnalysisView({
                         t("{n} messages", { n: p.messages }),
                         p.failures ? t("{n} failed", { n: p.failures }) : null,
                         p.cause ? `cause：${p.cause}` : null,
-                        p.rootCause ? t("root cause: {cause}", { cause: p.rootCause }) : null,
+                        p.firstFailure ? t("first failure: {cause}", { cause: p.firstFailure }) : null,
                         p.note || null,
                       ].filter(Boolean).join("\n")
                     }
@@ -455,8 +455,8 @@ export function SessionAnalysisView({
                 // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。
                 <p className="mt-2 text-[11px] text-signal-red">
                   ⚠ {current.cause}
-                  {current.rootCause && (
-                    <span className="ml-2 text-signal-amber">{t("Root cause: ")}{current.rootCause}</span>
+                  {current.firstFailure && (
+                    <span className="ml-2 text-signal-amber">{t("First failure: ")}{current.firstFailure}</span>
                   )}
                 </p>
               )}

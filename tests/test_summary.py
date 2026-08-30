@@ -98,7 +98,7 @@ def test_field_set_is_pinned(e2e) -> None:
     assert set(doc) == TOP_LEVEL
     assert set(doc["capture"]) == CAPTURE_FIELDS
     assert set(doc["not_visible"]) == NOT_VISIBLE_FIELDS
-    assert doc["summary_version"] == summary.SUMMARY_VERSION == 1
+    assert doc["summary_version"] == summary.SUMMARY_VERSION == 2
 
 
 def test_json_is_byte_reproducible(e2e) -> None:
@@ -197,11 +197,11 @@ def test_cause_reference_comes_from_the_static_table(ki) -> None:
         (21, "Synch failure", "3GPP TS 24.501", "§9.11.3.2"),
         (111, "Protocol error, unspecified", "3GPP TS 24.501", "§9.11.3.2"),
     ]
-    # 程序列也帶同一個出處（最後一則失敗），起因另記。
+    # 程序列也帶同一個出處（最後一則失敗），第一則失敗另記。
     [proc] = doc["procedures"]
     assert proc["outcome"] == "failure"
     assert proc["cause_ref"]["value"] == 111
-    assert proc["root_cause_ref"]["value"] == 21
+    assert proc["first_failure_ref"]["value"] == 21
 
 
 def test_a_recovered_failure_is_a_success_without_a_cause(multi) -> None:
@@ -216,7 +216,7 @@ def test_a_recovered_failure_is_a_success_without_a_cause(multi) -> None:
     assert len(recovered) == 4
     for p in recovered:
         assert p["outcome"] == "success"
-        assert p["cause_ref"] is None and p["root_cause_ref"] is None
+        assert p["cause_ref"] is None and p["first_failure_ref"] is None
     md = summary.render_markdown(doc)
     assert md.count("recovered after 1 failure(s)") == 4
     assert len(doc["failures"]) == 4
@@ -442,7 +442,7 @@ def test_procedures_match_xdr(e2e) -> None:
 
     doc = summary.build(e2e, source_name="x")
     xdr_rows = xdr.build(e2e, source_name="x")["procedures"]
-    stripped = [{k: v for k, v in p.items() if k not in {"cause_ref", "root_cause_ref"}}
+    stripped = [{k: v for k, v in p.items() if k not in {"cause_ref", "first_failure_ref"}}
                 for p in doc["procedures"]]
     assert stripped == xdr_rows
 

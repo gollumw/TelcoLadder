@@ -270,7 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument(
         "--xdr", type=Path, metavar=_("FILE"),
-        help=_("Also export procedure-level records as JSON, one per procedure: who, which procedure, outcome, cause and root cause, duration. Made for scripts - jq can answer 'what is the failure rate in this batch'. Byte-for-byte reproducible for the same capture."),
+        help=_("Also export procedure-level records as JSON, one per procedure: who, which procedure, outcome, cause and first failure, duration. Made for scripts - jq can answer 'what is the failure rate in this batch'. Byte-for-byte reproducible for the same capture."),
     )
     analyze.add_argument(
         "--max-messages", type=int, default=DEFAULT_MAX_MESSAGES,

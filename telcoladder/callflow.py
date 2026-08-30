@@ -211,7 +211,7 @@ def events(analysis: Analysis, supi: str, *, wire: bool = True) -> dict:
             "kind": p.kind,
             "outcome": p.outcome,
             "cause": p.cause,
-            "root_cause": p.root_cause,
+            "first_failure": p.first_failure,
             "pdu_session_id": p.pdu_session_id,
             "start_frame": p.start_frame,
             "end_frame": p.end_frame,

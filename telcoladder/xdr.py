@@ -28,7 +28,7 @@ from telcoladder.pipeline import Analysis
 from telcoladder.procedures import Procedure, segment
 
 #: schema 版本。破壞性變更才遞增 —— 消費端靠它決定要不要拒讀。
-XDR_VERSION = 1
+XDR_VERSION = 2
 
 
 def procedure_record(p: Procedure) -> dict:
@@ -38,7 +38,7 @@ def procedure_record(p: Procedure) -> dict:
         "supi": p.supi,
         "outcome": p.outcome,
         "cause": p.cause,
-        "root_cause": p.root_cause,
+        "first_failure": p.first_failure,
         "pdu_session_id": p.pdu_session_id,
         "start_frame": p.start_frame,
         "end_frame": p.end_frame,

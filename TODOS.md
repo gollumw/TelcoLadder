@@ -846,7 +846,65 @@ completes it.
 
 ---
 
-## T-ROOTCAUSE | `root_cause` asserts a causation the data does not support (P2)
+## ~~T-ROOTCAUSE | `root_cause` asserts a causation the data does not support~~ — **completed and closed (2026-08-31)**
+
+**What was done**: the field was renamed to `first_failure` across **all five
+surfaces**, and the two contracts that carry it were bumped
+(`SUMMARY_VERSION` 1→2, `XDR_VERSION` 1→2).
+
+The original entry said this "changes `summarize`'s stable field set". **It
+reaches three versioned contracts, not one** — `xdr.py` has its own version,
+and `callflow.py` (the browser ladder and the MCP call-flow tool) has none at
+all. Fixing only `summary.py` would have left three surfaces still asserting
+the wrong causation, **with nothing raising an error**. Guarded by
+`test_no_surface_claims_the_first_failure_caused_the_last`, which spans all
+three rather than being three tests each watching one.
+
+**Of the three options, the rename was chosen** — not dropping the field (the
+first failure is a real, useful fact; only the *name* claimed causation) and
+not the pair rules (they are the useful version, and they are now
+**T-PAIRRULE** below).
+
+**The mutation check found a gap that had nothing to do with the rename.**
+The field is computed in two places — the NAS/NGAP window path and the
+Diameter Session-Id path — and **the Diameter branch had zero coverage**: every
+Diameter failure segment in the fixtures has exactly one failure, so
+`first == last` and the branch never fires. Mutating it to emit nothing left
+the suite green. That is precisely the drift this entry warned about, sitting
+untested the whole time. Now covered by a synthetic two-Result-Code segment
+(`test_the_diameter_path_records_the_first_failure_too`), and the single-failure
+counter-case is asserted on both paths.
+
+**The docstring that justified the rule argued it from `ki-mismatch`** — the
+case it gets wrong. That paragraph is rewritten in place.
+
+---
+
+## T-PAIRRULE | the ordered-pair judgements are prose, and nothing evaluates them (P2)
+
+**What**: `nas_5gmm.yaml` #111's first `common_causes` entry already states the
+real judgement — "a #21 immediately followed by #111 is almost always a key
+problem". It is a sentence. Nothing reads it, so the tool cannot say
+"authentication key mismatch" even though it knows.
+
+**Why it matters**: this is the asset a competitor cannot copy without walking
+the same field — §6's positioning is explanations with specification
+provenance, and the ordered pair is where the explanation actually lives.
+T-ROOTCAUSE removed a wrong claim; it did not add the right one. Today
+`mcp.INSTRUCTIONS` carries the #21→#111 example so an **agent** can do the
+reasoning — but that puts the judgement in the model, which is what §2.3 and
+the workspace's Rule 5 say not to do when code can answer.
+
+**Why not now**: it needs a schema decision — where pair rules live, how they
+are keyed, and what a matched pair emits (a new `assessment` field is another
+`summary_version` bump). Doing it inside the T1–T3 package would have been
+product work before the first user conversation, which is the pattern the
+2026-08-30 review exists to break.
+
+**Depends on**: T-ROOTCAUSE (done — it cleared the field that would have
+conflicted). Nothing else.
+
+**Effort**: CC ~half a day.
 
 **What**: `summary.build()` gives each procedure a `root_cause` field
 holding the explanation of the procedure's *first* failure. On
@@ -889,7 +947,7 @@ Either way it changes `summarize`'s stable field set, so it is a
 
 ---
 
-## T-MCPRULES | three rules the MCP instructions do not yet state (P3)
+## ~~T-MCPRULES | three rules the MCP instructions do not yet state~~ — **completed and closed (2026-08-31)**
 
 **What**: `mcp.INSTRUCTIONS` reaches every client's system prompt. It
 already carries the `not_visible` rule. Three more earn their place:
@@ -912,10 +970,17 @@ Rule 3 matters more than it looks: `supi-not-provisioned` is a capture
 where the correct answer is that nothing is broken, and a reader
 predisposed to find a fault will manufacture one.
 
-**Why not now**: no user has hit this — 0.1.0 shipped days ago. It is
-also cheap enough to fold into whatever next touches `mcp.py` rather
-than standing alone.
+**What was done**: all three are in `mcp.INSTRUCTIONS`, pinned by
+`test_the_instructions_carry_the_three_judgement_rules` — which guards that
+each **rule** is present, not its wording, so the prose can be improved but a
+rule cannot quietly vanish.
 
-**Depends on**: nothing.
-
-**Effort**: CC ~20 minutes.
+**Folded in as predicted** ("cheap enough to fold into whatever next touches
+`mcp.py`"): the same round fixed a live defect two lines away. The `lang`
+argument's description told every client *"Cause explanations from the 3GPP
+tables are currently Chinese regardless"* — **false since T-CAUSE-EN closed on
+2026-08-23**, and shipped in 0.1.0. An English agent reading it would discount
+or skip this tool's most differentiated output, with no error anywhere. Now
+guarded by `test_the_language_argument_does_not_contradict_the_cause_tables`,
+which checks the **claim against the tables** rather than grepping for a
+string: if `#111` has English `plain`, the schema may not say otherwise.

@@ -183,14 +183,14 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit 3728c17</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 7518243</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
   <code>tools/archmap.py</code>，這一頁就跟著走。</p>
 </header>
 
-<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,420</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>805</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>12</b><span>TODOS 未關閉</span></div></div>
+<div class="stats"><div class="stat"><b>51</b><span>Python 模組</span></div><div class="stat"><b>14,440</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>809</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>11</b><span>TODOS 未關閉</span></div></div>
 
 <section>
   <h2><span class="num">01</span>分層相依</h2>
@@ -208,7 +208,7 @@ graph TD
   classDef door fill:#34201A,stroke:#C05A3E,stroke-width:2px,color:#E89078
   classDef gate fill:#332814,stroke:#D08A26,stroke-width:2px,color:#E8B563
 
-  subgraph L6["L6 · 入口 · 2,445 行"]
+  subgraph L6["L6 · 入口 · 2,455 行"]
     direction LR
     cli["cli"]:::n
     web["web · session"]:::n
@@ -220,7 +220,7 @@ graph TD
     summ["summary"]:::n
     mmd["render_mermaid · xdr"]:::n
   end
-  subgraph L4["L4 · 語意 · 1,737 行"]
+  subgraph L4["L4 · 語意 · 1,747 行"]
     direction LR
     cflow["callflow"]:::n
     proc["procedures"]:::n
@@ -263,7 +263,7 @@ graph TD
   mdl --> i18n
 </pre>
 </div></div>
-  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span>cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,445 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,310 行<br><span>4 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>callflow</span><span>pdusession</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,737 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">pipeline</span><span class="hot">nf</span><span>coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">1,830 行<br><span>7 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.sbi</span><span>adapters.diameter</span><span>adapters.gtpv2</span><span>adapters.nas5gs</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.naseps</span><span>adapters.ngap</span><span>adapters.sip</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,282 行<br><span>12 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>extract</span><span>decode</span><span>prefilter</span><span>decodeas</span><span>probe</span><span>tshark</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,404 行<br><span>9 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span class="hot">translations.zh_tw</span><span>model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,412 行<br><span>9 個</span></div></div></div>
+  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span>cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,455 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,310 行<br><span>4 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>callflow</span><span>pdusession</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,747 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">pipeline</span><span class="hot">nf</span><span>coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">1,830 行<br><span>7 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.sbi</span><span>adapters.diameter</span><span>adapters.gtpv2</span><span>adapters.nas5gs</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.naseps</span><span>adapters.ngap</span><span>adapters.sip</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,282 行<br><span>12 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>extract</span><span>decode</span><span>prefilter</span><span>decodeas</span><span>probe</span><span>tshark</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,404 行<br><span>9 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span class="hot">translations.zh_tw</span><span>model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,412 行<br><span>9 個</span></div></div></div>
 </section>
 
 <section>
@@ -493,13 +493,13 @@ graph LR
   <p class="sub">直接讀 <code>TODOS.md</code> 的標題 —— 劃掉的不算，所以關掉一項這裡就少一列。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">ID</th><th>是什麼</th><th class="mono">優先</th></tr></thead>
-    <tbody><tr><td class="mono">T-NF-PROFILE</td><td class="wrap-ok">the NRF registration body names every NF outright, and we do not read it</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-DIAM-CLAUSE</td><td class="wrap-ok">the oracle-built cause tables carry no clause numbers</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">a dual-gNB capture — so real data guards the `scoped()` prefix</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-ROOTCAUSE</td><td class="wrap-ok">`root_cause` asserts a causation the data does not support</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-GUTI-UI</td><td class="wrap-ok">the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DIAM-MORE</td><td class="wrap-ok">the other twenty-odd Diameter interfaces</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">one-line `docker run` analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">if Phase 3 touches cryptography, check export control first</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">a public corpus of failure captures</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">when a subscriber yields no procedure segments, the screen says nothing</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-MCPRULES</td><td class="wrap-ok">three rules the MCP instructions do not yet state</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
+    <tbody><tr><td class="mono">T-NF-PROFILE</td><td class="wrap-ok">the NRF registration body names every NF outright, and we do not read it</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-DIAM-CLAUSE</td><td class="wrap-ok">the oracle-built cause tables carry no clause numbers</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-E3</td><td class="wrap-ok">`telcoladder diff good.pcap bad.pcap`</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-TWOGNB</td><td class="wrap-ok">a dual-gNB capture — so real data guards the `scoped()` prefix</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-PAIRRULE</td><td class="wrap-ok">the ordered-pair judgements are prose, and nothing evaluates them</td><td><span class="tag t-mute">P2</span></td></tr><tr><td class="mono">T-GUTI-UI</td><td class="wrap-ok">the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DIAM-MORE</td><td class="wrap-ok">the other twenty-odd Diameter interfaces</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-DOCKER</td><td class="wrap-ok">one-line `docker run` analyze</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-EXPORT</td><td class="wrap-ok">if Phase 3 touches cryptography, check export control first</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-E4</td><td class="wrap-ok">a public corpus of failure captures</td><td><span class="tag t-mute">P3</span></td></tr><tr><td class="mono">T-PROCEMPTY</td><td class="wrap-ok">when a subscriber yields no procedure segments, the screen says nothing</td><td><span class="tag t-mute">P3</span></td></tr></tbody>
   </table></div>
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit 3728c17</span>
-  <span>51 模組 · 14,420 行</span>
-  <span>805 測試</span>
+  <span>tools/archmap.py</span><span>commit 7518243</span>
+  <span>51 模組 · 14,440 行</span>
+  <span>809 測試</span>
 </footer>
 </div>

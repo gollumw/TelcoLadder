@@ -46,7 +46,7 @@ from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
 
 #: schema 版本。破壞性變更才遞增 —— 規則同 `xdr.XDR_VERSION`。
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
 
 #: 結局 → 一眼看得出的記號。與 React 介面的 `OUTCOME_MARK` 同一套語彙。
 OUTCOME_MARK = {"success": "✓", "failure": "✗", "incomplete": "⋯"}
@@ -269,8 +269,8 @@ def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]
             record["cause_ref"] = (
                 _cause_ref(failed[-1]) if failed and p.outcome == "failure" else None
             )
-            record["root_cause_ref"] = (
-                _cause_ref(failed[0]) if p.root_cause and len(failed) > 1 else None
+            record["first_failure_ref"] = (
+                _cause_ref(failed[0]) if p.first_failure and len(failed) > 1 else None
             )
             procedures.append(record)
     procedures.sort(key=lambda r: (r["start_frame"], r["supi"] or ""))
