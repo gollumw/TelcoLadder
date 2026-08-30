@@ -2,13 +2,24 @@
 
 [![CI](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml)
 
-Point it at a 5G core capture and get the call flow **per subscriber, with every
-failure explained**: NGAP, NAS, SBI, PFCP and GTP-U correlated into one timeline,
-each cause code resolved to the 3GPP clause it comes from, each network function
-named instead of shown as an IP. The output is Mermaid you can paste into GitHub,
-or an interactive viewer in your browser.
+Point it at a signalling capture and get the call flow **per subscriber, with
+every failure explained**. It reads **5G core** (NGAP, NAS-5GS, HTTP/2 SBI, PFCP,
+GTP-U), **4G/EPC** (S1AP, NAS-EPS, GTPv2-C) and **IMS** (SIP, Diameter), and
+correlates one subscriber across all three onto a single timeline — a VoLTE call
+spans four interfaces, and they belong on one ladder rather than in four windows.
 
-![Drop a capture, get each subscriber's correlated ladder — failures explained with their 3GPP clause and the most common field causes](docs/demo.gif)
+Every cause code is resolved through a hand-verified table to the specification
+it comes from, what it means in plain language, and the root causes that
+actually produce it in the field — **488 of them**, every name taken verbatim
+from `tshark` and re-checked against it by a test. Every network function is
+named rather than shown as an IP, with the evidence for that name on hover.
+Nothing is generated: a cause the table does not carry is reported as not
+catalogued, because a wrong citation is worse than none.
+
+Output is Mermaid you can paste into GitHub, an interactive viewer in your
+browser, or one page of facts for an AI agent.
+
+![Drop a capture, get each subscriber's correlated ladder — failures explained with their specification reference and the most common field causes](docs/demo.gif)
 
 ```bash
 telcoladder analyze failed_attach.pcapng

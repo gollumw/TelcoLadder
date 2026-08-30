@@ -24,6 +24,50 @@ from telcoladder.model import Flow
 # ── 查得到的情況 ───────────────────────────────────────────────────────
 
 
+def test_the_readme_states_the_real_number_of_catalogued_causes() -> None:
+    """README 開場宣稱「**488 of them**」。**數字是對程式的宣稱** —— 表長了
+    而句子沒跟上，就是一句安靜的假話，而且沒有任何東西會報錯。
+
+    第一版寫成 541（把 workspace changelog 的分項相加，而那份分項本身是錯
+    的：5G+PFCP 記成 259，實際 206）。量出來才對得上。
+    """
+    from telcoladder.causes import _load_tables
+
+    measured = sum(len(t) for t in _load_tables().values())
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    claimed = re.search(r"\*\*(\d+) of them\*\*", readme)
+    assert claimed, "README 開場不再宣稱一個數字了 —— 改了句子請一併改這條測試"
+    assert int(claimed.group(1)) == measured, (
+        f"README 說 {claimed.group(1)} 條 cause，實際 {measured} 條"
+    )
+
+
+def test_the_readme_does_not_promise_a_clause_for_every_cause() -> None:
+    """**7 張表有 clause，11 張沒有** —— 4G（S1AP / NAS-EPS）、GTPv2、PFCP
+    與 Diameter 只帶規範文件，不帶條號，因為那些條號沒有經過人工核對
+    （T-DIAM-CLAUSE）。
+
+    工具還只讀 5G 的時候，「each cause code resolved to the 3GPP clause」是
+    真的；4G 進來之後那句話變成超額宣稱，而**擴寫開場的人正是最容易順手
+    留著它的人**。這條測試守的是：開場不准對全體 cause 承諾條號。
+    """
+    with_clause = [t for t, entries in _tables_raw().items() if entries.get("clause")]
+    without = [t for t, entries in _tables_raw().items() if not entries.get("clause")]
+    assert with_clause and without, "前提變了：現在不是有的有、有的沒有"
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    hero = readme.split("## What it does today")[0]
+    assert "3GPP clause it comes from" not in hero, (
+        f"開場對全體 cause 承諾了條號，但 {len(without)} 張表沒有條號："
+        f"{sorted(without)}"
+    )
+
+
+def _tables_raw() -> dict[str, dict]:
+    return {f.stem: yaml.safe_load(f.read_text(encoding="utf-8"))
+            for f in sorted(DATA_DIR.glob("*.yaml"))}
+
+
 def test_known_cause_carries_its_spec_reference():
     info = lookup(CauseRef("nas_5gmm", 111))
     assert info is not None
