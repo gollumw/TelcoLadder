@@ -81,9 +81,10 @@ def test_relay_duplicated_openers_merge_into_one_procedure(e2e) -> None:
     assert len(est) == 1
 
 
-def test_failure_records_both_final_and_root_cause() -> None:
-    """`ki-mismatch`：終端 cause 是零資訊量的「協定錯誤」，起因才是
-    SQN 重同步 —— 兩個都要給，root cause 才是排障要的那個。"""
+def test_failure_records_both_the_final_and_the_first_failure() -> None:
+    """`ki-mismatch`：終端 cause 是零資訊量的「協定錯誤」(#111)，第一則
+    失敗是 #21。**兩個都要給，但欄位只陳述順序，不宣稱因果** —— #21 不是
+    #111 的起因，真正的判斷在有序對上（見 `procedures` 的模組說明）。"""
     result = analyse(FIXTURES / "ki-mismatch" / "capture.pcap")
     procs, stray = segment(result)
     assert stray == 0
@@ -92,7 +93,60 @@ def test_failure_records_both_final_and_root_cause() -> None:
     # 英文是原文（T-CAUSE-EN，2026-08-23）—— `Procedure.cause` 走 `detail`，
     # 而 `detail` 刻意不存翻譯，否則會被 MCP 的跨語言快取汙染。
     assert p.cause and "Protocol error" in p.cause
-    assert p.root_cause and "out of sync" in p.root_cause
+    assert p.first_failure and "out of sync" in p.first_failure
+
+    # **對照組**：只失敗一次時不准給 `first_failure` —— 給了就是把終端
+    # cause 原樣複述一遍，讀的人會以為那是兩個獨立的事實。
+    single = analyse(FIXTURES / "supi-not-provisioned" / "capture.pcap")
+    [only] = [q for q in segment(single)[0] if q.outcome == "failure"]
+    assert only.failures == 1
+    assert only.first_failure is None, (
+        "一次失敗還給 first_failure，等於把 cause 講兩次冒充兩個事實"
+    )
+
+
+def test_no_surface_claims_the_first_failure_caused_the_last() -> None:
+    """欄位名就是宣稱，而 `root_cause` 在 `ki-mismatch` 上是錯的。
+
+    #21 不是 #111 的起因 —— `nas_5gmm.yaml` 裡 #111 的第一條 `common_causes`
+    自己就寫著「#21 緊接 #111 幾乎一定是金鑰問題」，判斷在**有序對**上，
+    兩個成員各自都不是答案。實測後果：只拿到那份摘要的讀者把「重設 SQN
+    並重試」排在第一個建議動作 —— 那是維護動作，修不好任何東西，故障
+    原封不動回來。
+
+    **三個版本化契約必須一起改**（xdr / summary / callflow）。只改一個，
+    其餘照舊宣稱錯的因果，而且不會有任何錯誤 —— §5.5 的「兩個表面漂移，
+    不報錯」。所以這條測試橫跨三個表面，不是三條各守一個。
+    """
+    from telcoladder import callflow, causes, summary
+    from telcoladder.model import CauseRef
+
+    result = analyse(FIXTURES / "ki-mismatch" / "capture.pcap")
+
+    xdr_rows = xdr.build(result, source_name="x")["procedures"]
+    sum_rows = summary.build(result, source_name="x")["procedures"]
+    supi = next(p["supi"] for p in xdr_rows if p["supi"])
+    cf_rows = callflow.events(result, supi)["procedures"]
+
+    for label, rows, key in (
+        ("xdr", xdr_rows, "first_failure"),
+        ("summary", sum_rows, "first_failure_ref"),
+        ("callflow", cf_rows, "first_failure"),
+    ):
+        assert rows, f"{label}：ki-mismatch 應該要有程序列"
+        for row in rows:
+            assert "root_cause" not in row and "root_cause_ref" not in row, (
+                f"{label} 還在宣稱因果 —— 這個表面沒跟著改，而漏掉它不會報錯"
+            )
+            assert key in row, f"{label} 少了 {key}"
+
+    # 真正的判斷仍然拿得到 —— 改的是「不亂宣稱」，不是把知識刪掉。
+    info = causes.lookup(CauseRef(table="nas_5gmm", value=111))
+    assert info is not None
+    assert any("#21" in c for c in info.common_causes), (
+        "有序對的判斷從 cause 表裡消失了 —— 那是這個欄位改名之後唯一還講得出"
+        "金鑰問題的地方（T-PAIRRULE 要把它變成可評估的判斷）"
+    )
 
 
 def test_recovered_failure_is_a_success() -> None:
@@ -151,6 +205,47 @@ def _msg(frame: int, label: str, *, failure: bool = False) -> Message:
     )
 
 
+def test_the_diameter_path_records_the_first_failure_too() -> None:
+    """`first_failure` 有**兩份實作** —— NAS/NGAP 的視窗路徑與 Diameter 的
+    Session-Id 路徑（`procedures.py` 的兩處）。改一邊漏一邊，Diameter 會靜靜
+    地繼續講舊的那套，而兩邊從外面看一模一樣。
+
+    現有的 fixture 蓋不到這個角：`diameter-epc-ims` 的失敗段每段只有一次失敗
+    （`first == last` → None），所以整條分支沒有任何覆蓋 —— 突變測試才問出來的。
+    這裡合成一個「同一個 Session-Id 上兩個不同 Result-Code」的段來補上。
+    """
+    from telcoladder.procedures import _diameter_segments
+
+    def _dia(frame: int, label: str, *, cause: str | None = None) -> Message:
+        m = Message(
+            frame=frame, ts=float(frame), protocol="diameter",
+            src=Endpoint("10.0.0.1"), dst=Endpoint("10.0.0.2"),
+            label=label, is_failure=cause is not None,
+        )
+        m.detail["session-id"] = "hss.example;1;1"
+        m.detail["end-to-end-id"] = str(frame)
+        if cause:
+            m.detail["cause_plain"] = cause
+        return m
+
+    window = [
+        _dia(1, "Update-Location Request"),
+        _dia(2, "Update-Location Answer", cause="Roaming not allowed"),
+        _dia(3, "Update-Location Answer", cause="Unknown EPS subscription"),
+    ]
+    [proc], unassigned = _diameter_segments(window, "001011234567895", capture_end=99.0)
+    assert not unassigned
+    assert proc.outcome == "failure" and proc.failures == 2
+    assert proc.cause == "Unknown EPS subscription", "終端 cause 是最後一則"
+    assert proc.first_failure == "Roaming not allowed", (
+        "Diameter 這條路徑沒有記第一則失敗 —— 兩份實作已經漂移了"
+    )
+
+    # 對照組：同一條路徑上只失敗一次，一樣不准給。
+    [one], _ = _diameter_segments(window[:2], None, capture_end=99.0)
+    assert one.failures == 1 and one.first_failure is None
+
+
 def test_an_unfinished_procedure_near_capture_end_says_so() -> None:
     """開了段、沒等到結局、而且擷取就停在那 —— 要標 incomplete 並加註
     「可能只是截到一半」。沒有這句話，使用者會把截檔當成網路卡住。"""
@@ -188,7 +283,7 @@ def test_ue_context_release_opener_is_exact_match() -> None:
 #: xDR 每筆程序記錄的欄位集合。**這是對外契約** —— 改欄位要同時想
 #: 「消費端的 jq 會不會靜默拿到 null」，破壞性變更要遞增 XDR_VERSION。
 PROCEDURE_FIELDS = {
-    "procedure", "supi", "outcome", "cause", "root_cause", "pdu_session_id",
+    "procedure", "supi", "outcome", "cause", "first_failure", "pdu_session_id",
     "start_frame", "end_frame", "messages", "failures", "duration_s",
     "protocols", "note",
 }
@@ -240,7 +335,7 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
     )
     assert proc.returncode == 0, proc.stderr
     doc = json.loads(out.read_text(encoding="utf-8"))
-    assert doc["xdr_version"] == 1
+    assert doc["xdr_version"] == xdr.XDR_VERSION == 2
     assert doc["procedures"], "一段程序都沒有 —— 端到端斷了"
 
 

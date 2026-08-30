@@ -119,11 +119,11 @@ on it.
   with the same number.
 - **Splits a subscriber's traffic into procedures** — registration, PDU session
   establishment, service request, deregistration — each with its own outcome,
-  cause, root cause and duration. A long capture of one subscriber is three
+  cause, first failure and duration. A long capture of one subscriber is three
   attaches, not one undifferentiated flow, and the question engineers actually
   ask is "why did the *second* one fail".
 - **Exports procedure records as JSON** (`--xdr`), one object per procedure:
-  who, which procedure, outcome, cause and root cause, duration. Byte-for-byte
+  who, which procedure, outcome, cause and first failure, duration. Byte-for-byte
   reproducible for the same capture, so `jq` can answer "what is the failure
   rate across this batch" without anyone reading a diagram.
 - **Speaks English or Traditional Chinese** — `--lang zh_TW`, or the EN / 中文

@@ -89,6 +89,60 @@ def test_tools_list_carries_an_input_schema_for_every_tool() -> None:
 # ── 工具 ────────────────────────────────────────────────────────────────
 
 
+def test_the_language_argument_does_not_contradict_the_cause_tables() -> None:
+    """`lang` 的說明是**對能力的宣稱**，而客戶端拿它決定要不要問。
+
+    2026-08-23 T-CAUSE-EN 把 cause 表雙語化（英文為原文），但這句說明
+    留著「Cause explanations from the 3GPP tables are currently Chinese
+    regardless」整整一週：綠燈、零錯誤，而英文 agent 讀完會直接放棄本
+    工具最差異化的那個輸出。
+
+    所以守的是**兩者一致**，不是某個字串長什麼樣 —— 表裡確實有英文原文，
+    schema 就不准說沒有。
+    """
+    from telcoladder import causes
+    from telcoladder.model import CauseRef
+
+    english = causes.lookup(CauseRef(table="nas_5gmm", value=111))
+    assert english is not None and english.plain, "前提不成立：#111 連英文原文都沒有"
+    assert english.plain.isascii(), "這條測試假設 `plain` 是英文原文（§7）"
+
+    said = _LANG_TEXT()
+    assert "Chinese regardless" not in said, (
+        "schema 還在說 cause 解釋一律中文，但表裡有英文原文 —— 這句話會讓"
+        "英文 agent 放棄本工具最差異化的輸出，而且不會有任何錯誤"
+    )
+
+
+def _LANG_TEXT() -> str:
+    """四個工具共用同一份 `lang` 說明，取任何一個都是同一份。"""
+    schema = mcp.TOOLS[0]["inputSchema"]
+    return schema["properties"]["lang"]["description"]
+
+
+def test_the_instructions_carry_the_three_judgement_rules() -> None:
+    """`INSTRUCTIONS` 會進每個客戶端的 system prompt，是本工具唯一能對
+    agent 說話的地方。三條規則各自有實測依據（T-MCPRULES）：
+
+    1. 沒有這條，讀者把 key mismatch 攤成三路鑑別診斷，並把錯的修復排第一。
+    2. 沒有這條，讀者生成了 `§5.5.1.2.5` —— 不在 payload、不在任何 cause 表。
+    3. 沒有這條，`supi-not-provisioned` 這種「網路沒壞」的檔會被硬找出一個故障。
+
+    守的是**規則在不在**，不是措辭 —— 措辭可以改，規則不能悄悄消失。
+    """
+    said = mcp.INSTRUCTIONS
+
+    # 1：序列勝過單一號碼
+    assert "#21" in said and "#111" in said, "序列規則沒有具體例子就只是格言"
+    assert "not a conclusion" in said
+
+    # 2：不得生成條號（§2.3 的紅線，這裡是它對 agent 的那一面）
+    assert "clause" in said and "not already in the facts" in said
+
+    # 3：網路可能是對的
+    assert "behaved correctly" in said and "provisioning" in said
+
+
 def test_summarize_returns_markdown_text_and_structured_facts() -> None:
     result = _call("summarize_capture", pcap_path=str(KI))["result"]
     assert result["isError"] is False

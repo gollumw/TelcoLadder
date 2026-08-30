@@ -184,7 +184,7 @@ export interface CallFlowProcedure {
   cause: string | null;
   /** 起因（第一則失敗的）。**只在與終端不同時才有** —— ki-mismatch 的終端
    *  cause 是零資訊量的「協定錯誤」，起因才是「SQN 不同步」。 */
-  rootCause: string | null;
+  firstFailure: string | null;
   pduSessionId: string | null;
   startFrame: number;
   endFrame: number;

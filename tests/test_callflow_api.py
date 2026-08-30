@@ -319,7 +319,7 @@ def test_the_ladder_cause_follows_the_language(e2e_pcap) -> None:
 
 
 def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
-    """失敗的段要同時帶終端 cause 與起因 —— 畫面在段的層級講一次，
+    """失敗的段要同時帶終端 cause 與第一則失敗 —— 畫面在段的層級講一次，
     使用者不必自己找哪支箭是紅的。"""
     from telcoladder.viewer import callflow_json
 
@@ -330,4 +330,4 @@ def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
     # **英文** —— `Procedure.cause` 來自 `detail["cause_plain"]`，那裡存的是原文，
     # 不是翻譯（見 `causes.annotate` 與 test_causes 的跨語言快取那條）。
     assert failed[0]["cause"] and "Protocol error" in failed[0]["cause"]
-    assert failed[0]["root_cause"] and "out of sync" in failed[0]["root_cause"]
+    assert failed[0]["first_failure"] and "out of sync" in failed[0]["first_failure"]

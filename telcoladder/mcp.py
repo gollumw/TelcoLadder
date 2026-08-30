@@ -98,7 +98,16 @@ INSTRUCTIONS = (
     "hand-verified table. Start with summarize_capture and read its 'not_visible' section "
     "before drawing conclusions: ciphered NAS, ECIES-protected SUCIs and undecoded frames "
     "are real gaps, not absence of problems. Fields that were not observed are null - never "
-    "fill them in."
+    "fill them in. "
+    "A cause number alone is not a conclusion - read what follows it. A #21 answered by "
+    "success is a routine resynchronisation; a #21 followed by #111 is almost always an "
+    "authentication key mismatch. Same number, opposite answers, so quote the sequence "
+    "rather than a single code. "
+    "Never write a specification clause that is not already in the facts you were given. "
+    "The tables carry a clause only where a person verified it; one you supply yourself "
+    "will be looked up by the reader, and a wrong citation is worse than none. "
+    "'The network behaved correctly' is a valid finding - a rejection can be the network "
+    "working exactly as specified, with the gap in provisioning rather than in the network."
 )
 
 CACHE_SIZE = 4
@@ -114,8 +123,9 @@ _PCAP_ARG = {
 _LANG_ARG = {
     "type": "string",
     "enum": ["en", "zh_TW"],
-    "description": "Language for human-readable text (default en). Cause explanations from the "
-                   "3GPP tables are currently Chinese regardless.",
+    "description": "Language for human-readable text (default en). Cause explanations and "
+                   "common root causes from the 3GPP tables follow this setting too - they "
+                   "are bilingual, with English as the source text.",
 }
 
 #: 收窄選項，四個工具共用。**一份定義** —— 四份會漂移，而症狀是同一個

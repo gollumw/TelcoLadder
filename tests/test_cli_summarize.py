@@ -42,7 +42,7 @@ def test_json_flag_emits_the_same_facts_as_json(capsys) -> None:
     assert main(["summarize", str(KI), "--json"]) == 0
     out, _err = capsys.readouterr()
     doc = json.loads(out)
-    assert doc["summary_version"] == 1
+    assert doc["summary_version"] == 2
     assert doc["source"] == "capture.pcap"
     assert [f["cause"]["value"] for f in doc["failures"]] == [21, 111]
 

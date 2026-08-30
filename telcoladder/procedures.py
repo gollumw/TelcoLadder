@@ -54,9 +54,19 @@ frame 388/391）；NAS 定時器重送也長這樣。分開算會把一次建立
 其後的成功 → failure；都沒有 → incomplete（落在擷取結尾附近時加註
 「可能只是截到一半」，沿用 `flowtable.TAIL_SLACK` 的語意）。
 
-**cause 記兩個**：`cause` 是最後一則失敗的（終端結局），`root_cause` 是
-第一則失敗的（起因）—— `ki-mismatch` 的終端 cause 是「協定錯誤，規範未
-指明」（零資訊量），起因才是「SQN 不同步」。只在兩者不同時給 root_cause。
+**cause 記兩個**：`cause` 是最後一則失敗的（終端結局），`first_failure`
+是第一則失敗的。只在兩者不同時給 `first_failure`。
+
+**它記的是順序，不是因果。** 這個欄位原名 `root_cause`，而那個名字本身
+就是一個宣稱 —— 且在它當初的立論範例上就是錯的：`ki-mismatch` 的終端
+cause 是 #111「協定錯誤，規範未指明」（零資訊量），第一則失敗是 #21
+「SQN 不同步」，但 **#21 不是 #111 的起因**。`nas_5gmm.yaml` 裡 #111 的
+第一條 `common_causes` 就寫著「#21 緊接 #111 幾乎一定是金鑰問題」——
+真正的判斷在**有序對**上，兩個成員各自都不是答案。照舊名字讀的人會去
+重設 SQN，那修不好任何東西，故障原封不動回來（實測：只拿到那份摘要的
+讀者把「重設 SQN 並重試」排在第一個建議動作）。所以這個欄位只陳述
+「第一則失敗是什麼」，不宣稱它導致了什麼；把有序對變成可評估的判斷是
+另一件事，記在 TODOS 的 T-PAIRRULE。
 
 ## 已知侷限（v1，明講）
 
@@ -132,7 +142,7 @@ class Procedure:
     supi: str | None
     outcome: str  # "success" | "failure" | "incomplete"
     cause: str | None
-    root_cause: str | None
+    first_failure: str | None
     pdu_session_id: str | None
     start_frame: int
     end_frame: int
@@ -175,14 +185,14 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     )
 
     if last_success is not None and (last_failure is None or last_success > last_failure):
-        outcome, cause, root = "success", None, None
+        outcome, cause, first_failure = "success", None, None
     elif failures:
         outcome = "failure"
         cause = _cause_text(failures[-1])
         first = _cause_text(failures[0])
-        root = first if first != cause else None
+        first_failure = first if first != cause else None
     else:
-        outcome, cause, root = "incomplete", None, None
+        outcome, cause, first_failure = "incomplete", None, None
 
     note = ""
     if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
@@ -195,7 +205,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         supi=supi,
         outcome=outcome,
         cause=cause,
-        root_cause=root,
+        first_failure=first_failure,
         pdu_session_id=sorted(ps_ids)[0] if len(ps_ids) == 1 else None,
         start_frame=window[0].frame,
         end_frame=window[-1].frame,
@@ -299,11 +309,11 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             outcome = "failure"
             cause = _cause_text(failed[-1])
             first = _cause_text(failed[0])
-            root = first if first != cause else None
+            first_failure = first if first != cause else None
         elif answers:
-            outcome, cause, root = "success", None, None
+            outcome, cause, first_failure = "success", None, None
         else:
-            outcome, cause, root = "incomplete", None, None
+            outcome, cause, first_failure = "incomplete", None, None
 
         note = ""
         if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
@@ -314,7 +324,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             supi=supi,
             outcome=outcome,
             cause=cause,
-            root_cause=root,
+            first_failure=first_failure,
             pdu_session_id=None,
             start_frame=window[0].frame,
             end_frame=window[-1].frame,

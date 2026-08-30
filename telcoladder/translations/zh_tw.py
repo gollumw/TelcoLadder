@@ -14,7 +14,7 @@ CATALOG: dict[str, str] = {
     "pcap / pcapng file": "pcap / pcapng 檔",
     "write the diagram here (default: stdout)": "寫入檔案（預設印到 stdout）",
     "FILE": "檔案",
-    "Also export procedure-level records as JSON, one per procedure: who, which procedure, outcome, cause and root cause, duration. Made for scripts - jq can answer 'what is the failure rate in this batch'. Byte-for-byte reproducible for the same capture.":
+    "Also export procedure-level records as JSON, one per procedure: who, which procedure, outcome, cause and first failure, duration. Made for scripts - jq can answer 'what is the failure rate in this batch'. Byte-for-byte reproducible for the same capture.":
         "另外匯出程序級的結構化記錄（JSON）。一段程序一筆：誰、哪種程序、成功或失敗、cause 與起因、耗時。給腳本吃的 —— 用 jq 就能回答「這批擷取的失敗率」。同一份擷取檔的輸出逐位元組可重現。",
     "Messages per flow before the diagram is truncated; truncation is stated inside the diagram (default {n})":
         "每條流程最多畫幾則訊息，超過會截斷並在圖上註明（預設 {n}）",
