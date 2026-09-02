@@ -984,3 +984,155 @@ or skip this tool's most differentiated output, with no error anywhere. Now
 guarded by `test_the_language_argument_does_not_contradict_the_cause_tables`,
 which checks the **claim against the tables** rather than grepping for a
 string: if `#111` has English `plain`, the schema may not say otherwise.
+
+---
+
+## T-INDEXRACE | the published packet index aliases the list the worker is still appending to (P0)
+
+**What**: `session._index_into` publishes `session.index.rows = rows` under
+the lock every `_PUBLISH_EVERY` rows (`session.py:426-429`) and then keeps
+calling `rows.append(row)` on **the same list object** outside the lock
+(`session.py:422`). Every `/index` request that follows iterates that list
+inside `session.lock` (`viewer.py:122-126` → `PacketIndex.page`,
+`session.py:112-126`) while another thread mutates it. The lock protects the
+attribute, not the contents.
+
+**Why it matters**: the symptom is the one this codebase's comments guard
+against everywhere else — two numbers on one screen from two instants:
+`matched` and the returned page slice come from different lengths, and page
+boundaries move under a scrolling client mid-index. Nothing raises.
+Confirmed by reading the two lines (2026-09-03).
+
+**Fix shape**: the worker keeps a private list and publishes an immutable
+snapshot (`tuple(rows)` or a slice) under the lock; or append-only with a
+published length the readers respect. Move the O(N) filtering in
+`PacketIndex.page` out from under the lock, onto the snapshot — today one
+filtered page fetch on a 500k-row index blocks `/progress` and `/decode` for
+the same session.
+
+**Acceptance**: a test that fires ten concurrent `/index` requests during
+indexing and asserts `matched` is monotonic and every page has exactly
+`limit` rows; removing the snapshot must redden it.
+
+**Why not now**: it needs the web layer's three mutable-state paths
+(`/refilter`, `/select`, `/decode-as`) reworked together — a generation token
+and a single writer — or the fix here moves the race rather than removing
+it. That is one change, not three.
+
+**Depends on**: nothing.
+
+**Effort**: CC ~half a day including the concurrency test.
+
+---
+
+## T-NFLADDER | `nf.py` documents a priority ladder and implements unanimity (P0)
+
+**What**: the module docstring (`nf.py:6-15`) says "判定階梯由強到弱，先命中者
+為準". The code (`nf.py:366-370`) accepts an IP's role only when
+`len(candidates) == 1` — every evidence tier votes equally, and one
+contradicting vote blanks the endpoint. The comment at `nf.py:70-71`
+knows the symptom ("整張圖的網元全部退回顯示 IP") and treats it as acceptable.
+
+**Why it matters**: a `user-agent` string (the weakest tier) can cancel a
+`wire-hint` (an F-TEID IE saying outright that this address is the MME) or
+an `n2-port` vote, and the whole lane reverts to an address — with nothing
+on screen saying "this was resolvable and a weak vote vetoed it". Behind a
+NAT or VIP the effect is total: `_endpoint_key()` (`nf.py:224-225`) keys on
+IP only, so several NFs on one address all go unlabelled. This is the
+single largest expectation-vs-code gap in the role layer.
+
+**Fix shape**: tier the evidence (`wire-hint` and protocol-role messages >
+standard port > SBI service name > `user-agent`); only a contradiction
+**within** the winning tier blanks the role; a lower tier never vetoes a
+higher one; when a contradiction does blank a role, write who vetoed whom
+into `basis` so the screen can say it. On contradiction, retry with
+`(ip, port)` as the key before giving up — that is what separates two NFs
+behind one VIP.
+
+**Acceptance**: mutation test — add a `user-agent` vote for a different role
+to an IP that already has an `n2-port` vote; the role must survive. The
+userplane fixture's 10/12 resolved must not drop, and a `no_false_role`
+test over every fixture must stay green (a wrong label is worse than none —
+that principle does not change, the veto order does).
+
+**Why not now**: the tiering is a judgement about evidence strength that
+should be written down once with the reasons, not patched in the loop. It
+touches `viewer._basis_sentence` (new basis codes) and the i18n catalogue.
+
+**Depends on**: nothing.
+
+**Effort**: CC ~half a day.
+
+---
+
+## T-MATRIX-N4 | the PDU-session matrix promises three interfaces and joins two (P0)
+
+**What**: `pdusession.py`'s header says it assembles a data connection from
+fields scattered across **three** interfaces. Only two adapters write the
+join field `pdu-session-id`: `nas5gs.py:283` and `ngap.py:231`. PFCP writes
+`seqno` and `cause` only (`pfcp.py:192-197`); GTP-U writes `qfi` only
+(`gtp.py:83-85`). `pdusession.py:178-180` skips any message without the
+field, so **N4 and N3 contribute zero cells**. The N3 TEIDs in the matrix
+are the ones NGAP promised, not the ones PFCP allocated or GTP-U carried.
+
+**Why it matters**: this is the feature the README names as the line between
+"平價版 NetScout" and "another guessing tool", and it is half built. The
+`gtp_tunnel()` keys that PFCP and GTP-U emit already merge the *flows*
+(`identity.py:85-107`); the merge just never reaches `PduSession`. A reader
+of the matrix believes N4 was checked.
+
+**Fix shape**: PFCP Session Establishment already carries the UPF F-TEID that
+the `gtp_tunnel()` key is built from; resolve the PDU session by that key
+(or via the PDR's QFI) and write `pdu-session-id` so the existing matrix
+picks it up. Add `upf_observed_teid` (source: N4) beside the NGAP-promised
+one, and per-tunnel `n3_packets` from GTP-U. Every new cell keeps
+`Sourced(value, frame, source)`. Whatever cannot be joined is stated in the
+docstring instead of promised.
+
+**Acceptance**: on `5gc-e2e` the matrix shows cells whose source frame is a
+PFCP message; the N3 TEID observed on GTP-U equals the one NGAP promised
+byte for byte (the userplane fixture already has that shape).
+
+**Why not now**: the SEID ↔ PDU-session resolution needs a decision on where
+the reverse lookup lives (adapter or `pdusession`), and a matrix schema
+change is a `summary_version` bump.
+
+**Depends on**: nothing.
+
+**Effort**: CC ~one day.
+
+---
+
+## T-HOSTBIND | `--host` off loopback turns the Host check into decoration (P0)
+
+**What**: `cli.py:319-322` and `web.py:836-850` accept any bind address.
+The Host-header allowlist (`web.py:129-145`) is a DNS-rebinding defence for
+a loopback server — with `--host 0.0.0.0` any client on the network sends
+`Host: 127.0.0.1:3005` and passes. `POST /open` needs no session id and
+hands the supplied path to tshark (`web.py:573-597`), so the documented
+"arbitrary path read by design" becomes a remote primitive. `_read_form`
+(`web.py:571`) trusts `Content-Length` with no cap and raises `ValueError`
+out of `do_POST` on a non-numeric value. The home page has no CSP
+(`_send_html`, `web.py:599-611`) because it carries inline script and style.
+
+**Why it matters**: the docstring at `web.py:29` says the server binds only
+127.0.0.1; the code takes a parameter that contradicts it. Root §1's "不得改
+成對外監聽" is a rule in a document, not in the program. One `--host` typed
+into a shared jump host exposes every file tshark can open.
+
+**Fix shape**: refuse a non-loopback bind unless `--token` is given, and
+with a token disable the paste-a-path mode of `/open` (uploads only).
+Cap and type-check `Content-Length` in `_read_form` (400, not a traceback).
+Move the home page to a static file so it gets the same CSP as `/app`.
+
+**Acceptance**: `serve --host 0.0.0.0` without a token exits non-zero with
+the reason; with a token, `/open` by path returns 403; `Content-Length: -1`
+and `Content-Length: abc` both return 400.
+
+**Why not now**: the token needs a place to live (flag, env, or generated and
+printed), and the home page rewrite touches `chrome.py`'s theme CSS. Small
+but not a one-liner, and it deserves its own tests.
+
+**Depends on**: nothing.
+
+**Effort**: CC ~half a day.
