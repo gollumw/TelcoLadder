@@ -53,6 +53,10 @@ telcoladder = ["data/causes/*.yaml", "data/decode-as.yaml", "static/*.js", "stat
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `tests/test_archmap.py` imports `tools.archmap`。`python -m pytest` 會把 cwd 放進
+# sys.path，裸跑 `pytest`（CI 的寫法）不會 —— 於是本機綠、CI 五個平台全紅，
+# 訊息是 ModuleNotFoundError: tools。這一行讓兩種跑法看到同一個 repo 根。
+pythonpath = ["."]
 # 背景執行緒裡的例外預設只是警告 —— 測試照樣全綠，沒人會看到。
 # 而它代表的東西很實在：使用者會在終端機看到一段像當機的 traceback。
 # 這條把它變成失敗。（Windows 的 communicate() 是靠讀取執行緒實作的，
