@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark, shutdown
+from telcoladder.tshark import Tshark, find_tshark, pref_args, shutdown
 
 # display filter 不再寫死在這裡 —— 它由各 adapter 宣告的片段聯集而來
 # （`telcoladder.adapters.display_filter()`），所以裝一個 IMS 外掛就會自動
@@ -219,6 +219,7 @@ def read_frames(
     display_filter: str | None = None,
     decode_as: Sequence[str] | None = None,
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
 ) -> Iterator[Frame]:
     """串流讀出 pcap 中符合過濾條件的封包。
@@ -266,8 +267,9 @@ def read_frames(
     tshark = tshark or find_tshark()
     # 相對時間由下方自行從 epoch 換算，不靠 tshark 的顯示偏好設定。
     args = ["-r", str(pcap), "-T", "ek", "-Y", display_filter]
-    if relax_seq:
-        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
+    # `prefs` 是任意 tshark 偏好（例如 USER DLT 對映）；`relax_seq` 只是其中
+    # 一條的糖。展開的實作只有 `tshark.pref_args` 一份。
+    args += pref_args(prefs, relax_seq=relax_seq)
     for rule in decode_as:
         args += ["-d", rule]
 

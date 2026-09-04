@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark, shutdown
+from telcoladder.tshark import Tshark, find_tshark, shutdown, pref_args
 
 #: 要向 tshark 索取的欄位，**順序就是清單的欄位順序**。
 #: 加欄位要同時改 `PacketRow` 與 `_row_from_layers`，否則多要的欄位會被丟掉
@@ -202,6 +202,7 @@ def _ek_lines(
     display_filter: str = "",
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
     limit: int | None = None,
 ) -> Iterator[dict[str, Any]]:
@@ -219,8 +220,7 @@ def _ek_lines(
     # 合成的，不關掉的話 tshark 會把整段 SBI 當成重傳而略過。**兩條路徑
     # 必須吃同一組參數**：封包清單說 TCP、分析說 HTTP/2，是同一份檔的兩個
     # 答案（CLAUDE.md §4「盤點時用了跟分析不同的參數」）。
-    if relax_seq:
-        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
+    args += pref_args(prefs, relax_seq=relax_seq)
     if display_filter:
         args += ["-Y", display_filter]
     for field in fields:
@@ -279,6 +279,7 @@ def read_packet_rows(
     display_filter: str = "",
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
     limit: int | None = None,
 ) -> Iterator[PacketRow]:
@@ -289,7 +290,8 @@ def read_packet_rows(
     """
     for layers in _ek_lines(
         pcap, COLUMN_FIELDS, display_filter=display_filter,
-        decode_as=decode_as, relax_seq=relax_seq, tshark=tshark, limit=limit,
+        decode_as=decode_as, relax_seq=relax_seq, prefs=prefs,
+        tshark=tshark, limit=limit,
     ):
         row = _row_from_layers(layers)
         if row is not None:
@@ -302,6 +304,7 @@ def matching_frames(
     *,
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
 ) -> list[int]:
     """套用 display filter，只回傳符合的 frame 編號。
@@ -317,7 +320,7 @@ def matching_frames(
         _to_int(_first(layers.get("frame_number")))
         for layers in _ek_lines(
             pcap, ("frame.number",), display_filter=display_filter,
-            decode_as=decode_as, relax_seq=relax_seq, tshark=tshark,
+            decode_as=decode_as, relax_seq=relax_seq, prefs=prefs, tshark=tshark,
         )
     ]
 

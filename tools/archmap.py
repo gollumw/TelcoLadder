@@ -64,6 +64,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
+        "endpoints",
     )),
     ("L4", "語意", "把關聯結果變成人看得懂的單位", (
         "procedures", "pdusession", "identities", "flowtable", "callflow",

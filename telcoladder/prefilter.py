@@ -57,7 +57,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark
+from telcoladder.tshark import Tshark, find_tshark, pref_args
 
 #: 可能帶著訂戶識別碼的欄位。**每一個都要在執行期驗證存在**：
 #: `gsm_a.imsi` 與 `nas_5gs.mm.suci.msin` 在 tshark 4.6.8 上都不存在，
@@ -211,6 +211,7 @@ def narrow_to_identity(
     *,
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
 ) -> Narrowing:
     """兩段式收窄：先找識別碼，再擴展到它所在的傳輸層對話。
@@ -227,9 +228,12 @@ def narrow_to_identity(
     tshark = tshark or find_tshark()
 
     probe = _identity_probe_filter(value, tshark)
+    # 這一趟也要吃同一組 `-o` —— USER DLT 對映沒帶上的話，裸協定的擷取檔
+    # 在這裡一格識別碼都找不到，「找不到」會蓋掉「這個人有流量」。
     proc = tshark.run(
         [
-            "-r", str(pcap), "-Y", probe, "-T", "fields", "-E", "occurrence=f",
+            "-r", str(pcap), *pref_args(prefs, relax_seq=relax_seq),
+            "-Y", probe, "-T", "fields", "-E", "occurrence=f",
             "-e", "frame.number", "-e", "tcp.stream", "-e", "sctp.assoc_index",
         ],
         timeout=300,
@@ -272,7 +276,8 @@ def narrow_to_identity(
         tcp_streams=tuple(sorted(tcp)),
         sctp_assocs=tuple(sorted(sctp)),
         excluded=_excluded_transports(
-            pcap, expanded, tshark, decode_as=decode_as, relax_seq=relax_seq
+            pcap, expanded, tshark, decode_as=decode_as, relax_seq=relax_seq,
+            prefs=prefs,
         ),
     )
 
@@ -284,6 +289,7 @@ def _excluded_transports(
     *,
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
 ) -> tuple[tuple[str, int], ...]:
     """收窄之後掉在外面的訊令流量長什麼樣。
 
@@ -295,9 +301,7 @@ def _excluded_transports(
     """
     from telcoladder.adapters import display_filter as _claimed
 
-    args = ["-r", str(pcap)]
-    if relax_seq:
-        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
+    args = ["-r", str(pcap), *pref_args(prefs, relax_seq=relax_seq)]
     for rule in decode_as:
         args += ["-d", rule]
     args += [

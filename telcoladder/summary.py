@@ -159,6 +159,8 @@ def _not_visible(analysis: Analysis) -> dict:
                 "protocol": conv.protocol,
                 "frames": conv.frames,
                 "port": conv.port,
+                "transport": conv.transport or None,
+                "under_user_dlt": conv.under_user_dlt,
                 "already_decoded": conv.already_decoded,
                 "decode_as_hint": conv.decode_as_hint(),
             }
@@ -178,17 +180,20 @@ def _network_elements(analysis: Analysis) -> list[dict]:
         for msg in flow.messages:
             for endpoint in (msg.src, msg.dst):
                 entry = seen.setdefault(
-                    endpoint.ip, {"role": endpoint.role, "ip": endpoint.ip,
-                                  "ports": set(), "messages": 0, "_ep": endpoint},
+                    endpoint.key, {"role": endpoint.role, "ip": endpoint.ip,
+                                   "host": endpoint.host,
+                                   "ports": set(), "messages": 0, "_ep": endpoint},
                 )
                 if endpoint.port is not None:
                     entry["ports"].add(endpoint.port)
                 entry["messages"] += 1
     out = []
-    for entry in sorted(seen.values(), key=lambda e: (participant_rank(e["_ep"]), e["ip"])):
+    for entry in sorted(seen.values(), key=lambda e: (participant_rank(e["_ep"]), e["_ep"].key)):
         out.append({
             "role": entry["role"],  # 判不出就是 None —— 不猜（nf.py 的規矩）
             "ip": entry["ip"],
+            # 沒有 IP 層的匯出（裸 Diameter）：端點只有主機名。有 IP 時一律 None。
+            "host": entry["host"],
             "ports": sorted(entry["ports"]),
             "messages": entry["messages"],
         })

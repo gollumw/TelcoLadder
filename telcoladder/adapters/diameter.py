@@ -69,7 +69,16 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import globally_unique, imsi_from_ims_identity
-from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
+from telcoladder.model import (
+    ENDPOINT_DST_KEY,
+    ENDPOINT_SRC_KEY,
+    TRANSACTION_KEY,
+    CauseRef,
+    Endpoint,
+    IdKey,
+    IdKind,
+    Message,
+)
 
 NAME = "diameter"
 
@@ -88,6 +97,21 @@ DISSECTORS = ("diameter",)
 #: 是 IANA 指派的，tshark 認得出來。跑在別的埠上的部署很常見，但那個埠是
 #: 部署自訂的 —— 猜一個寫進來只會在別人的擷取檔上把無關流量解成 Diameter。
 #: 那種情況用 CLI 的 `--decode-as sctp.port==<埠>,diameter` 疊上去。
+
+def sniff(payload: bytes) -> bool:
+    """這段裸位元組是不是一則 Diameter 訊息（RFC 6733 §3 的標頭）？
+
+    判準是**版本欄 = 1 且 24 位元的 Message Length 剛好等於整段長度**。
+    網元匯出的裸 Diameter 一格就是一則訊息，所以長度必須嚴格相等 ——
+    「長度小於整段」放行的話，任何開頭是 0x01 的東西都會被認成 Diameter。
+    最短的合法訊息是 20 位元組的標頭本身。
+    """
+    return (
+        len(payload) >= 20
+        and payload[0] == 1
+        and int.from_bytes(payload[1:4], "big") == len(payload)
+    )
+
 
 #: 3GPP 的 Vendor-Id（TS 29.230）。`Experimental-Result` 裡是這個值時才查
 #: `diameter_3gpp` 表；別的廠商有自己的號碼空間，不查。
@@ -328,6 +352,27 @@ def parse(frame: Frame) -> list[Message]:
         session = first(block.get("diameter_diameter_Session-Id"))
         if session:
             detail["session-id"] = str(session)
+
+        origin_host = str(first(block.get("diameter_diameter_Origin-Host")) or "").strip()
+        destination_host = str(first(block.get("diameter_diameter_Destination-Host")) or "").strip()
+        hop = _to_int(first(block.get("diameter_diameter_hopbyhopid")))
+        if origin_host:
+            detail["origin-host"] = origin_host
+        if destination_host:
+            detail["destination-host"] = destination_host
+        if hop is not None:
+            detail["hop-by-hop-id"] = str(hop)
+        if not frame.src_ip:
+            # **沒有 IP 層**（網元匯出的裸 Diameter，link type USER n）：端點只能
+            # 來自協定自己。Origin-Host 每則都有；Destination-Host 只有 request
+            # 帶，answer 的對端由 `endpoints.fill_hostless` 靠 Hop-by-Hop 配回
+            # request 的來源。這裡只交事實，不做配對 —— 配對要看整份檔。
+            if origin_host:
+                detail[ENDPOINT_SRC_KEY] = origin_host
+            if destination_host:
+                detail[ENDPOINT_DST_KEY] = destination_host
+            if hop is not None:
+                detail[TRANSACTION_KEY] = f"hop:{hop}"
 
         end_to_end = _to_int(first(block.get("diameter_diameter_endtoendid")))
         if end_to_end is not None:

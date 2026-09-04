@@ -202,21 +202,54 @@ NF_ROLE_HINTS_KEY = "nf_role_hints"
 #: test_the_ladder_says_where_a_borrowed_identity_came_from 釘住。
 IDENTITY_SOURCE_KEY = "identity_source"
 
+#: `Message.detail` 裡「這則訊息的兩端是誰」的提示，**只在擷取檔沒有 IP 層時**
+#: 由 adapter 填（值是應用層主機名，例如 Diameter 的 Origin-Host）。
+#:
+#: 與 `NF_ROLE_HINTS_KEY` 同一個模式：adapter 交出線路事實，核心
+#: （`telcoladder/endpoints.py`）通用處理，不認得任何一個協定。
+#: `ENDPOINT_DST_KEY` 可以缺 —— answer 不帶 Destination-Host，它的對端要
+#: 靠 `TRANSACTION_KEY` 配回同一筆交易的 request 的來源。
+ENDPOINT_SRC_KEY = "endpoint-src"
+ENDPOINT_DST_KEY = "endpoint-dst"
+
+#: 同一筆請求／回應交易的識別（Diameter 是 `hop:<Hop-by-Hop Id>`）。
+#: 只在沒有 IP 層時填 —— 有 IP 的擷取檔用不到它配端點。
+TRANSACTION_KEY = "transaction"
+
 
 @dataclass(frozen=True, slots=True)
 class Endpoint:
-    """一個網路端點。`role` 由 `nf.py` 事後填上，抽取階段一律留 None。"""
+    """一個網路端點。`role` 由 `nf.py` 事後填上，抽取階段一律留 None。
+
+    **`ip` 可以是空字串。** 網元匯出的裸協定（link type USER n）沒有 IP 層，
+    tshark 給不出位址；這時端點的身分只能來自協定本身 —— Diameter 的
+    Origin-Host —— 放在 `host`。**任何拿端點當鍵的地方一律用 `key`**，
+    不要直接用 `ip`：三份裸 Diameter 實測，用 `ip` 當鍵時全部端點塌成一個
+    空字串，整張梯形圖變成一條自己指向自己的泳道，一則訊息都沒少。
+    """
 
     ip: str
     port: int | None = None
     role: str | None = None
+    host: str | None = None
+    """應用層講的主機名（Diameter Origin-Host）。只在沒有 IP 層時由
+    `endpoints.fill_hostless` 填上；有 IP 的擷取檔一律 None —— 兩者都有時
+    以 IP 為鍵，主機名只是顯示用的別名，這裡刻意不做那件事。"""
+
+    @property
+    def key(self) -> str:
+        """拿端點當字典鍵、泳道鍵、比對對象時用這個：IP，沒有就主機名。"""
+        return self.ip or self.host or ""
 
     def label(self) -> str:
-        """畫圖時顯示的名字。推不出角色就老實顯示 IP —— 不猜（Rule 12）。"""
-        return self.role or self.ip
+        """畫圖時顯示的名字。推不出角色就老實顯示 IP（或主機名）—— 不猜（Rule 12）。"""
+        return self.role or self.key
 
     def with_role(self, role: str | None) -> Endpoint:
-        return Endpoint(ip=self.ip, port=self.port, role=role)
+        return Endpoint(ip=self.ip, port=self.port, role=role, host=self.host)
+
+    def with_host(self, host: str | None) -> Endpoint:
+        return Endpoint(ip=self.ip, port=self.port, role=self.role, host=host)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,7 +337,7 @@ class Flow:
         seen: dict[tuple[str, int | None], Endpoint] = {}
         for msg in self.messages:
             for ep in (msg.src, msg.dst):
-                seen.setdefault((ep.ip, ep.port), ep)
+                seen.setdefault((ep.key, ep.port), ep)
         return list(seen.values())
 
     @property

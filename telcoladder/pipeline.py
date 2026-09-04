@@ -28,6 +28,7 @@ from pathlib import Path
 from telcoladder.adapters import blind_spots, default_decode_as, parse_frame
 from telcoladder.causes import annotate
 from telcoladder.correlate import correlate
+from telcoladder.endpoints import fill_hostless
 from telcoladder.lifecycle import apply as apply_lifecycle
 from telcoladder.coverage import Coverage, measure
 from telcoladder.extract import read_frames
@@ -137,6 +138,19 @@ class AutoDecode:
     messages_before: int
     messages_after: int
 
+    prefs: tuple[str, ...] = ()
+    """額外套用的 tshark `-o` 偏好（例如 USER DLT 的載荷對映）。
+
+    與 `decode_as` 同一個地位：解剖採用了它，封包清單、解碼樹、原始位元組、
+    display filter 就都得吃同一組 —— `session._index_into` 會把它抄回
+    `Session.prefs`。`relaxed_seq` 是它的特例，為了既有讀者保留成布林。"""
+
+    user_dlt: int | None = None
+    """擷取檔的 link type 是使用者自訂的 USER n（值是 147 + n）。"""
+
+    user_dlt_dissector: str | None = None
+    """前幾格的裸位元組被認成哪個協定，並據此加了對映。"""
+
     def describe(self) -> list[str]:
         """給人看的說明。每則都要講**依據**，不能只講結論。"""
         lines: list[str] = []
@@ -150,6 +164,10 @@ class AutoDecode:
             )
             lines.append(
                 _("TCP port(s) {ports} carry payload no dissector claimed; decoding as HTTP/2 yields SBI messages, so it was included.").format(ports=ports)
+            )
+        if self.user_dlt is not None and self.user_dlt_dissector:
+            lines.append(
+                _("This capture uses a user-defined link type (DLT {dlt}) that tshark maps to no dissector - every frame is raw payload with no IP or transport layer. The first frames look like {proto}, so tshark was told to decode DLT {dlt} as {proto} and the capture re-read.").format(dlt=self.user_dlt, proto=self.user_dlt_dissector)
             )
         lines.append(
             _("Message count {before} → {after}. Add --no-auto-decode to turn this off.").format(before=self.messages_before, after=self.messages_after)
@@ -240,6 +258,7 @@ def _extract(
     rules: Sequence[str],
     *,
     relax_seq: bool,
+    prefs: Sequence[str] = (),
     display_filter: str | None = None,
 ) -> tuple[list[Message], int, int, set]:
     """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數)。
@@ -252,7 +271,8 @@ def _extract(
     protected_suci = 0
     undecoded: set = set()
     for frame in read_frames(
-        pcap, decode_as=rules, relax_seq=relax_seq, display_filter=display_filter
+        pcap, decode_as=rules, relax_seq=relax_seq, prefs=prefs,
+        display_filter=display_filter,
     ):
         messages.extend(parse_frame(frame))
         # **不指名任何 adapter** —— 問過所有人，誰有盲點誰自己回報。
@@ -285,8 +305,13 @@ def analyse(
     with_coverage: bool = True,
     auto_decode: bool = True,
     prefilter: Prefilter | None = None,
+    prefs: Sequence[str] = (),
 ) -> Analysis:
     """跑完整條管線。
+
+    `prefs` 是使用者明講的 tshark `-o` 偏好（CLI 的 `--tshark-pref`），**每一趟
+    tshark 都吃**：抽取、probe、重跑、coverage、收窄。自動偵測到的偏好
+    （USER DLT 對映）另外走 `AutoDecode.prefs`，兩者疊加時使用者的排最後。
 
     **`wire` 預設開啟**（2026-08-17 起）：一格封包一列，載體與載荷堆疊
     （見 `telcoladder/wireview.py`）。它會強制 `nas_from_ue=False` ——
@@ -339,7 +364,7 @@ def analyse(
             sliced or pcap, prefilter, capture_duration_s=duration,
             decode_as=decode_as, nas_from_ue=nas_from_ue, wire=wire,
             with_coverage=with_coverage, auto_decode=auto_decode,
-            sliced=sliced is not None, slice_note=slice_note,
+            sliced=sliced is not None, slice_note=slice_note, prefs=prefs,
         )
     finally:
         # 切片可能是客戶封包，一定要清。放 finally 而不是成功路徑末尾 ——
@@ -359,6 +384,7 @@ def _analyse_within(
     sliced: bool,
     slice_note: str,
     capture_duration_s: float | None = None,
+    prefs: Sequence[str] = (),
 ) -> Analysis:
     """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。"""
     if wire:
@@ -368,7 +394,9 @@ def _analyse_within(
     narrowing: Narrowing | None = None
     if prefilter.subscriber:
         # 盤點要跟真正的分析用同一組解碼參數，否則會漏報（見 prefilter）。
-        narrowing = narrow_to_identity(pcap, prefilter.subscriber, decode_as=rules)
+        narrowing = narrow_to_identity(
+            pcap, prefilter.subscriber, decode_as=rules, prefs=prefs
+        )
 
     from telcoladder.adapters import display_filter as _claimed
 
@@ -389,13 +417,13 @@ def _analyse_within(
         slice_note=slice_note,
     ) if not prefilter.is_empty() else None
     messages, ciphered, protected_suci, sbi_undecoded = _extract(
-        pcap, rules, relax_seq=False, display_filter=effective_filter
+        pcap, rules, relax_seq=False, prefs=prefs, display_filter=effective_filter
     )
 
     adjustment: AutoDecode | None = None
     shape: CaptureShape | None = None
     if auto_decode:
-        shape = inspect(pcap)
+        shape = inspect(pcap, prefs=prefs)
         # 候選來自兩處：這份檔裡實際偵測到的未認領埠，**以及隨程式出貨的
         # 已驗證經驗**（`data/decode-as.yaml`）。
         #
@@ -428,12 +456,16 @@ def _analyse_within(
         # 那是純粹白跑一趟 tshark。`5gc-e2e` 正是這個情況：它唯一的未認領埠
         # 7777 本來就在預設 DECODE_AS 裡（那 212 格是擷取起點太晚，加參數
         # 救不回來，見 coverage.py）。
-        if extra or shape.synthetic_seq:
+        # USER DLT 的載荷對映與 decode-as 走同一條路：候選 → 重跑 → 只在訊息數
+        # 增加時採用。第一趟在這種檔上是 0 則（tshark 一個 dissector 都不掛），
+        # 所以任何解得出東西的對映都會被採用，解不出的會被整個丟掉。
+        extra_prefs = shape.suggested_prefs()
+        if extra or shape.synthetic_seq or extra_prefs:
             # 使用者自己給的規則永遠排最後 —— tshark 同一個選擇器取最後一條。
             retry_rules = (*default_decode_as(), *extra, *decode_as)
             retried, retry_ciphered, retry_suci, retry_undecoded = _extract(
                 pcap, retry_rules, relax_seq=shape.synthetic_seq,
-                display_filter=effective_filter,
+                prefs=(*extra_prefs, *prefs), display_filter=effective_filter,
             )
             # **採用條件只有一條：訊息數必須嚴格增加。** 猜錯的 decode-as
             # 解不出東西，關錯的序號分析也不會憑空生出訊息 —— 兩者都會在
@@ -446,11 +478,16 @@ def _analyse_within(
                     decode_as=extra,
                     messages_before=len(messages),
                     messages_after=len(retried),
+                    prefs=extra_prefs,
+                    user_dlt=shape.user_dlt if extra_prefs else None,
+                    user_dlt_dissector=shape.payload_dissector if extra_prefs else None,
                 )
                 messages, ciphered, protected_suci, sbi_undecoded = (
                     retried, retry_ciphered, retry_suci, retry_undecoded
                 )
 
+    # 沒有 IP 層的匯出：先把端點從協定的主機名補回來，角色推論才有東西可鍵。
+    fill_hostless(messages)
     apply_roles(messages, nas_from_ue=nas_from_ue)
     annotate(messages)
     # 沒有觀測到釋放時這是恆等函式（`lifecycle.apply` 第一行就回頭），
@@ -474,6 +511,9 @@ def _analyse_within(
             # `_TRANSPORT_SIGNAL_NOTE`。重跑成功時這些格子已經被認領，
             # 掃描會自己算出「其實沒漏」而不印任何東西，所以無條件傳過去。
             unclaimed_tcp_frames=shape.unclaimed_frames if shape else 0,
+            # 使用者的偏好加上自動採用的 —— coverage 那趟看的必須是分析看的檔。
+            prefs=(*(adjustment.prefs if adjustment else ()), *prefs),
+            user_dlt=shape.user_dlt if shape else None,
         )
 
     return Analysis(

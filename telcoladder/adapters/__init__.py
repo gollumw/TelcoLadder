@@ -121,6 +121,10 @@ class Adapter(Protocol):
     #: 選用。這一格裡「看得到協定層、但讀不出內容」的東西。見 `blind_spots()`。
     def blind_spots(self, frame: Frame) -> Iterable[BlindSpot]: ...
 
+    #: 選用。**這段裸位元組是不是你的協定？** 只在擷取檔的 link type 是
+    #: USER n（tshark 一個 dissector 都不掛）時才會被問到，見 `sniff_payload()`。
+    def sniff(self, payload: bytes) -> bool: ...
+
 
 from telcoladder.adapters import (  # noqa: E402
     diameter, gtp, gtpv2, nas5gs, naseps, ngap, pfcp, s1ap, sbi, sip,
@@ -301,6 +305,25 @@ def blind_spots(frame: Frame) -> list[BlindSpot]:
             continue
         out.extend(hook(frame))
     return out
+
+
+def sniff_payload(payload: bytes) -> "Adapter | None":
+    """問過每一個 adapter：這段裸位元組是不是你的協定？
+
+    **只用在 USER DLT 的擷取檔上**（`probe.inspect()`）：網元匯出的裸協定
+    沒有任何鏈路／IP／傳輸層，tshark 對它一個 dissector 都不掛，每格都是
+    `user_dlt` 底下一片 `data`。要它解，得先知道載荷是什麼 —— 而知道的
+    是 adapter，不是核心（核心不認得任何一個協定的標頭形狀）。
+
+    **恰好一個** adapter 認領才回傳它；零個或兩個以上都回 None ——
+    兩個都說是我的，代表其中一個的判準太鬆，猜一個就是把整份檔解錯協定
+    而且看起來很正常。
+    """
+    claimed = [
+        adapter for adapter in adapters()
+        if (hook := getattr(adapter, "sniff", None)) is not None and hook(payload)
+    ]
+    return claimed[0] if len(claimed) == 1 else None
 
 
 def parse_frame(frame: Frame) -> list[Message]:

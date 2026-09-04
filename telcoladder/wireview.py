@@ -33,7 +33,7 @@ def collapse(flows: list[Flow]) -> list[Flow]:
         groups: dict[tuple[int, str, str], list[Message]] = {}
         order: list[tuple[int, str, str]] = []
         for msg in flow.messages:
-            key = (msg.frame, msg.src.ip, msg.dst.ip)
+            key = (msg.frame, msg.src.key, msg.dst.key)
             if key not in groups:
                 groups[key] = []
                 order.append(key)

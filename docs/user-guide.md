@@ -367,6 +367,17 @@ values).
 
 ## 8. Two kinds of source file: wire captures vs NE traces
 
+> **A third kind (2026-09-05): raw protocol exports.** Some elements write
+> Diameter (or another protocol) straight into a pcap with a user-defined
+> link type (`USER 0`, DLT 147) and no IP or transport layer at all.
+> tshark decodes nothing there until it is told what the payload is. The
+> tool now reads the link type, sniffs the first frames, and when one
+> adapter claims them re-reads the file with the right `-o uat:user_dlts`
+> mapping (the summary says so, and `--no-auto-decode` turns it off). If
+> nothing claims the payload, the coverage note prints the exact
+> `--tshark-pref '...'` to pass by hand. Such a file carries no addresses:
+> endpoints come from the protocol itself (Diameter's Origin-Host).
+
 The easiest thing to step on with real packets — and it **raises no
 error at all**.
 

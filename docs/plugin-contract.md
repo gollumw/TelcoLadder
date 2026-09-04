@@ -105,8 +105,9 @@ retains anything.
 
 ## The adapter contract
 
-An adapter is any object (usually a module) with these five, plus one
-optional:
+An adapter is any object (usually a module) with these five, plus the
+optional attributes and hooks described below (`DECODE_AS`, `CARRIES`,
+`CARRIER_LAYER`, `carrier_keys`, `blind_spots`, `sniff`):
 
 ```python
 NAME = "sip"                              # appears on Message.protocol
@@ -162,6 +163,36 @@ unused field. Undeclared means empty.
 `PluginError` outright.** tshark honours only the last `-d`, and the losing
 adapter receives nothing — silently picking one hides that failure. On
 collision, specify explicitly via the CLI.
+
+### sniff: claiming raw payload when the capture has no link layer
+
+Some network elements export a protocol **raw**: the pcap's link type is a
+user-defined `USER n` (147 + n) and every frame starts at the protocol
+header — no Ethernet, no IP, no transport. tshark maps such a link type to
+no dissector, so `DISPLAY_FILTER` receives nothing and the whole file reads
+as "N frames not decoded".
+
+The core cannot know what the payload is; the adapter can. Declare an
+optional hook:
+
+```python
+def sniff(payload: bytes) -> bool:
+    """Is this raw frame one of my messages?"""
+```
+
+`probe.inspect()` calls it on the first few frames only when the link type
+is in the USER range. **Exactly one** adapter must claim every sampled
+frame; then the tool retries with
+`-o 'uat:user_dlts:"User n (DLT=147+n)","<DISSECTORS[0]>","0","","0",""'`
+under the usual gate (the message count must strictly increase). Two
+adapters claiming the same bytes, or a frame nobody claims, means no
+mapping and an honest "user-defined link type, no dissector" line with the
+exact `--tshark-pref` the user can pass by hand.
+
+Make the check strict. Diameter's is "version byte is 1 and the 24-bit
+length equals the frame length" — accepting a length *smaller* than the
+frame would claim anything that starts with `0x01`, and a wrong claim
+decodes the whole file as the wrong protocol with no error.
 
 ### DISPLAY_FILTER gets parenthesised
 

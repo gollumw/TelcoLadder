@@ -433,6 +433,8 @@ class _Handler(BaseHTTPRequestHandler):
             session.decode_as = (*default_decode_as(), *rules)
             session.auto_decode_as = ()
             session.relax_seq = False
+            session.prefs = ()
+            session.auto_prefs = ()
             session.analysis = None
             session.flowtable = None
             session.decode = DecodeCache()
@@ -469,6 +471,7 @@ class _Handler(BaseHTTPRequestHandler):
             frames = matching_frames(
                 session.pcap, expr,
                 decode_as=session.decode_as, relax_seq=session.relax_seq,
+                prefs=session.prefs,
             )
         except PacketColumnsUnavailable as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)

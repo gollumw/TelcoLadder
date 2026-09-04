@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+import telcoladder.coverage as coverage_module
+
 from telcoladder.coverage import (
     MIN_TOTAL_FOR_ALERT,
     Coverage,
@@ -124,8 +126,12 @@ def test_small_clean_captures_stay_quiet(name):
     """
     cov = _coverage_for(name)
     assert cov.total is not None and cov.total < MIN_TOTAL_FOR_ALERT
-    assert not cov.scanned, "小檔不該花第二趟掃描的成本"
-    assert describe(cov) == [], "小檔不該產生任何輸出"
+    # 2026-09-05 起小檔**會**掃（幾十毫秒，換來「那 45 格是 RADIUS」而不是
+    # 「45 格未解碼」）；守的是**措辭**：只剩心跳與 ACK 沒解碼時，一個字都不說。
+    assert cov.scanned, "小檔的掃描是便宜的，該跑"
+    assert all(c.protocol in {"sctp", "tcp", "udp"} for c in cov.unclaimed), \
+        "這兩份乾淨小檔沒解碼的只該是傳輸層殘餘"
+    assert describe(cov) == [], "小檔裡只有心跳沒解碼，不該產生任何輸出"
 
 
 def test_no_output_when_measurement_failed():
@@ -164,7 +170,7 @@ def test_full_role_set_is_not_called_n2_only():
 # ── 觸發訊號：為什麼不能只看全域命中率 ──────────────────────────
 
 
-def test_high_hit_rate_still_scans_when_a_transport_yields_nothing(e2e_pcap: Path):
+def test_high_hit_rate_still_scans_when_a_transport_yields_nothing(e2e_pcap: Path, monkeypatch):
     """**這條是 2026-08-18 那次漏報的回歸測試。**
 
     第一份真實封包的命中率是 187/356 = 52.5%，剛好高過
@@ -175,16 +181,27 @@ def test_high_hit_rate_still_scans_when_a_transport_yields_nothing(e2e_pcap: Pat
     協定」稀釋。NGAP 解了 187 格，就足以把 TCP 上 100% 的失敗蓋過去。
     分傳輸層的訊號不會被稀釋。
     """
-    parsed = 500  # 626 格裡的 500，命中率 80%，遠高於門檻
+    # 2026-09-05 起小檔一律掃（便宜）。「命中率正常就不掃」這條省成本規則
+    # 只對大檔成立，所以把總格數假造成大檔 —— 守的是規則本身，不是 626 這個數。
+    monkeypatch.setattr(coverage_module, "total_packets", lambda pcap, tshark=None: 100_000)
+    parsed = 80_000  # 命中率 80%，遠高於門檻
     quiet = measure(e2e_pcap, parsed_frames=parsed)
-    assert not quiet.scanned, "命中率 80%，單看比率本來就不該掃"
+    assert not quiet.scanned, "大檔、命中率 80%，單看比率本來就不該掃"
 
     loud = measure(e2e_pcap, parsed_frames=parsed, unclaimed_tcp_frames=212)
     assert loud.scanned, "TCP 上有 212 格沒人認領，命中率再高也要查"
 
 
-def test_a_trickle_of_unclaimed_tcp_is_not_worth_a_scan(e2e_pcap: Path):
-    """對照組：幾格雜訊不該害使用者多等一趟全檔掃描。"""
+def test_a_trickle_of_unclaimed_tcp_is_not_worth_a_scan(e2e_pcap: Path, monkeypatch):
+    """對照組：大檔上幾格雜訊不該害使用者多等一趟全檔掃描。"""
+    monkeypatch.setattr(coverage_module, "total_packets", lambda pcap, tshark=None: 100_000)
     assert not measure(
-        e2e_pcap, parsed_frames=500, unclaimed_tcp_frames=1
+        e2e_pcap, parsed_frames=80_000, unclaimed_tcp_frames=1
     ).scanned
+
+
+def test_small_files_are_always_scanned_when_anything_is_undecoded(e2e_pcap: Path):
+    """便宜的掃描一律跑：626 格、命中率 80% 也要能說出那 20% 是什麼。"""
+    cov = measure(e2e_pcap, parsed_frames=500)
+    assert cov.scanned
+    assert cov.unclaimed, "掃了就該有清單"

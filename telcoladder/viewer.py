@@ -173,11 +173,13 @@ def decode_json(session: Session, frame: int) -> dict:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
             relax_seq = session.relax_seq
+            prefs = session.prefs
         trees = decode_frames(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
             relax_seq=relax_seq,
+            prefs=prefs,
             tshark=session.tshark,
         )
         session.decode.put(trees)
@@ -203,11 +205,13 @@ def bytes_json(session: Session, frame: int) -> dict:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
             relax_seq = session.relax_seq
+            prefs = session.prefs
         found = frame_bytes(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
             relax_seq=relax_seq,
+            prefs=prefs,
             tshark=session.tshark,
         )
         session.frame_bytes.put(found)

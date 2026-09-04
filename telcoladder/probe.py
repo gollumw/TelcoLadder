@@ -46,10 +46,11 @@ trace 功能是把應用層訊息各自包一層假的 IP/TCP 標頭吐出來，
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from telcoladder.tshark import Tshark, find_tshark
+from telcoladder.tshark import LINKTYPE_USER0, Tshark, find_tshark, pref_args, user_dlt_pref
 
 #: 一個方向要送出這麼多格帶載荷的封包，序號不動才算得上證據。
 #:
@@ -77,6 +78,17 @@ MAX_SUGGESTED_PORTS = 8
 #: `data` 是 tshark 表達「有載荷但我不知道是什麼」的方式。
 _UNCLAIMED_TAILS = frozenset({"", "data"})
 
+#: `frame.encap_type` 的 USER 0 … USER 15。wiretap 把 libpcap 的 LINKTYPE_USER0
+#: （147）到 USER15（162）對到這 16 個值。**這是 wiretap 的內部編號，不是
+#: pcap 的 link type**，兩者差 102 —— 由 `tests/test_user_dlt.py` 對
+#: `tshark -G values` 釘住，wiretap 重新編號就會紅，而不是靜默對錯。
+WTAP_ENCAP_USER0 = 45
+WTAP_ENCAP_USER15 = 60
+
+#: 嗅探載荷時看前幾格。看一格不夠 —— 心跳與資料訊息形狀可能不同；
+#: 看太多格是白讀，`frame_bytes` 用 `-c N` 讀到第 N 格為止。
+SNIFF_FRAMES = 8
+
 
 @dataclass(frozen=True, slots=True)
 class CaptureShape:
@@ -102,6 +114,19 @@ class CaptureShape:
     #: （436 MB 上約 70 秒）。
     server_ports: tuple[int, ...] = ()
 
+    #: `frame.encap_type` 的值（wiretap 編號）。None 代表沒讀到。
+    encap_type: int | None = None
+
+    #: pcap 的 link type，**只在它是使用者自訂的 USER n 時有值**（147 + n）。
+    #: tshark 對這種擷取檔一個 dissector 都不掛，每格都是 `user_dlt` 底下的
+    #: 一片 `data` —— 三份網元匯出的裸 Diameter 實測就是這樣，工具原本讀出 0 則
+    #: 而且只說「170 格未解碼」。
+    user_dlt: int | None = None
+
+    #: 前幾格的裸位元組被哪個 adapter 認領（`adapters.sniff_payload`）。
+    #: None 代表沒有人認領、或不只一個人認領 —— 兩者都不能猜。
+    payload_dissector: str | None = None
+
     def is_network_element_trace(self) -> bool:
         """看起來像網元吐出來的 trace，而不是線路側錄。
 
@@ -112,7 +137,17 @@ class CaptureShape:
         return self.synthetic_seq
 
     def needs_retry(self) -> bool:
-        return self.synthetic_seq or bool(self.unclaimed_ports)
+        return self.synthetic_seq or bool(self.unclaimed_ports) or bool(self.suggested_prefs())
+
+    def suggested_prefs(self) -> tuple[str, ...]:
+        """USER DLT 的載荷對映。沒有人認領載荷就什麼都不建議。
+
+        與 `suggested_decode_as` 同一個安全網：對映錯了 tshark 解不出訊息，
+        `pipeline` 的「訊息數必須增加」條件會把整次重跑丟掉。
+        """
+        if self.user_dlt is None or self.payload_dissector is None:
+            return ()
+        return (user_dlt_pref(self.user_dlt - LINKTYPE_USER0, self.payload_dissector),)
 
     def suggested_decode_as(self) -> tuple[str, ...]:
         """對未認領的埠建議解成 HTTP/2。
@@ -140,16 +175,28 @@ def _protocol_tail(protocols: str) -> str:
     return tail[0] if tail else ""
 
 
-def inspect(pcap: Path, *, tshark: Tshark | None = None) -> CaptureShape:
+def inspect(
+    pcap: Path, *, prefs: Sequence[str] = (), tshark: Tshark | None = None
+) -> CaptureShape:
     """掃一趟，回報擷取檔形狀。
 
     只看帶載荷的 TCP 封包 —— SCTP/UDP 上的訊令沒有這個問題（沒有序號
     重組，tshark 每格獨立解碼），純 ACK 也不帶資訊。
+
+    `prefs` 是使用者明講的 tshark 偏好（`--tshark-pref`）。這一趟要吃同一組，
+    否則「盤點形狀」與「真正分析」看的是兩份不同的檔。
     """
     tshark = tshark or find_tshark()
+    encap = encap_type(pcap, tshark, prefs)
+    user_dlt: int | None = None
+    payload_dissector: str | None = None
+    user_dlt = user_dlt_of(encap)
+    if user_dlt is not None:
+        payload_dissector = _sniff_payload(pcap, tshark, prefs)
+
     proc = tshark.run(
         [
-            "-r", str(pcap),
+            "-r", str(pcap), *pref_args(prefs),
             "-Y", "tcp.len>0",
             "-T", "fields",
             # occurrence=f：隧道封包會有多層 TCP，只取最外層即可。
@@ -211,4 +258,52 @@ def inspect(pcap: Path, *, tshark: Tshark | None = None) -> CaptureShape:
         server_ports=tuple(
             sorted({int(port) for port in server_port.values() if port.isdigit()})
         ),
+        encap_type=encap,
+        user_dlt=user_dlt,
+        payload_dissector=payload_dissector,
     )
+
+
+def encap_type(pcap: Path, tshark: Tshark, prefs: Sequence[str] = ()) -> int | None:
+    """第一格的 `frame.encap_type`。**便宜**：`-c 1` 只讀一格。
+
+    讀不到就回 None（空檔、tshark 失敗），呼叫端當作「不是 USER DLT」——
+    這裡猜錯的代價只是少一次重跑，不會產生錯的圖。
+    """
+    proc = tshark.run(
+        ["-r", str(pcap), *pref_args(prefs), "-c", "1", "-T", "fields", "-e", "frame.encap_type"],
+        timeout=60,
+    )
+    text = proc.stdout.strip().split("\n")[0].strip() if proc.returncode == 0 else ""
+    return int(text) if text.isdigit() else None
+
+
+def user_dlt_of(encap: int | None) -> int | None:
+    """wiretap 的 encap 值 → pcap link type，只對 USER 0–15 有值。"""
+    if encap is None or not WTAP_ENCAP_USER0 <= encap <= WTAP_ENCAP_USER15:
+        return None
+    return LINKTYPE_USER0 + (encap - WTAP_ENCAP_USER0)
+
+
+def _sniff_payload(pcap: Path, tshark: Tshark, prefs: Sequence[str]) -> str | None:
+    """前幾格的裸位元組是哪個 adapter 的協定。
+
+    **每一格都要被同一個 adapter 認領**才算數。一格認領、一格不認領，代表
+    這不是單純的裸協定匯出（也許有標頭、也許混了別的東西），這時對映上去
+    會把一部分解錯而且看起來正常 —— 寧可留白讓 coverage 講「USER DLT 沒有
+    對映」，使用者用 `--tshark-pref` 明講。
+    """
+    from telcoladder.adapters import sniff_payload
+    from telcoladder.framebytes import frame_bytes
+
+    try:
+        raw = frame_bytes(pcap, range(1, SNIFF_FRAMES + 1), prefs=prefs, tshark=tshark)
+    except Exception:  # noqa: BLE001 - 嗅探失敗只代表不建議，不能讓分析炸掉
+        return None
+    names: set[str | None] = set()
+    for hexdump in raw.values():
+        adapter = sniff_payload(bytes.fromhex(hexdump))
+        names.add(adapter.DISSECTORS[0] if adapter is not None else None)
+    if len(names) != 1:
+        return None
+    return names.pop()

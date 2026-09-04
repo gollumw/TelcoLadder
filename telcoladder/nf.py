@@ -153,9 +153,9 @@ def find_relays(messages: list[Message]) -> dict[str, tuple[str, str]]:
     for (proto, path), msgs in seen_paths.items():
         arrived_at: set[str] = set()
         for msg in sorted(msgs, key=lambda m: m.ts):
-            if msg.src.ip in arrived_at and msg.dst.ip not in arrived_at:
-                mirrored[msg.src.ip].add(path)
-            arrived_at.add(msg.dst.ip)
+            if msg.src.key in arrived_at and msg.dst.key not in arrived_at:
+                mirrored[msg.src.key].add(path)
+            arrived_at.add(msg.dst.key)
     for ip, paths in mirrored.items():
         if len(paths) >= 2:
             # 這個位址對它收過的請求做了逐字轉發，而且不只一種
@@ -174,9 +174,9 @@ def find_relays(messages: list[Message]) -> dict[str, tuple[str, str]]:
 
         # ── 證據 A：訊息指名的收件者不是線路上的對端（`relay-target`）──
         target = msg.detail.get("relay-target")
-        if target and target != msg.dst.ip:
+        if target and target != msg.dst.key:
             # 目標就是收件者本人 → 直接通訊。少了這個判斷會把真正的網元標成 SCP。
-            mark(msg.dst.ip, role,
+            mark(msg.dst.key, role,
                  "relay-target")
 
         # ── 證據 B：訊息自己說它被轉送過（`relay-record`）──
@@ -190,7 +190,7 @@ def find_relays(messages: list[Message]) -> dict[str, tuple[str, str]]:
         # 「指名的收件者」看起來就在線路的另一端。實測 fixture 上證據 A
         # 找到 0 個中繼，而那份檔裡確實有一台。
         if msg.detail.get("relay-record"):
-            mark(msg.src.ip, role, "relay-record")
+            mark(msg.src.key, role, "relay-record")
 
     return {ip: (next(iter(roles)), basis[ip])
             for ip, roles in candidates.items() if len(roles) == 1}
@@ -222,7 +222,8 @@ def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
 
 
 def _endpoint_key(endpoint: Endpoint) -> str:
-    return endpoint.ip
+    # `key`：IP，沒有 IP 層時是主機名。直接用 `ip` 會把裸協定匯出的所有端點併成一個空字串。
+    return endpoint.key
 
 
 def resolve_roles(messages: list[Message]) -> dict[str, str]:
@@ -381,15 +382,15 @@ def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Me
     roles = resolve_roles(messages)
 
     for msg in messages:
-        msg.src = msg.src.with_role(roles.get(msg.src.ip))
-        msg.dst = msg.dst.with_role(roles.get(msg.dst.ip))
+        msg.src = msg.src.with_role(roles.get(msg.src.key))
+        msg.dst = msg.dst.with_role(roles.get(msg.dst.key))
 
         if nas_from_ue and msg.protocol == "nas-5gs":
             # gNB 那一側換成 UE。判不出 gNB 是誰就維持原樣，不硬改。
             if msg.src.role == "gNB":
-                msg.src = Endpoint(ip=msg.src.ip, port=msg.src.port, role=UE_ROLE)
+                msg.src = Endpoint(ip=msg.src.key, port=msg.src.port, role=UE_ROLE)
             elif msg.dst.role == "gNB":
-                msg.dst = Endpoint(ip=msg.dst.ip, port=msg.dst.port, role=UE_ROLE)
+                msg.dst = Endpoint(ip=msg.dst.key, port=msg.dst.port, role=UE_ROLE)
 
     return messages
 

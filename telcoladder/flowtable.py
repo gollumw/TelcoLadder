@@ -151,7 +151,7 @@ class FlowTable:
 
 
 def _direction(msg: Message) -> tuple[str, str]:
-    return (msg.src.ip, msg.dst.ip)
+    return (msg.src.key, msg.dst.key)
 
 
 def _is_nas(msg: Message) -> bool:
