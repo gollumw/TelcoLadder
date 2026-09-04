@@ -36,7 +36,8 @@
 
 ## 1. Pre-flight: see what your capture actually contains
 
-TelcoLadder currently **decodes the 5G SA core only**. Real captures are
+TelcoLadder decodes the **5G SA core, the 4G/EPC control plane and IMS
+signalling** (the table below is the exact list). Real captures are
 usually mixed; spend 10 seconds confirming the contents rather than
 staring at "no 5G signalling found":
 
@@ -56,9 +57,9 @@ Check the protocol tree for these names:
 | `ngap` (SCTP 38412) | ✅ full support — N2 signalling, cause highlighting, spec clauses |
 | `nas-5gs` | ✅ cleartext fully; **ciphered after Security Mode Command — shell visible, contents not** (the tool says so; §5) |
 | `http2` (SBI) | ⚠ cleartext h2c decodes (SUPI correlation, SCP relay detection included); **TLS-encrypted does not** — real networks mostly run TLS |
-| `pfcp` (UDP 8805) | ✅ N4 session messages; failures highlight but the cause clause table is not yet transcribed |
-| `s1ap` / `gtpv2` | ❌ **4G EPC not yet supported** — it answers "no 5G signalling found" |
-| `sip` / `diameter` | ❌ **VoLTE / IMS is Phase 2, not yet started** — the contract is laid; the adapters do not exist |
+| `pfcp` (UDP 8805) | ✅ N4 session messages; causes catalogued (29 entries, oracle-pinned, no clause numbers) |
+| `s1ap` / `nas-eps` / `gtpv2` | ✅ **4G/EPC control plane** (2026-08-24): S1AP carrying NAS-EPS, GTPv2-C on S11 and S5/S8; the IMSI joins S1-MME and S11 into one subscriber flow. All 236 causes catalogued, no clause numbers |
+| `sip` / `diameter` | ✅ SIP (Gm; keyed on `From`, never `To`) and Diameter (S6a/S6d, Cx/Dx, Gx with roles and causes; other applications decode with their Application-Id but get no role inference — §7) |
 | `gtp` (user plane) | ✅ **N3 tunnel attribution** (2026-08-21) — G-PDUs join subscriber flows by (destination, TEID), QFI is read. **No usage KPIs yet**: no throughput, no sequence gaps, no Echo RTT; every G-PDU is one row, so pair large files with `--since/--until` |
 
 `tshark` is **not on the default PATH** on either major platform
@@ -354,12 +355,9 @@ values).
   relayed through a DRA is observed twice on the wire and **counts as
   one failure** (deduped on the End-to-End Id RFC 6733 §6.2 requires
   relays to preserve).
-- **VoLTE/IMS SIP does not decode yet** (§1's table). The Diameter side
-  is in; SIP is the next block — the contract (DECODE_AS, relay-record,
-  identity classes) is laid.
-- **PFCP's cause table is not yet transcribed** — N4 failures highlight
-  without clause references (transcription is human work; no clause in
-  this repo is machine-generated).
+- **PFCP causes are catalogued (29 entries since 2026-08-29) but carry no
+  clause numbers** — the same rule as Diameter: names are oracle-pinned,
+  clauses print only once a human has transcribed them.
 - Performance: extract/parse measures ~38–56k packets/sec;
   **correlate/render scaling under many subscribers is unmeasured**.
 - **Cause explanations in the summary and MCP were Chinese-only** (§3c);
