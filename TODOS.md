@@ -409,11 +409,17 @@ dedup). Mutation confirms: keying on hop → `failures` becomes 2.
 
 ---
 
-## T-DIAM-MORE | the other twenty-odd Diameter interfaces (P3, **awaiting real packets**)
+## T-DIAM-MORE | the remaining Diameter interfaces (P3, **awaiting real packets**)
 
-**What**: Sh/Dh, Rx, Sy, S9, SWx/SWm/S6b/STa, Gy/Ro, Rf/Gz, SGd, T6a/T6b,
-SLg/SLh, S13. Application-Ids are recognised and command names display, but
-there is no `DIAMETER_ROLES` role inference and no cause collection.
+**What**: Dh, Sy, S9, SWm/STa, Gy/Ro, Rf/Gz, SGd, T6a/T6b, SLg/SLh, S13.
+Application-Ids are recognised and command names display, but there is no
+`DIAMETER_ROLES` role inference and no cause collection.
+
+**Narrowed 2026-09-05**: Rx, Sh, S6b and SWx came off this list the day
+real exports carried them — roles for AF/AS/AAA/PGW, the `PGW ≡ PCEF`
+role family, and base Result-Code 3006/3001/3008/3009/3011 landed with
+`tests/fixtures/diameter-user-dlt/`. The rule below is unchanged: an
+interface enters the role table only with a packet that exercises it.
 
 **Why not now**: writing role inference for an interface with no fixture is
 shipping unverified code. Every row of

@@ -5,6 +5,10 @@
 """
 
 CATALOG: dict[str, str] = {
+    'contradictory evidence ({param}) - left unlabelled rather than guessed':
+        '證據互斥（{param}）—— 寧可不標，不猜',
+    ' vs ':
+        ' 對 ',
     # ── flowtable：Diameter 的重傳與未獲回應（2026-09-05） ──
     'Same direction ({src} → {dst}), same Diameter End-to-End Id ({end}), sent {n} times{tflag} - RFC 6733 keeps the End-to-End Id on retransmission, so this is a confirmed retransmission.':
         '同方向（{src} → {dst}）、同一個 Diameter End-to-End Id（{end}），送了 {n} 次{tflag} —— RFC 6733 規定重送保留 End-to-End Id，所以這是確定的重傳。',

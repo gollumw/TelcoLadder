@@ -117,16 +117,24 @@ def sniff(payload: bytes) -> bool:
 #: `diameter_3gpp` 表；別的廠商有自己的號碼空間，不查。
 VENDOR_3GPP = 10415
 
-#: Application-Id → 介面名稱。**這一輪只收有角色推論的那三個加基礎訊息**；
+#: Application-Id → 介面名稱。**只收有角色推論的介面加基礎訊息**；
 #: 其餘的認得出號碼但推不出誰是誰，一律顯示號碼（見檔頭）。
+#:
+#: 2026-08-23 收了三個（S6a/S6d、Cx/Dx、Gx）。2026-09-05 用真封包驗過之後
+#: 再收四個：Sh、Rx、SWx、S6b —— 三份裸匯出裡就是這四個，之前每一個
+#: 都只顯示號碼、兩端都沒有名字。
 #:
 #: 號碼取自 IANA 的 Diameter Application-Id 登錄，並與 Wireshark 的 Diameter
 #: 字典逐一對過（`tests/test_adapter_diameter.py`）。
 APPLICATIONS: dict[int, str] = {
     0: "Base",
     16777216: "Cx/Dx",
+    16777217: "Sh",
+    16777236: "Rx",
     16777238: "Gx",
     16777251: "S6a/S6d",
+    16777265: "SWx",
+    16777272: "S6b",
 }
 
 #: Command-Code → 命令名稱。命令碼由 IANA **全域**配發（不像 Experimental-
@@ -146,6 +154,13 @@ COMMANDS: dict[int, str] = {
     282: "Disconnect-Peer",
     # RFC 4006 信用控制（Gx 借用同一個命令碼）
     272: "Credit-Control",
+    # NASREQ（RFC 7155）—— Rx 與 S6b 借用同一個命令碼
+    265: "AA",
+    # Sh（TS 29.329）
+    306: "User-Data",
+    307: "Profile-Update",
+    308: "Subscribe-Notifications",
+    309: "Push-Notification",
     # Cx/Dx（TS 29.229）
     300: "User-Authorization",
     301: "Server-Assignment",

@@ -196,7 +196,8 @@ def find_relays(messages: list[Message]) -> dict[str, tuple[str, str]]:
             for ip, roles in candidates.items() if len(roles) == 1}
 
 
-def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
+def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str,
+                   agent_transactions: frozenset[tuple] = frozenset()) -> None:
     """Diameter 訊息的角色投票。
 
     **Answer 的方向與 Request 相反** —— 與上面 NGAP 那段是同一個坑：
@@ -214,11 +215,24 @@ def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str) -> None:
         return
     initiator_role, responder_role = roles
     is_answer = msg.label.endswith(" Answer")
+    if _diameter_transaction(msg) in agent_transactions:
+        # **3xxx 協定錯誤是 Diameter agent 發的，不是應用對端**（RFC 6733 §7.1.3）：
+        # 3002 是 DRA 送不出去、3006 是 redirect agent 叫你改送別處。回這種
+        # answer 的位址不是 HSS／PCRF —— 整筆交易（request 與 answer）都不投票：
+        # request 那一格的對端是同一台 agent，投「回應方」的票會把 redirect agent
+        # 標成 HSS，fixture 實測就是這樣。
+        return
     initiator = dst_ip if is_answer else src_ip
     responder = src_ip if is_answer else dst_ip
     why = f"diameter-dir:{msg.label.removesuffix(' Answer')}"
     vote(initiator, initiator_role, why)
     vote(responder, responder_role, why)
+
+
+def _diameter_transaction(msg: Message) -> tuple:
+    """同一筆 request／answer 的識別：peer 對（無方向）＋ End-to-End Id。
+    與 `flowtable._diameter_unanswered` 同一個鍵，理由也相同。"""
+    return (frozenset((msg.src.key, msg.dst.key)), msg.detail.get("end-to-end-id"))
 
 
 def _endpoint_key(endpoint: Endpoint) -> str:
@@ -234,7 +248,58 @@ def resolve_roles(messages: list[Message]) -> dict[str, str]:
 def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, str]]:
     """掃過所有訊息，判定每個 IP 的網元角色，**連同判定依據**。
 
-    回傳 IP → (角色, 依據句)。判不出來的 IP 不會出現在結果裡。
+    回傳 IP → (角色, 依據句)。判不出來的 IP 不會出現在結果裡；
+    **為什麼判不出來**由 `role_contradictions()` 回答。
+    """
+    relays, votes = _tally(messages)
+    resolved: dict[str, tuple[str, str]] = dict(relays)
+    for ip, candidates in votes.items():
+        role = _collapse(candidates)
+        if role is not None:
+            resolved[ip] = (role, candidates[role] if role in candidates else next(iter(candidates.values())))
+    return resolved
+
+
+def role_contradictions(messages: list[Message]) -> dict[str, tuple[str, ...]]:
+    """判不出來的位址各自收到了哪些互斥的角色票。
+
+    `resolve_roles_with_basis` 對矛盾的處置是留白（標錯比不標更糟），但留白
+    在畫面上與「沒有任何證據」長得一模一樣。實測一份 Gx 擷取檔：同一個端點
+    既回應 CCR 又回應 RAR —— 那是 PCRF 與 PCEF 兩個互斥的角色（大概是模擬器
+    一機扮兩角），工具正確地不標它，卻沒說為什麼。這裡把「為什麼」交出去，
+    措辭只寫事實，不下結論。
+    """
+    _relays, votes = _tally(messages)
+    return {
+        ip: tuple(sorted(candidates))
+        for ip, candidates in votes.items()
+        if _collapse(candidates) is None
+    }
+
+
+#: 同一個位址可以正當地同時扮演的角色 —— **不是矛盾，是同一台設備在兩個
+#: 介面上的兩個名字**。PGW 在 Gx 上叫 PCEF（TS 29.212 的用語），在 S6b、
+#: S5/S8 上叫 PGW；同一個位址兩種票都收到時，用家族的正式名。
+#: Gx-only 的擷取檔仍然叫 PCEF —— 只有一票時不動它。
+ROLE_FAMILIES: tuple[frozenset[str], ...] = (
+    frozenset({"PGW", "PCEF"}),
+)
+_FAMILY_NAME = {frozenset({"PGW", "PCEF"}): "PGW"}
+
+
+def _collapse(candidates: dict[str, str]) -> str | None:
+    """一組角色票 → 一個角色，或 None（矛盾）。"""
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    roles = frozenset(candidates)
+    for family in ROLE_FAMILIES:
+        if roles <= family:
+            return _FAMILY_NAME[family]
+    return None
+
+
+def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[str, dict[str, str]]]:
+    """第一趟找轉送者、第二趟收票。回傳 (轉送者, 位址 → {角色: 依據})。
 
     依據是**機器形式** `kind[:param]`（如 `n2-port`、`service:nudm-sdm`、
     `mirror:20`）—— 語言無關，句子由呈現層依請求語言產生（`viewer.BASIS_TEXT`，
@@ -251,6 +316,14 @@ def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, st
     """
     relays = find_relays(messages)
     votes: dict[str, dict[str, str]] = defaultdict(dict)
+    # 以 3xxx 協定錯誤收尾的 Diameter 交易：回的是 agent，不是應用對端
+    # （`_diameter_vote` 的說明）。先掃一遍收齊，投票時整筆跳過。
+    agent_transactions = frozenset(
+        _diameter_transaction(m) for m in messages
+        if m.protocol == "diameter" and m.label.endswith(" Answer")
+        and m.cause is not None and m.cause.table == "diameter_base"
+        and 3000 <= m.cause.value < 4000
+    )
 
     def vote(ip: str, role: str, why: str) -> None:
         """記一票（含依據）。**落在轉送者身上的一律丟掉。**
@@ -322,7 +395,7 @@ def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, st
 
         # ── Diameter：(Application-Id, Command-Code) 決定兩方是誰 ──
         if msg.protocol == "diameter":
-            _diameter_vote(msg, vote, src_ip, dst_ip)
+            _diameter_vote(msg, vote, src_ip, dst_ip, agent_transactions)
 
         if msg.protocol == "pfcp" and msg.label.startswith("Session Establishment Request"):
             why = "pfcp-dir"
@@ -362,14 +435,10 @@ def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, st
                     # 照收會把 SMF 這一票投在 SCP 身上。`vote()` 會擋掉。
                     vote(src_ip, nf_type, f"user-agent:{agent}")
 
-    # 只採納沒有矛盾的判定。同一個 IP 收到兩種角色代表推論鏈有問題，
-    # 這時寧可不標 —— 標錯比不標更糟。
-    resolved: dict[str, tuple[str, str]] = dict(relays)
-    for ip, candidates in votes.items():
-        if len(candidates) == 1:
-            role, why = next(iter(candidates.items()))
-            resolved[ip] = (role, why)
-    return resolved
+    # 只採納沒有矛盾的判定（`_collapse`）。同一個 IP 收到兩種互斥的角色代表
+    # 推論鏈有問題，這時寧可不標 —— 標錯比不標更糟；矛盾本身由
+    # `role_contradictions` 講出來。
+    return relays, votes
 
 
 def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Message]:
@@ -428,6 +497,27 @@ DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
     # ── Gx（App 16777238）──
     (16777238, 272): ("PCEF", "PCRF"),   # Credit-Control
     (16777238, 258): ("PCRF", "PCEF"),   # Re-Auth —— PCRF 主動
+    # ── 2026-09-05 用真封包驗過之後補的四個介面 ──
+    # Rx（App 16777236，TS 29.214）：AF（通常是 P-CSCF）向 PCRF 要資源。
+    (16777236, 265): ("AF", "PCRF"),     # AA
+    (16777236, 275): ("AF", "PCRF"),     # Session-Termination
+    (16777236, 258): ("PCRF", "AF"),     # Re-Auth —— PCRF 主動
+    (16777236, 274): ("PCRF", "AF"),     # Abort-Session
+    # Sh（App 16777217，TS 29.329）：AS 讀寫 HSS 的使用者資料；PNR 是 HSS 主動推。
+    (16777217, 306): ("AS", "HSS"),      # User-Data
+    (16777217, 307): ("AS", "HSS"),      # Profile-Update
+    (16777217, 308): ("AS", "HSS"),      # Subscribe-Notifications
+    (16777217, 309): ("HSS", "AS"),      # Push-Notification
+    # S6b（App 16777272，TS 29.273）：PGW 向 3GPP AAA 授權；RAR/ASR 是 AAA 主動。
+    (16777272, 265): ("PGW", "AAA"),     # AA
+    (16777272, 275): ("PGW", "AAA"),     # Session-Termination
+    (16777272, 258): ("AAA", "PGW"),     # Re-Auth
+    (16777272, 274): ("AAA", "PGW"),     # Abort-Session
+    # SWx（App 16777265，TS 29.273）：3GPP AAA 向 HSS 取認證與註冊；RTR/PPR 是 HSS 主動。
+    (16777265, 303): ("AAA", "HSS"),     # Multimedia-Auth
+    (16777265, 301): ("AAA", "HSS"),     # Server-Assignment
+    (16777265, 304): ("HSS", "AAA"),     # Registration-Termination
+    (16777265, 305): ("HSS", "AAA"),     # Push-Profile
 }
 
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
@@ -443,7 +533,9 @@ PARTICIPANT_ORDER = (
     "eNB", "MME", "SGW", "PGW",
     # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
     # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
-    "DRA", "P-CSCF", "I-CSCF", "S-CSCF", "HSS", "PCEF", "PCRF",
+    # Rx 的 AF 貼著 P-CSCF（它多半就是 P-CSCF）；Sh 的 AS 在 S-CSCF 之後；
+    # 3GPP AAA 貼著 HSS（SWx 的對端）。
+    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "AS", "HSS", "AAA", "PCEF", "PCRF",
 )
 
 

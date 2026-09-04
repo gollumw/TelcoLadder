@@ -59,7 +59,7 @@ Check the protocol tree for these names:
 | `http2` (SBI) | ⚠ cleartext h2c decodes (SUPI correlation, SCP relay detection included); **TLS-encrypted does not** — real networks mostly run TLS |
 | `pfcp` (UDP 8805) | ✅ N4 session messages; causes catalogued (29 entries, oracle-pinned, no clause numbers) |
 | `s1ap` / `nas-eps` / `gtpv2` | ✅ **4G/EPC control plane** (2026-08-24): S1AP carrying NAS-EPS, GTPv2-C on S11 and S5/S8; the IMSI joins S1-MME and S11 into one subscriber flow. All 236 causes catalogued, no clause numbers |
-| `sip` / `diameter` | ✅ SIP (Gm; keyed on `From`, never `To`) and Diameter (S6a/S6d, Cx/Dx, Gx with roles and causes; other applications decode with their Application-Id but get no role inference — §7) |
+| `sip` / `diameter` | ✅ SIP (Gm; keyed on `From`, never `To`) and Diameter (S6a/S6d, Cx/Dx, Gx, Rx, Sh, S6b, SWx with roles and causes; other applications decode with their Application-Id but get no role inference — §7). Raw exports with no IP layer (link type USER 0) are detected and mapped, §8 |
 | `gtp` (user plane) | ✅ **N3 tunnel attribution** (2026-08-21) — G-PDUs join subscriber flows by (destination, TEID), QFI is read. **No usage KPIs yet**: no throughput, no sequence gaps, no Echo RTT; every G-PDU is one row, so pair large files with `--since/--until` |
 
 `tshark` is **not on the default PATH** on either major platform
@@ -336,12 +336,17 @@ values).
   vendor changes the service mix, path shapes, and SBI ports — the
   symptom is a shorter diagram, not an error. A real capture that fails
   to decode is a valuable sample (§6's last row).
-- **Diameter covers three interfaces** (2026-08-23): S6a/S6d, Cx/Dx, Gx,
-  plus the base messages (CER/DWR/DPR). These three have NE role
-  inference and cause coverage; the other twenty-odd 3GPP applications
-  resolve their Application-Id and show command names, but **roles
-  cannot be inferred and causes are not catalogued** — an honest "not
-  yet", not a silent error.
+- **Diameter covers seven interfaces**: S6a/S6d, Cx/Dx, Gx (2026-08-23)
+  and Rx, Sh, S6b, SWx (2026-09-05, after real exports carried them),
+  plus the base messages (CER/DWR/DPR). These have NE role inference
+  (AF, AS, AAA, PGW join the role vocabulary); the remaining 3GPP
+  applications resolve their Application-Id and show command names, but
+  **roles cannot be inferred** — an honest "not yet", not a silent error.
+  An address that collects two mutually exclusive roles (one endpoint
+  answering both Gx CCR and Gx RAR, typically a simulator) stays
+  unlabelled, and the summary's `role_basis` and the browser now say
+  *why* (`contradiction: PCEF vs PCRF`) instead of looking like "no
+  evidence".
 - **Diameter causes carry no clause numbers.** Names are pinned entry by
   entry against tshark's own tables, but **the clauses were not
   human-verified**, so only the spec (`3GPP TS 29.230`, `RFC 6733`)

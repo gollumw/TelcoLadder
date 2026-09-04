@@ -49,6 +49,17 @@ causes:
     plain: 'The request succeeded. This is the only base result code that means outright success.'
     plain_zh: '請求成功。這是唯一代表「完全成功」的基礎結果碼。'
 
+  3001:
+    name: "DIAMETER_COMMAND_UNSUPPORTED"
+    plain: 'The peer does not implement this command code at all - the request reached a node that does not speak this application.'
+    plain_zh: '對端根本沒有實作這個命令碼 —— 請求送到了一台不講這個應用的節點。'
+    common_causes:
+      - 'Wrong Application-Id advertised at CER/CEA, so the request was routed to a peer that cannot serve it'
+      - 'A vendor-specific command sent to a node without that vendor extension'
+    common_causes_zh:
+      - "CER/CEA 交換時宣告錯 Application-Id，請求被路由到一台服務不了它的節點"
+      - "廠商私有的命令送到了沒有該廠商擴充的節點"
+
   3002:
     name: "DIAMETER_UNABLE_TO_DELIVER"
     plain: 'The node that received the request could not deliver it onward - usually a relay (DRA) with no next hop for it.'
@@ -95,6 +106,19 @@ causes:
       - "兩台 DRA 互指對方當下一跳"
       - "realm 路由設定成環"
 
+  3006:
+    name: "DIAMETER_REDIRECT_INDICATION"
+    plain: 'A redirect agent is telling the sender to send this request somewhere else (Redirect-Host) - it is a routing instruction, not a rejection of the subscriber.'
+    plain_zh: 'redirect agent 告訴發送端「這個請求改送別處」（Redirect-Host）—— 這是路由指示，不是拒絕訂戶。'
+    common_causes:
+      - 'The DRA is configured as a redirect agent for this realm or application, so the client is expected to re-send to the Redirect-Host itself'
+      - 'The request carried no Destination-Host, so realm routing landed on the redirect agent instead of the serving node'
+      - 'If the client never re-sends to the Redirect-Host, the transaction silently dies here - check the client for redirect support'
+    common_causes_zh:
+      - "DRA 對這個 realm 或應用設成 redirect agent，client 要自己改送給 Redirect-Host"
+      - "請求沒帶 Destination-Host，realm 路由落到 redirect agent 而不是真正服務的節點"
+      - "client 若從不改送給 Redirect-Host，這筆交易就在這裡靜靜死掉 —— 查 client 有沒有支援 redirect"
+
   3007:
     name: "DIAMETER_APPLICATION_UNSUPPORTED"
     plain: 'The peer does not support the Application-Id this message declares. The connection is up, but this interface cannot be spoken.'
@@ -108,6 +132,20 @@ causes:
       - "打錯介面：把 S6a 的請求送到只開 Cx 的節點"
       - "版本落差，新介面對舊節點還不存在"
 
+  3008:
+    name: "DIAMETER_INVALID_HDR_BITS"
+    plain: 'The request header had a flag combination the receiver rejects (for example the R bit set on an answer, or an unknown flag set).'
+    plain_zh: '請求標頭的旗標組合不被接受（例如 answer 帶著 R 位元、或設了未定義的旗標）。'
+    common_causes: []
+    common_causes_zh: []
+
+  3009:
+    name: "DIAMETER_INVALID_AVP_BITS"
+    plain: 'An AVP in the request had flag bits set that are not allowed for it (the offending AVP is in Failed-AVP).'
+    plain_zh: '請求裡某個 AVP 的旗標位元不合法（出錯的 AVP 在 Failed-AVP 裡）。'
+    common_causes: []
+    common_causes_zh: []
+
   3010:
     name: "DIAMETER_UNKNOWN_PEER"
     plain: 'The peer does not recognise the sender - its Origin-Host is not in the peer table on the other side.'
@@ -118,6 +156,13 @@ causes:
     common_causes_zh:
       - "新增節點時只在一邊設了 peer"
       - "Origin-Host 與對方設定的字串不一致（大小寫、FQDN 尾綴）"
+
+  3011:
+    name: "DIAMETER_REALM_REDIRECT_INDICATION"
+    plain: 'A redirect agent is telling the sender that the whole realm is served elsewhere (Redirect-Realm) - a routing instruction, not a subscriber failure.'
+    plain_zh: 'redirect agent 告訴發送端整個 realm 由別處服務（Redirect-Realm）—— 路由指示，不是訂戶失敗。'
+    common_causes: []
+    common_causes_zh: []
 
   4001:
     name: "DIAMETER_AUTHENTICATION_REJECTED"

@@ -40,7 +40,7 @@ from telcoladder.coverage import describe as describe_coverage
 from telcoladder.i18n import _
 from telcoladder.identities import enumerate_identities, find_flows
 from telcoladder.model import Flow, IdClass, IdKind, Message
-from telcoladder.nf import participant_rank
+from telcoladder.nf import participant_rank, resolve_roles_with_basis, role_contradictions
 from telcoladder.pdusession import extract as pdu_sessions_of
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
@@ -175,6 +175,9 @@ def _not_visible(analysis: Analysis) -> dict:
 
 
 def _network_elements(analysis: Analysis) -> list[dict]:
+    messages = [m for f in analysis.flows for m in f.messages]
+    basis_by_key = {k: b for k, (_r, b) in resolve_roles_with_basis(messages).items()}
+    contradictions = role_contradictions(messages)
     seen: dict[str, dict] = {}
     for flow in analysis.flows:
         for msg in flow.messages:
@@ -194,6 +197,14 @@ def _network_elements(analysis: Analysis) -> list[dict]:
             "ip": entry["ip"],
             # 沒有 IP 層的匯出（裸 Diameter）：端點只有主機名。有 IP 時一律 None。
             "host": entry["host"],
+            # 角色的依據（機器形式，語言無關）。判不出時：有互斥證據就寫
+            # `contradiction:PCEF vs PCRF`，沒有任何證據就是 None ——
+            # 這兩種「沒有名字」在畫面上一樣，處置不一樣。
+            "role_basis": (
+                basis_by_key.get(entry["_ep"].key)
+                or ("contradiction:" + " vs ".join(contradictions[entry["_ep"].key])
+                    if entry["_ep"].key in contradictions else None)
+            ),
             "ports": sorted(entry["ports"]),
             "messages": entry["messages"],
         })

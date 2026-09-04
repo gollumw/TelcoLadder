@@ -561,6 +561,14 @@ function EndpointCell({
 }) {
   const address = port ? `${ip}:${port}` : ip;
   if (!nf) return <>{address}</>;
+  if (!nf.role) {
+    // 有互斥證據、刻意不標：裸位址加虛線底線，滑鼠停留看是哪兩個角色打架。
+    return (
+      <span title={nf.basis} className="underline decoration-dotted decoration-fg-dim">
+        {address}
+      </span>
+    );
+  }
   return (
     <span title={`${nf.role} — ${nf.basis}`}>
       <span className="font-medium text-signal-cyan">{nf.role}</span>

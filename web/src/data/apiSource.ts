@@ -211,8 +211,16 @@ export function apiSource(sid: string | null): DataSource {
       // 身分清單：目前只取 SUPI。MSISDN／IMEI／GUTI 在 5G 核網的擷取裡
       // 多半根本不出現（它們在 UDM 側），有就有、沒有就留空 ——
       // 不編一個看起來合理的值（`lib/types.ts` 對 SessionIdentity 的註解）。
-      const nfMap = (identities as { nf_map?: Record<string, { role: string; basis: string }> })
-        .nf_map ?? {};
+      const nfMap: Record<string, { role: string; basis: string }> = {
+        ...((identities as { nf_map?: Record<string, { role: string; basis: string }> }).nf_map ?? {}),
+      };
+      // 判不出角色、但**有互斥證據**的位址（同一端點回 CCR 也回 RAR）：
+      // role 留空、basis 講原因。畫面上與「沒有證據」分開 —— 前者是這份檔的事實。
+      for (const [ip, basis] of Object.entries(
+        (identities as { nf_contradictions?: Record<string, string> }).nf_contradictions ?? {},
+      )) {
+        if (!(ip in nfMap)) nfMap[ip] = { role: "", basis };
+      }
       const sessionIdentities: SessionIdentity[] = (identities.groups ?? [])
         .filter((group) => group.kind === "supi")
         .flatMap((group) =>

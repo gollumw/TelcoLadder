@@ -40,7 +40,7 @@ from telcoladder.model import Flow, IdKind
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP re-export
-from telcoladder.nf import resolve_roles_with_basis
+from telcoladder.nf import resolve_roles_with_basis, role_contradictions
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
 #: 想加檔案就加在這裡；不在這裡的名字一律 404。
@@ -244,6 +244,7 @@ def _basis_sentence(basis: str) -> str:
         "service": _("serves /{param} (TS 29.5xx service naming)"),
         "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),
         "diameter-dir": _("initiator direction of {param} (RFC 6733 / TS 29.272)"),
+        "contradiction": _("contradictory evidence ({param}) - left unlabelled rather than guessed"),
     }.get(kind)
     if template is None:
         return basis
@@ -256,6 +257,15 @@ def nf_map_json(analysis) -> dict[str, dict[str, str]]:
     return {
         ip: {"role": role, "basis": _basis_sentence(basis)}
         for ip, (role, basis) in resolve_roles_with_basis(messages).items()
+    }
+
+
+def nf_contradictions_json(analysis) -> dict[str, str]:
+    """IP → 一句話：這個位址收到了哪些互斥的角色票。"""
+    messages = [m for flow in analysis.flows for m in flow.messages]
+    return {
+        ip: _basis_sentence("contradiction:" + _(" vs ").join(roles))
+        for ip, roles in role_contradictions(messages).items()
     }
 
 
@@ -279,6 +289,9 @@ def identities_json(session: Session, *, q: str = "") -> dict:
         # 掛在這裡而不是另開端點：前端本來就等 identities ready 才組 Dataset，
         # 而角色與身分一樣要等完整解剖。
         "nf_map": nf_map_json(analysis),
+        # 判不出的位址裡，哪些是因為證據**互斥**（同一端點回 CCR 也回 RAR）。
+        # 與「沒有證據」分開講：前者是這份擷取檔的一個事實，後者只是不知道。
+        "nf_contradictions": nf_contradictions_json(analysis),
     }
     if q:
         hits = lookup(analysis, q)
