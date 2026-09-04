@@ -43,9 +43,18 @@ NAS／NGAP 用下面那套視窗判定；**Diameter 用 Session-Id**，因為 RF
 其後的重送屬於同一個程序。收了會把一次有重試的註冊切成兩段，而兩段各自
 看起來都合理。這是同一個門檻在兩種語境下的相反判讀，寫下來免得被「統一」掉。
 
-**③ 同型開段訊息重複時合併，不另開新段。** 兩個原因都真實存在：
-SCP 轉送讓同一則 NAS 出現兩次（AMF→SCP 與 SCP→SMF 兩腿，`5gc-e2e` 的
-frame 388/391）；NAS 定時器重送也長這樣。分開算會把一次建立報成兩次。
+**③ 同型開段訊息重複時合併，不另開新段 —— 除非這段已經有失敗。** 合併的
+兩個原因都真實存在：SCP 轉送讓同一則 NAS 出現兩次（AMF→SCP 與 SCP→SMF
+兩腿，`5gc-e2e` 的 frame 388/391）；NAS 定時器重送也長這樣。分開算會把
+一次建立報成兩次。
+
+**但 reject 之後再來一個同型 request 是新的一次嘗試**（2026-09-05）。實測一份
+網元 trace：七個 `PDU session establishment reject`，七段 pdu-session-establishment
+**全部 success**，`failures=1`、`cause=None` —— UE 被拒後重試成功，reject 被
+併進同一段，七次拒絕在 xDR 上變成七個勾。消費端算失敗率的是每一列的
+`outcome`，那裡讀不到 `failures` 欄的弦外之音。所以：視窗裡已有失敗時，
+同型 opener 收段開新段；沒有失敗時照舊合併（SCP 兩腿、定時器重送之間沒有
+reject）。
 
 ## 結局判定
 
@@ -376,8 +385,11 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
 
         opened = _opens(msg)
         if opened is not None:
-            # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段。
-            if active_kind is not None and opened.name == active_kind.name:
+            # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段 ——
+            # **除非這段已經有失敗**：reject 之後的同型 request 是新的一次嘗試
+            # （檔頭規則 ③），併進去會把 reject 洗成 success。
+            if (active_kind is not None and opened.name == active_kind.name
+                    and not any(m.is_failure for m in window)):
                 window.append(msg)
                 continue
             close()

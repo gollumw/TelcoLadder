@@ -398,3 +398,37 @@ def test_a_long_gap_before_the_outcome_does_not_split_the_procedure() -> None:
     procs, stray = segment_flow(flow, capture_end=100.0)
     assert len(procs) == 1, f"timer 等待被誤判成程序結束，切成 {len(procs)} 段"
     assert not stray
+
+
+# ── reject 之後的重試是新的一次嘗試（2026-09-05） ────────────────────────
+
+
+def test_a_retry_after_a_reject_is_a_new_attempt_not_a_merged_success() -> None:
+    """實測一份網元 trace：七個 PDU session establishment reject，七段全部
+    success —— 重試被併進同一段。突變：拿掉「視窗裡已有失敗」的檢查 → 一段 success。"""
+    from telcoladder.model import Flow
+
+    flow = Flow(messages=[
+        _msg(1, "PDU session establishment request"),
+        _msg(2, "PDU session establishment reject", failure=True),
+        _msg(3, "PDU session establishment request"),
+        _msg(4, "PDUSessionResourceSetupResponse"),
+    ])
+    procs, unassigned = segment_flow(flow, capture_end=100.0)
+    assert [(p.outcome, p.failures) for p in procs] == [("failure", 1), ("success", 0)]
+    assert procs[0].cause and "reject" in procs[0].cause
+    assert sum(p.messages for p in procs) + len(unassigned) == 4, "守恆"
+
+
+def test_a_repeated_opener_without_a_failure_still_merges() -> None:
+    """對照組（守反向突變「一律拆段」）：SCP 兩腿／定時器重送之間沒有 reject，
+    仍然是同一段。"""
+    from telcoladder.model import Flow
+
+    flow = Flow(messages=[
+        _msg(1, "PDU session establishment request"),
+        _msg(2, "PDU session establishment request"),
+        _msg(3, "PDUSessionResourceSetupResponse"),
+    ])
+    procs, _unassigned = segment_flow(flow, capture_end=100.0)
+    assert [(p.outcome, p.messages) for p in procs] == [("success", 3)]
