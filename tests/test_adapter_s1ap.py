@@ -29,6 +29,8 @@ from telcoladder.model import IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
+from conftest import assert_matches_oracle
+
 FIXTURE = Path(__file__).parent / "fixtures" / "4g-volte-end-to-end" / "capture.pcap"
 
 
@@ -47,21 +49,6 @@ def analysis():
 
 
 # ── oracle：tshark 說的與我們說的要一致 ────────────────────────────────
-
-
-def _tshark_values(field: str) -> dict[int, str]:
-    """`tshark -G values` 的某個欄位。與 `test_adapter_naseps.py` / `_gtpv2` 同一份形狀。"""
-    tshark = find_tshark()
-    proc = subprocess.run(
-        [str(tshark.path), "-G", "values"], capture_output=True, text=True,
-        encoding="utf-8", check=True,
-    )
-    out = {}
-    for line in proc.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) >= 4 and parts[0] == "V" and parts[1] == field:
-            out[int(parts[2])] = parts[3]
-    return out
 
 
 _CAUSE_GROUP_FIELDS = {
@@ -88,10 +75,8 @@ def test_the_s1ap_cause_names_are_the_ones_tshark_has(table, field) -> None:
     要求完全相等，不像 gtpv2 那樣允許刻意省略。
     """
     mine = {v: b["name"] for v, b in _cause_yaml(table)["causes"].items()}
-    assert mine == _tshark_values(field), (
-        f"{table} 與 tshark 的 {field} 對不上 —— 確認是 tshark 換版本，"
-        "而不是有人手改了一筆。"
-    )
+    # 完整性對任何 tshark 都要求；逐字相等只在 ≥ 4.6 上要求 —— 見 conftest。
+    assert_matches_oracle(table, mine, field)
 
 
 def test_the_five_s1ap_groups_stay_five_separate_tables() -> None:

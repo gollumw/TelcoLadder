@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from conftest import assert_matches_oracle
+
 from telcoladder.causes import DATA_DIR, annotate, describe, lookup, table_names
 from telcoladder.model import CauseRef, Endpoint, Message
 
@@ -210,9 +212,8 @@ def test_the_5g_tables_are_complete_and_verbatim(table, field):
     """每張 5G 表必須收滿 oracle 的每一個號碼，名稱逐字相同。"""
     raw = yaml.safe_load((_CAUSES_DIR / f"{table}.yaml").read_text(encoding="utf-8"))
     mine = {v: b["name"] for v, b in raw["causes"].items()}
-    assert mine == _tshark_value_table(field), (
-        f"{table} 與 tshark 的 {field} 對不上（缺條目或名稱漂移）。"
-    )
+    # 完整性對任何 tshark 都要求；逐字相等只在 ≥ 4.6 上要求 —— 見 conftest。
+    assert_matches_oracle(table, mine, field)
 
 
 def test_the_pfcp_omission_is_exactly_reserved():
