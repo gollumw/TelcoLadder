@@ -152,3 +152,20 @@ def test_3006_is_catalogued_as_a_routing_instruction(messages) -> None:
     redirected = [m for m in messages if m.cause == CauseRef("diameter_base", 3006)]
     assert len(redirected) == 1 and redirected[0].is_failure
     assert "Redirect-Host" in redirected[0].detail.get("cause_plain", "")
+
+
+def test_a_request_answered_by_an_agent_still_names_its_sender() -> None:
+    """一份擷取檔全是 CER→CEA 3010 與 AIR→AIA 3002（peer 層失敗）。回答的是
+    agent，不能標成 HSS；但送 AIR 的仍然是 MME —— 第一版把整筆交易都跳過，
+    連 MME 都沒了名字。"""
+    mme, agent = "198.51.100.1", "198.51.100.2"
+    msgs = [
+        _msg(1, mme, agent, "3GPP-Authentication-Information Request", 16777251, 318),
+        _msg(2, agent, mme, "3GPP-Authentication-Information Answer", 16777251, 318),
+    ]
+    for m in msgs:
+        m.detail["end-to-end-id"] = "7"
+    msgs[1].cause = CauseRef("diameter_base", 3002)
+    msgs[1].is_failure = True
+    roles = resolve_roles(msgs)
+    assert roles == {mme: "MME"}, roles

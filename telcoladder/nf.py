@@ -215,17 +215,19 @@ def _diameter_vote(msg: Message, vote, src_ip: str, dst_ip: str,
         return
     initiator_role, responder_role = roles
     is_answer = msg.label.endswith(" Answer")
-    if _diameter_transaction(msg) in agent_transactions:
-        # **3xxx 協定錯誤是 Diameter agent 發的，不是應用對端**（RFC 6733 §7.1.3）：
-        # 3002 是 DRA 送不出去、3006 是 redirect agent 叫你改送別處。回這種
-        # answer 的位址不是 HSS／PCRF —— 整筆交易（request 與 answer）都不投票：
-        # request 那一格的對端是同一台 agent，投「回應方」的票會把 redirect agent
-        # 標成 HSS，fixture 實測就是這樣。
-        return
     initiator = dst_ip if is_answer else src_ip
     responder = src_ip if is_answer else dst_ip
     why = f"diameter-dir:{msg.label.removesuffix(' Answer')}"
+    # 發起方的票永遠投：送出 S6a AIR 的就是 MME，不管誰回了它。
     vote(initiator, initiator_role, why)
+    if _diameter_transaction(msg) in agent_transactions:
+        # **3xxx 協定錯誤是 Diameter agent 發的，不是應用對端**（RFC 6733 §7.1.3）：
+        # 3002 是 DRA 送不出去、3006 是 redirect agent 叫你改送別處。回這種
+        # answer 的位址不是 HSS／PCRF，「回應方」的票不投 —— request 那一格的
+        # 對端是同一台 agent，投了會把 redirect agent 標成 HSS（fixture 實測）。
+        # 第一版連發起方都不投，結果一份全是 CEA 3010 與 AIA 3002 的擷取檔
+        # 連 MME 都沒了名字 —— 它送 AIR 這件事與誰回它無關。
+        return
     vote(responder, responder_role, why)
 
 
