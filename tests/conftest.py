@@ -15,9 +15,13 @@ README 只寫「研究引用請 cite 論文」—— 那是引用要求，不構
 
 from __future__ import annotations
 
+import subprocess
+from functools import cache
 from pathlib import Path
 
 import pytest
+
+from telcoladder.tshark import find_tshark
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIRS = (REPO_ROOT / "tests" / "fixtures", REPO_ROOT / "local")
@@ -97,3 +101,58 @@ def multistream_http2_pcap() -> Path:
 #: tshark 的啟發式偵測會隨版本給出不同結果（CI 的 Ubuntu 4.2.2 漏掉
 #: 測試要用的那一格，macOS 4.6.7 沒漏）。
 HTTP2_DECODE_AS = ("tcp.port==3000,http2",)
+
+
+# ── cause 表對 `tshark -G values` 的 oracle 比對 ────────────────────────────
+
+#: 名稱**逐字**比對只對量出這些表的 tshark 世代成立 —— 4.6 起。
+#:
+#: 表是拿 4.6.x 的 `tshark -G values` 量出來的。較舊的 tshark 有兩種正當差異：
+#: 它不知道較新 3GPP release 才指派的號碼（4.2.2 沒有 radioNetwork #57
+#: `eredcap-ue-not-supported`），以及 Wireshark 自己改過的措辭（5GMM #29 在
+#: 4.2.2 叫 "User authentication failed"，4.6 起多了 "or authorization"）。
+#: 兩者都不是表錯了。ubuntu-latest 的 CI 是 4.2.2，macOS／Windows 是 4.6.x ——
+#: 在 4.2.2 上要求逐字相等，這幾張表落地那天起 master 的 CI 就沒綠過
+#: （2026-08-28 → 09-03，四次 run 全紅，沒有任何一層說話）。
+#:
+#: 所以規則分兩段：**完整性對任何版本都成立**（oracle 有的號碼表一定要有 ——
+#: 這是「缺條目從此亮紅」的那條紀律，不放鬆）；**逐字相等只在 ≥ 4.6 上要求**，
+#: 由 CI 矩陣裡跑 4.6.x 的兩個平台守。tshark 再出新版、多出新號碼時，
+#: 逐字相等會在那兩個平台紅，正是要它紅的時候。
+ORACLE_VERBATIM_FROM = (4, 6)
+
+
+@cache
+def _tshark_g_values() -> str:
+    """`tshark -G values` 每個 session 只跑一次 —— 五張表各跑一次要好幾秒。"""
+    return subprocess.run(
+        [str(find_tshark().path), "-G", "values"], capture_output=True,
+        text=True, encoding="utf-8", check=True,
+    ).stdout
+
+
+def oracle_value_table(field: str) -> dict[int, str]:
+    """`tshark -G values` 裡某個欄位的 值 → 名稱。"""
+    out: dict[int, str] = {}
+    for line in _tshark_g_values().splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4 and parts[0] == "V" and parts[1] == field:
+            out[int(parts[2])] = parts[3]
+    return out
+
+
+def assert_matches_oracle(table: str, mine: dict[int, str], field: str) -> None:
+    """一張 cause 表對 oracle 的兩段式比對，規則見 `ORACLE_VERBATIM_FROM`。"""
+    oracle = oracle_value_table(field)
+    version = find_tshark().version[:2]
+    missing = sorted(set(oracle) - set(mine))
+    assert not missing, (
+        f"{table} 缺了 tshark {'.'.join(map(str, version))} 的 {field} 有的號碼 {missing} —— "
+        "表不完整。缺條目要亮紅，不能躲在「未收錄」後面。"
+    )
+    if version >= ORACLE_VERBATIM_FROM:
+        assert mine == oracle, (
+            f"{table} 與 tshark {'.'.join(map(str, version))} 的 {field} 對不上"
+            "（多出的號碼或名稱漂移）。重跑 yaml 檔頭的產生指令，並確認是 tshark "
+            "換版本，而不是有人手改了一筆。"
+        )

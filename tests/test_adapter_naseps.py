@@ -28,6 +28,8 @@ from telcoladder.adapters.naseps import (
 from telcoladder.causes import describe
 from telcoladder.extract import read_frames
 from telcoladder.model import IdKind
+
+from conftest import assert_matches_oracle
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
@@ -102,10 +104,8 @@ def test_the_emm_cause_names_are_the_ones_tshark_has() -> None:
 
     path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_emm.yaml"
     mine = {v: b["name"] for v, b in yaml.safe_load(path.read_text(encoding="utf-8"))["causes"].items()}
-    assert mine == _tshark_values("nas-eps.emm.cause"), (
-        "EMM cause 名稱與 tshark 對不上。重跑產生指令（見 yaml 檔頭），"
-        "並確認是 tshark 換版本而不是有人手改了一筆。"
-    )
+    # 完整性對任何 tshark 都要求；逐字相等只在 ≥ 4.6 上要求 —— 見 conftest。
+    assert_matches_oracle("nas_eps_emm", mine, "nas-eps.emm.cause")
 
 
 def test_the_esm_cause_names_are_the_ones_tshark_has() -> None:
@@ -119,9 +119,7 @@ def test_the_esm_cause_names_are_the_ones_tshark_has() -> None:
 
     path = Path(__file__).resolve().parent.parent / "telcoladder" / "data" / "causes" / "nas_eps_esm.yaml"
     mine = {v: b["name"] for v, b in yaml.safe_load(path.read_text(encoding="utf-8"))["causes"].items()}
-    assert mine == _tshark_values("nas-eps.esm.cause"), (
-        "ESM cause 名稱與 tshark 對不上。重跑產生指令（見 yaml 檔頭）。"
-    )
+    assert_matches_oracle("nas_eps_esm", mine, "nas-eps.esm.cause")
 
 
 def test_emm_19_points_at_a_table_that_now_exists() -> None:
