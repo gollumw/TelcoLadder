@@ -64,6 +64,7 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.SUPI: "SUPI / IMSI",
     IdKind.RAN_UE_NGAP_ID: "RAN UE NGAP ID",
     IdKind.AMF_UE_NGAP_ID: "AMF UE NGAP ID",
+    IdKind.FIVEG_S_TMSI: "5G-S-TMSI",
     IdKind.SBI_STREAM: "SBI HTTP/2 stream",
     IdKind.PFCP_SEID: "PFCP SEID",
     # 2026-08-23 補：身分搜尋的下拉選單改由這張表驅動之後，沒有標籤的
@@ -199,6 +200,30 @@ def enumerate_identities(analysis: Analysis) -> list[IdentityHit]:
         ))
     hits.sort(key=lambda h: (not h.kind.is_subscriber, h.kind.value, -h.messages, h.value))
     return hits
+
+
+def parse_identity(text: str) -> IdKey | None:
+    """`kind:raw`（與 `/select` 同一種寫法）→ IdKey。認不得的 kind 回 None。"""
+    kind_text, sep, raw = text.partition(":")
+    if not sep or not raw:
+        return None
+    try:
+        return (IdKind(kind_text), raw)
+    except ValueError:
+        return None
+
+
+
+def identity_label(key: IdKey) -> str:
+    """一把訂戶鍵給人看的名字：`SUPI 00101…`、`5G-S-TMSI 1-0-0a1b2c3d`。
+
+    範圍前綴拆掉（`_split_scope`），因為標題是給人讀的；`raw` 仍在 `identity`
+    欄位裡，前端要找回同一條流程靠的是 raw，不是這個字串。**這是唯一一份** ——
+    `flowtable` 的父列標題、`summary` 的程序表、網頁抽屜都從這裡拿。
+    """
+    kind, raw = key
+    value, _scope = _split_scope(raw)
+    return f"{KIND_LABELS.get(kind, kind.value)} {value}"
 
 
 def find_flows(analysis: Analysis, kind: IdKind, raw: str) -> list[Flow]:

@@ -38,7 +38,7 @@ from telcoladder import xdr
 from telcoladder.causes import lookup
 from telcoladder.coverage import describe as describe_coverage
 from telcoladder.i18n import _
-from telcoladder.identities import enumerate_identities, find_flows
+from telcoladder.identities import enumerate_identities, find_flows, identity_label
 from telcoladder.model import Flow, IdClass, IdKind, Message
 from telcoladder.nf import participant_rank, resolve_roles_with_basis, role_contradictions
 from telcoladder.pdusession import extract as pdu_sessions_of
@@ -264,6 +264,33 @@ def _subscribers(analysis: Analysis) -> tuple[list[dict], list[dict]]:
     return subscribers, unlinked
 
 
+def _subscribers_without_supi(analysis: Analysis) -> list[dict]:
+    """接不到 SUPI、但確實是一個人的流程組 —— **真實網路的多數**。
+
+    實測兩份網元 trace：28 條流程只有 1 條有 SUPI，其餘 23 個 Service request
+    各自只帶 5G-S-TMSI。`subscribers` 只列 SUPI，那些人在摘要裡連一列都沒有，
+    失敗清單裡也對不回是誰。這裡用與工作階段表同一套分組（`flowtable`）
+    列出來，每組帶 `identity`（`kind:raw`，MCP 的 get_subscriber_callflow 吃它）。
+    `subscribers` 與 `unlinked_identities` 不動 —— 加一個頂層鍵，不升版。
+    """
+    from telcoladder.flowtable import build_table
+
+    out = []
+    for row in build_table(analysis).subscribers:
+        if not row.grouped or row.identity is None or row.identity[0] is IdKind.SUPI:
+            continue
+        out.append({
+            "identity": {"kind": row.identity[0].value, "raw": row.identity[1],
+                         "label": identity_label(row.identity)},
+            "flows": len(row.sessions),
+            "messages": row.messages,
+            "failures": row.failures,
+            "unanswered": row.unanswered,
+        })
+    out.sort(key=lambda s: (s["identity"]["kind"], s["identity"]["raw"]))
+    return out
+
+
 def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]]:
     end = capture_end(analysis)
     procedures: list[dict] = []
@@ -305,6 +332,7 @@ def build(analysis: Analysis, *, source_name: str) -> dict:
         "not_visible": _not_visible(analysis),
         "network_elements": _network_elements(analysis),
         "subscribers": subscribers,
+        "subscribers_without_supi": _subscribers_without_supi(analysis),
         "unlinked_identities": unlinked,
         "procedures": procedures,
         "failures": failures,
@@ -414,6 +442,15 @@ def render_markdown(doc: dict) -> str:
         out += _table(["SUPI", _("Flows"), _("Messages"), _("Failures"), _("Other identifiers"), _("PDU sessions")], rows)
     else:
         out.append(_("No subscriber identity could be extracted."))
+    if doc.get("subscribers_without_supi"):
+        out += ["", f'### {_("Subscribers without a SUPI")}', ""]
+        out.append(_("These are real subscribers whose permanent identity never appeared in cleartext - most Service-request traffic looks like this. The 5G-S-TMSI (or NGAP UE ID) is the only handle; a SUPI is assigned inside ciphered messages."))
+        out.append("")
+        out += _table(
+            [_("Identity"), _("Flows"), _("Messages"), _("Failures"), _("Unanswered")],
+            [[s["identity"]["label"], s["flows"], s["messages"], s["failures"], s["unanswered"]]
+             for s in doc["subscribers_without_supi"]],
+        )
     if doc["unlinked_identities"]:
         out += ["", f'### {_("Identities not linked to a SUPI")}', ""]
         out += [f'- {u["kind"]} {u["value"]}' + (f' (scope {u["scope"]})' if u["scope"] else "")
@@ -425,7 +462,7 @@ def render_markdown(doc: dict) -> str:
         rows = []
         for p in doc["procedures"]:
             rows.append([
-                p["supi"] or "—", p["procedure"],
+                p["supi"] or p.get("subscriber") or "—", p["procedure"],
                 f'{OUTCOME_MARK[p["outcome"]]} {p["outcome"]}',
                 f'{p["start_frame"]}–{p["end_frame"]}', f'{p["duration_s"]}s',
                 _ref_text(p["cause_ref"]) if p["cause_ref"]
@@ -433,7 +470,7 @@ def render_markdown(doc: dict) -> str:
                 if p["outcome"] == "success" and p["failures"]
                 else (p["note"] or "—"),
             ])
-        out += _table(["SUPI", _("Procedure"), _("Outcome"), _("Frames"), _("Duration"), _("Cause / note")], rows)
+        out += _table([_("Subscriber"), _("Procedure"), _("Outcome"), _("Frames"), _("Duration"), _("Cause / note")], rows)
     else:
         out.append(_("No procedure could be segmented (no NAS/NGAP opener seen)."))
 

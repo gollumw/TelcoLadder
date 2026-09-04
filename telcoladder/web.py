@@ -51,6 +51,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from telcoladder import i18n
 from telcoladder.chrome import CHROME_CSS, esc
+from telcoladder.identities import parse_identity
 from telcoladder.i18n import _
 from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache, DecodeError
@@ -328,10 +329,12 @@ class _Handler(BaseHTTPRequestHandler):
             ))
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
-            if not supi:
+            identity_text = (query.get("identity") or [""])[0]
+            identity = parse_identity(identity_text) if identity_text else None
+            if not supi and identity is None:
                 self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
-            payload = callflow_json(session, supi)
+            payload = callflow_json(session, supi or None, identity=identity)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
         elif not post and action == "correlation":

@@ -251,6 +251,7 @@ export default function SessionAnalyzer({
         ) : (
           <SessionAnalysisView
             supi={focusedSupi}
+            subscriberLabel={data.discoveredSessions.find((s) => s.supi === focusedSupi)?.label}
             callFlowEvents={callFlow?.events ?? callFlowEvents}
             procedures={callFlow?.procedures ?? []}
             participants={callFlow?.participants ?? []}

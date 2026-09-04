@@ -11,7 +11,7 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
-from telcoladder.identity import connection_scope, gtp_tunnel, scoped
+from telcoladder.identity import connection_scope, gtp_tunnel, scoped, fiveg_s_tmsi
 from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "ngap"
@@ -169,6 +169,18 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
         keys.add(scoped(IdKind.RAN_UE_NGAP_ID, scope, ran_id))
     if amf_id is not None:
         keys.add(scoped(IdKind.AMF_UE_NGAP_ID, scope, amf_id))
+
+    # 5G-S-TMSI：InitialUEMessage 的 FiveG-S-TMSI IE、Paging 的 UEPagingIdentity。
+    # 只有 `fiveG_TMSI` 在場才算 —— GUAMI-only 的區塊（NGSetupResponse、
+    # InitialContextSetup）也有 aMFSetID／aMFPointer，但那是 AMF 的身分，不是 UE 的。
+    tmsi = block.get("ngap_ngap_fiveG_TMSI")
+    if tmsi is not None:
+        key = fiveg_s_tmsi(
+            scope, first(block.get("ngap_ngap_aMFSetID")),
+            first(block.get("ngap_ngap_aMFPointer")), first(tmsi),
+        )
+        if key is not None:
+            keys.add(key)
 
     # GTP-U 隧道端點 —— **N4（PFCP）靠這個才接得上訂戶**。
     # 見 `identity.gtp_tunnel`：範圍是位址而不是連線，因為 N4 與 N2 走的

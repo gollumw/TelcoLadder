@@ -171,3 +171,10 @@ def user_dlt_pcap() -> Path:
     三個沒有 RAA 的 RAR、一個 T 旗標重送、Rx／Sh／S6b／SWx、一個 3006。
     見 `tests/fixtures/diameter-user-dlt/scenario.md`。"""
     return require_capture("diameter-user-dlt/capture.pcap")
+
+
+@pytest.fixture(scope="session")
+def service_request_pcap() -> Path:
+    """手寫 NGAP APER：四個 Service request（5G-S-TMSI）＋一個帶 5G-GUTI 的
+    Registration request，兩條 NG 連線。見 `tests/fixtures/5gc-service-request/scenario.md`。"""
+    return require_capture("5gc-service-request/capture.pcap")

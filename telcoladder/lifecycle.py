@@ -79,6 +79,12 @@ from telcoladder.model import IdKey, IdKind, Message
 #: SIP Call-ID 與 Diameter Session-Id 刻意**不列入**:規範要求它們全域唯一
 #: 且不重用（RFC 3261 §8.1.1.4、RFC 6733 §8.8）。實作違反規範是另一回事，
 #: 真的遇到再加,不要先猜。
+#:
+#: 5G-S-TMSI **也不列入，理由不同**：它會被重配（Registration accept、
+#: Configuration update command），但那兩則訊息在 Security Mode Command 之後
+#: 是加密的 —— 線上看不到釋放事件，就沒有東西可以宣告成 `Message.releases`。
+#: 列進來只會給人「有保護」的錯覺。同檔內同一個 TMSI 真被重配時會併流，
+#: 這個限制寫在 `model.IdKind.FIVEG_S_TMSI` 與使用指南。
 REUSABLE: frozenset[IdKind] = frozenset({
     IdKind.RAN_UE_NGAP_ID,
     IdKind.AMF_UE_NGAP_ID,

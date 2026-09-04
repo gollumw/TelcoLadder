@@ -112,6 +112,8 @@ export function langHeader(): Record<string, string> {
 // 中文多數就是 2026-08-22 之前元件裡的原句，搬過來的。
 
 const zh_TW: Record<string, string> = {
+  "SUPI not visible - it is assigned inside ciphered messages; this subscriber is known by its temporary identity":
+    "看不到 SUPI —— 它在加密的訊息裡配發；這個訂戶以暫時身分辨識",
   // App
   "Could not load data": "讀不到資料",
   "Source: {label}": "來源：{label}",

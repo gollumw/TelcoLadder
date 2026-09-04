@@ -277,10 +277,10 @@ export function apiSource(sid: string | null): DataSource {
     },
 
     async focusIdentity(supi: string | null): Promise<void> {
-      // 空字串是後端約定的「取消」。`supi:` 前綴是身分類別，
-      // 對應後端的 `IdKind`。
+      // 空字串是後端約定的「取消」。把手是 SUPI 數字時補 `supi:` 前綴；
+      // 沒有 SUPI 的訂戶把手本身就是 `kind:raw`（`mapIndex.subscriberHandle`）。
       await postForm(`/api/${need()}/select`, {
-        identity: supi ? `supi:${supi}` : "",
+        identity: supi ? (supi.includes(":") ? supi : `supi:${supi}`) : "",
       });
     },
 
@@ -291,7 +291,9 @@ export function apiSource(sid: string | null): DataSource {
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
-      }>(`/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
+      }>(supi.includes(":")
+        ? `/api/${need()}/callflow?identity=${encodeURIComponent(supi)}`
+        : `/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
       return {
         wire: body.wire,
         uncorrelatedDomains: body.domains_uncorrelated ?? [],

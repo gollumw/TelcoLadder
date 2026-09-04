@@ -150,6 +150,52 @@ def _teid_int(value: object) -> int | None:
         return None
 
 
+def fiveg_s_tmsi(scope: str, amf_set_id: object, amf_pointer: object, tmsi: object) -> IdKey | None:
+    """5G-S-TMSI（AMF Set ID ＋ AMF Pointer ＋ 5G-TMSI）的 key，**兩種線路編碼一份正規化**。
+
+    NGAP 的 `FiveG-S-TMSI` IE 給的是 BIT STRING：`aMFSetID` 10 位元左靠在兩個
+    位元組裡（要 `>> 6`）、`aMFPointer` 6 位元左靠在一個位元組裡（要 `>> 2`）、
+    `fiveG-TMSI` 是整數。NAS 的 5GS mobile identity 給的已經是整數。兩邊各自
+    正規化就是兩份會漂的定義，症狀是「同一個 UE 的 InitialUEMessage 與裡面的
+    Service request 對不上」—— 而那正是這個 key 存在的理由。
+
+    Registration request 帶的 5G-GUTI 去掉 PLMN 與 AMF Region 之後就是同一組
+    三個欄位，所以週期性註冊與 Service request 用同一把 key。
+
+    **範圍是連線**（`connection_scope`），理由見 `model.IdKind.FIVEG_S_TMSI`。
+    任何一欄解不出來就回 None —— 寧可少一個關聯，也不要加一個算錯的。
+    """
+    set_id = _bits(amf_set_id, 10)
+    pointer = _bits(amf_pointer, 6)
+    tmsi_value = _teid_int(tmsi)
+    if set_id is None or pointer is None or tmsi_value is None:
+        return None
+    return scoped(IdKind.FIVEG_S_TMSI, scope, f"{set_id}-{pointer}-{tmsi_value:08x}")
+
+
+def _bits(value: object, width: int) -> int | None:
+    """BIT STRING(width) 的值：整數原樣；冒號分隔的十六進位是左靠的位元組，
+    要右移掉補齊的位元。"""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if ":" in text or (len(text) in (2, 4) and not text.isdigit()):
+        raw = text.replace(":", "")
+        try:
+            number = int(raw, 16)
+        except ValueError:
+            return None
+        return number >> (len(raw) * 4 - width)
+    try:
+        return int(text, 0)
+    except ValueError:
+        return None
+
+
 def globally_unique(kind: IdKind, value: object) -> IdKey:
     """給**全網唯一**的識別碼建 key。
 

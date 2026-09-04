@@ -165,6 +165,7 @@ function formatUncaptured(value: string | undefined): string {
 // land on after drilling into one user's SUPI, scoped to just their events.
 export function SessionAnalysisView({
   supi,
+  subscriberLabel,
   callFlowEvents,
   procedures,
   participants,
@@ -181,6 +182,8 @@ export function SessionAnalysisView({
   onViewInDataMining,
 }: {
   supi: string | null;
+  /** `supi` 給人看的形式（沒有 SUPI 的訂戶是 `5G-S-TMSI …`）。 */
+  subscriberLabel?: string;
   callFlowEvents: CallFlowEvent[];
   /** 這個訂戶的程序段（`telcoladder/procedures.py`）。空陣列＝未切段
    *  （範例資料就是空的 —— 切段是引擎對真實訊息序列的判讀）。 */
@@ -325,7 +328,7 @@ export function SessionAnalysisView({
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
         <span className="font-mono text-xs text-fg-dim">
-          {t("Analysing: ")}<span className="text-fg font-medium">{supi}</span>
+          {t("Analysing: ")}<span className="text-fg font-medium">{subscriberLabel ?? supi}</span>
           {isMidStream && <span className="ml-2 rounded-full border border-signal-amber-border bg-signal-amber-bg px-2 py-0.5 text-[11px] text-signal-amber">Mid-stream</span>}
         </span>
       </div>
@@ -821,12 +824,9 @@ export function SessionAnalysisView({
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     <MatrixRow label="SUPI" value={activeSession.supi} source={activeSession.sourceInterfaces.supi ?? "—"} />
-                    <MatrixRow
-                      label="5G-GUTI"
-                      value={formatUncaptured(activeSession.guti)}
-                      source={activeSession.sourceInterfaces.guti ?? "—"}
-                      uncaptured={!activeSession.guti}
-                    />
+                    {/* 5G-GUTI 那一列已移除（T-GUTI-UI）：沒有任何 adapter 把 GUTI 併進
+                        PDU session 矩陣，那一列永遠是 N/A —— 一個永遠空白的欄位在冒充
+                        一個能力。5G-S-TMSI 現在是訂戶身分（抽屜與標題），不是矩陣的一格。 */}
                     <MatrixRow label="PDU Session ID" value={String(activeSession.pduSessionId)} source={activeSession.sourceInterfaces.pduSessionId ?? "—"} />
                     {/* 每一格都走同一個「沒觀測到就說沒觀測到」的處理。
                         原本只有 GUTI 這樣做（mid-stream 擷取沒看到指派），

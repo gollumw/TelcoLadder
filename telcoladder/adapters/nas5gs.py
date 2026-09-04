@@ -28,7 +28,7 @@ from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
 from telcoladder.adapters.carrier import carried_blocks
-from telcoladder.identity import globally_unique
+from telcoladder.identity import globally_unique, fiveg_s_tmsi, connection_scope
 from telcoladder.model import (
     BLIND_CIPHERED_NAS,
     BLIND_ECIES_PROTECTED_SUCI,
@@ -161,9 +161,36 @@ def _identity_keys(
         # SUPI 跨連線、跨網元都指同一個人，不加範圍前綴 ——
         # 那正是它能把 5GC 與 IMS 串起來的原因。
         keys.add(globally_unique(IdKind.SUPI, supi))
+    # 5G-GUTI（type 2）與 5G-S-TMSI（type 4）：Service request、週期性註冊、
+    # 去註冊帶的是這個，不是 SUCI。三個欄位在 ek 裡是 list（Registration
+    # request 可以另帶 Additional GUTI），逐一配對。
+    keys |= _tmsi_keys(block, connection_scope(frame))
     if carrier is not None and carrier_adapter is not None:
         keys |= carrier_keys_from(carrier_adapter, carrier, frame)
     return frozenset(keys)
+
+
+_TMSI_TYPES = {2, 4}  # 5GS mobile identity 的 type_id：2 = 5G-GUTI、4 = 5G-S-TMSI
+
+
+def _tmsi_keys(block: dict[str, Any], scope: str) -> set[IdKey]:
+    types = block.get("nas-5gs_nas-5gs_mm_type_id")
+    types = types if isinstance(types, list) else [types]
+    if not any(_to_int(t) in _TMSI_TYPES for t in types if t is not None):
+        return set()
+    def _list(name: str) -> list:
+        v = block.get(name)
+        return v if isinstance(v, list) else ([] if v is None else [v])
+    keys: set[IdKey] = set()
+    for set_id, pointer, tmsi in zip(
+        _list("nas-5gs_nas-5gs_amf_set_id"),
+        _list("nas-5gs_nas-5gs_amf_pointer"),
+        _list("nas-5gs_nas-5gs_5g_tmsi"),
+    ):
+        key = fiveg_s_tmsi(scope, set_id, pointer, tmsi)
+        if key is not None:
+            keys.add(key)
+    return keys
 
 
 def count_ciphered(frame: Frame) -> int:

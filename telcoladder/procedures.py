@@ -96,7 +96,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
-from telcoladder.model import Flow, IdKind, Message
+from telcoladder.identities import identity_label
+from telcoladder.model import Flow, IdKind, Message, subscriber_identity
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
 
@@ -160,6 +161,11 @@ class Procedure:
     duration: float
     protocols: tuple[str, ...]
     note: str = ""
+    subscriber: str | None = None
+    """這段屬於誰，給人看的名字（`identities.identity_label`）：SUPI 有就是
+    `SUPI …`，沒有就是 `5G-S-TMSI …` 或 `AMF UE NGAP ID …`。**真實網路多數
+    程序段沒有 SUPI**，xDR 只有 `supi` 欄的話那些列全是 null，消費端無法按
+    訂戶分組。"""
 
 
 def _opens(msg: Message) -> _Kind | None:
@@ -181,8 +187,13 @@ def _flow_supi(flow: Flow) -> str | None:
     return supis[0] if supis else None
 
 
+def _flow_subscriber(flow: Flow) -> str | None:
+    key = subscriber_identity(flow.identity_keys)
+    return identity_label(key) if key is not None else None
+
+
 def _finish(kind: _Kind, window: list[Message], supi: str | None,
-            capture_end: float) -> Procedure:
+            capture_end: float, subscriber: str | None = None) -> Procedure:
     failures = [m for m in window if m.is_failure]
     last_success = max(
         (i for i, m in enumerate(window)
@@ -212,6 +223,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     return Procedure(
         kind=kind.name,
         supi=supi,
+        subscriber=subscriber,
         outcome=outcome,
         cause=cause,
         first_failure=first_failure,
@@ -270,7 +282,7 @@ def _distinct(messages: list[Message]) -> list[Message]:
 
 
 def _diameter_segments(messages: list[Message], supi: str | None,
-                       capture_end: float) -> tuple[list[Procedure], list[Message]]:
+                       capture_end: float, subscriber: str | None = None) -> tuple[list[Procedure], list[Message]]:
     """Diameter 以 **Session-Id** 為單位切段，不用 NAS 那套視窗判定。
 
     ## 為什麼是 Session-Id
@@ -331,6 +343,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         procedures.append(Procedure(
             kind=kind,
             supi=supi,
+        subscriber=subscriber,
             outcome=outcome,
             cause=cause,
             first_failure=first_failure,
@@ -354,13 +367,14 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     這條由測試釘住；切段規則怎麼改，這個等式都不准破。
     """
     supi = _flow_supi(flow)
+    subscriber = _flow_subscriber(flow)
 
     # **先按協定分家，再各自切段。** 兩套判準互不干擾 —— 混著跑的話，一則
     # Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那個
     # 視窗的耗時與訊息數會因此變成錯的（而且看起來完全合理）。
     diameter = [m for m in flow.messages if m.protocol == _DIAMETER]
     others = [m for m in flow.messages if m.protocol != _DIAMETER]
-    procedures, unassigned = _diameter_segments(diameter, supi, capture_end)
+    procedures, unassigned = _diameter_segments(diameter, supi, capture_end, subscriber)
 
     active_kind: _Kind | None = None
     window: list[Message] = []
@@ -368,7 +382,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     def close() -> None:
         nonlocal active_kind, window
         if active_kind is not None and window:
-            procedures.append(_finish(active_kind, window, supi, capture_end))
+            procedures.append(_finish(active_kind, window, supi, capture_end, subscriber))
         active_kind, window = None, []
 
     def _outcome_seen() -> bool:

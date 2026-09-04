@@ -485,7 +485,7 @@ export function DataMiningView({
                             e.stopPropagation();
                             onCorrelateSession(p.correlatedSupi!, p.frameNumber);
                           }}
-                          title={t("Correlate session — {supi}", { supi: p.correlatedSupi })}
+                          title={t("Correlate session — {supi}", { supi: p.correlatedLabel ?? p.correlatedSupi })}
                           className="rounded p-1 text-fg-dim hover:bg-surface-hover hover:text-signal-cyan transition-colors"
                         >
                           <Link2 className="h-3 w-3" />

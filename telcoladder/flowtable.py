@@ -58,7 +58,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
-from telcoladder.model import Flow, IdKind, Message
+from telcoladder.identities import identity_label
+from telcoladder.model import Flow, IdKey, IdKind, Message, subscriber_identity
 from telcoladder.pipeline import Analysis
 
 #: NAS 疑似重傳的觀察窗（秒）。NAS 定時器（T3510/T3560 族）多在 6–15 秒
@@ -113,6 +114,10 @@ class SubscriberRow:
     title: str
     grouped: bool  # False = 未歸戶桶
     sessions: list[SessionRow]
+    identity: "IdKey | None" = None
+    """這個父列以哪把訂戶鍵為名（`model.subscriber_identity` 的挑法）。
+    SUPI 只是其中一種：**真實網路多數流量是 Service request，只帶 5G-S-TMSI**。
+    前端與 `/callflow` 靠 `kind:raw` 找回同一組流程，不靠標題字串。"""
 
     @property
     def start(self) -> float:
@@ -536,18 +541,16 @@ def _group_flows(flows: list[Flow]) -> list[tuple[frozenset, list[int]]]:
 
 
 def _subscriber_title(keys: frozenset) -> str:
-    """父列標題：挑最能代表「一個人」的鍵。優先序同 `Flow.describe_identity`。"""
-    by_kind: dict[IdKind, str] = {}
-    for kind, raw in keys:
-        by_kind.setdefault(kind, raw)
-    for kind in (IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN):
-        if kind in by_kind:
-            return f"{kind.value.upper()} {by_kind[kind]}"
-    for kind in (IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
-        if kind in by_kind:
-            return f"{kind.value} {by_kind[kind]}"
-    kind, raw = sorted(keys)[0]
-    return f"{kind.value} {raw}"
+    """父列標題：`SUPI 00101…` 維持原樣（前端與測試都認這個前綴）；其他訂戶鍵走
+    `identities.identity_label`（範圍前綴拆掉、類別用給人看的名字）。挑鍵的優先序
+    只有一份：`model.subscriber_identity`。"""
+    identity = subscriber_identity(keys)
+    if identity is None:
+        kind, raw = sorted(keys)[0]
+        return f"{kind.value} {raw}"
+    if identity[0] is IdKind.SUPI:
+        return f"SUPI {identity[1]}"
+    return identity_label(identity)
 
 
 def build_table(analysis: Analysis) -> FlowTable:
@@ -569,6 +572,7 @@ def build_table(analysis: Analysis) -> FlowTable:
     for keys, members in _group_flows(flows):
         grouped_ids.update(members)
         subscribers.append(SubscriberRow(
+            identity=subscriber_identity(keys),
             title=_subscriber_title(keys),
             grouped=True,
             sessions=[rows[i] for i in members],

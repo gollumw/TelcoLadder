@@ -5,6 +5,16 @@
 """
 
 CATALOG: dict[str, str] = {
+    'Subscribers without a SUPI':
+        '沒有 SUPI 的訂戶',
+    'These are real subscribers whose permanent identity never appeared in cleartext - most Service-request traffic looks like this. The 5G-S-TMSI (or NGAP UE ID) is the only handle; a SUPI is assigned inside ciphered messages.':
+        '這些是真實的訂戶，只是永久身分從未以明文出現 —— 多數 Service request 流量就是這樣。5G-S-TMSI（或 NGAP UE ID）是唯一的把手；SUPI 是在加密的訊息裡配發的。',
+    'Identity':
+        '身分',
+    'Subscriber':
+        '訂戶',
+    'Unanswered':
+        '未獲回應',
     'contradictory evidence ({param}) - left unlabelled rather than guessed':
         '證據互斥（{param}）—— 寧可不標，不猜',
     ' vs ':

@@ -254,7 +254,15 @@ any real capture that starts before the NFs register.
 
 ---
 
-## T-GUTI-UI | the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A" (P3)
+## ~~T-GUTI-UI | the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"~~ — **completed and closed (2026-09-05)**
+
+**What was done**: the other branch of the either/or — 5G-S-TMSI is now a
+real identity (`IdKind.FIVEG_S_TMSI`, extracted from NGAP's FiveG-S-TMSI IE
+and the NAS 5GS mobile identity), so the drawer names subscribers by it and
+the permanently-empty 5G-GUTI lines (panel and matrix) are gone. Detail in
+`tests/test_tmsi_identity.py` and user-guide §7b.
+
+**Original entry (2026-08-23):**
 
 > **2026-08-23 re-verification: still open.** The same-day GUI round changed
 > the **identity-search dropdown** (removing producerless categories) and

@@ -80,7 +80,8 @@ def _synthetic(*, failure: bool = False, abs_ts: float = 1.0) -> Analysis:
 #: 靠這些鍵。破壞性變更要遞增 SUMMARY_VERSION。
 TOP_LEVEL = {
     "summary_version", "source", "capture", "not_visible", "network_elements",
-    "subscribers", "unlinked_identities", "procedures", "failures", "cause_rollup",
+    "subscribers", "subscribers_without_supi", "unlinked_identities", "procedures",
+    "failures", "cause_rollup",
 }
 CAPTURE_FIELDS = {
     "frames_total", "frames_decoded", "messages", "flows",

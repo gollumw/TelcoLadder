@@ -31,6 +31,23 @@ class IdKind(StrEnum):
     SBI_STREAM = "sbi_stream"  # HTTP/2 stream，用於配對 SBI request/response
     SM_CONTEXT_REF = "sm_context_ref"  # SMF 配發的 PDU session 上下文參照
 
+    # ── 5G 的暫時身分（2026-09-05）──
+    #
+    # **真實網路的流量多數不是註冊，是 Service request** —— 而 Service request
+    # 只帶 5G-S-TMSI，不帶 SUCI。實測兩份網元 trace：28 條流程只有 1 條有
+    # SUPI，其餘 23 個 Service request 各自只靠 NGAP UE ID 成一條，summary 的
+    # 訂戶段與網頁抽屜都看不到它們。
+    #
+    # 值是 `<AMF Set ID>-<AMF Pointer>-<5G-TMSI 八位十六進位>`（48 位元的
+    # 5G-S-TMSI）；Registration request 帶的 5G-GUTI 去掉 PLMN 與 AMF Region
+    # 之後同值，週期性註冊與 Service request 因此對得上。
+    #
+    # **範圍是連線**（`identity.fiveg_s_tmsi`）：TMSI 由 AMF 配發、跨 AMF 不
+    # 唯一；同一個 TMSI 在加密的 Registration accept／Configuration update 裡
+    # 被重配時線上看不見，所以**不進 `lifecycle.REUSABLE`** —— 沒有觀測到
+    # 釋放就不猜。連線範圍比 AMF 位址更嚴：只會少併，不會多併。
+    FIVEG_S_TMSI = "fiveg_s_tmsi"
+
     # ── Phase 2：4G EPC 控制面。T4–T6 的 adapter 尚未實作 ──
     #
     # **這裡刻意沒有 `IMSI`。** 4G 的 IMSI 一律進 `SUPI` —— 兩者是同一個
@@ -113,6 +130,8 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.MSISDN: IdClass.SUBSCRIBER,
     IdKind.RAN_UE_NGAP_ID: IdClass.SUBSCRIBER,
     IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
+    # 暫時身分，但指的確實是某個 UE —— 與 NGAP 的兩把 UE ID 同一類。
+    IdKind.FIVEG_S_TMSI: IdClass.SUBSCRIBER,
     # S1AP 的兩把 UE ID 與上面 NGAP 那兩把同構：只在一條 S1 連線內唯一，
     # 但指的確實是某個 UE。一律走 `identity.scoped()`（§3.3：少了連線前綴，
     # 兩個 eNB 底下各自從 1 開始配號的用戶會被併成同一條）。
@@ -132,6 +151,31 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.DIAMETER_SESSION_ID: IdClass.SESSION,
     IdKind.SBI_STREAM: IdClass.EXCHANGE,
 }
+
+
+#: 訂戶標題的優先序：永久身分在前、暫時身分其次、連線內的 ID 最後。
+#: **只有這一份** —— `Flow.describe_identity`、`flowtable._subscriber_title`、
+#: `summary` 都從這裡取，三處各自排序就是三種標題。
+SUBSCRIBER_IDENTITY_ORDER: tuple["IdKind", ...] = (
+    IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN, IdKind.IMPI,
+    IdKind.FIVEG_S_TMSI,
+    IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID,
+    IdKind.MME_UE_S1AP_ID, IdKind.ENB_UE_S1AP_ID,
+)
+
+
+def subscriber_identity(keys: "frozenset[IdKey] | set[IdKey]") -> "IdKey | None":
+    """這組別名裡最適合當「這個訂戶叫什麼」的那一把。沒有訂戶類別名就 None。
+
+    同一種類有多個值時取字典序最小的 —— 兩台機器要給同一個標題。
+    """
+    by_kind: dict[IdKind, list[str]] = {}
+    for kind, value in keys:
+        by_kind.setdefault(kind, []).append(value)
+    for kind in SUBSCRIBER_IDENTITY_ORDER:
+        if kind in by_kind:
+            return (kind, min(by_kind[kind]))
+    return None
 
 
 def is_flow_worthy(kinds: "frozenset[IdKind] | set[IdKind]") -> bool:
@@ -350,7 +394,8 @@ class Flow:
         for kind in (IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN, IdKind.SIP_CALL_ID):
             if kind in by_kind:
                 return f"{kind.value.upper()} {by_kind[kind]}"
-        for kind in (IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
+        # 暫時身分與連線內的 ID：順序與 `SUBSCRIBER_IDENTITY_ORDER` 一致。
+        for kind in (IdKind.FIVEG_S_TMSI, IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
             if kind in by_kind:
                 return f"{kind.value} {by_kind[kind]}"
         # 會話層的 key 接不上訂戶，但**它本身就是一個值得命名的東西** ——

@@ -525,6 +525,11 @@ the top of `.github/workflows/ci.yml`.
   count is cross-checked against tshark). What it does *not* do yet is
   aggregate: no throughput, no sequence-gap loss, no Echo RTT. Every G-PDU is
   one row — honest, but heavy user-plane captures will want `--since/--until`.
+- **Subscribers without a SUPI are named by their 5G-S-TMSI** (2026-09-05).
+  Most live traffic is Service requests, which carry no SUCI; those UEs now
+  appear as `5G-S-TMSI …` in the drawer, the summary and the xDR. The key is
+  scoped to the NG connection, and a TMSI re-allocated inside one capture
+  (in ciphered messages) merges two people — the tool cannot see that.
 - **NAS after Security Mode Command is encrypted** and its content is invisible.
   Those packets still appear as their NGAP carrier. This is how the network
   works, not a parsing failure.

@@ -370,6 +370,23 @@ values).
 
 ---
 
+## 7b. Subscribers without a SUPI (most real traffic)
+
+A UE that comes back from idle sends a **Service request**, which carries a
+5G-S-TMSI and never a SUCI. On a live network most signalling looks like
+that, so most subscribers have no SUPI anywhere in the capture. Since
+2026-09-05 the tool treats the 5G-S-TMSI (from NGAP's FiveG-S-TMSI IE and
+from the NAS 5GS mobile identity, including the 5G-GUTI in a periodic
+Registration request) as a subscriber identity: such subscribers appear in
+the browser drawer as `5G-S-TMSI <set>-<pointer>-<tmsi>`, in `summarize`
+under **Subscribers without a SUPI**, in xDR's new `subscriber` column, and
+`get_subscriber_callflow` / `/callflow` accept `identity=fiveg_s_tmsi:<raw>`.
+
+Two limits, stated: the key is scoped to the NG connection (the same TMSI on
+another gNB↔AMF association is another subscriber - the safe direction),
+and a TMSI **re-allocated inside the same capture** merges two people,
+because the re-allocation happens in ciphered messages the tool cannot see.
+
 ## 8. Two kinds of source file: wire captures vs NE traces
 
 > **A third kind (2026-09-05): raw protocol exports.** Some elements write

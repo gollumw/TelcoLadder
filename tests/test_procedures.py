@@ -283,7 +283,7 @@ def test_ue_context_release_opener_is_exact_match() -> None:
 #: xDR 每筆程序記錄的欄位集合。**這是對外契約** —— 改欄位要同時想
 #: 「消費端的 jq 會不會靜默拿到 null」，破壞性變更要遞增 XDR_VERSION。
 PROCEDURE_FIELDS = {
-    "procedure", "supi", "outcome", "cause", "first_failure", "pdu_session_id",
+    "procedure", "supi", "subscriber", "outcome", "cause", "first_failure", "pdu_session_id",
     "start_frame", "end_frame", "messages", "failures", "duration_s",
     "protocols", "note",
 }

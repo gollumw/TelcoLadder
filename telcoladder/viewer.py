@@ -28,15 +28,17 @@ from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
 from telcoladder.identities import (
     availability,
-    session_frames,
+    identity_label,
     lookup,
     no_result_explanation,
+    parse_identity,
+    session_frames,
 )
 from telcoladder.adapters import protocol_filters
 from telcoladder.packets import COLUMN_TITLES
 from telcoladder.flowtable import FlowTable, build_table
 from telcoladder.chrome import esc
-from telcoladder.model import Flow, IdKind
+from telcoladder.model import Flow, IdKind, IdKey
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP re-export
@@ -442,6 +444,14 @@ def flows_json(
             continue
         subscribers.append({
             "title": sub.title,
+            # 前端找回同一組流程靠這個，不靠標題字串。SUPI 之外的訂戶
+            # （5G-S-TMSI、NGAP UE ID）也在這裡 —— 2026-09-05 之前它們的列
+            # 存在，但抽屜只認 `SUPI ` 開頭的標題，於是看不見。
+            "identity": (
+                {"kind": sub.identity[0].value, "raw": sub.identity[1],
+                 "label": identity_label(sub.identity)}
+                if sub.identity is not None else None
+            ),
             "grouped": sub.grouped,
             "start": min(r.start for r in rows),
             "end": max(r.end for r in rows),
@@ -481,7 +491,7 @@ def flows_json(
 #: 堆疊（`http2`），硬要合成一張表反而會讓兩邊都多背對方的詞彙。
 
 
-def callflow_json(session: Session, supi: str) -> dict:
+def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey | None" = None) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
     與既有的 `/flow` / `/subscriber` 不同：那兩個回的是**渲染好的 SVG**
@@ -505,7 +515,7 @@ def callflow_json(session: Session, supi: str) -> dict:
     # 事件、參與者、程序段**只有一份**（`telcoladder/callflow.py`）——
     # MCP 的 get_subscriber_callflow 拿的是同一串；兩邊各算各的會漂移，
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
-    result = events(analysis, supi, wire=session.wire)
+    result = events(analysis, supi, identity=identity, wire=session.wire)
     if "error" in result:
         return result
     return {"ready": True, **result}
