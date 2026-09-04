@@ -156,3 +156,18 @@ def assert_matches_oracle(table: str, mine: dict[int, str], field: str) -> None:
             "（多出的號碼或名稱漂移）。重跑 yaml 檔頭的產生指令，並確認是 tshark "
             "換版本，而不是有人手改了一筆。"
         )
+
+
+@pytest.fixture(scope="session")
+def diameter_pcap() -> Path:
+    """手寫的 Diameter over TCP（S6a／Cx／Gx，含經 DRA 轉送的兩腿）。
+    來源與內容見 `tests/fixtures/diameter-epc-ims/scenario.md`。"""
+    return require_capture("diameter-epc-ims/capture.pcap")
+
+
+@pytest.fixture(scope="session")
+def user_dlt_pcap() -> Path:
+    """link type USER 0 的裸 Diameter 匯出：沒有 IP、沒有傳輸層，每格一則訊息。
+    三個沒有 RAA 的 RAR、一個 T 旗標重送、Rx／Sh／S6b／SWx、一個 3006。
+    見 `tests/fixtures/diameter-user-dlt/scenario.md`。"""
+    return require_capture("diameter-user-dlt/capture.pcap")

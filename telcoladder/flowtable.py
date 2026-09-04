@@ -20,6 +20,10 @@
   自己的靜態表與抽取，不依賴 tshark 措辭。
 - NAS：同方向、同 label、同 identity keys、30 秒窗內重複 → **疑似**。
   NAS 定時器重送長這樣，但合法的重新嘗試也長這樣 —— 分不開就標疑似。
+- Diameter：同方向、同 End-to-End Id 的 request 出現 ≥2 次 → **確定**。
+  RFC 6733 §5.5.4：重送必須保留 End-to-End Id（並設 T 旗標）；basis 會說
+  T 旗標有沒有設。2026-09-05 補的 —— 在那之前 Diameter 沒有任何重傳／未獲
+  回應判定，一份 150 個 RAR 零個 RAA 的匯出在表上是綠燈。
 - NGAP、SBI 刻意不判：SCTP/TCP 在傳輸層處理重傳，應用層的重複另有語意
   （週期性程序、HTTP 重試是新 stream）。tshark 的
   `tcp.analysis.retransmission` 因網元 trace 的合成序號不可用
@@ -29,6 +33,11 @@
 沒有回應」，措辭要誠實）：
 - SBI：同一把 `SBI_STREAM` key 上有 request 而無任何 status 訊息。
 - PFCP：某 seqno 只有 Request 沒有對應 Response。
+- Diameter：同一對 peer、同一個 End-to-End Id 只有 Request 沒有 Answer。
+  鍵**含 peer 對**：經 DRA 轉送的請求在每一段線路各被看到一次，每段各有
+  自己的 answer，混在一起會把「另一段的 answer」算給這一段。鍵用 End-to-End
+  而不是 Hop-by-Hop，是為了讓 T 旗標重送（同 end、新 hop）後得到的 answer
+  能把原始那一則也算作已回應 —— 否則重送成功還會多報一個「未獲回應」。
 - 落在擷取結束前 2 秒內的，basis 加註「可能只是截到一半」。
 
 ## 兩層聚合（訂戶 → session 子列）
@@ -275,6 +284,78 @@ def _sbi_unanswered(
     return events
 
 
+def _diameter_peers(msg: Message) -> frozenset[str]:
+    return frozenset((msg.src.key, msg.dst.key))
+
+
+def _diameter_retrans(messages: list[Message]) -> list[StatusEvent]:
+    groups: dict[tuple, list[Message]] = defaultdict(list)
+    for msg in messages:
+        if msg.protocol != "diameter" or not msg.label.endswith(" Request"):
+            continue
+        end = msg.detail.get("end-to-end-id")
+        if end is None:
+            continue
+        groups[(_direction(msg), end)].append(msg)
+
+    events = []
+    for (direction, end), group in groups.items():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda m: m.ts)
+        flagged = any(m.detail.get("retransmitted") for m in group)
+        events.append(StatusEvent(
+            kind="retrans",
+            certainty="confirmed",
+            frames=tuple(m.frame for m in group),
+            label=group[0].label,
+            basis=(
+                _('Same direction ({src} → {dst}), same Diameter End-to-End Id ({end}), sent {n} times{tflag} - RFC 6733 keeps the End-to-End Id on retransmission, so this is a confirmed retransmission.').format(
+                    src=direction[0], dst=direction[1], end=end, n=len(group),
+                    tflag=_(", the later copy carries the T (retransmitted) flag") if flagged else _(", without the T flag"),
+                )
+            ),
+        ))
+    return events
+
+
+def _diameter_unanswered(
+    messages: list[Message], capture_end_rel: float
+) -> list[StatusEvent]:
+    """Diameter：同一對 peer、同一個 End-to-End Id 只有 Request 沒有 Answer。"""
+    requests: dict[tuple, list[Message]] = defaultdict(list)
+    answered: set[tuple] = set()
+    for msg in messages:
+        if msg.protocol != "diameter":
+            continue
+        end = msg.detail.get("end-to-end-id")
+        if end is None:
+            continue
+        key = (_diameter_peers(msg), end)
+        if msg.label.endswith(" Request"):
+            requests[key].append(msg)
+        elif msg.label.endswith(" Answer"):
+            answered.add(key)
+
+    events = []
+    for key, group in requests.items():
+        if key in answered:
+            continue
+        group.sort(key=lambda m: m.ts)
+        req = group[0]
+        events.append(StatusEvent(
+            kind="unanswered",
+            certainty="confirmed",
+            frames=tuple(m.frame for m in group),
+            label=req.label,
+            basis=(
+                _('Diameter End-to-End Id {end} has a Request but no Answer between these two peers within the capture').format(end=key[1])
+                + _tail_note(group[-1], capture_end_rel)
+            ),
+        ))
+    return events
+
+
 def _pfcp_unanswered(
     messages: list[Message], capture_end_rel: float
 ) -> list[StatusEvent]:
@@ -333,8 +414,10 @@ def analysis_events(analysis: Analysis) -> dict[int, list[StatusEvent]]:
             ))
     events += _pfcp_retrans(all_messages)
     events += _nas_suspected_retrans(all_messages)
+    events += _diameter_retrans(all_messages)
     events += _sbi_unanswered(all_messages, capture_end_rel, analysis.sbi_undecoded)
     events += _pfcp_unanswered(all_messages, capture_end_rel)
+    events += _diameter_unanswered(all_messages, capture_end_rel)
 
     frame_to_flow = {
         m.frame: i for i, f in enumerate(flows) for m in f.messages

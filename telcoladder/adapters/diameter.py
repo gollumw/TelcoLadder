@@ -362,6 +362,10 @@ def parse(frame: Frame) -> list[Message]:
             detail["destination-host"] = destination_host
         if hop is not None:
             detail["hop-by-hop-id"] = str(hop)
+        if str(first(block.get("diameter_diameter_flags_T"))).lower() in ("true", "1"):
+            # RFC 6733 §3 的 T 旗標：發送端明講這是重送（連線失效後的重試）。
+            # `flowtable._diameter_retrans` 靠它把「確定」與「看起來像」分開。
+            detail["retransmitted"] = "1"
         if not frame.src_ip:
             # **沒有 IP 層**（網元匯出的裸 Diameter，link type USER n）：端點只能
             # 來自協定自己。Origin-Host 每則都有；Destination-Host 只有 request

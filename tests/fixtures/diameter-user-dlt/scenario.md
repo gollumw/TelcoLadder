@@ -46,7 +46,7 @@ ends of a frame that has no addresses at all.
 * tshark cannot pair requests with answers here (its Diameter
   conversation tracking needs addresses), so `diameter.answer_in` is
   **not** usable as an oracle on this file — the unanswered set is asserted
-  from what `make.py` wrote (frames 12, 14, 16: the three RARs).
+  from what `make.py` wrote (frames 26, 27, 28: the three RARs; the T-flag pair is frames 9 and 24).
 * AVP variety is minimal; a real UDA carries Sh-User-Data XML.
 * Real SWx uses an NAI-form User-Name (`IMSI@nai.epc…`); tshark flags that
   as a malformed IMSI, so this file uses the bare IMSI to keep the oracle

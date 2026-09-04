@@ -5,6 +5,15 @@
 """
 
 CATALOG: dict[str, str] = {
+    # ── flowtable：Diameter 的重傳與未獲回應（2026-09-05） ──
+    'Same direction ({src} → {dst}), same Diameter End-to-End Id ({end}), sent {n} times{tflag} - RFC 6733 keeps the End-to-End Id on retransmission, so this is a confirmed retransmission.':
+        '同方向（{src} → {dst}）、同一個 Diameter End-to-End Id（{end}），送了 {n} 次{tflag} —— RFC 6733 規定重送保留 End-to-End Id，所以這是確定的重傳。',
+    ', the later copy carries the T (retransmitted) flag':
+        '，後面那份帶著 T（重送）旗標',
+    ', without the T flag':
+        '，沒有帶 T 旗標',
+    'Diameter End-to-End Id {end} has a Request but no Answer between these two peers within the capture':
+        'Diameter End-to-End Id {end} 在這兩個 peer 之間只有 Request、擷取範圍內沒有 Answer',
     # ── coverage／pipeline：USER DLT 與未解碼載荷的措辭（2026-09-05） ──
     '  · {frames} frames are raw payload under a user-defined link type{which} - tshark maps it to no dissector, so nothing above the link layer was decoded.':
         '  · {frames} 格是使用者自訂 link type{which} 底下的裸載荷 —— tshark 對它沒有對映任何 dissector，鏈路層以上什麼都沒解。',
