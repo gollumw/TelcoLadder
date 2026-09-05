@@ -263,6 +263,49 @@ def session_frames(analysis: Analysis, kind: IdKind, raw: str) -> set[int]:
     return {m.frame for f in find_flows(analysis, kind, raw) for m in f.messages}
 
 
+#: 「這幾條流程」的把手前綴。訂戶把手是 `kind:raw`（`supi:001…`）；有些流程
+#: **沒有訂戶鍵可用** —— Diameter 的 CER/CEA、DWR 依規範不帶 Session-Id 也不帶
+#: User-Name，那是節點之間的事，不屬於任何人。在此之前那些流程在瀏覽器裡
+#: 拿不到把手，於是**點不進去**：工作階段表看得到那一列，梯形圖打不開它。
+#: 而那正是 DRA 工程師整天在看的東西（VALIDATION.md，2026-09-06）。
+#:
+#: **這不是一種身分。** 所以它不進 `IdKind`、不進 `parse_identity` ——
+#: 它是「表上的那一列」的位置把手，語意完全不同，混進身分體系會讓
+#: `IdKind` 從此多一個不是身分的成員。
+FLOW_HANDLE_PREFIX = "flows:"
+
+
+def parse_flow_handle(handle: str, analysis: Analysis) -> list[int] | None:
+    """`flows:3,4` → `[3, 4]`。不是流程把手就回 None；是但無效就丟 ValueError。
+
+    **越界要出聲。** flow id 是 `analysis.flows` 的位置，而重跑解碼會重算整份
+    分析、位置可能換人。與其畫出一條別人的流程，不如講「這個把手過期了」。
+    """
+    if not handle.startswith(FLOW_HANDLE_PREFIX):
+        return None
+    body = handle[len(FLOW_HANDLE_PREFIX):]
+    ids: list[int] = []
+    for part in body.split(","):
+        part = part.strip()
+        if not part.isdigit():
+            raise ValueError(_('Not a flow handle: {handle}').format(handle=handle))
+        index = int(part)
+        if not 0 <= index < len(analysis.flows):
+            raise ValueError(
+                _('This capture has no flow #{n} - the handle is from an older analysis.').format(n=index)
+            )
+        ids.append(index)
+    if not ids:
+        raise ValueError(_('Not a flow handle: {handle}').format(handle=handle))
+    return ids
+
+
+def flow_frames(analysis: Analysis, flow_ids: "list[int]") -> set[int]:
+    """這幾條流程涵蓋的全部 frame —— 與 `session_frames` 同一個層級（流程層級，
+    不是「訊息裡有沒有寫這個號碼」），所以抽屜上的計數與點下去的筆數一致。"""
+    return {m.frame for i in flow_ids for m in analysis.flows[i].messages}
+
+
 def frame_owners(analysis: Analysis) -> dict[int, list[IdKey]]:
     """frame → 它帶著哪些身分別名。
 

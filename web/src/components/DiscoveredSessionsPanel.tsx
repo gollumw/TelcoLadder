@@ -125,12 +125,21 @@ export function DiscoveredSessionsPanel({
                           {s.label}
                         </p>
                         {/* 沒有 SUPI 的訂戶（多數 Service request 流量）：說明為什麼只有暫時身分，
-                            而不是印一行永遠是 N/A 的 5G-GUTI（T-GUTI-UI）。 */}
-                        {!s.hasSupi && (
+                            而不是印一行永遠是 N/A 的 5G-GUTI（T-GUTI-UI）。
+
+                            **未歸戶那一列要換一句話。** 它根本不是一個人 ——
+                            Diameter 的 CER/CEA、DWR 依規範不帶 Session-Id 也不帶
+                            User-Name，那是節點之間的事。對它說「SUPI 藏在加密訊息裡」
+                            是一句聽起來很合理的假話：讀的人會以為解密就看得到。 */}
+                        {s.identityKind === "flows" ? (
+                          <p className="mt-1 text-[11px] text-fg-dim font-mono">
+                            {t("Not a subscriber - these messages carry no subscriber identifier to join on (peer maintenance, or a session this capture cannot tie to anyone)")}
+                          </p>
+                        ) : !s.hasSupi ? (
                           <p className="mt-1 text-[11px] text-fg-dim font-mono">
                             {t("SUPI not visible - it is assigned inside ciphered messages; this subscriber is known by its temporary identity")}
                           </p>
-                        )}
+                        ) : null}
                         <p className="text-[11px] text-fg-dim font-mono">
                           {t("{n} packets · ", { n: s.packetCount })}
                           {/* 有些擷取檔沒有絕對時間戳（網元 trace 常見）。那時
@@ -141,7 +150,13 @@ export function DiscoveredSessionsPanel({
                             : t("This capture has no absolute timestamps")}
                         </p>
                       </div>
-                      <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", meta.className)}>{meta.label}</span>
+                      {/* **未歸戶那一列不掛徽章。** Connected／Rejected 講的是訂戶的
+                          註冊結局，而那一列不是一個人 —— 對一袋節點維護訊令說
+                          「已連線」是個類別錯誤。失敗仍然看得到：標題旁邊的
+                          警示圖示走的是同一個 `hasError`。 */}
+                      {s.identityKind !== "flows" && (
+                        <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", meta.className)}>{meta.label}</span>
+                      )}
                     </div>
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       <button

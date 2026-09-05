@@ -59,7 +59,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from telcoladder import i18n
 from telcoladder.chrome import CHROME_CSS, esc
-from telcoladder.identities import parse_identity
+from telcoladder.identities import parse_flow_handle, parse_identity
 from telcoladder.i18n import _
 from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache, DecodeError
@@ -91,6 +91,7 @@ from telcoladder.viewer import (
     decode_as_json,
     decode_json,
     identities_json,
+    select_flows,
     select_identity,
     effective_matched,
     index_json,
@@ -117,6 +118,12 @@ TOKEN_HEADER = "X-TelcoLadder-Token"
 
 def is_loopback(host: str) -> bool:
     return host.strip().lower() in _LOOPBACK_HOSTS
+
+
+#: `_flow_handle` 的第三種回答：「是流程把手，但壞的，而且我已經回了 400」。
+#: 與 `None`（不是流程把手）必須分得開 —— 混在一起會讓壞把手悄悄走進
+#: 身分解析那條路，然後得到一個看起來像「查無此人」的訊息。
+_INVALID = object()
 
 
 class _BadRequest(Exception):
@@ -400,11 +407,17 @@ class _Handler(BaseHTTPRequestHandler):
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             identity_text = (query.get("identity") or [""])[0]
-            identity = parse_identity(identity_text) if identity_text else None
-            if not supi and identity is None:
+            # 把手有三種：`supi=` 的數字、`identity=kind:raw`、`identity=flows:3,4`。
+            # 第三種是「表上那一列」而不是一個人 —— 沒有訂戶鍵的流程只有這條路
+            # 開得起來（`identities.FLOW_HANDLE_PREFIX`）。
+            flow_ids = self._flow_handle(session, identity_text)
+            if flow_ids is _INVALID:
+                return
+            identity = parse_identity(identity_text) if identity_text and flow_ids is None else None
+            if not supi and identity is None and flow_ids is None:
                 self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
-            payload = callflow_json(session, supi or None, identity=identity)
+            payload = callflow_json(session, supi or None, identity=identity, flow_ids=flow_ids)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
         elif not post and action == "correlation":
@@ -428,12 +441,37 @@ class _Handler(BaseHTTPRequestHandler):
                 # 取消身分不等於取消 display filter —— 後者還在。
                 self._send_json({"matched": effective_matched(session), "identity": None})
                 return
+            flow_ids = self._flow_handle(session, ident)
+            if flow_ids is _INVALID:
+                return
+            if flow_ids is not None:
+                self._send_json(select_flows(session, flow_ids))
+                return
             kind, _unused, raw = ident.partition(":")
             self._send_json(select_identity(session, kind, raw))
         elif post and action == "refilter":
             self._handle_refilter(session)
         else:
             self._send_json({"error": _('No such API.')}, HTTPStatus.NOT_FOUND)
+
+    def _flow_handle(self, session, handle: str):
+        """`flows:3,4` → `[3, 4]`；不是流程把手回 None；壞把手時**自己回 400**
+        並回傳 `_INVALID`，讓呼叫端直接 return。
+
+        兩條路由（`/callflow` 與 `/select`）共用這一份 —— 各寫一次的話，一邊
+        認得流程把手另一邊不認得，症狀就是「圖打得開，過濾一按就錯」。
+        """
+        if not handle:
+            return None
+        with session.lock:
+            analysis = session.analysis
+        if analysis is None:
+            return None
+        try:
+            return parse_flow_handle(handle, analysis)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return _INVALID
 
     @staticmethod
     def _int_param(query: dict[str, list[str]], name: str, default: int) -> int:

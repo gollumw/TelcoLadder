@@ -86,6 +86,9 @@ export function rowToPacket(row: IndexRow): RawPacket {
 
 /** `/flows` 的一條 session（只取這裡用得到的欄位）。 */
 export interface FlowSession {
+  /** 這條流程在 `analysis.flows` 裡的位置（後端 `_row_json` 的 `id`）。
+   *  沒有訂戶鍵的那一列靠它組出把手 —— 見 `subscriberHandle`。 */
+  id: number;
   frames: number[];
   failure_frames: number[];
 }
@@ -108,6 +111,14 @@ export function subscriberHandle(sub: FlowSubscriber): string | null {
   if (sub.identity) {
     return sub.identity.kind === "supi" ? sub.identity.raw : `${sub.identity.kind}:${sub.identity.raw}`;
   }
+  // **沒有訂戶鍵的那一列用流程位置當把手**（`flows:3,4`，後端的
+  // `identities.FLOW_HANDLE_PREFIX`）。Diameter 的 CER/CEA 與 DWR 依規範不帶
+  // Session-Id 也不帶 User-Name —— 那是節點之間的事，不屬於任何人。在此之前
+  // 這一列沒有把手，於是**梯形圖點不進去**，而那正是 DRA 工程師整天在看的
+  // 東西（VALIDATION.md，2026-09-06）。
+  if (!sub.grouped && sub.sessions.length > 0) {
+    return `flows:${sub.sessions.map((session) => session.id).join(",")}`;
+  }
   return sub.title.startsWith("SUPI ") ? sub.title.slice(5).trim() : null;
 }
 
@@ -117,6 +128,11 @@ export function subscriberLabel(sub: FlowSubscriber): string {
 
 export function handleIsSupi(handle: string): boolean {
   return !handle.includes(":");
+}
+
+/** 這個把手指的是「表上那一列流程」而不是一個人。 */
+export function handleIsFlows(handle: string): boolean {
+  return handle.startsWith("flows:");
 }
 
 export interface FlowSubscriber {
@@ -195,10 +211,13 @@ export function subscribersToSessions(
 ): DiscoveredSession[] {
   const out: DiscoveredSession[] = [];
   for (const sub of subscribers) {
-    // 每一個**有訂戶鍵**的組都是一個人 —— SUPI 只是其中一種。沒有訂戶鍵的
-    // 「未歸戶」桶（grouped=false）才不列。標籤帶著類別名，不把內部識別碼
-    // 冒充成訂戶號碼（`attachFlowFacts` 同理）。
-    const handle = sub.grouped ? subscriberHandle(sub) : null;
+    // 每一個**有訂戶鍵**的組都是一個人 —— SUPI 只是其中一種。標籤帶著類別名，
+    // 不把內部識別碼冒充成訂戶號碼（`attachFlowFacts` 同理）。
+    //
+    // **未歸戶那一桶也列出來**（2026-09-06）：它不是一個人，但它是這份擷取檔
+    // 裡真實存在的訊令 —— Diameter 的節點維護、任何接不上訂戶鍵的 session。
+    // 之前它被跳過，於是工作階段表上看得到那一列、抽屜裡沒有、梯形圖打不開。
+    const handle = subscriberHandle(sub);
     if (!handle) continue;
     const frames = new Set<number>();
     let hasError = false;
@@ -209,7 +228,7 @@ export function subscribersToSessions(
     out.push({
       supi: handle,
       label: subscriberLabel(sub),
-      identityKind: sub.identity?.kind ?? "supi",
+      identityKind: sub.identity?.kind ?? (sub.grouped ? "supi" : "flows"),
       hasSupi: handleIsSupi(handle),
       packetCount: frames.size,
       hasError,
@@ -228,7 +247,7 @@ export function subscribersToSessions(
 export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const sub of subscribers) {
-    const handle = sub.grouped ? subscriberHandle(sub) : null;
+    const handle = subscriberHandle(sub);
     if (!handle) continue;
     for (const session of sub.sessions) {
       for (const frame of session.frames) {

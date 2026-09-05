@@ -27,7 +27,9 @@ from telcoladder.i18n import _
 from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
 from telcoladder.identities import (
+    FLOW_HANDLE_PREFIX,
     availability,
+    flow_frames,
     identity_label,
     lookup,
     no_result_explanation,
@@ -382,6 +384,26 @@ def refilter(session: Session, expr: str, *, matcher=None) -> dict:
     return {"matched": effective_matched(session), "display_filter": current}
 
 
+def select_flows(session: Session, flow_ids: list[int]) -> dict:
+    """把封包清單縮到這幾條流程涵蓋的 frame —— 與 `select_identity` 同一件事，
+    只是主語是「表上那一列」而不是一個人。
+
+    **有這個才算真的能點進去。** 少了它，未歸戶那一列會變成「梯形圖打得開，
+    但『只看此 Session』一按就錯」—— 半個能用的功能比沒有更難察覺。
+    """
+    with session.lock:
+        analysis = session.analysis
+    if analysis is None:
+        return {"error": _('Full dissection has not finished; identity information is not available yet.')}
+    frames = flow_frames(analysis, flow_ids)
+    if not frames:
+        return {"error": _('Those flows carry no packets.')}
+    with session.lock:
+        session.identity_frames = set(frames)
+        session.selected_identity = FLOW_HANDLE_PREFIX + ",".join(str(i) for i in flow_ids)
+    return {"matched": effective_matched(session), "identity": session.selected_identity}
+
+
 def select_identity(session: Session, kind_value: str, raw: str) -> dict:
     """選一個身分：把封包清單縮到那個人碰過的 frame。
 
@@ -586,7 +608,10 @@ def overview_json(session: Session) -> dict:
     return {"ready": True, **doc}
 
 
-def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey | None" = None) -> dict:
+def callflow_json(
+    session: Session, supi: str | None = None, *,
+    identity: "IdKey | None" = None, flow_ids: "list[int] | None" = None,
+) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
     與既有的 `/flow` / `/subscriber` 不同：那兩個回的是**渲染好的 SVG**
@@ -598,8 +623,11 @@ def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey
     **參與者一併回傳且已排好序。** 讓前端自己去湊泳道順序，等於在兩邊
     各維護一份網元順序，一定漂移。順序來自 `nf.PARTICIPANT_ORDER`。
 
-    規模：以訊息數為界，而且**限縮在一個訂戶**。整份擷取檔的訊息可能有
+    規模：以訊息數為界，而且**限縮在一組流程**。整份擷取檔的訊息可能有
     幾十萬則，一個訂戶通常是幾十到幾百則。
+
+    `flow_ids` 是第三條入口：**沒有訂戶鍵的流程**（Diameter 的 CER/CEA、DWR
+    依規範不帶 Session-Id 也不帶 User-Name）只有這條路開得起來。
     """
     table = _table_for(session)
     if table is None:
@@ -610,7 +638,7 @@ def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey
     # 事件、參與者、程序段**只有一份**（`telcoladder/callflow.py`）——
     # MCP 的 get_subscriber_callflow 拿的是同一串；兩邊各算各的會漂移，
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
-    result = events(analysis, supi, identity=identity, wire=session.wire)
+    result = events(analysis, supi, identity=identity, flow_ids=flow_ids, wire=session.wire)
     if "error" in result:
         return result
     return {"ready": True, **result}

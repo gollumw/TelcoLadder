@@ -66,10 +66,10 @@
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
-      "current_sha256": "daa4ea99d728eed8d1379d5bbdc4f92ddb7fcfa1bb2334ffad8fc481af81d383",
+      "current_sha256": "1abad5dbed2889c65f674b23c7869d49988ae137a613a8b0b9467c34b6d36928",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。",
       "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。",
-      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-06 未歸戶那一列換一句說明 —— 對它說「SUPI 藏在加密訊息裡」是假話，它根本不是一個人"
     },
     "src/components/ProtocolTree.tsx": {
       "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",

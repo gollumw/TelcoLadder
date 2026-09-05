@@ -320,6 +320,8 @@ const zh_TW: Record<string, string> = {
     "端點（這些訊息裡認不出任何訂戶）",
   "No subscriber is identifiable in these messages": "這些訊息裡認不出任何訂戶",
   "No message carried a subscriber identity": "沒有任何訊息帶得出訂戶身分",
+  "Not a subscriber - these messages carry no subscriber identifier to join on (peer maintenance, or a session this capture cannot tie to anyone)":
+    "不是訂戶 —— 這些訊息沒有可歸戶的訂戶識別碼（節點維護訊令，或這份擷取檔接不上任何人的 session）",
   "Affected subscribers": "受影響的訂戶",
   "Open this subscriber's ladder at the failing message": "打開這位訂戶的梯形圖並跳到失敗那一則",
   "Open in ladder": "在梯形圖中開啟",
