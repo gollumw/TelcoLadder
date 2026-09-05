@@ -321,6 +321,12 @@ CATALOG: dict[str, str] = {
         '{param} 的發起方向（RFC 6733 / TS 29.272）',
     'No frame {frame} in the capture.':
         '擷取檔裡沒有 frame {frame}。',
+    'Not a flow handle: {handle}':
+        '不是流程把手：{handle}',
+    'This capture has no flow #{n} - the handle is from an older analysis.':
+        '這份擷取檔沒有第 {n} 條流程 —— 這個把手來自比較舊的一次分析。',
+    'Those flows carry no packets.':
+        '那幾條流程沒有任何封包。',
     'Full dissection has not finished; identity information is not available yet.':
         '完整解剖還沒跑完，身分資訊尚未可用。',
     'Unknown identity kind: {kind}':

@@ -287,6 +287,24 @@ cause explanations were Chinese-only until the bilingual tables landed
 
 ---
 
+### Signalling that belongs to nobody
+
+Some flows have no subscriber to hang on. Diameter's `CER`/`CEA` and
+`DWR`/`DWA` carry neither a Session-Id nor a User-Name by RFC 6733 —
+they are node-to-node business, sent before any user data — and a
+capture can also hold sessions this tool simply cannot tie to anyone.
+
+The session drawer lists them as **one row**, labelled as not a
+subscriber, and that row opens in the ladder like any other. Its lanes
+are the peers (`MME`, `HSS`, or an Origin-Host when the role cannot be
+inferred). "Only this session" narrows the packet list to it.
+
+This matters on a DRA, where most of what you look at is exactly this
+traffic: peers coming up, watchdogs, and answers that never reach a
+subscriber.
+
+---
+
 ## 4. Two views: when to use which
 
 **The default is the wire view**: one frame per row, carrier and payload

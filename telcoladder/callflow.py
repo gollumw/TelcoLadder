@@ -61,7 +61,7 @@ _DOMAIN_BY_PROTOCOL = {
 
 def events(
     analysis: Analysis, supi: str | None = None, *, identity: IdKey | None = None,
-    wire: bool = True,
+    flow_ids: "list[int] | None" = None, wire: bool = True,
 ) -> dict:
     """一個訂戶的事件、參與者、程序段。查無此訂戶回 `{"error": ...}`。
 
@@ -83,10 +83,17 @@ def events(
     # `identity` 是任何一把訂戶鍵（5G-S-TMSI、NGAP UE ID…）—— 真實網路多數
     # 訂戶沒有 SUPI（Service request 只帶 5G-S-TMSI），只認 SUPI 的梯形圖等於
     # 對多數人不存在。`supi` 保留為舊介面。
-    key = identity if identity is not None else (IdKind.SUPI, supi or "")
-    flows = find_flows(analysis, key[0], key[1])
+    # 三條入口，同一段渲染。`flow_ids` 是「表上那一列」的位置把手 ——
+    # 沒有訂戶鍵的流程（Diameter 的節點維護訊令）只有這條路進得來，
+    # 而在此之前它們在瀏覽器裡是不可達的（`identities.FLOW_HANDLE_PREFIX`）。
+    if flow_ids is not None:
+        flows = [analysis.flows[i] for i in flow_ids]
+        key = None
+    else:
+        key = identity if identity is not None else (IdKind.SUPI, supi or "")
+        flows = find_flows(analysis, key[0], key[1])
     if not flows:
-        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi or key[1])}
+        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi or (key[1] if key else ""))}
 
     # 「落在擷取結尾附近」的判定以**整份擷取檔**為準（理由見
     # `procedures.capture_end`）。走那個函式而不是在這裡再算一次 ——
