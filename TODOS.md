@@ -1001,7 +1001,24 @@ string: if `#111` has English `plain`, the schema may not say otherwise.
 
 ---
 
-## T-INDEXRACE | the published packet index aliases the list the worker is still appending to (P0)
+## ~~T-INDEXRACE | the published packet index aliases the list the worker is still appending to~~ (**completed 2026-09-05**)
+
+**What was done**: `session._publish()` hands out a copy (`rows[:]`) every
+`_PUBLISH_EVERY` rows, so a published list is never mutated again;
+`viewer.index_json` and `effective_matched` take the snapshot and the
+filter set under the lock and do the O(N) paging outside it. Each
+`start_index()` bumps `Session.index_generation`; the worker checks it at
+every publish and at the stage transitions, and a superseded worker (a
+`/decode-as` rerun started a new one) stops writing entirely — before, two
+workers overwrote the same list and whichever finished last set `done`.
+`/refilter` moved into `viewer.refilter()` with a `filter_generation`: a
+slow tshark run whose result arrives after a newer filter is dropped, and
+the response reports the filter actually in force. Five tests in
+`tests/test_index_race.py`, no tshark involved; mutation-checked
+(publishing the live list fails three of them).
+
+Original entry follows.
+
 
 **What**: `session._index_into` publishes `session.index.rows = rows` under
 the lock every `_PUBLISH_EVERY` rows (`session.py:426-429`) and then keeps

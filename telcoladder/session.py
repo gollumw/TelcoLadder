@@ -219,6 +219,17 @@ class Session:
     SBI 當成重傳而略過。實測 `ue_trace`：356 格裡有 169 格（47%）在關掉
     之前顯示為未解碼的 TCP，而它們全部都是 HTTP/2 SBI。"""
 
+    index_generation: int = 0
+    """第幾代的索引 worker 有權寫入。`start_index()` 每次 +1；worker 開跑時
+    記下自己的世代，之後每次發布前比對 —— 對不上就代表有人（`/decode-as`
+    重跑）已經換了參數，這個 worker 的列是舊參數解出來的，**一格都不准再寫**。
+    沒有它，兩個 worker 會輪流覆寫同一份 `index.rows`，最後由誰把 stage 設成
+    done 看運氣。"""
+
+    filter_generation: int = 0
+    """display filter 的版次。`viewer.refilter()` 開跑前 +1、跑完 tshark 後比對，
+    對不上就丟掉結果 —— 慢的那個請求後到，不能把畫面蓋回舊條件。"""
+
     flowtable: object | None = field(default=None, repr=False)
     """工作階段表（`flowtable.FlowTable`）的快取。首次要求時算、
     與 `analysis` 同生命週期 —— analysis 不可變，表也不會變。
@@ -398,9 +409,13 @@ def start_index(session: Session, *, on_done=None) -> threading.Thread:
     畫面上的狀態，不是一段 traceback。
     """
 
+    with session.lock:
+        session.index_generation += 1
+        generation = session.index_generation
+
     def run() -> None:
         try:
-            _index_into(session)
+            _index_into(session, generation)
         except BaseException as exc:  # noqa: BLE001 —— 見上方說明
             with session.lock:
                 session.progress.stage = "error"
@@ -420,10 +435,50 @@ def start_index(session: Session, *, on_done=None) -> threading.Thread:
     return thread
 
 
-def _index_into(session: Session) -> None:
+class _Superseded(Exception):
+    """另一個世代的 worker 接手了；這個 worker 安靜退場，不留任何寫入。"""
+
+
+def _publish(session: Session, generation: int, rows: list[PacketRow], *, truncated: bool | None = None) -> None:
+    """把目前為止的列交出去 —— **交的是快照，不是 worker 手上那個 list**。
+
+    2026-09-03 的審查抓到：這裡原本是 `session.index.rows = rows`，然後 worker
+    在鎖外繼續對**同一個物件** `append`。每個 `/index` 請求在鎖內迭代的是一個正
+    被另一條執行緒修改的 list —— 鎖保護了指標，沒保護內容。症狀是 `matched`
+    與回傳的那一頁來自不同瞬間，捲動中的頁界會移動，而沒有任何東西報錯。
+
+    複本每 `_PUBLISH_EVERY` 列做一次，總成本 O(N²／2000)：50 萬列約 6 千萬次
+    指標複製，遠低於 tshark 本身。發布出去的 list **從此不再被任何人修改**，
+    所以讀端可以在鎖外慢慢翻它。
+    """
+    with session.lock:
+        if session.index_generation != generation:
+            raise _Superseded
+        session.index.rows = rows[:]
+        session.progress.indexed = len(rows)
+        if truncated is not None:
+            session.index.truncated = truncated
+            session.progress.truncated = truncated
+
+
+def _index_into(session: Session, generation: int | None = None) -> None:
+    if generation is None:
+        with session.lock:
+            generation = session.index_generation
+    try:
+        _index_into_as(session, generation)
+    except _Superseded:
+        # 被 `/decode-as` 的重跑取代。新 worker 會自己把 stage 推到 done；
+        # 這裡什麼都不碰 —— 碰了就是舊參數的結果蓋在新參數上。
+        return
+
+
+def _index_into_as(session: Session, generation: int) -> None:
     # 分母先問 —— capinfos 在 436 MB 上只要 0.32 秒，值得。
     total = total_packets(session.pcap, tshark=session.tshark)
     with session.lock:
+        if session.index_generation != generation:
+            raise _Superseded
         session.progress.total = total
         session.progress.stage = "index"
 
@@ -443,15 +498,10 @@ def _index_into(session: Session) -> None:
             truncated = True
             break
         if len(rows) % _PUBLISH_EVERY == 0:
-            with session.lock:
-                session.index.rows = rows
-                session.progress.indexed = len(rows)
+            _publish(session, generation, rows)
 
+    _publish(session, generation, rows, truncated=truncated)
     with session.lock:
-        session.index.rows = rows
-        session.index.truncated = truncated
-        session.progress.indexed = len(rows)
-        session.progress.truncated = truncated
         session.progress.stage = "analyse"
 
     # 第二階段：完整解剖，身分與（階段 5 的）梯形圖靠它。
@@ -467,6 +517,8 @@ def _index_into(session: Session) -> None:
         session.pcap, decode_as=session.user_decode_as, wire=session.wire
     )
     with session.lock:
+        if session.index_generation != generation:
+            raise _Superseded
         session.analysis = result
 
     # **把解剖實際用的參數收回來。**
@@ -491,6 +543,8 @@ def _index_into(session: Session) -> None:
             session.decode_as, session.relax_seq, session.prefs
         ):
             with session.lock:
+                if session.index_generation != generation:
+                    raise _Superseded
                 session.decode_as = rules
                 session.auto_decode_as = tuple(adjusted.decode_as)
                 session.relax_seq = adjusted.relaxed_seq
@@ -500,14 +554,16 @@ def _index_into(session: Session) -> None:
                 # 解碼方式變了，快取裡那些是用舊參數解出來的。
                 session.decode = DecodeCache()
                 session.frame_bytes = FrameBytesCache()
-            _rebuild_index(session)
+            _rebuild_index(session, generation)
 
     with session.lock:
+        if session.index_generation != generation:
+            raise _Superseded
         session.progress.stage = "done"
         session.progress.finished = time.monotonic()
 
 
-def _rebuild_index(session: Session) -> None:
+def _rebuild_index(session: Session, generation: int) -> None:
     """用新參數重建封包清單。
 
     **重建而不是就地修補**：解碼方式一變，欄位、協定堆疊、甚至訊息邊界
@@ -530,11 +586,8 @@ def _rebuild_index(session: Session) -> None:
         if len(rows) >= MAX_INDEX_ROWS:
             truncated = True
             break
+    _publish(session, generation, rows, truncated=truncated)
     with session.lock:
-        session.index.rows = rows
-        session.index.truncated = truncated
-        session.progress.indexed = len(rows)
-        session.progress.truncated = truncated
         # display filter 篩出來的 frame 編號是用舊參數算的，作廢。
         session.filter_frames = None
         session.display_filter = ""

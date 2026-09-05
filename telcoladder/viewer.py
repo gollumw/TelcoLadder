@@ -114,6 +114,16 @@ def progress_json(session: Session) -> dict:
         }
 
 
+def _page(rows, offset: int, limit: int, *, keep: set[int] | None, q: str):
+    """對一份**不會再變的**列快照翻頁。與 `PacketIndex.page` 同一個定義，
+    差別只在輸入是快照而不是 `self.rows` —— 讓它可以在鎖外跑。"""
+    if keep is not None:
+        rows = [r for r in rows if r.number in keep]
+    if q:
+        rows = [r for r in rows if r.matches(q)]
+    return rows[offset : offset + limit], len(rows)
+
+
 def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
     """封包清單的一頁。
 
@@ -121,45 +131,52 @@ def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
     `total` 是檔案裡真正的封包數（可能是 null）。三個是不同的東西，
     UI 不能混用 —— 混用的症狀是進度條卡在奇怪的百分比。
     """
+    # **鎖內只拿引用，O(N) 的翻頁在鎖外做。** 發布出去的 `index.rows` 是快照，
+    # 從此不再被修改（`session._publish`），所以鎖外讀它是安全的；而在鎖內做
+    # 50 萬列的過濾會讓同一工作階段的 `/progress`、`/decode` 全部排隊。
     with session.lock:
-        rows, matched = session.index.page(
-            offset, limit, keep=session.keep_frames, q=q
-        )
         index = session.index
-        progress = session.progress
-        info_unavailable = index.info_unavailable
-        payload_rows = [
-            {
-                "n": r.number,
-                "t": r.time_rel,
-                "epoch": r.time_epoch,
-                "src": r.src,
-                "dst": r.dst,
-                "proto": r.protocol,
-                "len": r.length,
-                "info": r.info,
-                # 埠可能是 null（ARP／ICMP 這類沒有傳輸層的）。**不要在這裡
-                # 填 0** —— 0 是合法的埠號，下游會分不出「真的是 0」與
-                # 「我們沒看到」。前端顯示成 `IP` 而不是 `IP:0`。
-                "sport": r.src_port,
-                "dport": r.dst_port,
-                "stack": r.protocols,
-            }
-            for r in rows
-        ]
-        return {
-            "columns": list(COLUMN_TITLES),
-            "rows": payload_rows,
-            "offset": offset,
-            "limit": limit,
-            "matched": matched,
-            "indexed": progress.indexed,
-            "total": progress.total,
-            "done": progress.stage == "done",
-            "truncated": index.truncated,
-            "info_unavailable": info_unavailable,
-            "display_filter": session.display_filter,
+        rows_snapshot = index.rows
+        keep = session.keep_frames
+        indexed = session.progress.indexed
+        total = session.progress.total
+        done = session.progress.stage == "done"
+        truncated = index.truncated
+        display_filter = session.display_filter
+    rows, matched = _page(rows_snapshot, offset, limit, keep=keep, q=q)
+    info_unavailable = bool(rows_snapshot) and all(not r.info for r in rows_snapshot)
+    payload_rows = [
+        {
+            "n": r.number,
+            "t": r.time_rel,
+            "epoch": r.time_epoch,
+            "src": r.src,
+            "dst": r.dst,
+            "proto": r.protocol,
+            "len": r.length,
+            "info": r.info,
+            # 埠可能是 null（ARP／ICMP 這類沒有傳輸層的）。**不要在這裡
+            # 填 0** —— 0 是合法的埠號，下游會分不出「真的是 0」與
+            # 「我們沒看到」。前端顯示成 `IP` 而不是 `IP:0`。
+            "sport": r.src_port,
+            "dport": r.dst_port,
+            "stack": r.protocols,
         }
+        for r in rows
+    ]
+    return {
+        "columns": list(COLUMN_TITLES),
+        "rows": payload_rows,
+        "offset": offset,
+        "limit": limit,
+        "matched": matched,
+        "indexed": indexed,
+        "total": total,
+        "done": done,
+        "truncated": truncated,
+        "info_unavailable": info_unavailable,
+        "display_filter": display_filter,
+    }
 
 
 def decode_json(session: Session, frame: int) -> dict:
@@ -324,9 +341,42 @@ def effective_matched(session: Session) -> int:
     """
     with session.lock:
         keep = session.keep_frames
-        return len(session.index.rows) if keep is None else sum(
-            1 for r in session.index.rows if r.number in keep
-        )
+        rows = session.index.rows  # 快照，鎖外數是安全的（`session._publish`）
+    return len(rows) if keep is None else sum(1 for r in rows if r.number in keep)
+
+
+def refilter(session: Session, expr: str, *, matcher=None) -> dict:
+    """套用 display filter：跑一次 tshark 只取 frame 編號，與索引取交集。
+
+    **版次守衛。** tshark 在鎖外跑（幾秒到幾十秒）；這期間使用者可能又改了
+    一次條件。慢的那個請求後到，若照寫就把畫面蓋回舊條件 —— 而過濾框上寫的是
+    新條件。開跑前 +1 記下版次，跑完比對，對不上就丟掉自己的結果、回報**目前
+    生效的**那個條件。前端的 generation 只擋得住舊的頁，擋不住伺服器端過期的
+    `filter_frames`；這裡是它的另一半。
+
+    `matcher` 只給測試注入 —— 預設是 `packets.matching_frames`。
+    """
+    from telcoladder.packets import matching_frames
+
+    run = matcher or matching_frames
+    if not expr:
+        with session.lock:
+            session.filter_generation += 1
+            session.display_filter = ""
+            session.filter_frames = None
+        # 清掉 filter 不等於清掉身分選取 —— 後者還在。
+        return {"matched": effective_matched(session), "display_filter": ""}
+    with session.lock:
+        session.filter_generation += 1
+        mine = session.filter_generation
+        decode_as, relax_seq, prefs = session.decode_as, session.relax_seq, session.prefs
+    frames = run(session.pcap, expr, decode_as=decode_as, relax_seq=relax_seq, prefs=prefs)
+    with session.lock:
+        if session.filter_generation == mine:
+            session.display_filter = expr
+            session.filter_frames = set(frames)
+        current = session.display_filter
+    return {"matched": effective_matched(session), "display_filter": current}
 
 
 def select_identity(session: Session, kind_value: str, raw: str) -> dict:

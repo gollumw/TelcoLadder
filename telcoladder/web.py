@@ -72,7 +72,7 @@ from telcoladder.decodeas import (
     validate,
 )
 from telcoladder.framebytes import FrameBytesCache, FrameBytesError
-from telcoladder.packets import PacketColumnsUnavailable, matching_frames
+from telcoladder.packets import PacketColumnsUnavailable
 from telcoladder.session import (
     IDLE_TTL,
     SessionStore,
@@ -96,6 +96,7 @@ from telcoladder.viewer import (
     index_json,
     overview_json,
     progress_json,
+    refilter,
     static_body,
     flows_json,
 )
@@ -531,26 +532,10 @@ class _Handler(BaseHTTPRequestHandler):
         """
         form = self._read_form()
         expr = (form.get("filter") or [""])[0].strip()
-        if not expr:
-            with session.lock:
-                session.display_filter = ""
-                session.filter_frames = None
-            # 清掉 filter 不等於清掉身分選取 —— 後者還在。
-            self._send_json({"matched": effective_matched(session), "display_filter": ""})
-            return
         try:
-            frames = matching_frames(
-                session.pcap, expr,
-                decode_as=session.decode_as, relax_seq=session.relax_seq,
-                prefs=session.prefs,
-            )
+            self._send_json(refilter(session, expr))
         except PacketColumnsUnavailable as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-            return
-        with session.lock:
-            session.display_filter = expr
-            session.filter_frames = set(frames)
-        self._send_json({"matched": effective_matched(session), "display_filter": expr})
 
     def _handle_open(self) -> None:
         """貼路徑開檢視器。**零複製** —— 那是使用者自己的檔案。
