@@ -171,3 +171,109 @@ def test_the_overview_is_json_and_byte_reproducible(multi) -> None:
     once = json.dumps(doc, ensure_ascii=False)
     again = json.dumps(build_overview(analysis, table), ensure_ascii=False)
     assert once == again
+
+
+# ── 沒有訂戶，不等於沒有信令（2026-09-05）────────────────────────────
+#
+# 使用者拿一份 S6a 擷取檔測，畫面上同時出現：
+#     「這份擷取檔裡沒有任何格被解成信令」   ← 標題
+#     失敗訊息 9 · DIAMETER_UNKNOWN_PEER 7 次 · 0 個訂戶
+# 同一份資料，兩個互相矛盾的結論；而 cause 卡答不出「是誰對誰」。
+#
+# `diameter-peer-rejected` 是那個形狀的最小版本：CER 被 CEA 3010 擋掉三次。
+# CER/CEA 依規範不帶 Session-Id、不帶 User-Name，所以**永遠不會有訂戶** ——
+# 這不是抽取失敗，是協定本來就沒有那個欄位。
+
+
+@pytest.fixture(scope="module")
+def peer_rejected():
+    return _overview("diameter-peer-rejected")
+
+
+def test_empty_means_nothing_decoded_not_nobody_attributed(peer_rejected) -> None:
+    """**這條是那個矛盾本身。** 有訊息、有失敗、零訂戶 → 紅，不是 empty。
+
+    突變：`verdict` 改回 `max(...) if grouped else "empty"` → 紅。
+    """
+    doc, analysis, _t = peer_rejected
+    assert sum(len(f.messages) for f in analysis.flows) == 6, "fixture 變了，這條驗不到東西"
+    assert doc["subscribers"]["total"] == 0, "有訂戶的話就驗不到「零訂戶」那條路"
+    assert doc["events"]["failures"] == 3
+    assert doc["verdict"] == "red", (
+        "零訂戶被當成 empty —— 標題會說「沒有任何格被解成信令」，"
+        "而同一頁底下寫著三個失敗訊息"
+    )
+
+
+def test_a_capture_with_no_messages_at_all_is_still_empty() -> None:
+    """反向：真的一則訊息都沒有時，`empty` 仍然要是 `empty`。
+    只放寬條件而不守住另一邊，等於把 `empty` 這個值廢掉。"""
+    from telcoladder.flowtable import FlowTable
+    from telcoladder.pipeline import Analysis
+
+    table = FlowTable(subscribers=[], abs_time_available=False, capture_start=0.0, capture_end=0.0)
+    assert build_overview(Analysis(flows=[], ciphered=0), table)["verdict"] == "empty"
+
+
+def test_the_verdict_without_subscribers_uses_the_session_tables_own_rule() -> None:
+    """有訊息、沒訂戶時的燈號**不是這裡新發明的** —— 與 `flowtable._light`
+    逐訂戶用的是同一條：有失敗就紅、只有重傳或未獲回應就黃、都沒有就綠。
+
+    `http2-multistream` 是黃的那一半：5 則訊息、10 個未獲回應、0 個失敗。
+    改這條之前它是 empty，也就是「什麼都沒解出來」—— 而它解出了五則。
+    """
+    from telcoladder.flowtable import _light
+
+    doc, analysis, table = _overview("http2-multistream")
+    assert sum(len(f.messages) for f in analysis.flows) == 5
+    assert doc["subscribers"]["total"] == 0 and doc["events"]["failures"] == 0
+    assert doc["events"]["unanswered"] == 10
+    assert doc["verdict"] == "amber"
+    expected, _reason = _light(doc["events"]["failures"], doc["events"]["retrans"], doc["events"]["unanswered"])
+    assert doc["verdict"] == expected, "與工作階段表的規則分岔了"
+
+
+def test_a_card_without_subscribers_still_names_the_endpoints(peer_rejected) -> None:
+    """**這是使用者原本的問題**：「7 次 · 0 個訂戶」回答不了任何人。
+
+    端點名走 `Endpoint.label()`，與梯形圖的泳道同一個來源：判得出角色就是角色，
+    判不出就是位址或主機名。裸 Diameter 沒有 IP 層，所以這裡是 Origin-Host。
+
+    突變：`_peer_pairs` 與卡片的 peers 拿掉 → 紅。
+    """
+    doc, _a, _t = peer_rejected
+    (card,) = doc["causes"]
+    assert card["subscribers"] == [], "這份檔不該有訂戶 —— 有的話這條驗的不是它要驗的"
+    assert card["peers"], "沒有訂戶、也沒有端點 —— 這張卡答不出任何「是誰」"
+    (peer,) = card["peers"]
+    assert peer["src"].startswith("hss01.") and peer["dst"].startswith("mme01."), (
+        "方向錯了：3010 是 HSS 回給 MME 的答案"
+    )
+    assert peer["frame"] in card["frames"]
+
+
+def test_cards_with_subscribers_carry_the_endpoints_too(ki) -> None:
+    """有訂戶時端點是補充，不是替代 —— 兩者都要在，畫面才不必分兩種寫法。"""
+    doc, _a, _t = ki
+    for card in doc["causes"]:
+        assert card["subscribers"] and card["peers"], card["key"]
+    by_value = {c["value"]: c for c in doc["causes"]}
+    assert [(p["src"], p["dst"]) for p in by_value[21]["peers"]] == [("gNB", "AMF")]
+    assert [(p["src"], p["dst"]) for p in by_value[111]["peers"]] == [("AMF", "gNB")]
+
+
+def test_failed_procedures_carry_endpoints_for_the_rows_without_a_subscriber(ki) -> None:
+    """失敗程序那張表同一條理由：沒有訂戶的列不能只剩一個破折號。"""
+    doc, _a, _t = ki
+    for proc in doc["failed_procedures"]:
+        assert "peers" in proc
+        if proc["subscriber_ref"] is None:
+            assert proc["peers"], "沒有訂戶又沒有端點 —— 這一列說不出是誰失敗了"
+
+
+def test_peers_are_deduplicated_and_ordered_by_first_sighting(peer_rejected) -> None:
+    """三次失敗、同一對端點 → 一筆。計數看 `count`，端點看 `peers`，兩者不互相冒充。"""
+    doc, _a, _t = peer_rejected
+    (card,) = doc["causes"]
+    assert card["count"] == 3 and len(card["peers"]) == 1
+    assert card["peers"][0]["frame"] == min(card["frames"])

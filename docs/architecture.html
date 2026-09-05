@@ -183,14 +183,14 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit ae4e9f5</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 92c2407</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
   <code>tools/archmap.py</code>，這一頁就跟著走。</p>
 </header>
 
-<div class="stats"><div class="stat"><b>54</b><span>Python 模組</span></div><div class="stat"><b>16,648</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>947</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>14</b><span>TODOS 未關閉</span></div></div>
+<div class="stats"><div class="stat"><b>54</b><span>Python 模組</span></div><div class="stat"><b>16,719</b><span>行</span></div><div class="stat"><b>10</b><span>adapter 已交付</span></div><div class="stat"><b>1</b><span>adapter 待做</span></div><div class="stat"><b>955</b><span>測試</span></div><div class="stat"><b>0</b><span>核心指名 import</span></div><div class="stat"><b>14</b><span>TODOS 未關閉</span></div></div>
 
 <section>
   <h2><span class="num">01</span>分層相依</h2>
@@ -208,13 +208,13 @@ graph TD
   classDef door fill:#34201A,stroke:#C05A3E,stroke-width:2px,color:#E89078
   classDef gate fill:#332814,stroke:#D08A26,stroke-width:2px,color:#E8B563
 
-  subgraph L6["L6 · 入口 · 2,867 行"]
+  subgraph L6["L6 · 入口 · 2,882 行"]
     direction LR
     cli["cli"]:::n
     web["web · session"]:::n
     mcpx["mcp"]:::n
   end
-  subgraph L5["L5 · 出口 · 1,666 行"]
+  subgraph L5["L5 · 出口 · 1,722 行"]
     direction LR
     view["viewer"]:::n
     summ["summary"]:::n
@@ -263,7 +263,7 @@ graph TD
   mdl --> i18n
 </pre>
 </div></div>
-  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span class="hot">cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,867 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>overview</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,666 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>pdusession</span><span>callflow</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,973 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">nf</span><span class="hot">pipeline</span><span class="hot">coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span><span>endpoints</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">2,306 行<br><span>8 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.diameter</span><span class="hot">adapters.sbi</span><span>adapters.nas5gs</span><span>adapters.gtpv2</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.ngap</span><span>adapters.naseps</span><span>adapters.sip</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,408 行<br><span>12 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>decode</span><span>extract</span><span>prefilter</span><span>probe</span><span>decodeas</span><span>tshark</span><span>nettrace</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,792 行<br><span>10 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span class="hot">translations.zh_tw</span><span class="hot">model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,636 行<br><span>9 個</span></div></div></div>
+  <div class="strata"><div class="stratum"><div class="lv">L6<em>入口</em></div><div><div class="mods"><span class="hot">web</span><span class="hot">session</span><span class="hot">mcp</span><span class="hot">cli</span><span>__main__</span></div><div class="why">使用者與 agent 從這裡進來</div></div><div class="loc">2,882 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L5<em>出口</em></div><div><div class="mods"><span class="hot">viewer</span><span class="hot">summary</span><span>overview</span><span>render_mermaid</span><span>xdr</span></div><div class="why">三條交集為零的呈現路徑</div></div><div class="loc">1,722 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L4<em>語意</em></div><div><div class="mods"><span class="hot">flowtable</span><span class="hot">procedures</span><span>identities</span><span>pdusession</span><span>callflow</span></div><div class="why">把關聯結果變成人看得懂的單位</div></div><div class="loc">1,973 行<br><span>5 個</span></div></div><div class="stratum"><div class="lv">L3<em>分析核心</em></div><div><div class="mods"><span class="hot">nf</span><span class="hot">pipeline</span><span class="hot">coverage</span><span>causes</span><span>lifecycle</span><span>correlate</span><span>wireview</span><span>endpoints</span></div><div class="why">把訊息變成「誰跟誰、發生什麼」</div></div><div class="loc">2,306 行<br><span>8 個</span></div></div><div class="stratum"><div class="lv">L2<em>adapters</em></div><div><div class="mods"><span class="hot">adapters.diameter</span><span class="hot">adapters.sbi</span><span>adapters.nas5gs</span><span>adapters.gtpv2</span><span>adapters</span><span>adapters.s1ap</span><span>adapters.ngap</span><span>adapters.naseps</span><span>adapters.sip</span><span>adapters.pfcp</span><span>adapters.gtp</span><span>adapters.carrier</span></div><div class="why">entry point 註冊，加協定不必改核心</div></div><div class="loc">3,408 行<br><span>12 個</span></div></div><div class="stratum"><div class="lv">L1<em>tshark 介面</em></div><div><div class="mods"><span class="hot">packets</span><span>decode</span><span>extract</span><span>prefilter</span><span>probe</span><span>decodeas</span><span>tshark</span><span>nettrace</span><span>slicer</span><span>framebytes</span></div><div class="why">跟外部程序講話的唯一一層</div></div><div class="loc">2,792 行<br><span>10 個</span></div></div><div class="stratum"><div class="lv">L0<em>基礎</em></div><div><div class="mods"><span class="hot">translations.zh_tw</span><span class="hot">model</span><span>identity</span><span>i18n</span><span>chrome</span><span>interfaces</span><span>plugins</span><span>__init__</span><span>translations</span></div><div class="why">沒有下游，被所有人依賴</div></div><div class="loc">1,636 行<br><span>9 個</span></div></div></div>
 </section>
 
 <section>
@@ -484,7 +484,7 @@ graph LR
   <p class="sub">Vite ＋ React ＋ Tailwind v3，建置產物進版控（<code>pip install</code> 的人不需要 Node）。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">檔案</th><th class="mono">行</th></tr></thead>
-    <tbody><tr><td class="mono">lib/mock-data.ts</td><td class="num">1,504</td></tr><tr><td class="mono">components/SessionAnalysisView.tsx</td><td class="num">947</td></tr><tr><td class="mono">data/mapIndex.ts</td><td class="num">592</td></tr><tr><td class="mono">components/DataMiningView.tsx</td><td class="num">588</td></tr><tr><td class="mono">data/source.ts</td><td class="num">440</td></tr><tr><td class="mono">App.tsx</td><td class="num">416</td></tr><tr><td class="mono">data/apiSource.ts</td><td class="num">380</td></tr><tr><td class="mono">components/ExecutiveOverview.tsx</td><td class="num">368</td></tr><tr><td class="mono">components/DecodeAsPanel.tsx</td><td class="num">350</td></tr><tr><td class="mono">i18n.ts</td><td class="num">335</td></tr><tr><td class="mono">components/SessionAnalyzer.tsx</td><td class="num">307</td></tr><tr><td class="mono">data/mockSource.ts</td><td class="num">205</td></tr><tr><td class="mono">lib/types.ts</td><td class="num">188</td></tr><tr><td class="mono">components/DiscoveredSessionsPanel.tsx</td><td class="num">179</td></tr><tr><td class="mono">lib/utils.ts</td><td class="num">159</td></tr><tr><td class="mono">components/ProtocolTree.tsx</td><td class="num">111</td></tr><tr><td class="mono">theme.ts</td><td class="num">71</td></tr><tr><td class="mono">components/HexDump.tsx</td><td class="num">54</td></tr><tr><td class="mono">main.tsx</td><td class="num">19</td></tr></tbody>
+    <tbody><tr><td class="mono">lib/mock-data.ts</td><td class="num">1,504</td></tr><tr><td class="mono">components/SessionAnalysisView.tsx</td><td class="num">947</td></tr><tr><td class="mono">data/mapIndex.ts</td><td class="num">602</td></tr><tr><td class="mono">components/DataMiningView.tsx</td><td class="num">588</td></tr><tr><td class="mono">data/source.ts</td><td class="num">459</td></tr><tr><td class="mono">App.tsx</td><td class="num">416</td></tr><tr><td class="mono">components/ExecutiveOverview.tsx</td><td class="num">406</td></tr><tr><td class="mono">data/apiSource.ts</td><td class="num">380</td></tr><tr><td class="mono">components/DecodeAsPanel.tsx</td><td class="num">350</td></tr><tr><td class="mono">i18n.ts</td><td class="num">340</td></tr><tr><td class="mono">components/SessionAnalyzer.tsx</td><td class="num">307</td></tr><tr><td class="mono">data/mockSource.ts</td><td class="num">207</td></tr><tr><td class="mono">lib/types.ts</td><td class="num">188</td></tr><tr><td class="mono">components/DiscoveredSessionsPanel.tsx</td><td class="num">179</td></tr><tr><td class="mono">lib/utils.ts</td><td class="num">159</td></tr><tr><td class="mono">components/ProtocolTree.tsx</td><td class="num">111</td></tr><tr><td class="mono">theme.ts</td><td class="num">71</td></tr><tr><td class="mono">components/HexDump.tsx</td><td class="num">54</td></tr><tr><td class="mono">main.tsx</td><td class="num">19</td></tr></tbody>
   </table></div>
 </section>
 
@@ -498,8 +498,8 @@ graph LR
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit ae4e9f5</span>
-  <span>54 模組 · 16,648 行</span>
-  <span>947 測試</span>
+  <span>tools/archmap.py</span><span>commit 92c2407</span>
+  <span>54 模組 · 16,719 行</span>
+  <span>955 測試</span>
 </footer>
 </div>

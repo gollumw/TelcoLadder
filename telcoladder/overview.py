@@ -21,6 +21,26 @@
 不是本工具對這份檔的建議。呈現層要照這個名字叫它；「處置建議」是另一種
 宣稱，這個工具不做。
 
+## 沒有訂戶不等於沒有信令
+
+`verdict` 的 `empty` 只有一個意思：**一則訊息都沒解出來**。2026-09-05 之前它
+是「沒有可歸戶的訂戶」，於是一份 Diameter 連線被 CEA 3010 擋掉的擷取檔 ——
+六則訊息、三個失敗、零訂戶，因為 CER/CEA 依規範不帶 Session-Id 也不帶 User-Name
+—— 標題寫著「沒有任何格被解成信令」，底下同一頁寫著「失敗訊息 3」。
+**同一份資料，兩個互相矛盾的數字。**
+
+有訊息卻沒有任何訂戶時，燈號改用 `flowtable._light` —— **與工作階段表逐訂戶
+用的同一條規則**，不是這裡新發明的：有失敗就紅、只有重傳或未獲回應就黃、
+都沒有就綠。
+
+## 沒有訂戶時，說得出端點
+
+每張 cause 卡都帶 `peers`（這個 cause 出現在哪些端點之間）。有訂戶時它是補充；
+**沒有訂戶時它是唯一的答案** —— 「7 次 · 0 個訂戶」回答不了任何人的問題，
+而「mme01 → hss01，7 次」是使用者接下來要去查的東西。端點名走
+`Endpoint.label()`（判得出角色就是角色，判不出就是位址或主機名），
+所以它與梯形圖上的泳道名是同一個來源。
+
 ## 「看不見什麼」永遠在結論之前
 
 與 `summary` 同一條規則：加密的 NAS、沒解碼的格、只有 N2 的檔 —— 少了這一節，
@@ -32,7 +52,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from telcoladder.causes import describe, lookup
-from telcoladder.flowtable import FlowTable, SubscriberRow
+from telcoladder.flowtable import FlowTable, SubscriberRow, _light
 from telcoladder.identities import identity_label
 from telcoladder.model import Message
 from telcoladder.pipeline import Analysis
@@ -40,7 +60,8 @@ from telcoladder.procedures import capture_end, segment_flow
 from telcoladder.summary import not_visible
 from telcoladder.xdr import procedure_record
 
-#: 燈號嚴重度。`verdict` 取最差的那盞 —— 沒有任何訂戶時是 `empty`。
+#: 燈號嚴重度。`verdict` 取最差的那盞。**`empty` 只代表「一則訊息都沒解出來」**
+#: —— 不是「沒有可歸戶的訂戶」（見檔頭）。
 _LIGHT_RANK = {"green": 0, "amber": 1, "red": 2}
 
 
@@ -49,6 +70,26 @@ def _subscriber_ref(row: SubscriberRow) -> dict | None:
     if row.identity is None:
         return None
     return {"kind": row.identity[0].value, "raw": row.identity[1], "label": identity_label(row.identity)}
+
+
+def _peer_pairs(procedure, flow) -> list[dict]:
+    """這段程序的失敗訊息落在哪些端點之間，依首次出現排序、去重。
+
+    只看失敗訊息：一段程序裡成功的往返也有端點，但讀的人問的是「哪一段壞了」。
+    """
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for msg in flow.messages:
+        if not (procedure.start_frame <= msg.frame <= procedure.end_frame):
+            continue
+        if not msg.is_failure:
+            continue
+        pair = (msg.src.label(), msg.dst.label())
+        if pair in seen:
+            continue
+        seen.add(pair)
+        out.append({"src": pair[0], "dst": pair[1], "frame": msg.frame})
+    return out
 
 
 def _cause_key(msg: Message) -> str:
@@ -74,10 +115,6 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
     lights = {"red": 0, "amber": 0, "green": 0}
     for row in grouped:
         lights[row.light] += 1
-    verdict = (
-        max((row.light for row in grouped), key=_LIGHT_RANK.__getitem__)
-        if grouped else "empty"
-    )
 
     # ── 失敗訊息，依 cause 歸卡 ──────────────────────────────────────────
     cards: "OrderedDict[str, dict]" = OrderedDict()
@@ -108,10 +145,17 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
                     "count": 0,
                     "frames": [],
                     "subscribers": [],
+                    # 這個 cause 出現在哪些端點之間。**沒有訂戶時這是唯一的答案。**
+                    "peers": [],
                     "_seen": set(),
+                    "_peers_seen": set(),
                 }
             card["count"] += 1
             card["frames"].append(msg.frame)
+            pair = (msg.src.label(), msg.dst.label())
+            if pair not in card["_peers_seen"]:
+                card["_peers_seen"].add(pair)
+                card["peers"].append({"src": pair[0], "dst": pair[1], "frame": msg.frame})
             if ref is not None and (ref["kind"], ref["raw"]) not in card["_seen"]:
                 card["_seen"].add((ref["kind"], ref["raw"]))
                 # 這個人**第一次**撞到這個 cause 的那一格 —— 前端點訂戶就跳到那裡。
@@ -119,6 +163,7 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
     causes = []
     for card in cards.values():
         card.pop("_seen")
+        card.pop("_peers_seen")
         card["frames"] = sorted(set(card["frames"]))
         causes.append(card)
     # 最多的排前面；同數依第一格 —— 穩定、可重現。
@@ -137,8 +182,23 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
                 continue
             record = procedure_record(p)
             record["subscriber_ref"] = _subscriber_ref(owner) if owner is not None else None
+            # 與 cause 卡同一條理由：沒有訂戶的那幾列不能只剩一個破折號。
+            record["peers"] = _peer_pairs(p, flow)
             failed_procedures.append(record)
     failed_procedures.sort(key=lambda r: (r["start_frame"], r["supi"] or ""))
+
+    unanswered = sum(row.unanswered for row in table.subscribers)
+    retrans = sum(row.retrans for row in table.subscribers)
+    decoded_messages = sum(len(flow.messages) for flow in analysis.flows)
+    if not decoded_messages:
+        # **這是 `empty` 唯一的意思。** 沒解出訊息才叫沒解出訊息。
+        verdict = "empty"
+    elif grouped:
+        verdict = max((row.light for row in grouped), key=_LIGHT_RANK.__getitem__)
+    else:
+        # 有訊息、沒有任何可歸戶的訂戶（節點層級的 Diameter 失敗就是這樣）。
+        # 用**工作階段表逐訂戶的同一條規則**，不是這裡新編一條。
+        verdict, _reason = _light(failures_total, retrans, unanswered)
 
     return {
         "verdict": verdict,
@@ -150,11 +210,7 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
             "unattributed_flows": sum(len(row.sessions) for row in orphans),
         },
         "procedures": {"total": sum(outcomes.values()), **outcomes},
-        "events": {
-            "failures": failures_total,
-            "unanswered": sum(row.unanswered for row in table.subscribers),
-            "retrans": sum(row.retrans for row in table.subscribers),
-        },
+        "events": {"failures": failures_total, "unanswered": unanswered, "retrans": retrans},
         "not_visible": not_visible(analysis),
         "causes": causes,
         "failed_procedures": failed_procedures,

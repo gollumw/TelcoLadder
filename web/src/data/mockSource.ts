@@ -124,7 +124,7 @@ export function mockSource(): DataSource {
       const byCause = new Map<string, OverviewCause>();
       for (const e of errors) {
         const key = e.causeText ?? e.messageName;
-        const card = byCause.get(key) ?? {
+        const card: OverviewCause = byCause.get(key) ?? {
           key,
           message: e.messageName,
           protocol: e.domain === "CORE_SBI" ? "sbi" : "ngap",
@@ -135,6 +135,8 @@ export function mockSource(): DataSource {
           count: 0,
           frames: [],
           subscribers: [],
+          // 範例資料沒有端點對 —— 真實資料那條路由引擎填（`overview._peer_pairs`）。
+          peers: [],
         };
         card.count += 1;
         card.frames.push(e.frameNumber);

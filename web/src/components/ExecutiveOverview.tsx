@@ -84,10 +84,15 @@ export function ExecutiveOverview({
           <Icon className={cn("h-6 w-6", v.text)} />
           <div>
             <h2 className={cn("text-base font-semibold", v.text)}>{t(VERDICT_TEXT[overview.verdict])}</h2>
+            {/* 一個訂戶都沒有時**不要印「0 紅 · 0 黃 · 0 綠」** —— 三個零沒有內容，
+                而且讀起來像「工具去找了但沒找到」。節點層級的 Diameter 失敗
+                （CER/CEA 依規範不帶 Session-Id 也不帶 User-Name）本來就不可能有訂戶。 */}
             <p className="mt-0.5 text-xs text-fg-muted">
-              {t("{red} red · {amber} amber · {green} green of {total} subscriber(s)", {
-                red: subscribers.red, amber: subscribers.amber, green: subscribers.green, total: subscribers.total,
-              })}
+              {subscribers.total > 0
+                ? t("{red} red · {amber} amber · {green} green of {total} subscriber(s)", {
+                    red: subscribers.red, amber: subscribers.amber, green: subscribers.green, total: subscribers.total,
+                  })
+                : t("No message carried a subscriber identity")}
               {subscribers.unattributedFlows > 0 && (
                 <span className="ml-2">
                   {t("· {n} flow(s) could not be attributed to any subscriber", { n: subscribers.unattributedFlows })}
@@ -109,7 +114,9 @@ export function ExecutiveOverview({
         <Tile
           label={t("Subscribers")}
           value={subscribers.total}
-          sub={t("{red} red · {amber} amber · {green} green", { red: subscribers.red, amber: subscribers.amber, green: subscribers.green })}
+          sub={subscribers.total > 0
+            ? t("{red} red · {amber} amber · {green} green", { red: subscribers.red, amber: subscribers.amber, green: subscribers.green })
+            : undefined}
           tone={subscribers.red ? "red" : subscribers.amber ? "amber" : "neutral"}
         />
         <Tile
@@ -249,8 +256,12 @@ function CauseCard({
             {cause.protocol} · {cause.message}
           </p>
         </div>
+        {/* **沒有訂戶時不印「0 個訂戶」。** 那是個空洞的數字：節點層級的
+            Diameter 失敗本來就不會有訂戶，印 0 只會讓人以為資料掉了。 */}
         <span className="shrink-0 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] tabular-nums text-fg-muted">
-          {t("{n} occurrence(s) · {m} subscriber(s)", { n: cause.count, m: cause.subscribers.length })}
+          {cause.subscribers.length > 0
+            ? t("{n} occurrence(s) · {m} subscriber(s)", { n: cause.count, m: cause.subscribers.length })
+            : t("{n} occurrence(s)", { n: cause.count })}
         </span>
       </header>
 
@@ -274,6 +285,30 @@ function CauseCard({
         </div>
       )}
 
+      {/* 端點永遠列出來。**有訂戶時它是補充，沒有訂戶時它是唯一的答案** ——
+          「3 次 · 0 個訂戶」答不了任何人的問題，「hss01 → mme01」才是下一步
+          要去查的東西。名字來自引擎的 `Endpoint.label()`，與梯形圖的泳道同源。 */}
+      {cause.peers.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] text-fg-dim">
+            {cause.subscribers.length > 0 ? t("Between") : t("Between (no subscriber is identifiable in these messages)")}
+          </p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {cause.peers.map((peer) => (
+              <button
+                key={peer.frame}
+                type="button"
+                onClick={() => onOpenPacket(peer.frame)}
+                title={t("Open packet #{n}", { n: peer.frame })}
+                className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+              >
+                {peer.src} → {peer.dst}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {cause.subscribers.length > 0 && (
         <div className="mt-2">
           <p className="text-[11px] text-fg-dim">{t("Affected subscribers")}</p>
@@ -293,6 +328,8 @@ function CauseCard({
         </div>
       )}
 
+      {/* 沒有訂戶就沒有梯形圖可開（梯形圖是「一個訂戶的時序」）。那時
+          底下只留「開啟封包」，而不是給一顆點了沒反應的按鈕。 */}
       <footer className="mt-3 flex flex-wrap gap-2">
         {first && (
           <button
@@ -333,7 +370,15 @@ function ProcedureRow({
         {p.kind}
         {p.pduSessionId && <span className="ml-1 text-fg-dim">#{p.pduSessionId}</span>}
       </td>
-      <td className="px-3 py-2 font-mono text-fg-muted">{p.subscriber?.label ?? "—"}</td>
+      {/* 沒有訂戶時退到端點，**不要只留一個破折號** —— 那一列會變成
+          「有一段程序失敗了，而我不告訴你是誰」。 */}
+      <td className="px-3 py-2 font-mono text-fg-muted">
+        {p.subscriber?.label ?? (
+          p.peers.length > 0
+            ? <span title={t("No subscriber is identifiable in these messages")}>{p.peers[0].src} → {p.peers[0].dst}</span>
+            : "—"
+        )}
+      </td>
       <td className="px-3 py-2 font-mono tabular-nums text-fg-dim">
         {p.startFrame}–{p.endFrame}
       </td>

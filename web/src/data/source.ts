@@ -232,6 +232,21 @@ export interface OverviewSubscriberRef {
   frame?: number;
 }
 
+/**
+ * 這個 cause（或這段程序）的失敗落在哪一對端點之間。
+ *
+ * **沒有訂戶時，這是唯一答得出「是誰」的東西。** 節點層級的 Diameter 失敗
+ * （CER/CEA 依規範不帶 Session-Id 也不帶 User-Name）永遠沒有訂戶，而
+ * 「3 次 · 0 個訂戶」回答不了任何人的問題。名字來自 `Endpoint.label()` ——
+ * 判得出角色就是角色（`MME`），判不出就是位址或主機名。
+ */
+export interface OverviewPeer {
+  src: string;
+  dst: string;
+  /** 這一對第一次出現的那一格。 */
+  frame: number;
+}
+
 /** 同一個 cause 的失敗歸成一張卡。 */
 export interface OverviewCause {
   key: string;
@@ -249,6 +264,8 @@ export interface OverviewCause {
   count: number;
   frames: number[];
   subscribers: OverviewSubscriberRef[];
+  /** 這個 cause 出現在哪些端點之間。**沒有訂戶時這是唯一的答案。** */
+  peers: OverviewPeer[];
 }
 
 export interface OverviewProcedure {
@@ -264,6 +281,8 @@ export interface OverviewProcedure {
   failures: number;
   durationS: number;
   note: string;
+  /** 這段程序的失敗落在哪些端點之間 —— 沒有訂戶的那幾列不能只剩一個破折號。 */
+  peers: OverviewPeer[];
 }
 
 /** 這份檔**看不見什麼**。永遠顯示在結論之前 —— 少了它，一份只抓到 N2 的檔會被讀成「核網沒有失敗」。 */
