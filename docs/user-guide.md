@@ -137,9 +137,30 @@ is missing, the error message itself is the installation instruction.
 telcoladder serve
 ```
 
-Open <http://localhost:3005>, **drag a pcap in**, or **paste a path**
-(use this for large files — zero copies, starts immediately). Analysis
-is synchronous — a large file looks stuck while it runs.
+Open <http://localhost:3005>, **drag pcaps in** (several at once is
+fine), or **paste a path** (use this for large files — zero copies,
+starts immediately). Analysis is synchronous — a large file looks stuck
+while it runs.
+
+Drop several and you get a **batch table**: one row per file with its
+verdict light, subscribers, failure messages, failed procedures,
+unanswered requests and undecoded frames, so you can see which two of
+twenty need looking at. Click a row to open that capture.
+
+**Files in a batch are analysed separately and never merged.** Merging
+would put two networks' connection-scoped identifiers (NGAP UE IDs,
+TEIDs, SEIDs) into one number space — every base station allocates them
+from 1 — so two unrelated subscribers would fuse into one flow, with a
+ladder that still draws perfectly. Correlation therefore never crosses a
+file: a subscriber appearing in two captures is two rows, not one. If
+your files really are one capture split by a ring buffer, merge them
+yourself first with `mergecap` and open the result.
+
+They upload one at a time, each analysed before the next starts, so
+twenty files do not become twenty concurrent tshark runs. The batch page
+has a **Release all uploaded copies** button — worth using when the
+captures are someone else's data, rather than waiting out the idle
+timeout.
 
 The page opens on an **Overview**: the worst traffic light among the
 subscribers (red / amber / green — the same lights as the session table

@@ -237,3 +237,44 @@ def test_no_module_rebinds_the_translation_function() -> None:
         "這些地方把 `_` 當丟棄變數，蓋掉了翻譯函式（之後的 `_()` 會炸）：\n  "
         + "\n  ".join(offenders) + "\n丟棄變數請用 `_unused`。"
     )
+
+
+# ── 語法底線：`requires-python` 說 3.11，程式就必須能在 3.11 解析（2026-09-05）──
+
+
+def test_no_f_string_expression_contains_a_backslash() -> None:
+    """f-string 的**運算式部分**不得含反斜線 —— Python 3.11 拒收，3.12 才放寬
+    （PEP 701），而 `pyproject.toml` 的 `requires-python` 是 `>=3.11`。
+
+    這條是被 CI 抓出來才補的：批次頁的一句英文用 `\\u2019` 寫右單引號，本機
+    3.13 跑得好好的，ubuntu 的 3.11 直接 `SyntaxError` 而且**整包 import 不進去**
+    —— `telcoladder check` 在測試開跑之前就掛了。「本機綠」與「CI 綠」是兩件事，
+    這正是 CLAUDE.md §4 那張表裡「把某一版當契約」的同一族。
+
+    **不要改用 `ast.parse(..., feature_version=(3, 11))`** —— 實測它抓不到：
+    那個限制在 3.11 是 tokenizer 層的，新版的 tokenizer 不會重新施加。所以這裡
+    走 AST 走訪，逐一看每個 `FormattedValue` 的原始碼片段。
+
+    突變：把那句話改回 `\\u2019` → 紅。
+    """
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    floor = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert '">=3.11"' in floor, "requires-python 變了 —— 重新確認這條守的是哪個版本"
+
+    offenders = []
+    for path in sorted((root / "telcoladder").rglob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(src, filename=str(path))):
+            if not isinstance(node, ast.JoinedStr):
+                continue
+            for part in node.values:
+                if isinstance(part, ast.FormattedValue):
+                    segment = ast.get_source_segment(src, part.value) or ""
+                    if "\\" in segment:
+                        offenders.append(f"{path.name}:{part.value.lineno}")
+    assert not offenders, (
+        f"這些 f-string 的運算式含反斜線，Python 3.11 會 SyntaxError：{offenders}\n"
+        "把值算在 f-string 外面，或直接寫字面字元。"
+    )
