@@ -327,6 +327,18 @@ CATALOG: dict[str, str] = {
         '這份擷取檔沒有第 {n} 條流程 —— 這個把手來自比較舊的一次分析。',
     'Those flows carry no packets.':
         '那幾條流程沒有任何封包。',
+    'What the order of these causes means':
+        '這些 cause 的出現順序代表什麼',
+    'frames':
+        '格',
+    'From the cause table, written by people: what this ordered sequence usually means in the field. No specification states it, so no clause is cited.':
+        '來自 cause 表、由人寫的：這個順序在現場通常代表什麼。沒有任何規範這樣寫，所以不附條號。',
+    'Sequence rule in {table} needs at least two cause values; a single cause is not a sequence.':
+        '{table} 的順序規則至少要兩個 cause 號碼；單一個 cause 不是順序。',
+    'Sequence rule in {table} refers to cause(s) {missing} that the table does not carry.':
+        '{table} 的順序規則引用了表裡沒有收錄的 cause：{missing}。',
+    'A sequence rule must not carry {field}: what an ordered pair means is field experience, not something a specification states.':
+        '順序規則不得帶 {field}：兩個號碼連在一起代表什麼是現場經驗，不是規範寫的東西。',
     'Full dissection has not finished; identity information is not available yet.':
         '完整解剖還沒跑完，身分資訊尚未可用。',
     'Unknown identity kind: {kind}':

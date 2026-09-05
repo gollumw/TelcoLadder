@@ -50,6 +50,13 @@ def procedure_record(p: Procedure) -> dict:
         "duration_s": round(p.duration, 6),
         "protocols": list(p.protocols),
         "note": p.note,
+        # 依序出現的幾個 cause 命中了 cause 表的順序規則。**只給號碼與格數** ——
+        # 文字由呈現層依語言查（`causes.sequence_lookup`）。加欄不升版（檔頭規則 ②）。
+        "sequence": (
+            {"table": p.sequence.table, "causes": list(p.sequence.values),
+             "frames": list(p.sequence.frames)}
+            if p.sequence is not None else None
+        ),
     }
 
 

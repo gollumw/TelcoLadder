@@ -31,7 +31,7 @@ from pathlib import Path
 import yaml
 
 from telcoladder.i18n import _
-from telcoladder.model import CauseRef
+from telcoladder.model import CauseRef, SequenceRef
 from telcoladder.plugins import CAUSE_TABLE_GROUP, PluginError, load_group
 
 DATA_DIR = Path(__file__).parent / "data" / "causes"
@@ -92,6 +92,35 @@ class CauseInfo:
         return f"{self.name} (#{self.value}) — {where}"
 
 
+@dataclass(frozen=True, slots=True)
+class SequenceInfo:
+    """**依序出現的幾個 cause 代表什麼** —— 現場經驗，不是規範陳述。
+
+    這是 cause 表裡唯一以「順序」為前提的知識，也是這個工具講得出而
+    封包解碼器講不出的那一句。`ki-mismatch`：#21 之後緊接 #111 幾乎必然是
+    Ki／OPc 不符 —— 而 #21 之後接成功只是一次例行重同步。**同樣的號碼，
+    相反的結論，差別只在下一則是什麼。**
+
+    **刻意沒有 `spec` 與 `clause`。** 單一 cause 的號碼是規範定義的，查得到
+    出處；「這兩個號碼連在一起代表什麼」不是任何一份規範寫的，是人走過現場
+    寫下來的。給它一個條號就是編一個不存在的引用（§2.3 的紅線），所以這個
+    型別**沒有那兩個欄位可以填**。
+    """
+
+    table: str
+    values: tuple[int, ...]
+    says: str
+    says_zh: str = ""
+
+    def text(self) -> str:
+        """依現在的語言選。理由與 `CauseInfo.plain_text` 相同。"""
+        from telcoladder import i18n
+
+        if i18n.current() == "zh_TW" and self.says_zh:
+            return self.says_zh
+        return self.says
+
+
 def _table_dirs() -> list[tuple[str, Path]]:
     """要掃的目錄：內建的，加上外掛提供的。`(來源標籤, 目錄)`。
 
@@ -109,11 +138,18 @@ def _table_dirs() -> list[tuple[str, Path]]:
     return dirs
 
 
+#: table → 該表宣告的順序規則。**由 `_load_tables()` 一起填**，因為它們住在
+#: 同一個 YAML 檔裡；分兩次讀就是讀兩次同一份檔，而兩次之間可以不一致。
+_SEQUENCES: dict[str, tuple["SequenceInfo", ...]] = {}
+
+
 @lru_cache(maxsize=1)
 def _load_tables() -> dict[str, dict[int, CauseInfo]]:
     """載入所有來源的 `*.yaml`。每個檔一張表。"""
     tables: dict[str, dict[int, CauseInfo]] = {}
     origins: dict[str, str] = {}
+    sequences: dict[str, tuple[SequenceInfo, ...]] = _SEQUENCES
+    sequences.clear()
 
     for origin, directory in _table_dirs():
         for path in sorted(directory.glob("*.yaml")):
@@ -125,6 +161,7 @@ def _load_tables() -> dict[str, dict[int, CauseInfo]]:
                 )
             origins[table] = origin
             tables[table] = _entries(raw)
+            sequences[table] = _sequences(raw, tables[table])
 
     return tables
 
@@ -151,6 +188,51 @@ def _entries(raw: dict) -> dict[int, CauseInfo]:
         )
         for value, body in (raw.get("causes") or {}).items()
     }
+
+
+def _sequences(raw: dict, entries: dict[int, CauseInfo]) -> tuple[SequenceInfo, ...]:
+    """一張表宣告的順序規則。
+
+    **每個號碼都必須是這張表裡已收錄的 cause。** 規則引用一個沒人收錄的號碼，
+    畫面上就會出現一句解釋、指向一個工具答不出名字的 cause —— 那比沒有更糟。
+    """
+    out = []
+    for rule in raw.get("sequences") or ():
+        values = tuple(int(v) for v in rule["causes"])
+        if len(values) < 2:
+            raise PluginError(
+                _('Sequence rule in {table} needs at least two cause values; a single cause is not a sequence.').format(table=raw["table"])
+            )
+        missing = [v for v in values if v not in entries]
+        if missing:
+            raise PluginError(
+                _('Sequence rule in {table} refers to cause(s) {missing} that the table does not carry.').format(table=raw["table"], missing=missing)
+            )
+        for forbidden in ("spec", "clause"):
+            if forbidden in rule:
+                raise PluginError(
+                    _('A sequence rule must not carry {field}: what an ordered pair means is field experience, not something a specification states.').format(field=forbidden)
+                )
+        out.append(SequenceInfo(
+            table=raw["table"], values=values,
+            says=rule["says"], says_zh=rule.get("says_zh", ""),
+        ))
+    return tuple(out)
+
+
+def sequence_lookup(ref: "SequenceRef") -> SequenceInfo | None:
+    """查一條順序規則。查不到回 None —— 呼叫端不補一句自己寫的。"""
+    _load_tables()  # `_SEQUENCES` 由它填
+    for info in _SEQUENCES.get(ref.table, ()):
+        if info.values == tuple(ref.values):
+            return info
+    return None
+
+
+def sequences_for(table: str) -> tuple[SequenceInfo, ...]:
+    """一張表宣告的全部順序規則，`procedures` 比對時用。"""
+    _load_tables()
+    return _SEQUENCES.get(table, ())
 
 
 def lookup(ref: CauseRef) -> CauseInfo | None:

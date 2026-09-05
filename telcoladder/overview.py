@@ -51,10 +51,11 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from telcoladder.causes import describe, lookup
+from telcoladder.causes import describe, lookup, sequence_lookup
 from telcoladder.flowtable import FlowTable, SubscriberRow, _light
 from telcoladder.identities import identity_label
 from telcoladder.model import Message
+from telcoladder.packets import frame_filter
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
 from telcoladder.summary import not_visible
@@ -165,6 +166,9 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
         card.pop("_seen")
         card.pop("_peers_seen")
         card["frames"] = sorted(set(card["frames"]))
+        # 貼回 Wireshark 用的那一條。**只用 frame 編號** —— 理由見
+        # `packets.frame_filter`：協定欄位的比對會撈到別人的封包。
+        card["display_filter"] = frame_filter(card["frames"])
         causes.append(card)
     # 最多的排前面；同數依第一格 —— 穩定、可重現。
     causes.sort(key=lambda c: (-c["count"], c["frames"][0]))
@@ -182,6 +186,22 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
                 continue
             record = procedure_record(p)
             record["subscriber_ref"] = _subscriber_ref(owner) if owner is not None else None
+            # 命中的順序規則：**這是這一頁唯一一句「這代表什麼」**，而它來自
+            # cause 表裡人寫的判斷，不是這裡推出來的。文字在這裡依語言選
+            # （總覽本來就按語言算一份，見檔頭），前端只負責排版。
+            if p.sequence is not None:
+                info = sequence_lookup(p.sequence)
+                record["sequence"] = (
+                    {"causes": list(p.sequence.values), "frames": list(p.sequence.frames),
+                     "says": info.text()}
+                    if info is not None else None
+                )
+            else:
+                record["sequence"] = None
+            record["display_filter"] = frame_filter(
+                m.frame for m in flow.messages
+                if p.start_frame <= m.frame <= p.end_frame
+            )
             # 與 cause 卡同一條理由：沒有訂戶的那幾列不能只剩一個破折號。
             record["peers"] = _peer_pairs(p, flow)
             failed_procedures.append(record)

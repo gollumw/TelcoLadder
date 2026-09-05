@@ -97,7 +97,7 @@ from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
-from telcoladder.model import Flow, IdKind, Message, subscriber_identity
+from telcoladder.model import Flow, IdKind, Message, subscriber_identity, SequenceRef
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
 
@@ -161,6 +161,13 @@ class Procedure:
     duration: float
     protocols: tuple[str, ...]
     note: str = ""
+    sequence: "SequenceRef | None" = None
+    """這段裡依序出現的幾個 cause 命中了 cause 表宣告的順序規則。
+
+    **只記號碼與格數，不記文字** —— 文字在呈現層依語言查（`causes.sequence_lookup`），
+    理由與 `Message.cause` 相同：`Analysis` 會跨語言快取，把句子烤進來會讓第一個
+    請求的語言凍結給所有人（CLAUDE.md §9）。"""
+
     subscriber: str | None = None
     """這段屬於誰，給人看的名字（`identities.identity_label`）：SUPI 有就是
     `SUPI …`，沒有就是 `5G-S-TMSI …` 或 `AMF UE NGAP ID …`。**真實網路多數
@@ -176,6 +183,47 @@ def _opens(msg: Message) -> _Kind | None:
         elif kind.opener in msg.label:
             return kind
     return None
+
+
+def _match_sequence(failures: "list[Message]") -> "SequenceRef | None":
+    """這段程序裡**連續的失敗**有沒有命中某張表宣告的順序規則。
+
+    「連續」指的是**失敗之間**連續，不是訊息之間：#21 與 #111 中間隔著那則被
+    拒的請求是正常的，那不算打斷。中間插進另一個失敗才算 —— 那時這已經是另一
+    個故事了，而規則講的是「緊接著」。
+
+    **同一張表才比。** 跨表的順序（NAS 的失敗接著 Diameter 的失敗）是另一種
+    知識，需要另一種驗證，先不收（與 `DIAMETER_ROLES` 只收有把握的介面同一個
+    習慣）。
+
+    命中多條時取**最長**的那條：長的規則描述得更精確。
+    """
+    from telcoladder.causes import sequences_for
+
+    refs = [m.cause for m in failures]
+    if any(c is None for c in refs):
+        # 沒有 cause 的失敗（純靠訊息名判定的）不參與 —— 它沒有號碼可比。
+        # 整段跳過而不是略過那一則：略過等於把不連續的兩則當成連續。
+        return None
+    tables = {c.table for c in refs}
+    if len(tables) != 1:
+        return None
+    table = tables.pop()
+    values = [c.value for c in refs]
+
+    best: SequenceRef | None = None
+    for rule in sequences_for(table):
+        span = len(rule.values)
+        for start in range(len(values) - span + 1):
+            if tuple(values[start:start + span]) != rule.values:
+                continue
+            if best is None or span > len(best.values):
+                best = SequenceRef(
+                    table=table,
+                    values=rule.values,
+                    frames=tuple(m.frame for m in failures[start:start + span]),
+                )
+    return best
 
 
 def _cause_text(msg: Message) -> str:
@@ -235,6 +283,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         duration=window[-1].ts - window[0].ts,
         protocols=tuple(sorted({m.protocol for m in window})),
         note=note,
+        sequence=_match_sequence(failures),
     )
 
 
@@ -343,7 +392,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         procedures.append(Procedure(
             kind=kind,
             supi=supi,
-        subscriber=subscriber,
+            subscriber=subscriber,
             outcome=outcome,
             cause=cause,
             first_failure=first_failure,
@@ -354,6 +403,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             failures=len(failed),
             duration=window[-1].ts - window[0].ts,
             protocols=tuple(sorted({m.protocol for m in window})),
+            sequence=_match_sequence(failed),
             note=note,
         ))
     return procedures, unassigned
