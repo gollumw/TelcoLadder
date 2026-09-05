@@ -1056,7 +1056,25 @@ it. That is one change, not three.
 
 ---
 
-## T-NFLADDER | `nf.py` documents a priority ladder and implements unanimity (P0)
+## ~~T-NFLADDER | `nf.py` documents a priority ladder and implements unanimity~~ (**completed 2026-09-05**)
+
+**What was done**: evidence is tiered (`nf.EVIDENCE_TIER`): wire/trace
+statements and protocol-direction rules (0) > the N2 port (1) > SBI
+service names (2) > `User-Agent` (3); undeclared kinds are weakest.
+`_collapse` looks only at the strongest tier that voted, so a lower tier
+can never veto a higher one and a contradiction blanks a role only within
+that tier; `role_contradictions` names only the roles that actually
+fought. When the strongest tier does contradict, `_split_by_port` retries
+per `(address, port)` and, if each port resolves to a different role,
+returns `ip:port` keys — `apply_roles` and the packet list's endpoint cell
+look those up before the bare address. Twelve tests in
+`tests/test_nf_ladder.py`, including a pin of every fixture's resolved
+roles (none may change or disappear) and a mutation check (flattening the
+tiers fails two tests). The module docstring now describes what the code
+does.
+
+Original entry follows.
+
 
 **What**: the module docstring (`nf.py:6-15`) says "判定階梯由強到弱，先命中者
 為準". The code (`nf.py:366-370`) accepts an IP's role only when
