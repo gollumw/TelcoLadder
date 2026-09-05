@@ -34,7 +34,7 @@ arrive, it is a third party's production data — the intake rule is
 
 | Date | Who (initials) | Q1 — how long | Q2 — what tool | Q3 — capture? | Came back? | Notes |
 |---|---|---|---|---|---|---|
-| _(none yet)_ | | | | | | |
+| 2026-09-05 | — (first outside user; initials not recorded) | not asked | Wireshark | yes — their own test-environment captures | — | Two findings, both since fixed: **the decode was incomplete** on their files (raw Diameter exports with no IP layer read as "170 frames not decoded"; a TS 32.423 XML trace lost its element names and per-message subscriber) and **the session view was poor** (subscribers without a SUPI did not appear; retries hid rejects inside "success"). Fixes landed as PR #2 (commits `5b7f4fb` … `e71cfae`); the counts are in the self-validation table below. Q1–Q3 were not asked in this order — the answers above are what the conversation actually yielded. |
 
 ## Why this file has a test attached
 
