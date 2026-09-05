@@ -836,12 +836,16 @@ form.path .opt {
 .batch tbody tr:hover { background: var(--hover); }
 .batch td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .batch a { color: var(--accent); }
-.light { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
-.light.red { background: var(--fail); }
-.light.amber { background: var(--warn); }
-.light.green { background: var(--ok); }
-.light.empty { background: var(--faint); }
-.light.pending { background: transparent; border: 1px solid var(--faint); }
+/* Verdict dot on a batch row. **Never call this `.light`.** `chrome.py` puts
+   `class="light"` on <html> for the explicit light theme, so a bare `.light`
+   rule lands on the root element - `width: 9px` on <html> collapsed every
+   served page into a one-word-per-line column, in light mode only. */
+.vdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+.vdot.red { background: var(--fail); }
+.vdot.amber { background: var(--warn); }
+.vdot.green { background: var(--ok); }
+.vdot.empty { background: var(--faint); }
+.vdot.pending { background: transparent; border: 1px solid var(--faint); }
 .tools { display: flex; gap: 10px; align-items: center; margin: 16px 0; }
 .tools button {
   border: 1px solid var(--border); background: var(--surface); color: var(--dim);
@@ -1021,7 +1025,7 @@ def _batch_page(token: str | None = None) -> str:
 
   sids.forEach(function (sid) {{
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><a></a></td><td><span class="light pending"></span><span class="v"></span></td>'
+    tr.innerHTML = '<td><a></a></td><td><span class="vdot pending"></span><span class="v"></span></td>'
       + '<td class="num n1"></td><td class="num n2"></td><td class="num n3"></td>'
       + '<td class="num n4"></td><td class="num n5"></td>';
     rows.appendChild(tr);
@@ -1038,7 +1042,7 @@ def _batch_page(token: str | None = None) -> str:
       .then(function (r) {{ return r.json(); }})
       .then(function (j) {{
         if (!j.ready) {{ tr.querySelector('.v').textContent = {pending_json}; return; }}
-        tr.querySelector('.light').className = 'light ' + j.verdict;
+        tr.querySelector('.vdot').className = 'vdot ' + j.verdict;
         tr.querySelector('.v').textContent = VERDICT[j.verdict] || j.verdict;
         tr.querySelector('.n1').textContent = j.subscribers.total;
         tr.querySelector('.n2').textContent = j.events.failures;

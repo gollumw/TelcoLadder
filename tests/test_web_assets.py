@@ -524,3 +524,48 @@ def test_web_sources_render_no_chinese_outside_the_catalog() -> None:
     # 語言切換鈕上的「中文」兩字是刻意的：語言名用它自己的語言寫。
     offenders = [o for o in offenders if '"中文"' not in o]
     assert not offenders, "這些地方把中文寫死在介面裡（應走 t()）：\n  " + "\n  ".join(offenders)
+
+
+#: `chrome.py` 放在 `<html>` 上的主題 class。頁面裡的任何一條 `.light` / `.dark`
+#: 規則都會打中根元素。
+_THEME_CLASSES = ("light", "dark")
+
+
+def test_no_served_rule_targets_the_theme_classes_on_their_own() -> None:
+    """伺服器端頁面的 CSS 不得有裸的 `.light` / `.dark` 規則。
+
+    2026-09-06 的實際事故：批次總表的燈號用了 `.light`，而
+    `chrome.py` 的明選淺色是 `<html class="light">`。於是
+    `.light { width: 9px }` **套在 `<html>` 上**，每一頁都塌成一欄
+    一個字 —— 而且只在淺色主題下發生，深色主題完全正常。
+
+    量到的症狀正是那個數字：`html` 的計算寬度 9px、`body` 40px（只剩左右
+    padding）、`.wrap` 0px。**沒有任何一層會報錯** —— CSS 沒有語法錯誤、
+    HTML 標籤配對正確、建置與測試全綠，畫面就是壞的。
+
+    合法的用法是與 `:root` 綁在一起（`:root:not(.light)`、`:root.dark`）——
+    那是在講主題本身。這條只擋裸的。
+
+    突變：把 `.vdot` 改回 `.light` → 紅。
+    """
+    import re
+
+    from telcoladder.chrome import CHROME_CSS
+    from telcoladder.web import _EXTRA_CSS
+
+    css = re.sub(r"/\*.*?\*/", "", CHROME_CSS + _EXTRA_CSS, flags=re.S)
+    offenders = []
+    for selector in re.findall(r"([^{}]+)\{", css):
+        for part in selector.split(","):
+            part = part.strip()
+            if ":root" in part:
+                continue  # `:root:not(.light)` / `:root.dark` —— 這才是主題本身
+            for cls in _THEME_CLASSES:
+                # 裸的 `.light`、`.light.red`、`.x .light` 都算 —— 只要沒綁 :root
+                if re.search(rf"(^|[\s>+~]|^\.){re.escape('.' + cls)}(?![\w-])", part):
+                    offenders.append(part[:70])
+    assert not offenders, (
+        f"這些選擇器會打中 <html> 的主題 class：{sorted(set(offenders))}\n"
+        "改個名字。`chrome.py` 把 light/dark 放在根元素上，裸規則會套上去，"
+        "而症狀是整頁塌掉、沒有任何錯誤訊息。"
+    )
