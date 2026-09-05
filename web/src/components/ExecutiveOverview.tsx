@@ -1,7 +1,8 @@
 "use client";
 
+import { Fragment, useState } from "react";
 import { t, useLang } from "../i18n";
-import { AlertTriangle, ArrowUpRight, Binary, CheckCircle2, EyeOff, LayoutList, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Binary, CheckCircle2, EyeOff, Filter, LayoutList, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Overview, OverviewCause, OverviewProcedure } from "@/data/source";
 
@@ -186,7 +187,31 @@ export function ExecutiveOverview({
               </thead>
               <tbody>
                 {overview.failedProcedures.map((p) => (
-                  <ProcedureRow key={`${p.startFrame}-${p.subscriber?.handle ?? ""}`} p={p} onOpenLadder={onOpenLadder} onOpenPacket={onOpenPacket} />
+                  <Fragment key={`${p.startFrame}-${p.subscriber?.handle ?? ""}`}>
+                    <ProcedureRow p={p} onOpenLadder={onOpenLadder} onOpenPacket={onOpenPacket} />
+                    {/* 命中的順序規則：**整頁唯一一句「這代表什麼」**，所以它
+                        跨整列、緊貼在那段程序底下，而不是塞進某一格。措辭與
+                        常見根因一樣要標明出處是 cause 表裡人寫的。 */}
+                    {p.sequence && (
+                      <tr className="border-t border-signal-amber-border/40 bg-signal-amber-bg/40">
+                        <td colSpan={6} className="px-3 py-2">
+                          <p className="text-[11px] font-semibold text-signal-amber">
+                            {t("What this order of causes means")}
+                            <span className="ml-2 font-mono font-normal text-fg-dim">
+                              {p.sequence.causes.map((c) => `#${c}`).join(" → ")}
+                              {" · "}
+                              {t("frames {list}", { list: p.sequence.frames.join(", ") })}
+                            </span>
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-fg">{p.sequence.says}</p>
+                          <p className="mt-1 text-[10px] text-fg-dim">
+                            {t("From the cause table, written by people. No specification states what an ordered pair means, so no clause is cited.")}
+                          </p>
+                          <div className="mt-2"><CopyFilter filter={p.displayFilter} /></div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -233,6 +258,35 @@ function NotVisiblePanel({ nv }: { nv: Overview["notVisible"] }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * 把一條 display filter 複製走。
+ *
+ * **這是回 Wireshark 的橋。** 整個工作流的前提是「先用這裡定位，再開 Wireshark
+ * 對格」，而在此之前那一步要自己拼字串。filter 只用 frame 編號 —— 理由在
+ * `packets.frame_filter`：協定欄位的比對是訊息層級的，會撈到別人的封包。
+ */
+function CopyFilter({ filter }: { filter: string | null }) {
+  const [done, setDone] = useState(false);
+  if (!filter) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(filter).then(
+          () => setDone(true),
+          // 複製失敗要說 —— 沉默地什麼都沒發生，使用者會以為複製好了然後貼出空的。
+          () => window.prompt(t("Copy this display filter"), filter),
+        );
+      }}
+      title={filter}
+      className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2.5 py-1 font-mono text-[11px] text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+    >
+      {done ? <CheckCircle2 className="h-3 w-3 text-signal-mint" /> : <Filter className="h-3 w-3" />}
+      {done ? t("Copied") : t("Wireshark filter")}
+    </button>
   );
 }
 
@@ -342,6 +396,7 @@ function CauseCard({
             <ArrowUpRight className="h-3 w-3" />
           </button>
         )}
+        <CopyFilter filter={cause.displayFilter} />
         <button
           type="button"
           onClick={() => onOpenPacket(cause.frames[0])}

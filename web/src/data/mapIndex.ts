@@ -529,6 +529,7 @@ export interface OverviewJson {
     frames: number[];
     subscribers: OverviewRefJson[];
     peers: OverviewPeerJson[];
+    display_filter: string | null;
   }>;
   failed_procedures: Array<{
     procedure: string;
@@ -542,6 +543,8 @@ export interface OverviewJson {
     duration_s: number;
     note: string;
     peers: OverviewPeerJson[];
+    sequence: { causes: number[]; frames: number[]; says: string } | null;
+    display_filter: string | null;
   }>;
 }
 
@@ -558,6 +561,15 @@ export function refToSubscriber(ref: OverviewRefJson): OverviewSubscriberRef {
     label: ref.label,
     ...(ref.frame !== undefined ? { frame: ref.frame } : {}),
   };
+}
+
+/**
+ * cause 表的散文是**給 CLI／Markdown 的原文**，用 `**粗體**` 標記重點
+ * （既有慣例，四個現有條目就是這樣寫的）。瀏覽器顯示純文字，把標記拿掉 ——
+ * 只動排版，不動一個字。與 `not_visible` 那幾句走同一條處理。
+ */
+function plain(text: string): string {
+  return text.replace(/\*\*/g, "");
 }
 
 export function toOverview(body: OverviewJson): Overview {
@@ -597,12 +609,13 @@ export function toOverview(body: OverviewJson): Overview {
       protocol: c.protocol,
       citation: c.citation,
       known: c.known,
-      explanation: c.explanation,
-      commonCauses: c.common_causes ?? [],
+      explanation: c.explanation === null ? null : plain(c.explanation),
+      commonCauses: (c.common_causes ?? []).map(plain),
       count: c.count,
       frames: c.frames,
       subscribers: (c.subscribers ?? []).map(refToSubscriber),
       peers: c.peers ?? [],
+      displayFilter: c.display_filter ?? null,
     })),
     failedProcedures: (body.failed_procedures ?? []).map((p) => ({
       kind: p.procedure,
@@ -616,6 +629,8 @@ export function toOverview(body: OverviewJson): Overview {
       durationS: p.duration_s,
       note: p.note,
       peers: p.peers ?? [],
+      sequence: p.sequence ? { ...p.sequence, says: plain(p.sequence.says) } : null,
+      displayFilter: p.display_filter ?? null,
     })),
   };
 }

@@ -894,7 +894,44 @@ case it gets wrong. That paragraph is rewritten in place.
 
 ---
 
-## T-PAIRRULE | the ordered-pair judgements are prose, and nothing evaluates them (P2)
+## ~~T-PAIRRULE | the ordered-pair judgements are prose, and nothing evaluates them~~ (**completed 2026-09-06**)
+
+**What was done**: cause tables gained a top-level `sequences:` block beside
+`causes:`. A rule names the ordered cause values and what they mean, in both
+languages. `procedures._match_sequence` looks for a matching run of
+**consecutive failures** inside one segment (consecutive among failures, not
+among messages — the rejected request sitting between them is normal), same
+table only, and sets `Procedure.sequence` to a `SequenceRef` carrying the
+table, the values and the frames that prove it. Text is looked up at
+presentation time (`causes.sequence_lookup`), because `Analysis` is cached
+across languages.
+
+The first rule is the one that was already written as prose in #111's
+`common_causes`: #21 → #111 is an authentication key mismatch, and
+re-provisioning the key is the fix while resetting the sequence number is
+not. That prose is now a pointer to the rule, so the judgement has one home.
+
+**A sequence rule may not carry `spec` or `clause`, and the loader refuses
+one that does.** No specification states what an ordered pair means; it is
+field experience. Giving it a clause would be inventing a citation, which is
+the thing red line 3 exists to prevent.
+
+It reaches the xDR (`sequence`, a new field — additive, no version bump), the
+summary JSON, the Markdown page, and the overview, where the browser shows it
+as a row under the failed procedure with the frames beside it.
+
+**And it came out of the prompt.** `mcp.INSTRUCTIONS` used to tell the agent
+to derive #21 → #111 itself — the project's own Rule 5 says code answers what
+code can answer. The instruction now points at the field and says not to
+derive such a judgement. `test_mcp.py`'s rule test was flipped rather than
+deleted: it used to require the example be present, and now requires it be
+absent and the field named.
+
+Thirteen tests in `tests/test_sequence_rules.py`, mutation-checked in three
+places (no match, reversed order, set-instead-of-sequence comparison).
+
+Original entry follows.
+
 
 **What**: `nas_5gmm.yaml` #111's first `common_causes` entry already states the
 real judgement — "a #21 immediately followed by #111 is almost always a key
@@ -1296,11 +1333,20 @@ decision, not a tidy-up.
 Recorded from the 2026-09-05 review so the order is not lost. None started.
 
 1. `telcoladder batch <dir>` — one line per file (shape, decoded %, subscribers,
-   failures, unanswered). Engineers receive directories, not files.
+   failures, unanswered). Engineers receive directories, not files.  **The GUI half shipped 2026-09-05**
+   (drop several files, batch table); the CLI verb is still open.
 2. `check <file>` that states the file's *shape* before analysis (NE trace,
    EXPORTED_PDU, USER DLT, VLAN/SCTP, synthetic sequence numbers).
-3. A copy-able Wireshark display filter on every failure, subscriber and
-   procedure (`ngap.RAN_UE_NGAP_ID == …`); ideally "open in Wireshark at frame N".
+3. ~~A copy-able Wireshark display filter on every failure, subscriber and
+   procedure~~ — **done 2026-09-06 for failures and procedures**
+   (`packets.frame_filter`, a copy button on each cause card and failed
+   procedure). Deliberately **not** the `ngap.RAN_UE_NGAP_ID == …` shape this
+   entry originally suggested: that is a message-level comparison while this
+   tool's attribution is flow-level, and those IDs are recycled, so such a
+   filter would also select somebody else's packets (101 frames vs 42, the
+   `session_frames` measurement). It emits `frame.number` sets — exactly the
+   frames the tool computed — and refuses rather than truncate past 200.
+   Still open: subscriber-level filters, and "open in Wireshark at frame N".
 4. Request→response latency per transaction (SBI stream, PFCP seqno,
    Diameter hop-by-hop, SIP CSeq are all paired already) — the foundation of
    any KPI.

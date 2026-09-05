@@ -329,6 +329,25 @@ means a timer waiting — usually the fault line itself.
 
 ---
 
+### When the order of two causes is the answer
+
+A single cause number often answers nothing. `ki-mismatch` ends with
+`#111 Protocol error, unspecified` — the least informative code there is.
+But `#21 Synch failure` **followed by** `#111` is almost always a Ki or
+OPc mismatch, while `#21` followed by success is a routine
+resynchronisation. Same number, opposite conclusions.
+
+The cause tables carry these ordered rules (`sequences:` beside
+`causes:`). When a run of consecutive failures inside one procedure
+matches one, the summary, the xDR and the overview all state what it
+means and cite the frames it was seen in.
+
+**No clause is printed with it, and the loader refuses a rule that
+carries one.** No specification says what an ordered pair means — that is
+field experience, written by a person, and a citation would be invented.
+
+---
+
 ## 5. Five things to know when interpreting
 
 **1. Cause clauses are looked up, never AI-generated.** The
@@ -370,6 +389,25 @@ telcoladder analyze your.pcap --decode-as tcp.port==8080,http2
 Your rules apply after the automatic ones and override them. Common
 deployments' SBI ports are built in (heuristic hints, not normative
 values).
+
+---
+
+### Getting back to Wireshark
+
+Every failure card and every failed procedure carries a **Wireshark
+filter** button. It copies a `frame.number` filter covering exactly the
+frames that row is about, so pasting it into Wireshark shows what the
+page showed.
+
+It is deliberately not an identifier filter such as
+`ngap.RAN_UE_NGAP_ID == 1`. That compares one field on one message, while
+this tool attributes at flow level, and those IDs are only unique inside
+one connection and get recycled — so it would also select another
+subscriber's packets. Measured on one capture: 101 frames flow-level
+against 42 by field comparison.
+
+Past 200 frames no filter is offered. A truncated filter looks perfectly
+normal and nothing says which frames it dropped.
 
 ---
 

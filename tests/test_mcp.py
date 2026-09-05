@@ -132,9 +132,22 @@ def test_the_instructions_carry_the_three_judgement_rules() -> None:
     """
     said = mcp.INSTRUCTIONS
 
-    # 1：序列勝過單一號碼
-    assert "#21" in said and "#111" in said, "序列規則沒有具體例子就只是格言"
+    # 1：序列勝過單一號碼。
+    #
+    # **這條在 2026-09-06 翻面了。** 原本它守「instructions 裡要有 #21/#111 的
+    # 具體例子」，因為當時那個判斷只存在於 prompt 裡 —— 而那正是問題：專案的
+    # Rule 5 說程式答得出來的就程式答，§2.3 說模型只能敘述不能判斷。
+    #
+    # 現在順序規則住在 cause 表裡、由 `procedures` 比對、以 `sequence` 欄位交出來
+    # （T-PAIRRULE）。所以要守的不再是「有沒有舉例」，而是**有沒有叫 agent 去讀
+    # 那個欄位、而且不准自己推**。留著舊斷言會反過來要求我們把判斷放回 prompt。
     assert "not a conclusion" in said
+    assert "'sequence' field" in said, "沒告訴 agent 那個欄位在哪，它只能自己猜"
+    assert "Do not derive such a judgement yourself" in said
+    assert "#21" not in said, (
+        "具體的序列判斷不該再出現在 prompt 裡 —— 它是 cause 表的內容，"
+        "由程式比對後當事實交出去"
+    )
 
     # 2：不得生成條號（§2.3 的紅線，這裡是它對 agent 的那一面）
     assert "clause" in said and "not already in the facts" in said

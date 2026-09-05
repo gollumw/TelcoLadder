@@ -480,6 +480,33 @@ def render_markdown(doc: dict) -> str:
                 else (p["note"] or "—"),
             ])
         out += _table([_("Subscriber"), _("Procedure"), _("Outcome"), _("Frames"), _("Duration"), _("Cause / note")], rows)
+
+        # ── 命中的順序規則 ──
+        #
+        # **這是這份摘要裡唯一一句「這代表什麼」，所以它要說清楚出處。**
+        # 它不是工具推出來的，是 cause 表裡人寫的判斷，條件是那幾個號碼**依序**
+        # 出現在同一段程序裡 —— 而觀測到的那幾格就列在後面，讀的人可以自己去對。
+        from telcoladder.causes import sequence_lookup
+        from telcoladder.model import SequenceRef
+
+        seen_rules: set[tuple[str, tuple[int, ...]]] = set()
+        lines = []
+        for p in doc["procedures"]:
+            seq = p.get("sequence")
+            if not seq:
+                continue
+            key = (seq["table"], tuple(seq["causes"]))
+            info = sequence_lookup(SequenceRef(seq["table"], tuple(seq["causes"]), ()))
+            if info is None or key in seen_rules:
+                continue
+            seen_rules.add(key)
+            numbers = " → ".join(f'#{v}' for v in seq["causes"])
+            frames = ", ".join(str(f) for f in seq["frames"])
+            lines.append(f'- **{numbers}** ({_("frames")} {frames}) — {info.text()}')
+        if lines:
+            out += ["", f'### {_("What the order of these causes means")}', ""]
+            out += lines
+            out += ["", _("From the cause table, written by people: what this ordered sequence usually means in the field. No specification states it, so no clause is cited.")]
     else:
         out.append(_("No procedure could be segmented (no NAS/NGAP opener seen)."))
 

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Sequence, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -91,6 +91,31 @@ class PacketColumnsUnavailable(RuntimeError):
     症狀會是「每一格的 Source / Info 都是空的」—— 一張看起來只是資料不足、
     其實是我們讀錯 key 的表。所以寧可大聲失敗。
     """
+
+
+#: `frame_filter` 一條 filter 最多列幾格。超過就不給 —— 一條被截斷的 filter
+#: 看起來完全正常，而它少撈的那些格沒有任何地方會說。
+FRAME_FILTER_LIMIT = 200
+
+
+def frame_filter(frames: "Iterable[int]") -> str | None:
+    """幾格 → 一條可直接貼進 Wireshark 的 display filter。超過上限回 None。
+
+    **只用 `frame.number`，不用協定欄位。** 發 `ngap.RAN_UE_NGAP_ID == 1` 之類的
+    很誘人，但那是**訊息層級**的比對，而這個工具的歸戶是**流程層級**的（union-find
+    跨識別碼別名與生命週期）。兩者不一樣，而且差別會咬人：NGAP UE ID 只在一條連線
+    內唯一、而且會回收再配發，所以那條 filter 會一併撈到**別人的**封包。實測同一個
+    SUPI：流程層級 101 格、欄位比對 42 格（`identities.session_frames` 的說明）。
+
+    frame 編號是我們真的算出來的那組格，貼進 Wireshark 看到的就是這裡看到的 ——
+    沒有第二套判斷，也就沒有第二套判斷會漂移。
+    """
+    numbers = sorted(set(frames))
+    if not numbers or len(numbers) > FRAME_FILTER_LIMIT:
+        return None
+    if len(numbers) == 1:
+        return f"frame.number == {numbers[0]}"
+    return "frame.number in {" + ", ".join(str(n) for n in numbers) + "}"
 
 
 @dataclass(frozen=True, slots=True)

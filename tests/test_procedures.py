@@ -286,6 +286,10 @@ PROCEDURE_FIELDS = {
     "procedure", "supi", "subscriber", "outcome", "cause", "first_failure", "pdu_session_id",
     "start_frame", "end_frame", "messages", "failures", "duration_s",
     "protocols", "note",
+    # 2026-09-06：依序出現的 cause 命中 cause 表的順序規則時填，否則 null。
+    # **加欄不升版**（xdr 檔頭規則）—— 既有的 jq 一個都不會壞，而少了它，
+    # 這個工具唯一講得出「這代表什麼」的地方就出不了 xDR。
+    "sequence",
 }
 
 

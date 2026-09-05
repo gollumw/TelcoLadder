@@ -18,6 +18,32 @@ table: nas_5gmm
 spec: "3GPP TS 24.501"
 clause: "§9.11.3.2"
 
+# ── 順序規則：**幾個 cause 依序出現代表什麼** ───────────────────────────
+#
+# 單一 cause 常常答不出問題。#111「協定錯誤，規範未指明」本身零資訊量，
+# 而 #21 之後緊接 #111 幾乎必然是 Ki／OPc 不符；#21 之後接成功則只是一次
+# 例行重同步。**同樣的號碼、相反的結論，差別只在下一則是什麼。**
+#
+# 這一段以前是 #111 的 `common_causes` 裡的一句散文，沒有任何程式讀它 ——
+# 工具知道卻講不出來，只有接了 MCP 的 agent 靠 prompt 推理得出（而那違反
+# 專案自己的 Rule 5：程式答得出來的就程式答）。
+#
+# **不准有 `spec` 或 `clause`。** 單一號碼的出處是規範定義的；「這兩個號碼
+# 連在一起代表什麼」不是任何一份規範寫的，是走過現場的人寫下來的。給它一個
+# 條號就是編一個不存在的引用（CLAUDE.md 紅線 3）。載入時會擋。
+sequences:
+  - causes: [21, 111]
+    says: >-
+      An authentication key mismatch. When Ki or OPc disagree, the UE answers
+      Synch failure first; the AUTS it computes cannot be used by the network to
+      resynchronise, so the network gives up with an unspecified protocol error.
+      Re-provisioning the SIM's key is the fix - resetting the sequence number is
+      not, and the problem returns unchanged.
+    says_zh: >-
+      鑑權金鑰不符。Ki 或 OPc 兩邊不一致時，UE 會先回 Synch failure；它算出的
+      AUTS 網路無法用來重同步，於是網路以「協定錯誤，未指明」放棄。修法是重新
+      配發 SIM 的金鑰 —— **重設序號沒有用**，問題會原封不動回來。
+
 causes:
   3:
     name: "Illegal UE"
@@ -342,10 +368,7 @@ causes:
       - 'A mandatory IE missing, or a length field computed wrongly'
       - 'A 3GPP release gap where an older peer refuses a newer IE'
     common_causes_zh:
-      - "鑑權金鑰不符：Ki 或 OPc 兩邊不一致時，UE 會先回 Synch failure(#21)，
-         而它算出的 AUTS 網路無法用來重同步，最後就以本 cause 拒絕。
-         看到 #21 緊接 #111 幾乎必然是金鑰問題
-         （tests/fixtures/ki-mismatch 實測）"
+      - "鑑權金鑰不符（#21 → #111 的順序寫在本檔開頭的順序規則裡，不在這裡猜）"
       - "編碼／解碼不相容，常見於不同廠商設備互連"
       - "必要 IE 缺漏或長度欄位算錯"
       - "3GPP release 版本落差導致新 IE 被舊端拒收"

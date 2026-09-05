@@ -266,6 +266,9 @@ export interface OverviewCause {
   subscribers: OverviewSubscriberRef[];
   /** 這個 cause 出現在哪些端點之間。**沒有訂戶時這是唯一的答案。** */
   peers: OverviewPeer[];
+  /** 貼回 Wireshark 用的 display filter。格數太多時是 null —— 截斷過的
+   *  filter 看起來完全正常，而它少撈的那些格沒有地方會說。 */
+  displayFilter: string | null;
 }
 
 export interface OverviewProcedure {
@@ -281,6 +284,16 @@ export interface OverviewProcedure {
   failures: number;
   durationS: number;
   note: string;
+  /**
+   * 這段程序裡依序出現的幾個 cause 命中了 cause 表的順序規則。
+   *
+   * **這是整頁唯一一句「這代表什麼」。** 它不是工具推的，是 cause 表裡人寫的
+   * 判斷，條件是那幾個號碼**依序**出現在同一段程序裡；`frames` 是觀測到的那
+   * 幾格，讀的人可以自己去對。沒有出處條號 —— 沒有任何規範寫「這兩個號碼連
+   * 在一起代表什麼」，編一個就是假引用。
+   */
+  sequence: { causes: number[]; frames: number[]; says: string } | null;
+  displayFilter: string | null;
   /** 這段程序的失敗落在哪些端點之間 —— 沒有訂戶的那幾列不能只剩一個破折號。 */
   peers: OverviewPeer[];
 }

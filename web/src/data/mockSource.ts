@@ -137,6 +137,7 @@ export function mockSource(): DataSource {
           subscribers: [],
           // 範例資料沒有端點對 —— 真實資料那條路由引擎填（`overview._peer_pairs`）。
           peers: [],
+          displayFilter: null,
         };
         card.count += 1;
         card.frames.push(e.frameNumber);
