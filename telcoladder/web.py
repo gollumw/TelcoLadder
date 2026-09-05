@@ -1040,7 +1040,7 @@ def _home_page(token: str | None = None) -> str:
   <p>{esc(_('Several at once is fine. Or pick files with the button below. Limit {mb} MB each.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
   <label class="pick">{esc(_('Choose files'))}<input type="file" id="file" multiple accept=".pcap,.pcapng,.cap,.xml"></label>
   <p class="fine">{_('An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.')}</p>
-  <p class="fine">{_('<b>Several files are analysed separately, never merged.</b> Merging captures would put two networks\u2019 connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) into one number space, and two unrelated subscribers would fuse into one flow - with a ladder that still draws perfectly. Correlation therefore never crosses a file.')}</p>
+  <p class="fine">{_('<b>Several files are analysed separately, never merged.</b> Merging captures would put two networks’ connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) into one number space, and two unrelated subscribers would fuse into one flow - with a ladder that still draws perfectly. Correlation therefore never crosses a file.')}</p>
 </div>
 
 <div class="queue" id="queue" hidden></div>
