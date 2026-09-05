@@ -773,7 +773,7 @@ def _home_page() -> str:
 <div class="drop" id="drop">
   <h2>{esc(_('Drop a pcap here'))}</h2>
   <p>{esc(_('Or pick a file with the button below. Limit {mb} MB.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
-  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
+  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap,.xml"></label>
   <p class="fine">{_('An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.')}</p>
 </div>
 

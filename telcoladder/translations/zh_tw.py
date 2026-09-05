@@ -5,6 +5,8 @@
 """
 
 CATALOG: dict[str, str] = {
+    'Decoded in a single pass: tshark\'s two-pass analysis fails on this file type, so cross-frame reassembly annotations ("reassembled in frame N") are absent. The dissection itself is complete.':
+        '以單趟解碼：tshark 的兩趟分析在這種檔上跑不起來，所以沒有跨格重組的標註（「reassembled in frame N」）。解剖本身是完整的。',
     'Subscribers without a SUPI':
         '沒有 SUPI 的訂戶',
     'These are real subscribers whose permanent identity never appeared in cleartext - most Service-request traffic looks like this. The 5G-S-TMSI (or NGAP UE ID) is the only handle; a SUPI is assigned inside ciphered messages.':

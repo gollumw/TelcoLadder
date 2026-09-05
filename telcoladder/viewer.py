@@ -176,6 +176,7 @@ def decode_json(session: Session, frame: int) -> dict:
             decode_as = session.decode_as
             relax_seq = session.relax_seq
             prefs = session.prefs
+        notes: list[str] = []
         trees = decode_frames(
             session.pcap,
             window_around(frame, highest=highest),
@@ -183,12 +184,20 @@ def decode_json(session: Session, frame: int) -> dict:
             relax_seq=relax_seq,
             prefs=prefs,
             tshark=session.tshark,
+            notes=notes,
         )
         session.decode.put(trees)
+        if notes:
+            # 記在 session 上：同一份檔每次解碼都會退回單趟，句子只要一份，
+            # 而快取命中時也得講得出來。
+            session.decode_note = notes[0]
         cached = session.decode.get(frame)
     if cached is None:
         return {"frame": frame, "tree": [], "error": _('No frame {frame} in the capture.').format(frame=frame)}
-    return {"frame": frame, "tree": [n.to_json() for n in cached]}
+    payload = {"frame": frame, "tree": [n.to_json() for n in cached]}
+    if session.decode_note:
+        payload["note"] = session.decode_note
+    return payload
 
 
 def bytes_json(session: Session, frame: int) -> dict:

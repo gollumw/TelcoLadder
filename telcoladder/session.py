@@ -199,6 +199,10 @@ class Session:
     auto_decode_as: tuple[str, ...] = ()
     """這次解剖自動偵測到的額外規則。只對這份擷取檔有效，不存檔。"""
 
+    decode_note: str | None = None
+    """解碼樹那條路少做了什麼（`decode.decode_frames` 的 `notes`）。目前只有一種：
+    兩趟分析在這種檔上跑不起來、退回單趟。有值就隨每個 `/decode` 回應送出。"""
+
     prefs: tuple[str, ...] = ()
     """套給 tshark 的 `-o` 偏好，**與 `decode_as` 同一個地位、同四條路徑**。
 

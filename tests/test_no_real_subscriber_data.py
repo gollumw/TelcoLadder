@@ -73,6 +73,11 @@ _INVENTED = {
     "000000000000000": "全 0 —— `tests/test_callflow_api.py` 的哨兵值",
     "999999999999999": "全 9 —— `tests/test_prefilter.py` 的邊界值",
     "460001234567890": "MCC 460 ＋ 遞增序列",
+    # `tests/fixtures/nettrace-32423/capture.xml` 的 `<rawMsg>` 十六進位裡的一段：
+    # 那是 `00 f1 10 00 00 00 01 00 00` —— 手寫 NGAP 的 UserLocationInformation
+    # （PLMN 001/01、TAC 補零），十六進位剛好連出 15 個十進位字元。位元組由
+    # `5gc-service-request/make.py` 產生，不是任何人的識別碼。
+    "110000000010000": "TS 32.423 XML fixture 裡 NGAP ULI IE 的十六進位（PLMN 001/01＋補零）",
     # ── 2026-08-24 移除四筆（三個 IMSI ＋ 一個 IMEI）──
     #
     # 原本的理由寫著「遞增序列，一眼看得出是編的」。**那個判斷只看了尾巴，
