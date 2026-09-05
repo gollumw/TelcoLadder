@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from telcoladder.model import NF_ROLE_HINTS_KEY, Endpoint, Message
+from telcoladder.model import NF_ROLE_HINTS_KEY, Endpoint, Message, TRACE_ROLE_HINTS_KEY
 
 #: N2 介面上 AMF 固定監聽的 SCTP 埠（TS 38.412）。
 NGAP_PORT = 38412
@@ -402,6 +402,12 @@ def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[st
             address, _sep, role = pair.partition("=")
             if address and role:
                 vote(address, role, "wire-hint")
+        # 匯出 trace 的網元在檔案中繼資料裡寫的（TS 32.423 `<initiator type=…>`）。
+        # 同樣通用處理、不認 adapter；basis 分開，因為它不是線路而是匯出端的設定。
+        for pair in msg.detail.get(TRACE_ROLE_HINTS_KEY, "").split(";"):
+            address, _sep, role = pair.partition("=")
+            if address and role:
+                vote(address, role, "trace-hint")
 
         # ── S1AP：程序碼決定兩方是誰，回應方向相反 ──
         if msg.protocol == "s1ap":

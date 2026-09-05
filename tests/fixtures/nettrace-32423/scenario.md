@@ -13,6 +13,14 @@ This fixture is the smallest instance of that shape: four NGAP messages
 
 ## What it pins
 
+Beyond the two-pass fallback: `telcoladder/nettrace.py` reads the XML
+alongside tshark. Frames 1–4 carry `<initiator type="gNB">` /
+`<target type="AMF" … Guami=…>` (roles by `trace-hint`), frame 4's target
+has an FQDN and **no Address** (tshark leaves the address empty; the tool
+uses the FQDN as the endpoint's host), and every `<traceRecSession>` tags
+its message with the same test-network IMSI, so all four frames join one
+subscriber flow even though no NGAP/NAS message carries an IMSI.
+
 tshark 4.6.8 reads 4/4 frames as `exported_pdu:ngap:nas-5gs`. Two-pass
 mode (`-2`) **fails on this file type** (exit 14, `parser error :
 StartTag` from the XML reader on its second read) while single-pass

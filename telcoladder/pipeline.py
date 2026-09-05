@@ -29,6 +29,7 @@ from telcoladder.adapters import blind_spots, default_decode_as, parse_frame
 from telcoladder.causes import annotate
 from telcoladder.correlate import correlate
 from telcoladder.endpoints import fill_hostless
+from telcoladder.nettrace import Sidecar, apply as apply_trace, is_nettrace, read_hints
 from telcoladder.lifecycle import apply as apply_lifecycle
 from telcoladder.coverage import Coverage, measure
 from telcoladder.extract import read_frames
@@ -237,6 +238,11 @@ class Analysis:
     """
 
     auto_decode: AutoDecode | None = None
+
+    trace_sidecar: "Sidecar | None" = None
+    """這是 TS 32.423 XML trace 時，從檔案中繼資料撿回來的事實（`nettrace.py`）。
+    `None` 代表不是那種檔。**一定要呈現**：角色、主機名、歸戶有一部分不是從
+    封包來的，讀的人要知道。"""
     """工具為了讀懂這份檔自己多做的事。`None` 代表預設解碼就夠了。
 
     與 `coverage` 是一組的：coverage 說「我沒看到什麼」，這個說
@@ -486,6 +492,13 @@ def _analyse_within(
                     retried, retry_ciphered, retry_suci, retry_undecoded
                 )
 
+    # TS 32.423 XML trace：檔案自己寫著每則訊息的對端型別、FQDN 與 IMSI，tshark
+    # 全部丟掉。先撿回來再推角色 —— 但 `<msg>` 數與 frame 數不相等就整份不套。
+    sidecar: Sidecar | None = None
+    if is_nettrace(pcap):
+        from telcoladder.packets import total_packets
+
+        sidecar = apply_trace(messages, read_hints(pcap), frames_total=total_packets(pcap))
     # 沒有 IP 層的匯出：先把端點從協定的主機名補回來，角色推論才有東西可鍵。
     fill_hostless(messages)
     apply_roles(messages, nas_from_ue=nas_from_ue)
@@ -525,4 +538,5 @@ def _analyse_within(
         coverage=coverage,
         auto_decode=adjustment,
         prefilter=report,
+        trace_sidecar=sidecar,
     )

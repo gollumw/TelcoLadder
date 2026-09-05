@@ -73,7 +73,7 @@ synthetic fixture with reserved identifiers.
 |---|---|---|---|
 | 1 | S6a over SCTP + VLAN, 94 frames | 14 msgs, 9 failures, MME/HSS named | same; the agent answering 3002/3010 is no longer labelled HSS |
 | 2 | Gx / Rx / vendor app via a DRA, 8 frames, 4 endpoints | only the DRA named | DRA + PCRF named; the endpoint answering both CCR and RAR is reported as `contradiction: PCEF vs PCRF` instead of silently blank |
-| 3 | EXPORTED_PDU SMF trace: SBI 118, PFCP 58, GTPv2 9, RADIUS 45 | "45 frames not decoded" | "45 frames are radius" |
+| 3 | TS 32.423 XML SMF trace: SBI 118, PFCP 58, GTPv2 9, RADIUS 45 | "45 frames not decoded"; 9/19 endpoints named; 30 identifiers unlinked; a `0.0.0.0` lane; decode tree empty | "45 frames are radius"; 18/19 named (AMF via single-consumer rule and the file's own `type="AMF"`); 0 unlinked (the file tags every message with its IMSI); no `0.0.0.0` lane; decode tree single-pass with a note |
 | 4 | **Link type USER 0, raw Diameter** (Sh, 11× 3006) | 0 msgs, "170 frames not decoded", coverage blamed TCP payload | 170 msgs, 16 flows, 6 endpoints named from Origin-Host, 3006 explained, one simulator endpoint reported as a 5-way contradiction |
 | 5 | Raw Diameter, S6b (150 RAR, 0 RAA) | 0 msgs | 158 msgs, 38 subscribers (IMPI), 41 procedures, RARs counted as unanswered |
 | 6 | Raw Diameter, SWx (4 frames) | 0 msgs | 4 msgs, 4 endpoints named |

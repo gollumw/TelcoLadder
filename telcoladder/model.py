@@ -256,6 +256,13 @@ IDENTITY_SOURCE_KEY = "identity_source"
 ENDPOINT_SRC_KEY = "endpoint-src"
 ENDPOINT_DST_KEY = "endpoint-dst"
 
+#: `Message.detail` 裡「**匯出這份 trace 的網元**說某個位址是哪個網元」的鍵。
+#: 形狀與 `NF_ROLE_HINTS_KEY` 相同（`位址=角色;…`），差別在證據的來源：
+#: 那個是**訊息內容**寫的（F-TEID IE），這個是**trace 檔的中繼資料**寫的
+#: （TS 32.423 的 `<initiator type="AMF">`）。分成兩把鍵是為了讓 basis 分得出來
+#: —— 兩者可信度都高，但錯的方式不同（後者是匯出端的設定，不是線路）。
+TRACE_ROLE_HINTS_KEY = "trace_role_hints"
+
 #: 同一筆請求／回應交易的識別（Diameter 是 `hop:<Hop-by-Hop Id>`）。
 #: 只在沒有 IP 層時填 —— 有 IP 的擷取檔用不到它配端點。
 TRANSACTION_KEY = "transaction"

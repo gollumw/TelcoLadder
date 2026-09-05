@@ -90,7 +90,7 @@ CAPTURE_FIELDS = {
 NOT_VISIBLE_FIELDS = {
     "ciphered_nas", "ecies_protected_suci", "frames_not_decoded",
     "sbi_streams_with_undecoded_headers", "undecoded_traffic", "coverage_notes",
-    "narrowed", "auto_decode", "only_n2",
+    "narrowed", "auto_decode", "trace_sidecar", "only_n2",
 }
 
 

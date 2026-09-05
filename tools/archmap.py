@@ -55,7 +55,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     )),
     ("L1", "tshark 介面", "跟外部程序講話的唯一一層", (
         "tshark", "extract", "packets", "decode", "decodeas",
-        "framebytes", "prefilter", "probe", "slicer",
+        "framebytes", "prefilter", "probe", "slicer", "nettrace",
     )),
     ("L2", "adapters", "entry point 註冊，加協定不必改核心", (
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",

@@ -176,6 +176,8 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     # 知道這件事，才有辦法判斷後面的覆蓋率該怎麼讀（也才有辦法反駁）。
     if result.auto_decode is not None:
         print(_("\nℹ This capture needed decoding adjustments, applied automatically:"), file=sys.stderr)
+        for line in (result.trace_sidecar.describe() if result.trace_sidecar else []):
+            print(f"ℹ {line}", file=sys.stderr)
         for line in result.auto_decode.describe():
             print(f"  · {line}", file=sys.stderr)
 

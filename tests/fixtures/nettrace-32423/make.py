@@ -32,26 +32,51 @@ AMF = "198.51.100.10"
 PORT = 38412
 
 
-def msg(seconds: float, name: str, src: str, dst: str, raw: bytes) -> str:
-    """一則 `<msg>`。`changeTime` 是 `秒.毫秒`；位址寫成讀取器認得的 `Address=…,Port=…`。"""
+IMSI = "001010000000001"   # E.212 測試網；每個 <traceRecSession> 都標同一個 UE
+GUAMI = "001-01-02-1-0"    # PLMN 001/01、Region 2、Set 1、Pointer 0 —— 與 5gc-service-request 一致
+GNB_FQDN = "gnb01.ran.mnc001.mcc001.3gppnetwork.org"
+
+
+def peer(kind: str, ne_type: str, address: str | None, *, fqdn: str | None = None, guami: str | None = None) -> str:
+    """`<initiator>`／`<target>`：`Key=value,Key=value`，實測看到的形狀。
+    **`address=None` 代表沒有 Address=**：wiretap 會填 0.0.0.0，只剩 FQDN 認得出是誰。"""
+    parts = ([f"Address={address}"] if address else []) + [f"Port={PORT}"]
+    if fqdn:
+        parts.append(f"Fqdn={fqdn}")
+    if guami:
+        parts.append(f"Guami={guami}")
+    return f'      <{kind} type="{ne_type}">{",".join(parts)}</{kind}>\n'
+
+
+def msg(seconds: float, name: str, initiator: str, target: str, raw: bytes) -> str:
+    """一個 `<traceRecSession>`（帶 `<ue>`）包一則 `<msg>` —— 實測的檔就是這個形狀。
+    `changeTime` 是 `秒.毫秒`。"""
     sec = int(seconds)
     ms = int(round((seconds - sec) * 1000))
     return (
+        f'  <traceRecSession traceSessionRef="1" traceRecSessionRef="{sec}{ms:03d}">\n'
+        f'    <ue idType="IMSI" idValue="{IMSI}"/>\n'
         f'    <msg function="NGAP" name="{name}" changeTime="{sec}.{ms:03d}" vendorSpecific="false">\n'
-        f'      <initiator type="NE">Address={src},Port={PORT}</initiator>\n'
-        f'      <target type="NE">Address={dst},Port={PORT}</target>\n'
+        + initiator + target +
         f'      <rawMsg protocol="ngap" version="1">{raw.hex().upper()}</rawMsg>\n'
         f'    </msg>\n'
+        f'  </traceRecSession>\n'
     )
 
 
 def build() -> str:
     tmsi = _m.TMSI_X
+    gnb_i = peer("initiator", "gNB", GNB)
+    gnb_t = peer("target", "gNB", GNB)
+    amf_i = peer("initiator", "AMF", AMF, guami=GUAMI)
+    amf_t = peer("target", "AMF", AMF, guami=GUAMI)
+    # 第 4 則的對端**沒有 Address=**，只有 FQDN：wiretap 會給 0.0.0.0。
+    gnb_fqdn_only = peer("target", "gNB", None, fqdn=GNB_FQDN)
     body = "".join([
-        msg(0.000, "InitialUEMessage", GNB, AMF, _m.initial_ue_message(1, _m.nas_service_request(tmsi), tmsi)),
-        msg(0.012, "DownlinkNASTransport", AMF, GNB, _m.downlink_nas(100, 1, _m.nas_service_accept())),
-        msg(10.000, "InitialUEMessage", GNB, AMF, _m.initial_ue_message(2, _m.nas_service_request(tmsi), tmsi)),
-        msg(10.011, "DownlinkNASTransport", AMF, GNB, _m.downlink_nas(101, 2, _m.nas_service_accept())),
+        msg(0.000, "InitialUEMessage", gnb_i, amf_t, _m.initial_ue_message(1, _m.nas_service_request(tmsi), tmsi)),
+        msg(0.012, "DownlinkNASTransport", amf_i, gnb_t, _m.downlink_nas(100, 1, _m.nas_service_accept())),
+        msg(10.000, "InitialUEMessage", gnb_i, amf_t, _m.initial_ue_message(2, _m.nas_service_request(tmsi), tmsi)),
+        msg(10.011, "DownlinkNASTransport", amf_i, gnb_fqdn_only, _m.downlink_nas(101, 2, _m.nas_service_accept())),
     ])
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -61,9 +86,7 @@ def build() -> str:
         '    <fileSender elementType="AMF"/>\n'
         '    <traceCollec beginTime="2026-09-05T00:00:00Z"/>\n'
         '  </fileHeader>\n'
-        '  <traceRecSession traceSessionRef="1" traceRecSessionRef="1">\n'
         + body +
-        '  </traceRecSession>\n'
         '</traceCollecFile>\n'
     )
 

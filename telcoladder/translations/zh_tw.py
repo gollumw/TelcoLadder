@@ -5,6 +5,12 @@
 """
 
 CATALOG: dict[str, str] = {
+    "stated by the exporting element in the trace file's own metadata (TS 32.423 initiator/target)":
+        '匯出這份 trace 的網元在檔案中繼資料裡寫的（TS 32.423 的 initiator／target）',
+    'This is a 3GPP TS 32.423 XML trace, but its {n} <msg> elements do not match the {frames} frames tshark produced, so the element types, FQDNs and per-message IMSIs it carries were not used - a wrong alignment would attach them to the wrong packets.':
+        '這是 3GPP TS 32.423 的 XML trace，但它的 {n} 個 <msg> 與 tshark 產出的 {frames} 格對不上，所以檔案裡的網元型別、FQDN 與逐則 IMSI 都沒有採用 —— 對錯格會把它們貼到別的封包上。',
+    "This is a 3GPP TS 32.423 XML trace. Beyond what tshark decodes, the file itself states each message's peers and subscriber: {roles} endpoint role statements, {hosts} FQDNs standing in for missing addresses, and {ids} messages tagged with the IMSI the exporting element assigned them were taken from it.":
+        '這是 3GPP TS 32.423 的 XML trace。除了 tshark 解出的內容，檔案自己寫著每則訊息的對端與訂戶：從中取用了 {roles} 個端點角色陳述、{hosts} 個代替缺少位址的 FQDN、{ids} 則由匯出網元標上 IMSI 的訊息。',
     'calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)':
         '呼叫 /{param} —— 這個服務只有一種網元會呼叫（TS 29.5xx）',
     'Decoded in a single pass: tshark\'s two-pass analysis fails on this file type, so cross-frame reassembly annotations ("reassembled in frame N") are absent. The dissection itself is complete.':

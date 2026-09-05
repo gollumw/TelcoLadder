@@ -399,6 +399,21 @@ because the re-allocation happens in ciphered messages the tool cannot see.
 > nothing claims the payload, the coverage note prints the exact
 > `--tshark-pref '...'` to pass by hand. Such a file carries no addresses:
 > endpoints come from the protocol itself (Diameter's Origin-Host).
+>
+> **A fourth kind: 3GPP TS 32.423 XML traces.** Elements also export
+> signalling as `<traceCollecFile>` XML; Wireshark turns each `<msg>` into an
+> EXPORTED_PDU frame, so the file analyses directly. tshark keeps only the
+> address and port of each `<initiator>`/`<target>` and drops the rest. The
+> tool reads the XML alongside and takes three facts the file states
+> outright: the element type of each peer (`type="AMF"`, basis
+> `trace-hint`), the FQDN of peers that have no address (otherwise a
+> `0.0.0.0` lane), and the `<ue idType="IMSI">` every message is tagged
+> with — which is how PFCP and GTP messages in an SMF-side trace join their
+> subscriber. It applies only when the number of `<msg>` elements equals the
+> number of frames tshark produced; otherwise it says so and uses nothing.
+> On one such trace this took named endpoints from 9 of 19 to 18 of 19 and
+> unlinked identifiers from 30 to 0. The decode tree on these files is
+> single-pass (tshark's two-pass mode fails on the XML reader) and says so.
 
 The easiest thing to step on with real packets — and it **raises no
 error at all**.

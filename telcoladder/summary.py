@@ -154,6 +154,9 @@ def _not_visible(analysis: Analysis) -> dict:
         # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
         "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
+        # TS 32.423 XML trace 的旁路事實（角色、FQDN、逐則 IMSI）。與 auto_decode 同一族：
+        # 「我為了看到它做了什麼」。不是那種檔就是空 list。
+        "trace_sidecar": list(analysis.trace_sidecar.describe()) if analysis.trace_sidecar else [],
         "undecoded_traffic": [
             {
                 "protocol": conv.protocol,
@@ -414,7 +417,7 @@ def render_markdown(doc: dict) -> str:
     # 讀不出來」。兩句反過來排，讀的人會先看到「--decode-as 沒用」再看到
     # 「decode-as 有用」—— 兩句都對，但順序錯了就像互相矛盾。
     # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過，略去。
-    items += nv["narrowed"] + nv["auto_decode"] + nv["coverage_notes"][1:]
+    items += nv["narrowed"] + nv["auto_decode"] + nv.get("trace_sidecar", []) + nv["coverage_notes"][1:]
     out += [f"- {line}" for line in items] or [f'- {_("Everything decoded; nothing was narrowed or adjusted.")}']
 
     # ── 網元 ──

@@ -1175,6 +1175,12 @@ that is the red-before assertion.
 
 **Why not now**: scoped out of the 2026-09-05 batch by the user (A–F first).
 
+**Narrowed the same day**: for traces exported as TS 32.423 XML the gap is
+already closed another way — `telcoladder/nettrace.py` reads the `<ue>`
+IMSI the file attaches to every `<msg>`, so PFCP/GTP frames join their
+subscriber without any bridge (30 unlinked → 0 on the trace that motivated
+this). The item stays for pcap-form SMF captures, which carry no sidecar.
+
 **Effort**: CC ~half a day.
 
 ---

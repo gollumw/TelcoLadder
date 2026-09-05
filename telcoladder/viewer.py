@@ -249,6 +249,7 @@ def _basis_sentence(basis: str) -> str:
         "relay-record": _("its forwarded messages carry Route-Record (RFC 6733)"),
         "ngap-dir": _("initiator direction of {param} (TS 38.413)"),
         "wire-hint": _("stated in message content, relayed verbatim by the adapter"),
+        "trace-hint": _("stated by the exporting element in the trace file's own metadata (TS 32.423 initiator/target)"),
         "s1ap-dir": _("initiator direction of S1AP procedure {param} (TS 36.413)"),
         "pfcp-dir": _("initiator of PFCP Session Establishment (TS 29.244)"),
         "n2-port": _("listens on 38412, the N2 port (TS 38.412)"),
