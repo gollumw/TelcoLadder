@@ -94,6 +94,9 @@ def progress_json(session: Session) -> dict:
     with session.lock:
         p = session.progress
         return {
+            # 這份工作階段是哪個檔。**批次頁靠它認人** —— 一次開 20 份時，
+            # 少了名字每一列就只剩一串 sid，而 sid 對使用者沒有意義。
+            "name": session.display_name,
             "stage": p.stage,
             "indexed": p.indexed,
             # `total` 可以是 null —— capinfos 取不到時就是。前端必須處理

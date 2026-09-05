@@ -247,6 +247,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_html(_home_page(self._token()))
         elif route.startswith("/static/") and self._viewer_enabled():
             self._send_static(route[len("/static/"):])
+        elif route == "/batch" and self._viewer_enabled():
+            self._send_html(_batch_page(self._token()))
         elif route.startswith("/app/") and self._viewer_enabled():
             self._send_viewer(route[len("/app/"):])
         elif route.startswith("/api/") and self._viewer_enabled():
@@ -779,6 +781,35 @@ form.path .opt {
   background: var(--surface); color: var(--dim); font-size: 12px; white-space: pre-wrap;
 }
 .back { display: inline-block; margin-top: 18px; color: var(--accent); font-size: 13px; }
+
+/* Multi-file upload queue and the batch table (2026-09-05). */
+.queue { margin-top: 18px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.qrow {
+  display: flex; justify-content: space-between; gap: 16px; padding: 8px 14px;
+  background: var(--surface); border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.qrow:last-child { border-bottom: none; }
+.qname { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qstate { color: var(--dim); white-space: nowrap; }
+
+.batch { width: 100%; border-collapse: collapse; font-size: 13px; }
+.batch th, .batch td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+.batch th { color: var(--faint); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.batch tbody tr:hover { background: var(--hover); }
+.batch td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.batch a { color: var(--accent); }
+.light { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+.light.red { background: var(--fail); }
+.light.amber { background: var(--warn); }
+.light.green { background: var(--ok); }
+.light.empty { background: var(--faint); }
+.light.pending { background: transparent; border: 1px solid var(--faint); }
+.tools { display: flex; gap: 10px; align-items: center; margin: 16px 0; }
+.tools button {
+  border: 1px solid var(--border); background: var(--surface); color: var(--dim);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+}
+.tools button:hover { border-color: var(--accent); color: var(--accent); }
 """
 
 
@@ -841,6 +872,17 @@ def _language_switch() -> str:
 #   `input[type=text] { flex: 1 1 320px }` 會直接把巢狀輸入撐爆。
 # * 這頁的 JS 只做兩件事：拖放與上傳進度。貼路徑那條是普通的 form，關掉 JS
 #   照樣能用 —— 而那正是大檔要走的路。
+# * **多檔（2026-09-05）**：逐份上傳、逐份等它分析完再送下一份。`/open-upload`
+#   一回來索引就已經在背景跑了，二十份同時丟等於同時開二十個 tshark，會把
+#   使用者正在看的東西一起拖慢。逐份比較慢，但看得到進度，也不會把機器打爆。
+# * 一份就直接進 `/app/<sid>`；多份先進 `/batch` 的總表。**sid 清單走
+#   sessionStorage，不進網址** —— 與 `_route_api` 把 sid 放路徑而不放查詢字串
+#   同一個理由。
+# * 批次頁的「釋放所有上傳的複本」：上傳的是客戶的封包，要有一個地方一次
+#   收乾淨，而不是等十五分鐘閒置逾時。
+# * 批次表的檔名同名時（實測四份 fixture 全叫 `capture.pcap`，而從不同資料夾
+#   挑檔也常常撞名）在後面補一小段 sid。**同名的列彼此分不出來，等於整張表
+#   沒有用** —— 而使用者不會知道自己看的是哪一份。
 # * 上傳一律走互動檢視器。這裡原本有個預設不勾的核取方塊決定要不要進互動介面，
 #   不勾就悄悄送去舊的靜態報告 —— 那是個陷阱：使用者拖檔進來，拿到的是他沒要的
 #   版本，而畫面上沒有任何地方說發生了什麼。靜態報告已於 Phase 4 退場。
@@ -862,16 +904,146 @@ def _path_form(token: str | None) -> str:
 </p>"""
 
 
+def _batch_page(token: str | None = None) -> str:
+    """多份擷取檔的總表 —— 一份一列，先看哪幾份要細看。
+
+    **每一份是獨立分析，沒有合併。** 合併等於把不同網路的連線範圍識別碼
+    （NGAP UE ID、TEID、SEID）放進同一個號碼空間，而那些號碼每台設備都從
+    小號開始配：兩個不相干的訂戶會併成一條流程，梯形圖照樣畫得漂漂亮亮
+    （CLAUDE.md §5「最嚴重的不是漏接而是接錯」）。所以關聯永遠不跨檔，
+    這一頁把這件事寫在標題底下，不留給使用者猜。
+
+    sid 清單走 `sessionStorage`，**不進網址** —— 與 `_route_api` 把 sid 放路徑
+    而不放查詢字串同一個理由。代價是另開分頁看不到這一頁，那時就說清楚
+    為什麼，而不是給一張空表。
+    """
+    token_json = json.dumps(token or "")
+    empty_json = json.dumps(_('No batch in this tab. Captures are remembered per tab; go back and drop the files again.'))
+    pending_json = json.dumps(_('still analysing'))
+    released_json = json.dumps(_('Released. The uploaded copies are gone.'))
+    verdict_json = json.dumps({
+        "red": _('failures'),
+        "amber": _('unanswered or retransmitted'),
+        "green": _('no anomalies'),
+        "empty": _('nothing decoded'),
+    })
+    body = f"""{_language_switch()}
+<h2 style="margin:0 0 4px;font-size:17px">{esc(_('Captures in this batch'))}</h2>
+<p class="hint" style="margin:0 0 4px">
+  {_('<b>Each file is analysed on its own; nothing is merged.</b> Connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) are only unique inside one capture, so correlation never crosses a file. A subscriber appearing in two files is two rows, not one.')}
+</p>
+<div class="tools">
+  <a class="back" style="margin:0" href="/{'?token=' + esc(token) if token else ''}">{esc(_('← Add more captures'))}</a>
+  <button type="button" id="release">{esc(_('Release all uploaded copies'))}</button>
+  <span class="qstate" id="note"></span>
+</div>
+<div class="queue" style="padding:0">
+<table class="batch">
+  <thead><tr>
+    <th>{esc(_('Capture'))}</th>
+    <th>{esc(_('Verdict'))}</th>
+    <th class="num">{esc(_('Subscribers'))}</th>
+    <th class="num">{esc(_('Failure messages'))}</th>
+    <th class="num">{esc(_('Failed procedures'))}</th>
+    <th class="num">{esc(_('Unanswered'))}</th>
+    <th class="num">{esc(_('Frames not decoded'))}</th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+
+<script>
+(function () {{
+  var token = {token_json};
+  var rows = document.getElementById('rows');
+  var note = document.getElementById('note');
+  var sids = [];
+  try {{ sids = JSON.parse(sessionStorage.getItem('telcoladder.batch') || '[]'); }} catch (e) {{ sids = []; }}
+
+  function headers() {{ return token ? {{ 'X-TelcoLadder-Token': token }} : {{}}; }}
+  function q(s) {{ return token ? s + (s.indexOf('?') < 0 ? '?' : '&') + 'token=' + encodeURIComponent(token) : s; }}
+
+  if (!sids.length) {{
+    note.textContent = {empty_json};
+    return;
+  }}
+
+  var VERDICT = {verdict_json};
+  var names = {{}};
+  var links = {{}};
+
+  function disambiguate() {{
+    var seen = {{}};
+    Object.keys(names).forEach(function (sid) {{ seen[names[sid]] = (seen[names[sid]] || 0) + 1; }});
+    Object.keys(names).forEach(function (sid) {{
+      var n = names[sid];
+      links[sid].textContent = seen[n] > 1 ? n + ' · ' + sid.slice(0, 6) : n;
+    }});
+  }}
+
+  sids.forEach(function (sid) {{
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><a></a></td><td><span class="light pending"></span><span class="v"></span></td>'
+      + '<td class="num n1"></td><td class="num n2"></td><td class="num n3"></td>'
+      + '<td class="num n4"></td><td class="num n5"></td>';
+    rows.appendChild(tr);
+    var link = tr.querySelector('a');
+    links[sid] = link;
+    link.href = q('/app/' + sid);
+    link.textContent = sid.slice(0, 8);
+
+    fetch('/api/' + sid + '/progress', {{ headers: headers() }})
+      .then(function (r) {{ return r.json(); }})
+      .then(function (j) {{ if (j.name) {{ link.textContent = j.name; names[sid] = j.name; disambiguate(); }} }});
+
+    fetch('/api/' + sid + '/overview', {{ headers: headers() }})
+      .then(function (r) {{ return r.json(); }})
+      .then(function (j) {{
+        if (!j.ready) {{ tr.querySelector('.v').textContent = {pending_json}; return; }}
+        tr.querySelector('.light').className = 'light ' + j.verdict;
+        tr.querySelector('.v').textContent = VERDICT[j.verdict] || j.verdict;
+        tr.querySelector('.n1').textContent = j.subscribers.total;
+        tr.querySelector('.n2').textContent = j.events.failures;
+        tr.querySelector('.n3').textContent = j.procedures.failure;
+        tr.querySelector('.n4').textContent = j.events.unanswered;
+        var nd = j.not_visible.frames_not_decoded;
+        tr.querySelector('.n5').textContent = (nd === null || nd === undefined) ? '—' : nd;
+      }});
+  }});
+
+  document.getElementById('release').addEventListener('click', function () {{
+    Promise.all(sids.map(function (sid) {{
+      return fetch(q('/release'), {{
+        method: 'POST',
+        headers: Object.assign({{ 'Content-Type': 'application/x-www-form-urlencoded' }}, headers()),
+        body: 'sid=' + encodeURIComponent(sid)
+      }});
+    }})).then(function () {{
+      sessionStorage.removeItem('telcoladder.batch');
+      note.textContent = {released_json};
+    }});
+  }});
+}})();
+</script>"""
+    return _shell("TelcoLadder", body)
+
+
 def _home_page(token: str | None = None) -> str:
-    # token 模式的上傳要帶標頭；沒有 token 時這一行是空物件，行為不變。
-    token_header = json.dumps({TOKEN_HEADER: token} if token else {})
+    # 送進 JS 的字面值一律走 json.dumps —— 檔名與 token 都不是我們控制的字串。
+    token_json = json.dumps(token or "")
+    uploading_json = json.dumps(_('uploading…'))
+    analysing_json = json.dumps(_('analysing…'))
+    done_json = json.dumps(_('done'))
     body = f"""{_language_switch()}{_tshark_banner()}
 <div class="drop" id="drop">
   <h2>{esc(_('Drop a pcap here'))}</h2>
-  <p>{esc(_('Or pick a file with the button below. Limit {mb} MB.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
-  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap,.xml"></label>
+  <p>{esc(_('Several at once is fine. Or pick files with the button below. Limit {mb} MB each.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
+  <label class="pick">{esc(_('Choose files'))}<input type="file" id="file" multiple accept=".pcap,.pcapng,.cap,.xml"></label>
   <p class="fine">{_('An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.')}</p>
+  <p class="fine">{_('<b>Several files are analysed separately, never merged.</b> Merging captures would put two networks\u2019 connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) into one number space, and two unrelated subscribers would fuse into one flow - with a ladder that still draws perfectly. Correlation therefore never crosses a file.')}</p>
 </div>
+
+<div class="queue" id="queue" hidden></div>
 
 <div class="or">{esc(_('or'))}</div>
 
@@ -884,29 +1056,81 @@ def _home_page(token: str | None = None) -> str:
   var drop = document.getElementById('drop');
   var file = document.getElementById('file');
   var spin = document.getElementById('spin');
+  var queue = document.getElementById('queue');
+  var token = {token_json};
+  var busy = false;
 
-  function send(f) {{
-    if (!f) return;
-    spin.classList.add('on');
+  function headers(extra) {{
+    var h = token ? {{ 'X-TelcoLadder-Token': token }} : {{}};
+    for (var k in (extra || {{}})) h[k] = extra[k];
+    return h;
+  }}
+
+  function row(name) {{
+    var el = document.createElement('div');
+    el.className = 'qrow';
+    el.innerHTML = '<span class="qname"></span><span class="qstate"></span>';
+    el.querySelector('.qname').textContent = name;
+    queue.appendChild(el);
+    queue.hidden = false;
+    return el.querySelector('.qstate');
+  }}
+
+  function upload(f) {{
     var flow = document.getElementById('flow');
     var q = flow && flow.checked ? '?flow=1' : '';
-    var headers = {token_header};
-    headers['X-TelcoLadder-Filename'] = encodeURIComponent(f.name);
-    fetch('/open-upload' + q, {{
+    return fetch('/open-upload' + q, {{
       method: 'POST',
-      headers: headers,
+      headers: headers({{ 'X-TelcoLadder-Filename': encodeURIComponent(f.name) }}),
       body: f
-    }})
-      .then(function (r) {{
-        return r.json().then(function (j) {{
-          if (j.error) throw new Error(j.error);
-          location.href = j.url;
-        }});
-      }})
-      .catch(function (e) {{
-        spin.classList.remove('on');
-        alert({json.dumps(_('Upload failed: '))} + e);
+    }}).then(function (r) {{
+      return r.json().then(function (j) {{
+        if (j.error) throw new Error(j.error);
+        return j;
       }});
+    }});
+  }}
+
+  function settle(sid, state) {{
+    return fetch('/api/' + sid + '/progress', {{ headers: headers() }})
+      .then(function (r) {{ return r.json(); }})
+      .then(function (j) {{
+        if (j.stage === 'done') {{ state.textContent = {done_json}; return; }}
+        if (j.stage === 'error') {{ state.textContent = j.error || 'error'; return; }}
+        state.textContent = {analysing_json};
+        return new Promise(function (res) {{ setTimeout(res, 400); }}).then(function () {{
+          return settle(sid, state);
+        }});
+      }});
+  }}
+
+  function sendAll(files) {{
+    if (busy || !files || !files.length) return;
+    busy = true;
+    spin.classList.add('on');
+    var list = Array.prototype.slice.call(files);
+    var sids = [];
+    var chain = Promise.resolve();
+    list.forEach(function (f) {{
+      chain = chain.then(function () {{
+        var state = row(f.name);
+        state.textContent = {uploading_json};
+        return upload(f).then(function (j) {{
+          sids.push(j.sid);
+          return settle(j.sid, state);
+        }}).catch(function (e) {{
+          state.textContent = String(e && e.message ? e.message : e);
+        }});
+      }});
+    }});
+    chain.then(function () {{
+      spin.classList.remove('on');
+      busy = false;
+      if (!sids.length) return;
+      if (sids.length === 1) {{ location.href = '/app/' + sids[0] + (token ? '?token=' + encodeURIComponent(token) : ''); return; }}
+      sessionStorage.setItem('telcoladder.batch', JSON.stringify(sids));
+      location.href = '/batch' + (token ? '?token=' + encodeURIComponent(token) : '');
+    }});
   }}
 
   ['dragenter', 'dragover'].forEach(function (ev) {{
@@ -919,8 +1143,8 @@ def _home_page(token: str | None = None) -> str:
       e.preventDefault(); drop.classList.remove('over');
     }});
   }});
-  drop.addEventListener('drop', function (e) {{ send(e.dataTransfer.files[0]); }});
-  file.addEventListener('change', function () {{ send(file.files[0]); }});
+  drop.addEventListener('drop', function (e) {{ sendAll(e.dataTransfer.files); }});
+  file.addEventListener('change', function () {{ sendAll(file.files); }});
 }})();
 </script>"""
     return _shell("TelcoLadder", body)

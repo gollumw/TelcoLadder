@@ -116,6 +116,32 @@ CATALOG: dict[str, str] = {
     "Content-Length is not a number.": "Content-Length 不是數字。",
     "Content-Length is negative.": "Content-Length 是負數。",
     "Form body too large ({n} bytes; the limit is {limit}).": "表單本體太大（{n} 位元組；上限 {limit}）。",
+    # ── 多檔上傳與批次總表（2026-09-05）────────────────────────────────
+    "Several at once is fine. Or pick files with the button below. Limit {mb} MB each.":
+        "一次丟好幾份也可以。或用下面的按鈕挑檔案，單檔上限 {mb} MB。",
+    "Choose files": "選擇檔案",
+    "<b>Several files are analysed separately, never merged.</b> Merging captures would put two networks\u2019 connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) into one number space, and two unrelated subscribers would fuse into one flow - with a ladder that still draws perfectly. Correlation therefore never crosses a file.":
+        "<b>多份檔案各自獨立分析，不會合併。</b>合併會把兩個網路的連線範圍識別碼（NGAP UE ID、TEID、SEID）放進同一個號碼空間，於是兩個不相干的訂戶會併成一條流程 —— 而梯形圖照樣畫得完美。所以關聯永遠不跨檔。",
+    "uploading…": "上傳中…",
+    "analysing…": "分析中…",
+    "done": "完成",
+    "Captures in this batch": "這一批的擷取檔",
+    "<b>Each file is analysed on its own; nothing is merged.</b> Connection-scoped identifiers (NGAP UE IDs, TEIDs, SEIDs) are only unique inside one capture, so correlation never crosses a file. A subscriber appearing in two files is two rows, not one.":
+        "<b>每一份各自分析，沒有任何合併。</b>連線範圍的識別碼（NGAP UE ID、TEID、SEID）只在一份擷取檔內唯一，所以關聯不跨檔。同一個訂戶出現在兩份檔裡就是兩列，不是一列。",
+    "← Add more captures": "← 再加擷取檔",
+    "Release all uploaded copies": "釋放所有上傳的複本",
+    "Released. The uploaded copies are gone.": "已釋放，上傳的複本都刪掉了。",
+    "No batch in this tab. Captures are remembered per tab; go back and drop the files again.":
+        "這個分頁沒有批次。擷取檔清單是逐分頁記住的；回上一頁重新丟一次檔案。",
+    "still analysing": "還在分析",
+    "Capture": "擷取檔",
+    "Verdict": "結論",
+    "Failure messages": "失敗訊息",
+    "Failed procedures": "失敗的程序",
+    "Frames not decoded": "未解碼的格",
+    "failures": "有失敗",
+    "unanswered or retransmitted": "有未獲回應或重傳",
+    "nothing decoded": "沒有解出信令",
     "Release an uploaded copy after this much idle time (default {seconds}). Captures opened by path are unaffected - those are never copied.":
         "互動檢視器閒置多久就釋放上傳的複本（預設 {seconds} 秒）。貼路徑開的不受影響 —— 那從來不複製。",
     "Disable the interactive viewer entirely. The viewer keeps uploaded copies in the temp directory for a while; use this if you do not want that.":
@@ -243,10 +269,6 @@ CATALOG: dict[str, str] = {
         '找不到 tshark —— 現在還不能分析',
     'Drop a pcap here':
         '把 pcap 拖進來',
-    'Or pick a file with the button below. Limit {mb} MB.':
-        '或點下面的按鈕選檔。上限 {mb} MB。',
-    'Choose a file':
-        '選擇檔案',
     'An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.':
         '上傳的複本會<b>保留</b>到你按釋放或閒置逾時 —— 逐封包解碼要跨請求讀同一份檔。',
     'or':
@@ -261,8 +283,6 @@ CATALOG: dict[str, str] = {
         '<b>大檔請用這一條。</b>貼路徑不搬檔、不落地、立刻開始 —— 把幾百 MB 透過 HTTP 傳給同一台機器上的伺服器沒有意義。<br>兩條路都會開在互動介面裡（可過濾、逐封包看解碼與位元組、看梯形圖與關聯矩陣）。封包清單邊索引邊出，第一頁很快就能看；<b>訂戶身分、梯形圖與關聯矩陣要等完整解剖跑完</b>。<br>要一份可貼進文件的文字圖請用 CLI：<code>telcoladder analyze &lt;pcap&gt;</code>，它同時支援時間範圍、訂戶收窄與 tshark filter。',
     'Analysing…':
         '分析中……',
-    'Upload failed: ':
-        '上傳失敗：',
     'TelcoLadder → http://{host}:{port}   (Ctrl-C to stop)':
         'TelcoLadder → http://{host}:{port}   （Ctrl-C 結束）',
     '\n⚠ tshark not found - analysis is not possible yet:\n{error}\n':

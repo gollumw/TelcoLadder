@@ -42,6 +42,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "ki-mismatch" / "capture.pcap"
 #: 把整張表跑一遍 —— 新增路由忘記加守衛時，那條測試會紅。
 VIEWER_ROUTES = [
     ("GET", "/app/whatever"),
+    ("GET", "/batch"),
     ("GET", "/static/app.js"),
     ("POST", "/open"),
     ("POST", "/open-upload"),
@@ -85,6 +86,20 @@ def test_the_route_table_above_covers_every_api_action() -> None:
     listed = {route.rsplit("/", 1)[1] for _, route in VIEWER_ROUTES if route.startswith("/api/")}
     missing = sorted(actions - listed)
     assert not missing, f"這些 API 沒有列進 VIEWER_ROUTES，安全測試對它們是空轉的：{missing}"
+
+    # **頂層頁面路由同樣要守。** 2026-09-05 加 `/batch` 時發現這個守衛只看
+    # `/api/` 的 action —— 一條新的頂層路由（會回一整頁 HTML 的那種）漏掉時，
+    # 它照樣綠燈。症狀與它本來要防的一模一樣。
+    text = source.read_text(encoding="utf-8")
+    pages = set(re.findall(r'route == "(/[a-z-]+)"', text)) | {
+        m + "/" for m in re.findall(r'route\.startswith\("(/[a-z-]+)/"\)', text)
+    }
+    listed_pages = {r for _, r in VIEWER_ROUTES}
+    for page in sorted(pages):
+        if page == "/":
+            continue  # 首頁沒有守衛以外的東西可測，且它就是那張表的入口
+        covered = any(r == page or r.startswith(page) for r in listed_pages)
+        assert covered, f"路由 {page} 沒有列進 VIEWER_ROUTES，安全測試對它是空轉的"
 
 
 def test_the_landing_page_only_leads_to_the_interactive_interface() -> None:
