@@ -49,6 +49,7 @@ export default function App() {
   // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
   const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
   const [treeByFrame, setTreeByFrame] = useState<Record<number, ProtocolNode[] | null>>({});
+  const [decodeNote, setDecodeNote] = useState<string | null>(null);
   /** 已取到的梯形圖，一個訂戶一份。 */
   const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
   /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
@@ -260,7 +261,10 @@ export default function App() {
         if (frame in current) return current;
         void source
           .loadDecodeTree!(frame)
-          .then((tree) => setTreeByFrame((c) => ({ ...c, [frame]: tree })))
+          .then((tree) => {
+            setTreeByFrame((c) => ({ ...c, [frame]: tree }));
+            setDecodeNote(source.decodeNote?.() ?? null);
+          })
           .catch(() => setTreeByFrame((c) => ({ ...c, [frame]: null })));
         return { ...current, [frame]: null };
       });
@@ -366,6 +370,7 @@ export default function App() {
         bytesByFrame={bytesByFrame}
         onRequestBytes={source.loadFrameBytes ? requestBytes : undefined}
         treeByFrame={treeByFrame}
+        decodeNote={decodeNote}
         onRequestTree={source.loadDecodeTree ? requestTree : undefined}
       />
     </>

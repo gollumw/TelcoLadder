@@ -135,6 +135,8 @@ async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<strin
 }
 
 export function apiSource(sid: string | null): DataSource {
+  // 最後一次 `/decode` 帶回的但書（退回單趟）。同一份檔每次都一樣，記一份就夠。
+  let lastDecodeNote: string | null = null;
   /**
    * 關聯分析的結果，`load()` 時取一次。
    *
@@ -344,11 +346,17 @@ export function apiSource(sid: string | null): DataSource {
 
     async loadDecodeTree(frame: number): Promise<ProtocolNode[] | null> {
       if (!sid) return null;
-      const body = await getJson<{ tree: DecodeNodeJson[] }>(
+      const body = await getJson<{ tree: DecodeNodeJson[]; note?: string }>(
         `/api/${sid}/decode?frame=${frame}`,
       );
+      // 後端退回單趟時會帶一句 note；同一份檔每次都一樣，記最後一次即可。
+      lastDecodeNote = body.note ?? null;
       // 空樹不等於「這格沒有內容」—— 回 null 讓 UI 說得出差別。
       return body.tree?.length ? toProtocolNodes(body.tree, frame) : null;
+    },
+
+    decodeNote(): string | null {
+      return lastDecodeNote;
     },
   };
 }

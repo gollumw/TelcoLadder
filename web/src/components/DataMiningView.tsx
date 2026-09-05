@@ -82,6 +82,7 @@ export function DataMiningView({
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
+  decodeNote,
   onRequestTree,
   onCorrelateSession,
 }: {
@@ -122,6 +123,8 @@ export function DataMiningView({
   bytesByFrame?: Record<number, string | null>;
   onRequestBytes?: (frame: number) => void;
   treeByFrame?: Record<number, ProtocolNode[] | null>;
+  /** 解碼樹少做了什麼（例如退回單趟、沒有跨格重組標註）。有就顯示在樹下面。 */
+  decodeNote?: string | null;
   onRequestTree?: (frame: number) => void;
   onCorrelateSession: (supi: string, frame: number) => void;
 }) {
@@ -516,7 +519,13 @@ export function DataMiningView({
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Packet Details</p>
           {selectedPacket ? (
             treeForSelected ? (
-              <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+              <>
+                <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+                {decodeNote && (
+                  // 少了跨格重組標註的樹與完整的樹長得一樣 —— 後端退回單趟時說出來。
+                  <p className="mt-2 border-t border-border pt-2 text-[11px] text-fg-dim">{decodeNote}</p>
+                )}
+              </>
             ) : (
               // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
               <div className="p-3 text-xs text-fg-dim font-mono">{t("Decode tree not loaded yet")}</div>

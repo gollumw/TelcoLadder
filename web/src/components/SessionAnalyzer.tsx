@@ -35,6 +35,7 @@ export default function SessionAnalyzer({
   bytesByFrame,
   onRequestBytes,
   treeByFrame,
+  decodeNote,
   onRequestTree,
 }: {
   data: Dataset;
@@ -62,6 +63,8 @@ export default function SessionAnalyzer({
   /** 已取到的解碼樹（懶載入）。沒有這一格的鍵＝還沒問過。 */
   treeByFrame?: Record<number, import("@/lib/types").ProtocolNode[] | null>;
   onRequestTree?: (frame: number) => void;
+  /** 解碼樹少做了什麼（後端 `/decode` 的 note），原樣往下傳給 Data Mining。 */
+  decodeNote?: string | null;
 }) {
   const lang = useLang();
   const theme = useTheme();
@@ -245,6 +248,7 @@ export default function SessionAnalyzer({
             bytesByFrame={bytesByFrame}
             onRequestBytes={onRequestBytes}
             treeByFrame={treeByFrame}
+            decodeNote={decodeNote}
             onRequestTree={onRequestTree}
             onCorrelateSession={handleCorrelateSession}
           />

@@ -315,6 +315,12 @@ export interface DataSource {
    * 取不到就回 null，UI 說「尚未載入」而不是畫一棵空樹。
    */
   loadDecodeTree?(frame: number): Promise<import("@/lib/types").ProtocolNode[] | null>;
+  /**
+   * 解碼樹那條路**少做了什麼**（後端 `/decode` 的 `note`）。目前只有一種：tshark 的
+   * 兩趟分析在這種檔（TS 32.423 XML）上跑不起來、退回單趟，沒有跨格重組標註。
+   * 少了標註的樹與完整的樹長得一模一樣，所以要說出來。沒有就 null。
+   */
+  decodeNote?(): string | null;
 }
 
 /**
