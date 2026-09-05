@@ -1114,7 +1114,29 @@ touches `viewer._basis_sentence` (new basis codes) and the i18n catalogue.
 
 ---
 
-## T-MATRIX-N4 | the PDU-session matrix promises three interfaces and joins two (P0)
+## ~~T-MATRIX-N4 | the PDU-session matrix promises three interfaces and joins two~~ (**completed 2026-09-05**)
+
+**What was done**: PFCP carries no PDU Session ID IE, so the reverse
+lookup lives in `pdusession._join_user_plane`, not in an adapter: the
+tunnel key `gtp_tunnel(address, TEID)` that NGAP's promised F-TEID yields
+is the same key the PFCP and GTP-U adapters already emit as identity, so
+the matrix maps key → (session, UPF/gNB side) and scans the flow. Three
+new cells, each `Sourced`: `upf_n3_teid_observed` (the F-TEID the UPF
+actually allocated, source the PFCP Session Establishment Response,
+shown as Wireshark's PFCP pane shows it), `n3_uplink_packets` /
+`n3_downlink_packets` (G-PDUs seen per direction — a count, not a KPI).
+An N2-only capture has none of the three; that is absence, not a promise.
+The browser matrix shows the observed TEID beside the promised one and
+the G-PDU counts. Oracle tests: the observed TEID equals the promised
+one byte for byte and appears in tshark's `pfcp.f_teid.teid`; the
+downlink count equals tshark's G-PDU count for that TEID and address
+(10 on `userplane`). Mutation-checked (skipping the join fails two).
+
+**Not done**: the `summary` JSON's `pdu_sessions` keeps its pinned field
+set; the new cells are on `/correlation` only.
+
+Original entry follows.
+
 
 **What**: `pdusession.py`'s header says it assembles a data connection from
 fields scattered across **three** interfaces. Only two adapters write the

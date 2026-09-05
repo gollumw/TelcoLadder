@@ -139,6 +139,12 @@ export interface CorrelationEntry {
   ueIp?: string;
   upfN3Teid?: string;
   gnbN3Teid?: string;
+  /** N4 實際配發的 UPF F-TEID（PFCP Session Establishment Response）—— 與上面 NGAP
+   *  承諾的並排。沒有 PFCP 的擷取檔（只抓 N2）就沒有這一格。 */
+  upfN3TeidObserved?: string;
+  /** 這條隧道上看到的 G-PDU 數（上行→UPF、下行→gNB）。**計數，不是 KPI。** */
+  n3UplinkPackets?: number;
+  n3DownlinkPackets?: number;
   qosFlowId?: number;
   fiveQi?: number;
   /** 每一格是從哪一則訊息看到的。**這是「平價版 NetScout」與「另一個猜測
@@ -152,6 +158,9 @@ export interface CorrelationEntry {
     ueIp?: string;
     upfN3Teid?: string;
     gnbN3Teid?: string;
+    upfN3TeidObserved?: string;
+    n3UplinkPackets?: string;
+    n3DownlinkPackets?: string;
     qosFlowId?: string;
   };
 }

@@ -7,6 +7,27 @@
 `PDUSessionResourceSetup` 裡、gNB 的在對應的 Response 裡。把它們
 併成一列不難；**難的是併完之後還說得出每一格是從哪來的**。
 
+## N4 與 N3 怎麼接上（2026-09-05，T-MATRIX-N4）
+
+`pdu-session-id` 只有 N1／N2 寫得出來 —— PFCP 與 GTP-U 的訊息裡**沒有這個
+號碼**（TS 29.244 沒有 PDU Session ID 這個 IE）。2026-09-03 之前這裡就此打住：
+矩陣裡的 N3 TEID 全是 NGAP **承諾**的，N4 與 N3 一格都沒有，而檔頭寫著「三個
+介面」。讀矩陣的人以為 N4 核對過了。
+
+橋是 `identity.gtp_tunnel(位址, TEID)`：NGAP 把 UPF 的上行 F-TEID 交給 gNB 時
+帶著 PDU Session ID，PFCP Session Establishment Response 裡 UPF 配的那個 F-TEID
+算出同一把 key，GTP-U 的每個 G-PDU 也算出同一把 key（`correlate` 就是靠它把
+三者併進同一條流程）。所以先從 N1／N2 建好 **隧道 key → PDU Session ID** 的反查，
+再掃同一條流程裡帶那把 key 的 PFCP 與 GTP-U 訊息：
+
+* `upf_n3_teid_observed`：**N4 實際配發**的 UPF F-TEID（出處是 PFCP 那一格），
+  與 NGAP 承諾的並排 —— 兩者相等是 N2 沒騙人的證據，不相等就是一條線索。
+* `n3_uplink_packets` / `n3_downlink_packets`：這條隧道上**看到的** G-PDU 數
+  （上行＝送往 UPF TEID，下行＝送往 gNB TEID），出處是第一個 G-PDU 的那一格。
+  **這是計數，不是 KPI** —— 沒有吞吐、沒有遺失率（README 的 GTP-U 段講過）。
+
+接不上的照樣是 None：只抓 N2 的檔沒有 PFCP，這三格就不出現 —— 沒觀測到就是沒觀測到。
+
 所以這裡的每個值都是 `Sourced` —— 值 ＋ 哪一格 ＋ 哪則訊息。少了出處，
 這張表跟一個猜出來的表在畫面上完全一樣。
 
@@ -96,6 +117,11 @@ class PduSession:
     qfi: Sourced | None = None
     upf_n3_teid: Sourced | None = None
     gnb_n3_teid: Sourced | None = None
+    #: N4 實際配發的 UPF F-TEID（PFCP Session Establishment Response）。
+    upf_n3_teid_observed: Sourced | None = None
+    #: 這條隧道上看到的 G-PDU 數，上行（→UPF）與下行（→gNB）分開。**計數，不是 KPI。**
+    n3_uplink_packets: Sourced | None = None
+    n3_downlink_packets: Sourced | None = None
 
     def to_json(self) -> dict:
         fields = {
@@ -106,6 +132,9 @@ class PduSession:
             "qosFlowId": self.qfi,
             "upfN3Teid": self.upf_n3_teid,
             "gnbN3Teid": self.gnb_n3_teid,
+            "upfN3TeidObserved": self.upf_n3_teid_observed,
+            "n3UplinkPackets": self.n3_uplink_packets,
+            "n3DownlinkPackets": self.n3_downlink_packets,
         }
         return {
             "supi": self.supi,
@@ -212,7 +241,59 @@ def _from_messages(supi: str, messages: "list[Message]") -> list[PduSession]:
             elif which == "gnb" and entry.gnb_n3_teid is None:
                 entry.gnb_n3_teid = Sourced(shown, message.frame, label)
 
+    _join_user_plane(sessions, messages)
     return [sessions[key] for key in sorted(sessions)]
+
+
+def _join_user_plane(sessions: "dict[int, PduSession]", messages: "list[Message]") -> None:
+    """把 N4 與 N3 的觀測接到 N2 承諾的隧道上（檔頭「N4 與 N3 怎麼接上」）。
+
+    反查表是 **隧道 key → (session, 是 UPF 的還是 gNB 的)**，key 由 NGAP 那一格的
+    TEID＋位址經 `gtp_tunnel()` 算出 —— 與 PFCP／GTP-U adapter 建 identity key
+    用的是同一個函式，所以兩邊的進位差異（`00:00:c8:58` 對 `51288`）在那裡收掉。
+    """
+    from telcoladder.identity import gtp_tunnel
+    from telcoladder.model import IdKind
+
+    owner: dict = {}
+    for entry in sessions.values():
+        for sourced, side in ((entry.upf_n3_teid, "upf"), (entry.gnb_n3_teid, "gnb")):
+            if sourced is None or " @ " not in sourced.value:
+                continue
+            teid, address = sourced.value.split(" @ ", 1)
+            key = gtp_tunnel(address, teid)
+            if key is not None:
+                owner.setdefault(key, (entry, side))
+    if not owner:
+        return
+
+    counts: dict[tuple[int, str], list] = {}
+    for message in messages:
+        if message.protocol not in ("pfcp", "gtp"):
+            continue
+        for key in message.identity_keys:
+            if key[0] is not IdKind.GTP_TEID or key not in owner:
+                continue
+            entry, side = owner[key]
+            label = _source_label(message)
+            if message.protocol == "pfcp":
+                # UPF 回的 Session Establishment Response 帶它配的 F-TEID —— 這才是
+                # N4 **實際**配發的值；NGAP 那一格是轉述。只認 UPF 側的那把 key。
+                if side == "upf" and entry.upf_n3_teid_observed is None and "Establishment Response" in message.label:
+                    address, teid = key[1].split("/", 1)
+                    # Wireshark 的 PFCP 窗格顯示 F-TEID 的 TEID 是 `0x0000c858`；NGAP 那一格
+                    # 是 `00:00:c8:58`。兩邊都照各自在 Wireshark 裡的樣子寫，不互相改寫。
+                    entry.upf_n3_teid_observed = Sourced(f"0x{int(teid):08x} @ {address}", message.frame, label)
+            else:
+                slot = counts.setdefault((entry.pdu_session_id, side), [0, message.frame, label])
+                slot[0] += 1
+    for (session_id, side), (n, frame, label) in counts.items():
+        entry = sessions[session_id]
+        sourced = Sourced(str(n), frame, label)
+        if side == "upf":
+            entry.n3_uplink_packets = sourced
+        else:
+            entry.n3_downlink_packets = sourced
 
 
 __all__ = [

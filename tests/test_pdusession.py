@@ -155,3 +155,55 @@ def test_flows_with_no_subscriber_do_not_enter_the_matrix(analysis) -> None:
     訂戶的連線。
     """
     assert all(row.supi for row in extract_all(analysis))
+
+
+# ── N4 與 N3 真的接上了（T-MATRIX-N4，2026-09-05）────────────────────────
+#
+# 在此之前矩陣裡的 N3 TEID 全是 NGAP **承諾**的，PFCP 與 GTP-U 一格都沒貢獻，
+# 而檔頭寫著「三個介面」。讀矩陣的人以為 N4 核對過了。
+
+
+def test_the_upf_teid_is_also_observed_on_n4_and_matches_what_ngap_promised(analysis, e2e_pcap) -> None:
+    """N4 那一格的出處必須是 PFCP 訊息，而它的 TEID 逐位元組等於 NGAP 承諾的。
+    突變：`_join_user_plane` 不呼叫 → 格子不存在。"""
+    (session,) = extract(analysis, SUPI)
+    observed = session.upf_n3_teid_observed
+    assert observed is not None, "N4 沒有貢獻任何一格 —— 檔頭的「三個介面」又只是承諾"
+    assert observed.source.startswith("N4 ·") and "Establishment Response" in observed.source
+    pfcp_frames = {int(f) for f in _tshark_field(e2e_pcap, "pfcp", "frame.number")}
+    assert observed.frame in pfcp_frames, "出處那一格不是 PFCP"
+
+    def as_int(value: str) -> int:
+        teid = value.split(" @ ")[0]
+        return int(teid, 16) if teid.startswith("0x") else int(teid.replace(":", ""), 16)
+
+    assert as_int(observed.value) == as_int(session.upf_n3_teid.value)
+    assert observed.value.split(" @ ")[1] == session.upf_n3_teid.value.split(" @ ")[1], "位址也要同一台"
+    # 由 tshark 直接讀：PFCP 回的 F-TEID 裡確實有這個號碼。
+    # tshark 版本不同，這個欄位印成十進位或 `0x…` —— `int(v, 0)` 兩種都收。
+    allocated = {int(v, 0) for v in _tshark_field(e2e_pcap, "pfcp.f_teid.teid", "pfcp.f_teid.teid") for v in v.split(",")}
+    assert as_int(observed.value) in allocated
+
+
+def test_n3_packet_counts_come_from_gtp_u_and_match_tshark() -> None:
+    """下行 G-PDU 數＝tshark 數到的、送往 gNB TEID 的 G-PDU；沒有上行就沒有上行那一格。"""
+    from pathlib import Path as _Path
+
+    userplane_pcap = _Path(__file__).parent / "fixtures" / "userplane" / "capture.pcap"
+    (session,) = extract_all(analyse(userplane_pcap, decode_as=default_decode_as(), wire=True))
+    assert session.n3_downlink_packets is not None
+    gnb_teid = int(session.gnb_n3_teid.value.split(" @ ")[0].replace(":", ""), 16)
+    gnb_addr = session.gnb_n3_teid.value.split(" @ ")[1]
+    frames = _tshark_field(userplane_pcap, f"gtp.message == 0xff && gtp.teid == {gnb_teid} && ip.dst == {gnb_addr}", "frame.number")
+    assert int(session.n3_downlink_packets.value) == len(frames) == 10
+    assert session.n3_downlink_packets.frame == int(frames[0]), "出處是第一個 G-PDU"
+    assert session.n3_downlink_packets.source.startswith("N3 ·")
+    assert session.n3_uplink_packets is None, "這份檔沒有上行 G-PDU —— 沒觀測到就不出現"
+
+
+def test_an_n2_only_capture_has_no_n4_or_n3_cells(registration_pcap) -> None:
+    """只抓 N2 的檔：三格都不出現。**不是漏接，是檔案裡沒有 PFCP／GTP-U。**"""
+    for session in extract_all(analyse(registration_pcap, decode_as=default_decode_as(), wire=True)):
+        assert session.upf_n3_teid_observed is None
+        assert session.n3_uplink_packets is None and session.n3_downlink_packets is None
+        assert "upfN3TeidObserved" not in session.to_json()
