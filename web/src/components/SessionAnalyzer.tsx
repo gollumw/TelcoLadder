@@ -1,17 +1,15 @@
 "use client";
 
-import { setLang, t, useLang } from "../i18n";
+import { getLang, setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
-import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, LayoutDashboard, Binary, Moon, Sun } from "lucide-react";
+import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Sun } from "lucide-react";
 import { setTheme, useTheme } from "../theme";
 import { cn } from "@/lib/utils";
-import type { Dataset, PacketPage } from "@/data/source";
+import { currentToken, type Dataset, type PacketPage } from "@/data/source";
 import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 import { ExecutiveOverview } from "./ExecutiveOverview";
-
-const TIME_RANGES = ["Last 5 minutes", "Last hour", "Last 24 hours", "Custom range"]; // t() 在渲染時翻
 
 //: 三層，由淺入深：總覽（誰失敗、為什麼）→ 梯形圖（一個訂戶的信令時序）
 //: → 封包（Wireshark 視圖）。2026-09-05 之前只有後兩層，而且落地在封包清單 ——
@@ -84,9 +82,7 @@ export default function SessionAnalyzer({
   const [focusedSupi, setFocusedSupi] = useState<string | null>(null);
   const [displayFilter, setDisplayFilter] = useState("");
   const [onlySessionFilter, setOnlySessionFilter] = useState(false);
-  const [timeRange, setTimeRange] = useState(TIME_RANGES[1]);
   const [selectedFrame, setSelectedFrame] = useState<number | null>(null);
-  const [reassociateState, setReassociateState] = useState<"idle" | "loading" | "done">("idle");
 
   // 「聚焦某人」與「只看此 Session」是**兩個**變數：前者只是高亮，後者才
   // 真的縮小封包母體。所以送到後端的是兩者的合成 —— 只高亮時不縮母體，
@@ -101,10 +97,24 @@ export default function SessionAnalyzer({
     if (mode === "flow" && focusedSupi) onRequestCallFlow(focusedSupi);
   }, [mode, focusedSupi, onRequestCallFlow]);
 
-  function handleReassociate() {
-    setReassociateState("loading");
-    setTimeout(() => setReassociateState("done"), 900);
-    setTimeout(() => setReassociateState("idle"), 3200);
+  /**
+   * 開另一份擷取檔 —— 回首頁，那裡才有真正的入口（拖放、選檔、貼路徑）。
+   *
+   * **2026-09-05 之前這顆按鈕是假的**：`setTimeout` 轉 0.9 秒假圈圈，然後打勾
+   * 說「重新關聯了 N 個封包」，接著復原。它不上傳、不重新關聯、不送任何請求 ——
+   * 從設計沙盒移植進來時留下的空殼，一直沒接上。**畫面宣稱成功而什麼都沒發生**，
+   * 是這個專案最在意的那種缺陷，而且使用者完全沒有辦法察覺。
+   *
+   * 「重新關聯」不在這裡：改解碼規則會整份重跑，那是 Decode As 面板的事。
+   * 一顆按鈕做一件說得出名字的事。
+   *
+   * 語言與 token 要帶著走：前者是使用者剛選的，後者在對外監聽模式下不帶就 403。
+   */
+  function handleOpenAnotherCapture() {
+    const params = new URLSearchParams({ lang: getLang() });
+    const token = currentToken();
+    if (token) params.set("token", token);
+    window.location.href = `/?${params}`;
   }
 
   function handleCorrelateSession(supi: string, frame: number) {
@@ -209,38 +219,25 @@ export default function SessionAnalyzer({
             </div>
           </div>
 
+          {/* 這一排原本還有一個「最近一小時／最近 24 小時」的時間範圍下拉。
+              **它也是假的** —— `timeRange` 只被那個 select 自己讀寫，沒有接到任何
+              查詢。而它比按鈕更糟：預設顯示「最近一小時」，等於在頁面上宣稱底下
+              每個數字只涵蓋那一小時，於是「9 個失敗訊息」會被讀成「這一小時 9 個」。
+              引擎確實有時間收窄（CLI 的 --since/--until，`/flows` 也收），但那條路
+              只濾工作階段表，接上去會讓那張表與總覽的數字對不起來 —— 用一個新的
+              矛盾去換掉一個謊，不划算。要做就是整頁一起收窄，那是另一件事。 */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-fg-dim">
-              <Clock className="h-3.5 w-3.5" />
-              <select
-                value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value)}
-                className="rounded border border-border bg-surface-2 px-2.5 py-1 text-xs text-fg-muted focus:border-signal-cyan focus:outline-none transition-colors"
-              >
-                {TIME_RANGES.map((range) => (
-                  <option key={t(range)} value={range}>
-                    {range}
-                  </option>
-                ))}
-              </select>
-            </div>
             <button
               type="button"
-              onClick={handleReassociate}
-              disabled={reassociateState === "loading"}
-              className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-3 py-1 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-50 transition-colors"
+              onClick={handleOpenAnotherCapture}
+              className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-3 py-1 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
             >
-              {reassociateState === "loading" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : reassociateState === "done" ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-signal-mint" />
-              ) : (
-                <Upload className="h-3.5 w-3.5" />
-              )}
-              {reassociateState === "done"
-                ? t("Re-correlated {n} packets", { n: packetTotals.indexed.toLocaleString() })
-                : t("Upload PCAP / re-correlate")}
+              <FolderOpen className="h-3.5 w-3.5" />
+              {t("Open another capture")}
             </button>
+            <span className="text-xs text-fg-dim">
+              {t("One capture per session. This page always covers the whole file.")}
+            </span>
           </div>
         </header>
 

@@ -21,12 +21,12 @@
     },
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "3680275fc6bdc5cbdd5438b08c7b2ee3e8fb611f75294720527a65f03bacfe54",
+      "current_sha256": "73fa91aef3e33ec0d1b4119622a0334dfb4177cdbba29efc40e5329d871e2e3d",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。",
-      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）；2026-09-05 漸進式揭露：三層模式（overview / flow / mining），總覽是家；`ExecutiveOverview` 的一鍵跳轉走與封包清單「Correlate」同一條路（`handleCorrelateSession`）"
+      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）；2026-09-05 漸進式揭露：三層模式（overview / flow / mining），總覽是家；`ExecutiveOverview` 的一鍵跳轉走與封包清單「Correlate」同一條路（`handleCorrelateSession`）；2026-09-05 拿掉兩個從沙盒帶進來、從沒接上的假控制項：「上傳 PCAP／重新關聯」按鈕（整個處理函式只有 setTimeout，轉完假圈圈就打勾說已重新關聯 N 個封包）與時間範圍下拉（timeRange 只被自己讀寫，預設「最近 1 小時」等於宣稱數字只涵蓋那一小時）。換成一顆「開另一份擷取檔」，導回首頁那個真的入口。"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",

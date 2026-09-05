@@ -126,13 +126,10 @@ const zh_TW: Record<string, string> = {
   " SUCIs are ECIES-protected; the SUPI cannot be recovered even in principle (this is not a parsing failure).": " 個 SUCI 以 ECIES 保護，SUPI 原理上取不出來（不是解析失敗）。",
 
   // SessionAnalyzer
-  "Last 5 minutes": "最近 5 分鐘",
-  "Last hour": "最近 1 小時",
-  "Last 24 hours": "最近 24 小時",
-  "Custom range": "自訂區間",
+  "Open another capture": "開另一份擷取檔",
+  "One capture per session. This page always covers the whole file.":
+    "一份工作階段一個擷取檔。這一頁涵蓋整份檔案。",
   "Data Mining (Wireshark view)": "Data Mining（Wireshark 視圖）",
-  "Re-correlated {n} packets": "已重新關聯 {n} 個封包",
-  "Upload PCAP / re-correlate": "上傳 PCAP / 重新關聯",
   "Language": "語言",
   "Zoom in": "放大",
   "Zoom out": "縮小",
