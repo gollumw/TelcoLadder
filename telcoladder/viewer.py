@@ -253,6 +253,7 @@ def _basis_sentence(basis: str) -> str:
         "pfcp-dir": _("initiator of PFCP Session Establishment (TS 29.244)"),
         "n2-port": _("listens on 38412, the N2 port (TS 38.412)"),
         "service": _("serves /{param} (TS 29.5xx service naming)"),
+        "service-consumer": _("calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)"),
         "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),
         "diameter-dir": _("initiator direction of {param} (RFC 6733 / TS 29.272)"),
         "contradiction": _("contradictory evidence ({param}) - left unlabelled rather than guessed"),

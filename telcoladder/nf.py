@@ -56,6 +56,27 @@ SBI_SERVICE_TO_NF: dict[str, str] = {
     "nnef-eventexposure": "NEF",
 }
 
+#: SBI 服務 → **唯一的消費者**（誰會呼叫它）。與上表相反方向的證據。
+#:
+#: 上表只判伺服端（`nsmf-pdusession` 打向誰，誰就是 SMF）；客戶端原本只靠
+#: User-Agent，而網元匯出的 trace 常常沒帶它 —— 2026-09-05 一份 SMF trace，
+#: 打了 40 則 sm-contexts 的那個位址整份沒有名字，而 TS 29.502 寫得很清楚：
+#: SmContext 這組服務操作的消費者只有 AMF。
+#:
+#: **只收消費者唯一的服務。** `namf-comm`（SMF／PCF／NEF 都會打）、`nudm-sdm`
+#: （AMF／SMF／SMSF）、`nchf-convergedcharging`、`nnrf-*`（誰都會打）一律不收 ——
+#: 收了就是用「常見」冒充「唯一」，錯標比不標更糟。第二欄是資源前綴：
+#: `nsmf-pdusession` 底下 `sm-contexts` 的客戶端是 AMF，但漫遊時 V-SMF 對
+#: H-SMF 走的是同一服務的 `pdu-sessions` 資源（TS 29.502 §5.2.2.2），沒有前綴
+#: 會把 V-SMF 標成 AMF。
+SBI_CONSUMER_OF: dict[str, tuple[str, str | None]] = {
+    "nsmf-pdusession": ("AMF", "/nsmf-pdusession/v1/sm-contexts"),  # TS 29.502
+    "npcf-smpolicycontrol": ("SMF", None),                          # TS 29.512
+    "npcf-am-policy-control": ("AMF", None),                        # TS 29.507
+    "nausf-auth": ("AMF", None),                                    # TS 29.509
+    "nsmsf-sms": ("AMF", None),                                     # TS 29.540
+}
+
 #: S1-MME 介面上 MME 固定監聽的 SCTP 埠（TS 36.412）。
 S1AP_PORT = 36412
 
@@ -428,6 +449,13 @@ def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[st
                 # 那時服務名描述的是它後面的最終目標。`vote()` 會擋掉。
                 vote(dst_ip, SBI_SERVICE_TO_NF[service],
                      f"service:{service}")
+            consumer = SBI_CONSUMER_OF.get(service or "")
+            path = msg.detail.get("path") or ""
+            if consumer and path and (consumer[1] is None or path.startswith(consumer[1])):
+                # 請求從誰發出，誰就是那個服務**唯一**的消費者（表上的判準）。
+                # 只看帶 path 的請求；回應沒有 path。轉送者一樣被 `vote()` 擋掉：
+                # SCP 轉出去的請求 src 是 SCP，那一票不能算。
+                vote(src_ip, consumer[0], f"service-consumer:{service}")
             agent = msg.detail.get("user-agent")
             if agent:
                 nf_type = agent.split("-")[0].split("/")[0].strip().upper()

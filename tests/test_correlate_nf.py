@@ -404,3 +404,58 @@ def test_the_userplane_scp_resolves_via_the_mirror_and_stops_the_vote_poisoning(
     assert role == "SCP" and basis.startswith("mirror:")
     # 判定依據必須跟著角色一起存在 —— 它是「工具講得出依據」的載體
     assert all(isinstance(v, tuple) and len(v) == 2 for v in resolved.values())
+
+
+# ── SBI 服務的**唯一消費者**（2026-09-05） ────────────────────────────────
+
+
+def _sbi(frame: int, src: str, dst: str, label: str, path: str | None = None, service: str | None = None) -> Message:
+    detail = {}
+    if path:
+        detail["path"] = path
+        detail["service"] = service or path.split("/")[1]
+    return Message(frame=frame, ts=frame * 0.01, protocol="sbi",
+                   src=Endpoint(src), dst=Endpoint(dst), label=label, detail=detail)
+
+
+def test_the_client_of_sm_contexts_is_the_amf_without_a_user_agent() -> None:
+    """一份 SMF trace：某位址打了 40 則 `POST /nsmf-pdusession/v1/sm-contexts…`，
+    請求沒帶 User-Agent，於是整份沒有名字 —— 而 TS 29.502 說 SmContext 的
+    消費者只有 AMF。伺服端那一票（SMF）原本就有；這裡補客戶端。"""
+    from telcoladder.nf import resolve_roles_with_basis
+
+    a, smf = "198.51.100.1", "198.51.100.2"
+    msgs = [
+        _sbi(1, a, smf, "POST /nsmf-pdusession/v1/sm-contexts", "/nsmf-pdusession/v1/sm-contexts"),
+        _sbi(2, smf, a, "201"),
+        _sbi(3, a, smf, "POST /nsmf-pdusession/v1/sm-contexts/7/modify", "/nsmf-pdusession/v1/sm-contexts/7/modify"),
+        _sbi(4, smf, a, "200"),
+    ]
+    roles = resolve_roles_with_basis(msgs)
+    assert roles[smf][0] == "SMF"
+    assert roles[a] == ("AMF", "service-consumer:nsmf-pdusession")
+
+
+def test_a_roaming_pdu_sessions_client_is_not_called_an_amf() -> None:
+    """同一個服務、另一組資源：V-SMF 對 H-SMF 打的是 `pdu-sessions`（TS 29.502
+    §5.2.2.2）。沒有資源前綴的話這裡會把 V-SMF 標成 AMF。突變：拔掉前綴檢查 → 紅。"""
+    from telcoladder.nf import resolve_roles
+
+    v, h = "198.51.100.3", "198.51.100.4"
+    msgs = [
+        _sbi(1, v, h, "POST /nsmf-pdusession/v1/pdu-sessions", "/nsmf-pdusession/v1/pdu-sessions"),
+        _sbi(2, h, v, "201"),
+    ]
+    roles = resolve_roles(msgs)
+    assert roles.get(h) == "SMF" and v not in roles
+
+
+def test_services_with_several_consumers_cast_no_client_vote() -> None:
+    """`nudm-sdm` 的消費者有 AMF、SMF、SMSF —— 用「常見」冒充「唯一」就是錯標。"""
+    from telcoladder.nf import SBI_CONSUMER_OF, resolve_roles
+
+    assert "nudm-sdm" not in SBI_CONSUMER_OF and "namf-comm" not in SBI_CONSUMER_OF
+    x, udm = "198.51.100.5", "198.51.100.6"
+    msgs = [_sbi(1, x, udm, "GET /nudm-sdm/v2/x/sm-data", "/nudm-sdm/v2/x/sm-data"), _sbi(2, udm, x, "200")]
+    roles = resolve_roles(msgs)
+    assert roles.get(udm) == "UDM" and x not in roles
