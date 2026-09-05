@@ -224,6 +224,10 @@ class Session:
     與 `analysis` 同生命週期 —— analysis 不可變，表也不會變。
     型別寫 object 避免 session ↔ flowtable 的 import 循環。"""
 
+    overview: object | None = field(default=None, repr=False)
+    """首屏總覽（`overview.build_overview`）的快取，**按語言分**（dict）——
+    與 `flowtable` 同一個理由：裡面的白話與依據句是用當下語言算出來的字串。"""
+
     tshark: object | None = field(default=None, repr=False)
     """已定位好的 tshark，在建立工作階段時解析一次。
 

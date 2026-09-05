@@ -86,6 +86,7 @@ from telcoladder.viewer import (
     select_identity,
     effective_matched,
     index_json,
+    overview_json,
     progress_json,
     static_body,
     flows_json,
@@ -327,6 +328,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(flows_json(
                 session, since=_float("since"), until=_float("until"),
             ))
+        elif not post and action == "overview":
+            self._send_json(overview_json(session))
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             identity_text = (query.get("identity") or [""])[0]
@@ -440,6 +443,7 @@ class _Handler(BaseHTTPRequestHandler):
             session.auto_prefs = ()
             session.analysis = None
             session.flowtable = None
+            session.overview = None
             session.decode = DecodeCache()
             session.frame_bytes = FrameBytesCache()
             session.filter_frames = None

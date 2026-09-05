@@ -20,6 +20,7 @@ import {
   type Dataset,
   type CallFlow,
   type DecodeAsState,
+  type Overview,
   type PacketPage,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
@@ -41,7 +42,7 @@ interface PacketStore {
 }
 
 export default function App() {
-  useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
+  const lang = useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [source] = useState<DataSource>(pickSource);
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -50,6 +51,9 @@ export default function App() {
   const [bytesByFrame, setBytesByFrame] = useState<Record<number, string | null>>({});
   const [treeByFrame, setTreeByFrame] = useState<Record<number, ProtocolNode[] | null>>({});
   const [decodeNote, setDecodeNote] = useState<string | null>(null);
+  /** 首屏總覽。null＝還在算；與 `data` 分開取，因為它對全母體切段，大檔上比封包索引慢。 */
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
   /** 已取到的梯形圖，一個訂戶一份。 */
   const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
   /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
@@ -94,6 +98,14 @@ export default function App() {
         void source.loadDecodeAs().then((state) => {
           if (!cancelled) setDecodeAs(state);
         });
+        void source
+          .loadOverview()
+          .then((o) => {
+            if (!cancelled) setOverview(o);
+          })
+          .catch((err: unknown) => {
+            if (!cancelled) setOverviewError(err instanceof Error ? err.message : String(err));
+          });
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
@@ -102,6 +114,24 @@ export default function App() {
       cancelled = true;
     };
   }, [source]);
+
+  // **總覽裡有引擎用請求語言寫好的句子**（coverage、白話、常見根因），不是 `t()`
+  // 翻的。切語言時 `t()` 的字會跟著換、這些不會 —— 所以重取一次。首次載入由
+  // 上面的 effect 負責；這裡只管「已經載過、語言變了」。
+  const loadedOnce = useRef(false);
+  useEffect(() => {
+    if (!data) return;
+    if (!loadedOnce.current) {
+      loadedOnce.current = true;
+      return;
+    }
+    setOverview(null);
+    void source
+      .loadOverview()
+      .then(setOverview)
+      .catch((err: unknown) => setOverviewError(err instanceof Error ? err.message : String(err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在語言變時重取；data 只是門檻
+  }, [lang]);
 
   /**
    * 補齊 [first, first+count) 這段裡缺的列。
@@ -213,6 +243,12 @@ export default function App() {
           setTreeByFrame({});
           setFlowBySupi({});
           setFilterError(null);
+          // 總覽也是用舊規則算的 —— 清掉、重取。
+          setOverview(null);
+          setOverviewError(null);
+          void source.loadOverview().then(setOverview).catch((err: unknown) => {
+            setOverviewError(err instanceof Error ? err.message : String(err));
+          });
           return source.loadDecodeAs().then(setDecodeAs);
         })
         .catch((err: unknown) => {
@@ -355,6 +391,8 @@ export default function App() {
       )}
       <SessionAnalyzer
         data={data}
+        overview={overview}
+        overviewError={overviewError}
         packetRows={packets.rows}
         packetTotals={packets.totals}
         onNeedRows={requestRows}

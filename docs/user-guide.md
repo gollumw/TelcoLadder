@@ -141,7 +141,20 @@ Open <http://localhost:3005>, **drag a pcap in**, or **paste a path**
 (use this for large files — zero copies, starts immediately). Analysis
 is synchronous — a large file looks stuck while it runs.
 
-The web page is the full interface: a complete packet list (not just
+The page opens on an **Overview**: the worst traffic light among the
+subscribers (red / amber / green — the same lights as the session table
+in §10, no score, no weighting), what the capture *cannot* show (ciphered
+NAS, undecoded frames, an N2-only file), the counts of failed procedures,
+unanswered requests and retransmissions, and one card per failure cause
+carrying the 3GPP citation, the plain-language explanation and the
+common field root causes from the cause table — with one-click jumps
+into that subscriber's ladder or the packet itself. The **Call Flow
+Ladder** is the second layer (one subscriber, one procedure at a time;
+the "Anomalies & stalls only" switch keeps just failed messages and gaps
+over 1 s). **Data Mining** is the third: the full Wireshark-style
+packet list.
+
+That third layer is the full interface: a complete packet list (not just
 signalling, Wireshark-native columns), real tshark display filters,
 click a row for the full protocol decode tree and raw bytes, the
 subscriber/identity pane (searchable by trailing IMSI digits; one click

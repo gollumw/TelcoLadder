@@ -25,7 +25,7 @@ import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { DataSource, Dataset, PacketPage } from "./source";
+import type { DataSource, Dataset, Overview, OverviewCause, PacketPage } from "./source";
 
 export function mockSource(): DataSource {
   // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
@@ -113,6 +113,44 @@ export function mockSource(): DataSource {
 
     async focusIdentity(supi: string | null): Promise<void> {
       focusedSupi = supi;
+    },
+
+    async loadOverview(): Promise<Overview> {
+      // mock 的陣列**就是**全母體，所以在這裡聚合是對的（真實資料那邊不行，
+      // 見 `Overview` 的說明）。範例資料沒有程序切段、沒有 cause 表 ——
+      // 這些欄位照實留 0 與 null，不湊一個看起來合理的值。
+      const sessions = computeDiscoveredSessions(mockData.rawPackets);
+      const errors = mockData.callFlowEvents.filter((e) => e.status === "ERROR");
+      const byCause = new Map<string, OverviewCause>();
+      for (const e of errors) {
+        const key = e.causeText ?? e.messageName;
+        const card = byCause.get(key) ?? {
+          key,
+          message: e.messageName,
+          protocol: e.domain === "CORE_SBI" ? "sbi" : "ngap",
+          citation: e.causeText ?? null,
+          known: Boolean(e.causeText),
+          explanation: e.causeExplanation ?? null,
+          commonCauses: e.causeCommon ?? [],
+          count: 0,
+          frames: [],
+          subscribers: [],
+        };
+        card.count += 1;
+        card.frames.push(e.frameNumber);
+        if (!card.subscribers.some((s) => s.handle === e.supi)) card.subscribers.push({ handle: e.supi, label: e.supi });
+        byCause.set(key, card);
+      }
+      const red = sessions.filter((s) => s.hasError).length;
+      return {
+        verdict: sessions.length === 0 ? "empty" : red > 0 ? "red" : "green",
+        subscribers: { total: sessions.length, red, amber: 0, green: sessions.length - red, unattributedFlows: 0 },
+        procedures: { total: 0, success: 0, failure: 0, incomplete: 0 },
+        events: { failures: errors.length, unanswered: 0, retrans: 0 },
+        notVisible: { cipheredNas: 0, protectedSuci: 0, framesNotDecoded: 0, onlyN2: false, undecodedTraffic: [], notes: [] },
+        causes: Array.from(byCause.values()),
+        failedProcedures: [],
+      };
     },
 
     async loadDecodeAs() {

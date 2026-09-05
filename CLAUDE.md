@@ -94,6 +94,13 @@ hand-write scope strings.
 - A missed path in `tailwind.config.ts`'s `content` glob is a silent
   failure — pinned by `tests/test_web_assets.py`, as is `web/PORTED.json`'s
   per-file hash discipline.
+- The Overview page is **formatted in the browser, computed on the
+  server** (`/api/<sid>/overview`, `telcoladder/overview.py`). The
+  browser only ever holds one page of packets and one subscriber's
+  ladder, so any aggregate computed client-side changes with what has
+  been loaded — silently. No score: every number is a count from
+  `flowtable` or `procedures`, and `tests/test_overview.py` reddens on
+  a key named score/health/grade.
 - Theme tokens are RGB triplets consumed as
   `rgb(var(--x) / <alpha-value>)`; a `#hex` value silently drops every
   opacity-modifier class. SVG colours go through `style={{...}}` —

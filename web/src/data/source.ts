@@ -214,6 +214,80 @@ export interface CallFlow {
   uncorrelatedDomains: TelecomDomain[];
 }
 
+// ── 首屏總覽（2026-09-05）─────────────────────────────────────────────
+//
+// 給第一眼看這份檔的人。**全部由後端算**（`/api/<sid>/overview`，
+// `telcoladder/overview.py`）：瀏覽器只看得到一頁封包與一個訂戶的梯形圖，
+// 在這裡聚合「整份檔的失敗數」會隨載入狀態改變 —— 一份 24 個訂戶、7 個失敗
+// 的擷取檔，在還沒點過任何訂戶時畫面寫著 0 個異常，而且不報錯。
+//
+// **沒有分數。** 沒有 0–100 的健康度：那個數字的權重是編的，而編出來的數字
+// 在畫面上跟量出來的一樣可信。`verdict` 只是「最差的那盞燈」。
+
+/** 一個訂戶的把手與名字。`handle` 是 SUPI 數字或 `kind:raw`（`mapIndex.subscriberHandle` 的寫法）。 */
+export interface OverviewSubscriberRef {
+  handle: string;
+  label: string;
+  /** 這個人第一次撞到這張卡的 cause 的那一格（只有失敗卡上的把手有）。 */
+  frame?: number;
+}
+
+/** 同一個 cause 的失敗歸成一張卡。 */
+export interface OverviewCause {
+  key: string;
+  /** 第一則失敗的訊息名（`UplinkNASTransport ▸ Authentication failure`）。 */
+  message: string;
+  protocol: string;
+  /** 出處：`Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2`；查不到時是「還沒收錄」那句；
+   *  沒有 cause 的失敗（純靠訊息名判定）是 null。 */
+  citation: string | null;
+  known: boolean;
+  /** cause 表的白話。**沒有就是 null**，畫面不補一句自己寫的。 */
+  explanation: string | null;
+  /** cause 表裡**人寫的現場常見根因** —— 不是本工具對這份檔的建議。 */
+  commonCauses: string[];
+  count: number;
+  frames: number[];
+  subscribers: OverviewSubscriberRef[];
+}
+
+export interface OverviewProcedure {
+  kind: string;
+  subscriber: OverviewSubscriberRef | null;
+  startFrame: number;
+  endFrame: number;
+  /** 終端原因（最後一則失敗的白話）。 */
+  cause: string | null;
+  /** 起因（第一則失敗的）。**只在與終端不同時才有**。 */
+  firstFailure: string | null;
+  pduSessionId: string | null;
+  failures: number;
+  durationS: number;
+  note: string;
+}
+
+/** 這份檔**看不見什麼**。永遠顯示在結論之前 —— 少了它，一份只抓到 N2 的檔會被讀成「核網沒有失敗」。 */
+export interface OverviewNotVisible {
+  cipheredNas: number;
+  protectedSuci: number;
+  /** null＝沒量（capinfos 取不到），不是 0。 */
+  framesNotDecoded: number | null;
+  onlyN2: boolean;
+  undecodedTraffic: Array<{ protocol: string; frames: number; port: number | null; decodeAsHint: string | null }>;
+  /** 引擎已經寫好的句子（coverage、自動解碼、trace 旁路）。原樣顯示。 */
+  notes: string[];
+}
+
+export interface Overview {
+  verdict: "red" | "amber" | "green" | "empty";
+  subscribers: { total: number; red: number; amber: number; green: number; unattributedFlows: number };
+  procedures: { total: number; success: number; failure: number; incomplete: number };
+  events: { failures: number; unanswered: number; retrans: number };
+  notVisible: OverviewNotVisible;
+  causes: OverviewCause[];
+  failedProcedures: OverviewProcedure[];
+}
+
 /** 一條生效中的 decode-as 規則。`origin` 決定畫面上怎麼標、能不能刪。 */
 export interface DecodeAsRule {
   rule: string;
@@ -288,6 +362,12 @@ export interface DataSource {
    * 可能有幾十萬則，一個訂戶通常是幾十到幾百則。
    */
   loadCallFlow(supi: string): Promise<CallFlow>;
+
+  /**
+   * 首屏總覽：整份檔的燈號、程序結局、失敗卡。**每個來源都要實作**，
+   * 而且要對**全母體**算 —— 對視窗算會隨捲動改變（見 `Overview` 的說明）。
+   */
+  loadOverview(): Promise<Overview>;
 
   /** 目前生效中的 decode-as 規則。 */
   loadDecodeAs(): Promise<DecodeAsState>;
