@@ -43,9 +43,18 @@ NAS／NGAP 用下面那套視窗判定；**Diameter 用 Session-Id**，因為 RF
 其後的重送屬於同一個程序。收了會把一次有重試的註冊切成兩段，而兩段各自
 看起來都合理。這是同一個門檻在兩種語境下的相反判讀，寫下來免得被「統一」掉。
 
-**③ 同型開段訊息重複時合併，不另開新段。** 兩個原因都真實存在：
-SCP 轉送讓同一則 NAS 出現兩次（AMF→SCP 與 SCP→SMF 兩腿，`5gc-e2e` 的
-frame 388/391）；NAS 定時器重送也長這樣。分開算會把一次建立報成兩次。
+**③ 同型開段訊息重複時合併，不另開新段 —— 除非這段已經有失敗。** 合併的
+兩個原因都真實存在：SCP 轉送讓同一則 NAS 出現兩次（AMF→SCP 與 SCP→SMF
+兩腿，`5gc-e2e` 的 frame 388/391）；NAS 定時器重送也長這樣。分開算會把
+一次建立報成兩次。
+
+**但 reject 之後再來一個同型 request 是新的一次嘗試**（2026-09-05）。實測一份
+網元 trace：七個 `PDU session establishment reject`，七段 pdu-session-establishment
+**全部 success**，`failures=1`、`cause=None` —— UE 被拒後重試成功，reject 被
+併進同一段，七次拒絕在 xDR 上變成七個勾。消費端算失敗率的是每一列的
+`outcome`，那裡讀不到 `failures` 欄的弦外之音。所以：視窗裡已有失敗時，
+同型 opener 收段開新段；沒有失敗時照舊合併（SCP 兩腿、定時器重送之間沒有
+reject）。
 
 ## 結局判定
 
@@ -87,7 +96,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
-from telcoladder.model import Flow, IdKind, Message
+from telcoladder.identities import identity_label
+from telcoladder.model import Flow, IdKind, Message, subscriber_identity
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
 
@@ -151,6 +161,11 @@ class Procedure:
     duration: float
     protocols: tuple[str, ...]
     note: str = ""
+    subscriber: str | None = None
+    """這段屬於誰，給人看的名字（`identities.identity_label`）：SUPI 有就是
+    `SUPI …`，沒有就是 `5G-S-TMSI …` 或 `AMF UE NGAP ID …`。**真實網路多數
+    程序段沒有 SUPI**，xDR 只有 `supi` 欄的話那些列全是 null，消費端無法按
+    訂戶分組。"""
 
 
 def _opens(msg: Message) -> _Kind | None:
@@ -172,8 +187,13 @@ def _flow_supi(flow: Flow) -> str | None:
     return supis[0] if supis else None
 
 
+def _flow_subscriber(flow: Flow) -> str | None:
+    key = subscriber_identity(flow.identity_keys)
+    return identity_label(key) if key is not None else None
+
+
 def _finish(kind: _Kind, window: list[Message], supi: str | None,
-            capture_end: float) -> Procedure:
+            capture_end: float, subscriber: str | None = None) -> Procedure:
     failures = [m for m in window if m.is_failure]
     last_success = max(
         (i for i, m in enumerate(window)
@@ -203,6 +223,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     return Procedure(
         kind=kind.name,
         supi=supi,
+        subscriber=subscriber,
         outcome=outcome,
         cause=cause,
         first_failure=first_failure,
@@ -261,7 +282,7 @@ def _distinct(messages: list[Message]) -> list[Message]:
 
 
 def _diameter_segments(messages: list[Message], supi: str | None,
-                       capture_end: float) -> tuple[list[Procedure], list[Message]]:
+                       capture_end: float, subscriber: str | None = None) -> tuple[list[Procedure], list[Message]]:
     """Diameter 以 **Session-Id** 為單位切段，不用 NAS 那套視窗判定。
 
     ## 為什麼是 Session-Id
@@ -322,6 +343,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         procedures.append(Procedure(
             kind=kind,
             supi=supi,
+        subscriber=subscriber,
             outcome=outcome,
             cause=cause,
             first_failure=first_failure,
@@ -345,13 +367,14 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     這條由測試釘住；切段規則怎麼改，這個等式都不准破。
     """
     supi = _flow_supi(flow)
+    subscriber = _flow_subscriber(flow)
 
     # **先按協定分家，再各自切段。** 兩套判準互不干擾 —— 混著跑的話，一則
     # Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那個
     # 視窗的耗時與訊息數會因此變成錯的（而且看起來完全合理）。
     diameter = [m for m in flow.messages if m.protocol == _DIAMETER]
     others = [m for m in flow.messages if m.protocol != _DIAMETER]
-    procedures, unassigned = _diameter_segments(diameter, supi, capture_end)
+    procedures, unassigned = _diameter_segments(diameter, supi, capture_end, subscriber)
 
     active_kind: _Kind | None = None
     window: list[Message] = []
@@ -359,7 +382,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     def close() -> None:
         nonlocal active_kind, window
         if active_kind is not None and window:
-            procedures.append(_finish(active_kind, window, supi, capture_end))
+            procedures.append(_finish(active_kind, window, supi, capture_end, subscriber))
         active_kind, window = None, []
 
     def _outcome_seen() -> bool:
@@ -376,8 +399,11 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
 
         opened = _opens(msg)
         if opened is not None:
-            # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段。
-            if active_kind is not None and opened.name == active_kind.name:
+            # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段 ——
+            # **除非這段已經有失敗**：reject 之後的同型 request 是新的一次嘗試
+            # （檔頭規則 ③），併進去會把 reject 洗成 success。
+            if (active_kind is not None and opened.name == active_kind.name
+                    and not any(m.is_failure for m in window)):
                 window.append(msg)
                 continue
             close()

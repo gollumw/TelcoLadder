@@ -89,8 +89,38 @@ export interface FlowSession {
   failure_frames: number[];
 }
 
+/** `/flows` 給的訂戶把手。`kind === "supi"` 時 raw 就是 SUPI 數字；其他種類
+ *  （5G-S-TMSI、NGAP UE ID）raw 帶著連線範圍前綴，label 是給人看的。 */
+export interface FlowIdentity {
+  kind: string;
+  raw: string;
+  label: string;
+}
+
+/**
+ * 前端在各處傳遞的「訂戶把手」：SUPI 就是數字本身（既有契約，`?supi=`）；
+ * 沒有 SUPI 的訂戶是 `kind:raw`（與後端 `/select` 與 `/callflow?identity=` 同一種寫法）。
+ * **2026-09-05 之前只認 `SUPI ` 開頭的標題** —— 真實網路多數訂戶只有 5G-S-TMSI，
+ * 它們的列在 `/flows` 裡存在，抽屜卻一個都不顯示。
+ */
+export function subscriberHandle(sub: FlowSubscriber): string | null {
+  if (sub.identity) {
+    return sub.identity.kind === "supi" ? sub.identity.raw : `${sub.identity.kind}:${sub.identity.raw}`;
+  }
+  return sub.title.startsWith("SUPI ") ? sub.title.slice(5).trim() : null;
+}
+
+export function subscriberLabel(sub: FlowSubscriber): string {
+  return sub.identity?.label ?? sub.title;
+}
+
+export function handleIsSupi(handle: string): boolean {
+  return !handle.includes(":");
+}
+
 export interface FlowSubscriber {
   title: string;
+  identity?: FlowIdentity | null;
   grouped: boolean;
   /** 這個訂戶最早那則訊息的絕對時間（epoch 秒）。
    *  **0.0 是哨兵值，代表沒有絕對時間** —— 不是 1970 年。 */
@@ -109,23 +139,33 @@ export interface FlowSubscriber {
  * 而不是把一個內部識別碼冒充成訂戶號碼。
  */
 export function attachFlowFacts(packets: RawPacket[], subscribers: FlowSubscriber[]): void {
-  const supiOf = new Map<number, string>();
+  const handleOf = new Map<number, string>();
+  const labelOf = new Map<number, string>();
   const failed = new Set<number>();
 
   for (const sub of subscribers) {
-    const supi = sub.title.startsWith("SUPI ") ? sub.title.slice(5).trim() : null;
+    const handle = sub.grouped ? subscriberHandle(sub) : null;
+    const label = subscriberLabel(sub);
     for (const session of sub.sessions) {
       for (const frame of session.failure_frames) failed.add(frame);
-      if (!supi) continue;
-      for (const frame of session.frames) supiOf.set(frame, supi);
+      if (!handle) continue;
+      for (const frame of session.frames) {
+        handleOf.set(frame, handle);
+        labelOf.set(frame, label);
+      }
     }
   }
 
   for (const packet of packets) {
-    const supi = supiOf.get(packet.frameNumber);
-    if (supi) packet.correlatedSupi = supi;
+    const handle = handleOf.get(packet.frameNumber);
+    if (handle) {
+      packet.correlatedSupi = handle;
+      // 顯示用：SUPI 直接是數字；其他種類帶著類別名（`5G-S-TMSI 1-0-…`），
+      // 不把內部識別碼冒充成訂戶號碼。
+      packet.correlatedLabel = labelOf.get(packet.frameNumber);
+    }
     if (failed.has(packet.frameNumber)) packet.status = "ERROR";
-    else if (supi) packet.status = "SUCCESS";
+    else if (handle) packet.status = "SUCCESS";
   }
 }
 
@@ -154,9 +194,11 @@ export function subscribersToSessions(
 ): DiscoveredSession[] {
   const out: DiscoveredSession[] = [];
   for (const sub of subscribers) {
-    // 只有 `SUPI ` 開頭的才是真的訂戶 —— 其餘是「有流程但認不出是誰」，
-    // 把內部識別碼冒充成訂戶號碼比不顯示更糟（`attachFlowFacts` 同理）。
-    if (!sub.title.startsWith("SUPI ")) continue;
+    // 每一個**有訂戶鍵**的組都是一個人 —— SUPI 只是其中一種。沒有訂戶鍵的
+    // 「未歸戶」桶（grouped=false）才不列。標籤帶著類別名，不把內部識別碼
+    // 冒充成訂戶號碼（`attachFlowFacts` 同理）。
+    const handle = sub.grouped ? subscriberHandle(sub) : null;
+    if (!handle) continue;
     const frames = new Set<number>();
     let hasError = false;
     for (const session of sub.sessions) {
@@ -164,7 +206,10 @@ export function subscribersToSessions(
       if (session.failure_frames.length) hasError = true;
     }
     out.push({
-      supi: sub.title.slice(5).trim(),
+      supi: handle,
+      label: subscriberLabel(sub),
+      identityKind: sub.identity?.kind ?? "supi",
+      hasSupi: handleIsSupi(handle),
       packetCount: frames.size,
       hasError,
       firstSeenEpoch: absTimeAvailable ? Math.round(sub.start * 1_000_000) : NaN,
@@ -182,11 +227,11 @@ export function subscribersToSessions(
 export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const sub of subscribers) {
-    if (!sub.title.startsWith("SUPI ")) continue;
-    const supi = sub.title.slice(5).trim();
+    const handle = sub.grouped ? subscriberHandle(sub) : null;
+    if (!handle) continue;
     for (const session of sub.sessions) {
       for (const frame of session.frames) {
-        if (out[supi] === undefined || frame < out[supi]) out[supi] = frame;
+        if (out[handle] === undefined || frame < out[handle]) out[handle] = frame;
       }
     }
   }

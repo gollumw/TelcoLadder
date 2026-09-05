@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<traceCollecFile xmlns="http://www.3gpp.org/ftp/specs/archive/32_series/32.423#traceData"
+                 fileFormatVersion="32.423 V11.5.0">
+  <fileHeader fileFormatVersion="32.423 V11.5.0" vendorName="telcoladder-fixture">
+    <fileSender elementType="AMF"/>
+    <traceCollec beginTime="2026-09-05T00:00:00Z"/>
+  </fileHeader>
+  <traceRecSession traceSessionRef="1" traceRecSessionRef="0000">
+    <ue idType="IMSI" idValue="001010000000001"/>
+    <msg function="NGAP" name="InitialUEMessage" changeTime="0.000" vendorSpecific="false">
+      <initiator type="gNB">Address=198.51.100.21,Port=38412</initiator>
+      <target type="AMF">Address=198.51.100.10,Port=38412,Guami=001-01-02-1-0</target>
+      <rawMsg protocol="ngap" version="1">000F40470000060055000200010026000E0D7E004C010007F400400A1B2C3D007900135000F110000000010000F110000001EE2D66D6005A400118001A00070010000A1B2C3D0070400100</rawMsg>
+    </msg>
+  </traceRecSession>
+  <traceRecSession traceSessionRef="1" traceRecSessionRef="0012">
+    <ue idType="IMSI" idValue="001010000000001"/>
+    <msg function="NGAP" name="DownlinkNASTransport" changeTime="0.012" vendorSpecific="false">
+      <initiator type="AMF">Address=198.51.100.10,Port=38412,Guami=001-01-02-1-0</initiator>
+      <target type="gNB">Address=198.51.100.21,Port=38412</target>
+      <rawMsg protocol="ngap" version="1">00044017000003000A0002006400550002000100260004037E004E</rawMsg>
+    </msg>
+  </traceRecSession>
+  <traceRecSession traceSessionRef="1" traceRecSessionRef="10000">
+    <ue idType="IMSI" idValue="001010000000001"/>
+    <msg function="NGAP" name="InitialUEMessage" changeTime="10.000" vendorSpecific="false">
+      <initiator type="gNB">Address=198.51.100.21,Port=38412</initiator>
+      <target type="AMF">Address=198.51.100.10,Port=38412,Guami=001-01-02-1-0</target>
+      <rawMsg protocol="ngap" version="1">000F40470000060055000200020026000E0D7E004C010007F400400A1B2C3D007900135000F110000000010000F110000001EE2D66D6005A400118001A00070010000A1B2C3D0070400100</rawMsg>
+    </msg>
+  </traceRecSession>
+  <traceRecSession traceSessionRef="1" traceRecSessionRef="10011">
+    <ue idType="IMSI" idValue="001010000000001"/>
+    <msg function="NGAP" name="DownlinkNASTransport" changeTime="10.011" vendorSpecific="false">
+      <initiator type="AMF">Address=198.51.100.10,Port=38412,Guami=001-01-02-1-0</initiator>
+      <target type="gNB">Port=38412,Fqdn=gnb01.ran.mnc001.mcc001.3gppnetwork.org</target>
+      <rawMsg protocol="ngap" version="1">00044017000003000A0002006500550002000200260004037E004E</rawMsg>
+    </msg>
+  </traceRecSession>
+</traceCollecFile>

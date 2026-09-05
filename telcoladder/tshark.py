@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,6 +54,52 @@ def _fallback_paths() -> tuple[str, ...]:
 
 # 低於這一版不保證 5G 欄位齊全。不硬性擋，只警告。
 MIN_RECOMMENDED = (4, 0)
+
+# ── tshark 偏好設定（`-o`）—— **全專案唯一的一份** ────────────────────────
+#
+# 2026-09-05 之前 `-o tcp.analyze_sequence_numbers:FALSE` 這一行硬寫在五個
+# 呼叫點（extract／packets／decode／framebytes／prefilter），而 probe 與
+# coverage 兩趟掃描根本不吃它。要再加一種偏好（USER DLT 對映）就得再抄
+# 五份 —— 而漏抄一處的症狀是「四條路徑對同一份檔給出四個答案」，沒有
+# 任何一層會報錯（CLAUDE.md §5.5「一組參數」那條紀律）。
+#
+# 現在每個呼叫點只做一件事：`args += pref_args(prefs, relax_seq=…)`。
+
+#: 關掉 TCP 序號分析 —— 網元 trace 的序號是合成的（恆為 0），不關掉的話
+#: tshark 會把整段 SBI 當成重傳而略過（`probe.py`）。
+RELAX_SEQ_PREF = "tcp.analyze_sequence_numbers:FALSE"
+
+#: pcap link type 147 = LINKTYPE_USER0；USER n 就是 147 + n（libpcap 保留
+#: 147–162 給使用者自訂）。tshark 對這種擷取檔**一個 dissector 都不掛**，
+#: 每格都是 `user_dlt` 一片 data，除非用下面這條 uat 告訴它載荷是什麼。
+LINKTYPE_USER0 = 147
+
+
+def user_dlt_pref(n: int, dissector: str) -> str:
+    """把「USER n 的載荷是 `dissector`」寫成 tshark 的 `-o` 字串。
+
+    uat 的六個欄位：encap 名稱、payload 協定、header 長度、header 協定、
+    trailer 長度、trailer 協定。我們只用前兩個 —— 網元匯出的裸協定沒有
+    額外標頭（實測三份裸 Diameter 匯出）。
+    """
+    if not 0 <= n <= 15:
+        raise ValueError(f"USER DLT must be 0-15, got {n}")
+    return f'uat:user_dlts:"User {n} (DLT={LINKTYPE_USER0 + n})","{dissector}","0","","0",""'
+
+
+def pref_args(prefs: "Sequence[str]" = (), *, relax_seq: bool = False) -> list[str]:
+    """把偏好設定展開成 `-o` 參數。`relax_seq=True` 是 `RELAX_SEQ_PREF` 的糖。
+
+    去重並保留順序 —— 同一條偏好給兩次不會壞，但 tshark 的命令列會變得
+    讓人看不出哪一條才是生效的那條。
+    """
+    seen: dict[str, None] = dict.fromkeys(prefs)
+    if relax_seq:
+        seen.setdefault(RELAX_SEQ_PREF, None)
+    out: list[str] = []
+    for pref in seen:
+        out += ["-o", pref]
+    return out
 
 
 class TsharkNotFound(RuntimeError):

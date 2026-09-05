@@ -36,7 +36,8 @@
 
 ## 1. Pre-flight: see what your capture actually contains
 
-TelcoLadder currently **decodes the 5G SA core only**. Real captures are
+TelcoLadder decodes the **5G SA core, the 4G/EPC control plane and IMS
+signalling** (the table below is the exact list). Real captures are
 usually mixed; spend 10 seconds confirming the contents rather than
 staring at "no 5G signalling found":
 
@@ -56,9 +57,9 @@ Check the protocol tree for these names:
 | `ngap` (SCTP 38412) | ✅ full support — N2 signalling, cause highlighting, spec clauses |
 | `nas-5gs` | ✅ cleartext fully; **ciphered after Security Mode Command — shell visible, contents not** (the tool says so; §5) |
 | `http2` (SBI) | ⚠ cleartext h2c decodes (SUPI correlation, SCP relay detection included); **TLS-encrypted does not** — real networks mostly run TLS |
-| `pfcp` (UDP 8805) | ✅ N4 session messages; failures highlight but the cause clause table is not yet transcribed |
-| `s1ap` / `gtpv2` | ❌ **4G EPC not yet supported** — it answers "no 5G signalling found" |
-| `sip` / `diameter` | ❌ **VoLTE / IMS is Phase 2, not yet started** — the contract is laid; the adapters do not exist |
+| `pfcp` (UDP 8805) | ✅ N4 session messages; causes catalogued (29 entries, oracle-pinned, no clause numbers) |
+| `s1ap` / `nas-eps` / `gtpv2` | ✅ **4G/EPC control plane** (2026-08-24): S1AP carrying NAS-EPS, GTPv2-C on S11 and S5/S8; the IMSI joins S1-MME and S11 into one subscriber flow. All 236 causes catalogued, no clause numbers |
+| `sip` / `diameter` | ✅ SIP (Gm; keyed on `From`, never `To`) and Diameter (S6a/S6d, Cx/Dx, Gx, Rx, Sh, S6b, SWx with roles and causes; other applications decode with their Application-Id but get no role inference — §7). Raw exports with no IP layer (link type USER 0) are detected and mapped, §8 |
 | `gtp` (user plane) | ✅ **N3 tunnel attribution** (2026-08-21) — G-PDUs join subscriber flows by (destination, TEID), QFI is read. **No usage KPIs yet**: no throughput, no sequence gaps, no Echo RTT; every G-PDU is one row, so pair large files with `--since/--until` |
 
 `tshark` is **not on the default PATH** on either major platform
@@ -335,12 +336,17 @@ values).
   vendor changes the service mix, path shapes, and SBI ports — the
   symptom is a shorter diagram, not an error. A real capture that fails
   to decode is a valuable sample (§6's last row).
-- **Diameter covers three interfaces** (2026-08-23): S6a/S6d, Cx/Dx, Gx,
-  plus the base messages (CER/DWR/DPR). These three have NE role
-  inference and cause coverage; the other twenty-odd 3GPP applications
-  resolve their Application-Id and show command names, but **roles
-  cannot be inferred and causes are not catalogued** — an honest "not
-  yet", not a silent error.
+- **Diameter covers seven interfaces**: S6a/S6d, Cx/Dx, Gx (2026-08-23)
+  and Rx, Sh, S6b, SWx (2026-09-05, after real exports carried them),
+  plus the base messages (CER/DWR/DPR). These have NE role inference
+  (AF, AS, AAA, PGW join the role vocabulary); the remaining 3GPP
+  applications resolve their Application-Id and show command names, but
+  **roles cannot be inferred** — an honest "not yet", not a silent error.
+  An address that collects two mutually exclusive roles (one endpoint
+  answering both Gx CCR and Gx RAR, typically a simulator) stays
+  unlabelled, and the summary's `role_basis` and the browser now say
+  *why* (`contradiction: PCEF vs PCRF`) instead of looking like "no
+  evidence".
 - **Diameter causes carry no clause numbers.** Names are pinned entry by
   entry against tshark's own tables, but **the clauses were not
   human-verified**, so only the spec (`3GPP TS 29.230`, `RFC 6733`)
@@ -354,12 +360,9 @@ values).
   relayed through a DRA is observed twice on the wire and **counts as
   one failure** (deduped on the End-to-End Id RFC 6733 §6.2 requires
   relays to preserve).
-- **VoLTE/IMS SIP does not decode yet** (§1's table). The Diameter side
-  is in; SIP is the next block — the contract (DECODE_AS, relay-record,
-  identity classes) is laid.
-- **PFCP's cause table is not yet transcribed** — N4 failures highlight
-  without clause references (transcription is human work; no clause in
-  this repo is machine-generated).
+- **PFCP causes are catalogued (29 entries since 2026-08-29) but carry no
+  clause numbers** — the same rule as Diameter: names are oracle-pinned,
+  clauses print only once a human has transcribed them.
 - Performance: extract/parse measures ~38–56k packets/sec;
   **correlate/render scaling under many subscribers is unmeasured**.
 - **Cause explanations in the summary and MCP were Chinese-only** (§3c);
@@ -367,7 +370,50 @@ values).
 
 ---
 
+## 7b. Subscribers without a SUPI (most real traffic)
+
+A UE that comes back from idle sends a **Service request**, which carries a
+5G-S-TMSI and never a SUCI. On a live network most signalling looks like
+that, so most subscribers have no SUPI anywhere in the capture. Since
+2026-09-05 the tool treats the 5G-S-TMSI (from NGAP's FiveG-S-TMSI IE and
+from the NAS 5GS mobile identity, including the 5G-GUTI in a periodic
+Registration request) as a subscriber identity: such subscribers appear in
+the browser drawer as `5G-S-TMSI <set>-<pointer>-<tmsi>`, in `summarize`
+under **Subscribers without a SUPI**, in xDR's new `subscriber` column, and
+`get_subscriber_callflow` / `/callflow` accept `identity=fiveg_s_tmsi:<raw>`.
+
+Two limits, stated: the key is scoped to the NG connection (the same TMSI on
+another gNB↔AMF association is another subscriber - the safe direction),
+and a TMSI **re-allocated inside the same capture** merges two people,
+because the re-allocation happens in ciphered messages the tool cannot see.
+
 ## 8. Two kinds of source file: wire captures vs NE traces
+
+> **A third kind (2026-09-05): raw protocol exports.** Some elements write
+> Diameter (or another protocol) straight into a pcap with a user-defined
+> link type (`USER 0`, DLT 147) and no IP or transport layer at all.
+> tshark decodes nothing there until it is told what the payload is. The
+> tool now reads the link type, sniffs the first frames, and when one
+> adapter claims them re-reads the file with the right `-o uat:user_dlts`
+> mapping (the summary says so, and `--no-auto-decode` turns it off). If
+> nothing claims the payload, the coverage note prints the exact
+> `--tshark-pref '...'` to pass by hand. Such a file carries no addresses:
+> endpoints come from the protocol itself (Diameter's Origin-Host).
+>
+> **A fourth kind: 3GPP TS 32.423 XML traces.** Elements also export
+> signalling as `<traceCollecFile>` XML; Wireshark turns each `<msg>` into an
+> EXPORTED_PDU frame, so the file analyses directly. tshark keeps only the
+> address and port of each `<initiator>`/`<target>` and drops the rest. The
+> tool reads the XML alongside and takes three facts the file states
+> outright: the element type of each peer (`type="AMF"`, basis
+> `trace-hint`), the FQDN of peers that have no address (otherwise a
+> `0.0.0.0` lane), and the `<ue idType="IMSI">` every message is tagged
+> with — which is how PFCP and GTP messages in an SMF-side trace join their
+> subscriber. It applies only when the number of `<msg>` elements equals the
+> number of frames tshark produced; otherwise it says so and uses nothing.
+> On one such trace this took named endpoints from 9 of 19 to 18 of 19 and
+> unlinked identifiers from 30 to 0. The decode tree on these files is
+> single-pass (tshark's two-pass mode fails on the XML reader) and says so.
 
 The easiest thing to step on with real packets — and it **raises no
 error at all**.

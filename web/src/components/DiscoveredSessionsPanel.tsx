@@ -68,7 +68,7 @@ export function DiscoveredSessionsPanel({
         </span>
         {focusedSupi && (
           <span className="ml-1 rounded-full border border-signal-mint-border bg-signal-mint-bg px-2 py-0.5 font-mono text-[11px] text-signal-mint">
-            {t("Focused: {supi}", { supi: focusedSupi })}
+            {t("Focused: {supi}", { supi: sessions.find((s) => s.supi === focusedSupi)?.label ?? focusedSupi })}
           </span>
         )}
         <span className="ml-auto text-xs text-signal-cyan font-medium">{t("Expand list ▼")}</span>
@@ -122,11 +122,15 @@ export function DiscoveredSessionsPanel({
                       <div>
                         <p className="flex items-center gap-1.5 font-mono text-xs text-fg font-medium">
                           {s.hasError && <AlertTriangle className="h-3.5 w-3.5 text-signal-red" />}
-                          {s.supi}
+                          {s.label}
                         </p>
-                        <p className="mt-1 text-[11px] text-fg-dim font-mono">
-                          5G-GUTI：<span className="text-fg-muted">{identity?.guti ?? "Uncaptured / N/A"}</span>
-                        </p>
+                        {/* 沒有 SUPI 的訂戶（多數 Service request 流量）：說明為什麼只有暫時身分，
+                            而不是印一行永遠是 N/A 的 5G-GUTI（T-GUTI-UI）。 */}
+                        {!s.hasSupi && (
+                          <p className="mt-1 text-[11px] text-fg-dim font-mono">
+                            {t("SUPI not visible - it is assigned inside ciphered messages; this subscriber is known by its temporary identity")}
+                          </p>
+                        )}
                         <p className="text-[11px] text-fg-dim font-mono">
                           {t("{n} packets · ", { n: s.packetCount })}
                           {/* 有些擷取檔沒有絕對時間戳（網元 trace 常見）。那時

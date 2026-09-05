@@ -51,6 +51,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from telcoladder import i18n
 from telcoladder.chrome import CHROME_CSS, esc
+from telcoladder.identities import parse_identity
 from telcoladder.i18n import _
 from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache, DecodeError
@@ -328,10 +329,12 @@ class _Handler(BaseHTTPRequestHandler):
             ))
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
-            if not supi:
+            identity_text = (query.get("identity") or [""])[0]
+            identity = parse_identity(identity_text) if identity_text else None
+            if not supi and identity is None:
                 self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
-            payload = callflow_json(session, supi)
+            payload = callflow_json(session, supi or None, identity=identity)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
         elif not post and action == "correlation":
@@ -433,6 +436,8 @@ class _Handler(BaseHTTPRequestHandler):
             session.decode_as = (*default_decode_as(), *rules)
             session.auto_decode_as = ()
             session.relax_seq = False
+            session.prefs = ()
+            session.auto_prefs = ()
             session.analysis = None
             session.flowtable = None
             session.decode = DecodeCache()
@@ -469,6 +474,7 @@ class _Handler(BaseHTTPRequestHandler):
             frames = matching_frames(
                 session.pcap, expr,
                 decode_as=session.decode_as, relax_seq=session.relax_seq,
+                prefs=session.prefs,
             )
         except PacketColumnsUnavailable as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
@@ -767,7 +773,7 @@ def _home_page() -> str:
 <div class="drop" id="drop">
   <h2>{esc(_('Drop a pcap here'))}</h2>
   <p>{esc(_('Or pick a file with the button below. Limit {mb} MB.').format(mb=MAX_UPLOAD_BYTES >> 20))}</p>
-  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap"></label>
+  <label class="pick">{esc(_('Choose a file'))}<input type="file" id="file" accept=".pcap,.pcapng,.cap,.xml"></label>
   <p class="fine">{_('An uploaded copy is <b>kept</b> until you release it or it idles out - per-packet decoding has to read the same file across requests.')}</p>
 </div>
 

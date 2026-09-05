@@ -60,3 +60,27 @@ reddens if either grew while this table is empty.
 design, not a hole: the point is not to make the skip impossible but to make it
 **explicit, dated, and visible in a diff** — so the fourth skip has to be
 chosen out loud rather than simply happening again.
+
+## Self-validation on private captures (2026-09-05)
+
+Not a conversation row — the captures were the maintainer's own test data,
+eight files from a 4G/5G test environment, and they never enter this
+repository. What is recorded is **shapes and counts**, before and after the
+work they prompted (commits `5b7f4fb` … `e71cfae`). Every gap became a
+synthetic fixture with reserved identifiers.
+
+| # | Shape | Before | After |
+|---|---|---|---|
+| 1 | S6a over SCTP + VLAN, 94 frames | 14 msgs, 9 failures, MME/HSS named | same; the agent answering 3002/3010 is no longer labelled HSS |
+| 2 | Gx / Rx / vendor app via a DRA, 8 frames, 4 endpoints | only the DRA named | DRA + PCRF named; the endpoint answering both CCR and RAR is reported as `contradiction: PCEF vs PCRF` instead of silently blank |
+| 3 | TS 32.423 XML SMF trace: SBI 118, PFCP 58, GTPv2 9, RADIUS 45 | "45 frames not decoded"; 9/19 endpoints named; 30 identifiers unlinked; a `0.0.0.0` lane; decode tree empty | "45 frames are radius"; 18/19 named (AMF via single-consumer rule and the file's own `type="AMF"`); 0 unlinked (the file tags every message with its IMSI); no `0.0.0.0` lane; decode tree single-pass with a note |
+| 4 | **Link type USER 0, raw Diameter** (Sh, 11× 3006) | 0 msgs, "170 frames not decoded", coverage blamed TCP payload | 170 msgs, 16 flows, 6 endpoints named from Origin-Host, 3006 explained, one simulator endpoint reported as a 5-way contradiction |
+| 5 | Raw Diameter, S6b (150 RAR, 0 RAA) | 0 msgs | 158 msgs, 38 subscribers (IMPI), 41 procedures, RARs counted as unanswered |
+| 6 | Raw Diameter, SWx (4 frames) | 0 msgs | 4 msgs, 4 endpoints named |
+| 7 | NE trace, NGAP + NAS + synthetic-seq SBI, 356 frames, 7 PDU-session rejects | 28 flows, 1 subscriber, 57 procedures **all success** | 6 flows, 1 SUPI + 3 5G-S-TMSI subscribers, 64 procedures with **7 failed** |
+| 8 | NE trace, 328 frames | 20 flows, 1 subscriber | 13 flows, 1 SUPI + 11 5G-S-TMSI subscribers |
+
+What this does not validate: any operator's production topology, TLS-protected
+SBI, a TMSI re-allocation inside one capture, RADIUS (still undecoded, now
+named), and the SBI-carried N2 bridge for PFCP in SMF-only traces (open as
+T-SBI-N2-BRIDGE).

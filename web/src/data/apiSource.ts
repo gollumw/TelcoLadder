@@ -135,6 +135,8 @@ async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<strin
 }
 
 export function apiSource(sid: string | null): DataSource {
+  // 最後一次 `/decode` 帶回的但書（退回單趟）。同一份檔每次都一樣，記一份就夠。
+  let lastDecodeNote: string | null = null;
   /**
    * 關聯分析的結果，`load()` 時取一次。
    *
@@ -211,8 +213,16 @@ export function apiSource(sid: string | null): DataSource {
       // 身分清單：目前只取 SUPI。MSISDN／IMEI／GUTI 在 5G 核網的擷取裡
       // 多半根本不出現（它們在 UDM 側），有就有、沒有就留空 ——
       // 不編一個看起來合理的值（`lib/types.ts` 對 SessionIdentity 的註解）。
-      const nfMap = (identities as { nf_map?: Record<string, { role: string; basis: string }> })
-        .nf_map ?? {};
+      const nfMap: Record<string, { role: string; basis: string }> = {
+        ...((identities as { nf_map?: Record<string, { role: string; basis: string }> }).nf_map ?? {}),
+      };
+      // 判不出角色、但**有互斥證據**的位址（同一端點回 CCR 也回 RAR）：
+      // role 留空、basis 講原因。畫面上與「沒有證據」分開 —— 前者是這份檔的事實。
+      for (const [ip, basis] of Object.entries(
+        (identities as { nf_contradictions?: Record<string, string> }).nf_contradictions ?? {},
+      )) {
+        if (!(ip in nfMap)) nfMap[ip] = { role: "", basis };
+      }
       const sessionIdentities: SessionIdentity[] = (identities.groups ?? [])
         .filter((group) => group.kind === "supi")
         .flatMap((group) =>
@@ -269,10 +279,10 @@ export function apiSource(sid: string | null): DataSource {
     },
 
     async focusIdentity(supi: string | null): Promise<void> {
-      // 空字串是後端約定的「取消」。`supi:` 前綴是身分類別，
-      // 對應後端的 `IdKind`。
+      // 空字串是後端約定的「取消」。把手是 SUPI 數字時補 `supi:` 前綴；
+      // 沒有 SUPI 的訂戶把手本身就是 `kind:raw`（`mapIndex.subscriberHandle`）。
       await postForm(`/api/${need()}/select`, {
-        identity: supi ? `supi:${supi}` : "",
+        identity: supi ? (supi.includes(":") ? supi : `supi:${supi}`) : "",
       });
     },
 
@@ -283,7 +293,9 @@ export function apiSource(sid: string | null): DataSource {
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
-      }>(`/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
+      }>(supi.includes(":")
+        ? `/api/${need()}/callflow?identity=${encodeURIComponent(supi)}`
+        : `/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
       return {
         wire: body.wire,
         uncorrelatedDomains: body.domains_uncorrelated ?? [],
@@ -334,11 +346,17 @@ export function apiSource(sid: string | null): DataSource {
 
     async loadDecodeTree(frame: number): Promise<ProtocolNode[] | null> {
       if (!sid) return null;
-      const body = await getJson<{ tree: DecodeNodeJson[] }>(
+      const body = await getJson<{ tree: DecodeNodeJson[]; note?: string }>(
         `/api/${sid}/decode?frame=${frame}`,
       );
+      // 後端退回單趟時會帶一句 note；同一份檔每次都一樣，記最後一次即可。
+      lastDecodeNote = body.note ?? null;
       // 空樹不等於「這格沒有內容」—— 回 null 讓 UI 說得出差別。
       return body.tree?.length ? toProtocolNodes(body.tree, frame) : null;
+    },
+
+    decodeNote(): string | null {
+      return lastDecodeNote;
     },
   };
 }

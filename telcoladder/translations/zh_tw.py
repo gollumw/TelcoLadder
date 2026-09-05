@@ -5,6 +5,52 @@
 """
 
 CATALOG: dict[str, str] = {
+    "stated by the exporting element in the trace file's own metadata (TS 32.423 initiator/target)":
+        '匯出這份 trace 的網元在檔案中繼資料裡寫的（TS 32.423 的 initiator／target）',
+    'This is a 3GPP TS 32.423 XML trace, but its {n} <msg> elements do not match the {frames} frames tshark produced, so the element types, FQDNs and per-message IMSIs it carries were not used - a wrong alignment would attach them to the wrong packets.':
+        '這是 3GPP TS 32.423 的 XML trace，但它的 {n} 個 <msg> 與 tshark 產出的 {frames} 格對不上，所以檔案裡的網元型別、FQDN 與逐則 IMSI 都沒有採用 —— 對錯格會把它們貼到別的封包上。',
+    "This is a 3GPP TS 32.423 XML trace. Beyond what tshark decodes, the file itself states each message's peers and subscriber: {roles} endpoint role statements, {hosts} FQDNs standing in for missing addresses, and {ids} messages tagged with the IMSI the exporting element assigned them were taken from it.":
+        '這是 3GPP TS 32.423 的 XML trace。除了 tshark 解出的內容，檔案自己寫著每則訊息的對端與訂戶：從中取用了 {roles} 個端點角色陳述、{hosts} 個代替缺少位址的 FQDN、{ids} 則由匯出網元標上 IMSI 的訊息。',
+    'calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)':
+        '呼叫 /{param} —— 這個服務只有一種網元會呼叫（TS 29.5xx）',
+    'Decoded in a single pass: tshark\'s two-pass analysis fails on this file type, so cross-frame reassembly annotations ("reassembled in frame N") are absent. The dissection itself is complete.':
+        '以單趟解碼：tshark 的兩趟分析在這種檔上跑不起來，所以沒有跨格重組的標註（「reassembled in frame N」）。解剖本身是完整的。',
+    'Subscribers without a SUPI':
+        '沒有 SUPI 的訂戶',
+    'These are real subscribers whose permanent identity never appeared in cleartext - most Service-request traffic looks like this. The 5G-S-TMSI (or NGAP UE ID) is the only handle; a SUPI is assigned inside ciphered messages.':
+        '這些是真實的訂戶，只是永久身分從未以明文出現 —— 多數 Service request 流量就是這樣。5G-S-TMSI（或 NGAP UE ID）是唯一的把手；SUPI 是在加密的訊息裡配發的。',
+    'Identity':
+        '身分',
+    'Subscriber':
+        '訂戶',
+    'Unanswered':
+        '未獲回應',
+    'contradictory evidence ({param}) - left unlabelled rather than guessed':
+        '證據互斥（{param}）—— 寧可不標，不猜',
+    ' vs ':
+        ' 對 ',
+    # ── flowtable：Diameter 的重傳與未獲回應（2026-09-05） ──
+    'Same direction ({src} → {dst}), same Diameter End-to-End Id ({end}), sent {n} times{tflag} - RFC 6733 keeps the End-to-End Id on retransmission, so this is a confirmed retransmission.':
+        '同方向（{src} → {dst}）、同一個 Diameter End-to-End Id（{end}），送了 {n} 次{tflag} —— RFC 6733 規定重送保留 End-to-End Id，所以這是確定的重傳。',
+    ', the later copy carries the T (retransmitted) flag':
+        '，後面那份帶著 T（重送）旗標',
+    ', without the T flag':
+        '，沒有帶 T 旗標',
+    'Diameter End-to-End Id {end} has a Request but no Answer between these two peers within the capture':
+        'Diameter End-to-End Id {end} 在這兩個 peer 之間只有 Request、擷取範圍內沒有 Answer',
+    # ── coverage／pipeline：USER DLT 與未解碼載荷的措辭（2026-09-05） ──
+    '  · {frames} frames are raw payload under a user-defined link type{which} - tshark maps it to no dissector, so nothing above the link layer was decoded.':
+        '  · {frames} 格是使用者自訂 link type{which} 底下的裸載荷 —— tshark 對它沒有對映任何 dissector，鏈路層以上什麼都沒解。',
+    "    If you know the payload protocol, pass it: telcoladder analyze <file> --tshark-pref '{pref}' (replace diameter with the protocol; the tool tries this itself when the first frames look like a supported protocol).":
+        "    知道載荷是什麼協定就明講：telcoladder analyze <file> --tshark-pref '{pref}'（把 diameter 換成那個協定；前幾格看起來像支援的協定時，工具會自己試）。",
+    '  · {frames} frames are {transport} payload that tshark could not identify.':
+        '  · {frames} 格是 tshark 認不出來的 {transport} 載荷。',
+    ' (DLT {dlt})':
+        '（DLT {dlt}）',
+    'link-layer':
+        '鏈路層',
+    'This capture uses a user-defined link type (DLT {dlt}) that tshark maps to no dissector - every frame is raw payload with no IP or transport layer. The first frames look like {proto}, so tshark was told to decode DLT {dlt} as {proto} and the capture re-read.':
+        '這份擷取檔的 link type 是使用者自訂的（DLT {dlt}），tshark 沒有對映任何 dissector —— 每一格都是沒有 IP 與傳輸層的裸載荷。前幾格看起來像 {proto}，所以已請 tshark 把 DLT {dlt} 解成 {proto} 並重新讀過。',
     # ── cli：argparse ──────────────────────────────────────────────────
     "Turn a telecom signalling capture into a per-subscriber call flow with every failure explained.":
         "把電信信令封包轉成逐訂戶的流程圖，每一個失敗都附解釋。",
@@ -19,6 +65,9 @@ CATALOG: dict[str, str] = {
     "Messages per flow before the diagram is truncated; truncation is stated inside the diagram (default {n})":
         "每條流程最多畫幾則訊息，超過會截斷並在圖上註明（預設 {n}）",
     "RULE": "規則",
+    "PREF": "偏好",
+    'A tshark preference passed as -o, verbatim, to every pass (extraction, probing, coverage). Example: \'uat:user_dlts:"User 0 (DLT=147)","diameter","0","","0",""\' for a capture whose link type is USER 0 and whose payload is raw Diameter. Repeatable.':
+        '傳給每一趟 tshark 的偏好設定（-o，原樣傳遞：抽取、形狀偵測、覆蓋率掃描都吃）。例如 \'uat:user_dlts:"User 0 (DLT=147)","diameter","0","","0",""\' 給 link type 是 USER 0、載荷是裸 Diameter 的擷取檔。可重複。',
     "Force a port to decode as a protocol, e.g. tcp.port==5062,sip. Needed when signalling runs on non-standard ports - tshark's heuristics change between versions. Repeatable.":
         "強制某個 port 以指定協定解碼，如 tcp.port==5062,sip。信令跑非標準 port 時必要 —— tshark 的啟發式偵測結果會隨版本改變。可重複指定。",
     "Omit frame numbers from the arrows": "不在箭頭上標封包編號",

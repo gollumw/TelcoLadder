@@ -39,12 +39,15 @@ SBI 埠不同 → 100% 落進 `data` → 無聲消失。
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from telcoladder.i18n import _
 from telcoladder.packets import total_packets
-from telcoladder.tshark import Tshark, TsharkNotFound, find_tshark
+from telcoladder.tshark import (
+    LINKTYPE_USER0, Tshark, TsharkNotFound, find_tshark, pref_args, user_dlt_pref,
+)
 
 #: 命中率低於這個比例才值得花第二趟掃描去解釋。
 #:
@@ -55,12 +58,22 @@ COVERAGE_ALERT_THRESHOLD = 0.5
 #: 一條未解碼的 TCP 對話要有這麼多格才值得提。單一格的雜訊不用打擾使用者。
 MIN_INTERESTING_FRAMES = 10
 
-#: 少於這個總格數就完全不查。
+#: 少於這個總格數，**傳輸層葉子**（心跳、ACK）不值得提。
 #:
 #: 小擷取檔的命中率天生很低 —— `ki-mismatch` 只有 13 格，其中 9 格是 SCTP
 #: 心跳與 ACK，命中率 31%，但那份檔**完全正常**。對它跳警告是純粹的雜訊，
-#: 而全部都警告等於沒有警告。真實世界會出問題的是大檔。
+#: 而全部都警告等於沒有警告。
+#:
+#: 2026-09-05 之前這個門檻擋的是**整趟掃描**，於是一份 170 格、0 則訊息的
+#: 裸 Diameter 匯出只得到「170 格未解碼」六個字 —— 是什麼、為什麼、怎麼辦
+#: 全沒有。掃描在小檔上是幾十毫秒的事，值得跑；不值得的是把心跳講成漏了
+#: 信令。所以門檻現在只管措辭，見 `_worth_mentioning`。
 MIN_TOTAL_FOR_ALERT = 200
+
+#: 這個格數以下，第二趟掃描是便宜的（實測 `-z io,phs` 對數千格的檔不到一秒），
+#: **只要有東西沒解碼就跑**。超過它才回到「命中率正常就不跑」的省成本規則 ——
+#: 436 MB 上那是 70 秒。
+MAX_TOTAL_FOR_CHEAP_SCAN = 50_000
 
 #: TCP 上有這麼多格未認領的載荷，就無條件觸發掃描 —— 不管命中率多高。
 MIN_UNCLAIMED_TCP_FOR_ALERT = 10
@@ -97,6 +110,14 @@ class UnclaimedConversation:
     port: int | None = None
     """TCP/UDP 埠，取得到才有。用來組建議指令。"""
 
+    ancestors: tuple[str, ...] = ()
+    """phs 樹裡這個葉子上面的協定鏈（外層在前），例如 `("eth", "ip", "tcp")`。
+
+    `data` 葉子的措辭取決於它掛在誰底下：tcp 底下是「TCP payload」，
+    `user_dlt` 底下是「整份檔的 link type 沒有對映」—— 兩者處置相反
+    （前者加 decode-as，後者加 `--tshark-pref`）。沒有這個欄位，裸 Diameter
+    匯出被講成「TCP payload 認不出來」，而檔裡一個 TCP 封包都沒有。"""
+
     already_decoded: bool = False
     """這個埠**已經**被要求解成 HTTP/2 了，卻仍然是 `data`。
 
@@ -111,6 +132,18 @@ class UnclaimedConversation:
     實測 `5gc-e2e`：212 格 `data` 在埠 7777 上，而 7777 本來就在預設
     `DECODE_AS` 裡 —— 早期版本會建議一條完全沒有作用的指令。
     """
+
+    @property
+    def transport(self) -> str:
+        """最近的傳輸層祖先（tcp／udp／sctp），沒有就是空字串。"""
+        for name in reversed(self.ancestors):
+            if name in _TRANSPORT_ONLY:
+                return name
+        return ""
+
+    @property
+    def under_user_dlt(self) -> bool:
+        return "user_dlt" in self.ancestors
 
     def decode_as_hint(self) -> str | None:
         """建議指令。**已經在解卻仍解不開時回 None** —— 那條路是死的。"""
@@ -136,6 +169,10 @@ class Coverage:
     """是否真的跑了第二趟掃描。False 代表命中率正常、不值得花那個成本。"""
 
     roles_found: frozenset[str] = field(default_factory=frozenset)
+
+    user_dlt: int | None = None
+    """擷取檔的 link type 是使用者自訂的 USER n（147 + n）時的值，由 `probe` 提供。
+    用來把「怎麼辦」寫成一條可以直接貼的 `--tshark-pref`。"""
 
     @property
     def ratio(self) -> float | None:
@@ -167,15 +204,27 @@ def _parse_phs(output: str) -> list[UnclaimedConversation]:
             rows.append((len(m.group(1)), m.group(2), int(m.group(3))))
 
     leaves: list[UnclaimedConversation] = []
+    #: 目前走到的祖先鏈：(縮排, 協定名)。縮排回退就彈出。
+    stack: list[tuple[int, str]] = []
     for i, (indent, proto, frames) in enumerate(rows):
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
         has_child = i + 1 < len(rows) and rows[i + 1][0] > indent
-        if has_child or frames < MIN_INTERESTING_FRAMES:
+        if has_child:
+            stack.append((indent, proto))
             continue
-        leaves.append(UnclaimedConversation(protocol=proto, frames=frames))
+        # **不再用格數門檻濾掉葉子。** 一份 4 格的匯出，4 格全在 `data` 底下 ——
+        # 濾掉它就回到「4 格未解碼」六個字。門檻搬到措辭層（`_worth_mentioning`）。
+        leaves.append(UnclaimedConversation(
+            protocol=proto, frames=frames,
+            ancestors=tuple(name for _indent, name in stack if name != "frame"),
+        ))
     return leaves
 
 
-def _busiest_tcp_port(tshark: Tshark, pcap: Path, display_filter: str) -> int | None:
+def _busiest_tcp_port(
+    tshark: Tshark, pcap: Path, display_filter: str, *, prefs: Sequence[str] = ()
+) -> int | None:
     """未解碼流量集中在哪個埠。用來組建議指令。
 
     取**出現最多次的那個埠**，且只在它明顯是伺服器側時才回傳 —— 客戶端的
@@ -183,7 +232,7 @@ def _busiest_tcp_port(tshark: Tshark, pcap: Path, display_filter: str) -> int | 
     判準：同一個埠出現在多條對話裡。
     """
     proc = tshark.run(
-        ["-r", str(pcap), "-Y", display_filter, "-T", "fields",
+        ["-r", str(pcap), *pref_args(prefs), "-Y", display_filter, "-T", "fields",
          "-e", "tcp.srcport", "-e", "tcp.dstport"],
         timeout=120,
     )
@@ -217,6 +266,8 @@ def measure(
     roles_found: frozenset[str] | set[str] = frozenset(),
     decode_as: tuple[str, ...] = (),
     unclaimed_tcp_frames: int = 0,
+    prefs: Sequence[str] = (),
+    user_dlt: int | None = None,
     tshark: Tshark | None = None,
 ) -> Coverage:
     """量這份擷取檔的覆蓋率。**便宜的那一半永遠跑，貴的那一半條件觸發。**
@@ -235,20 +286,21 @@ def measure(
         return Coverage(total=None, parsed=parsed_frames, roles_found=roles)
 
     total = total_packets(pcap, tshark=tshark)
-    base = Coverage(total=total, parsed=parsed_frames, roles_found=roles)
+    base = Coverage(total=total, parsed=parsed_frames, roles_found=roles, user_dlt=user_dlt)
 
     if total is None or total == 0 or base.ratio is None:
+        return base
+    if total - parsed_frames <= 0:
+        # 全部解出來了，沒有東西要解釋。
         return base
     # **傳輸層零產出的訊號優先於命中率。** 命中率高不代表沒漏東西 ——
     # 見 `_TRANSPORT_SIGNAL_NOTE`。
     transport_signal = unclaimed_tcp_frames >= MIN_UNCLAIMED_TCP_FOR_ALERT
-    if not transport_signal:
-        if total < MIN_TOTAL_FOR_ALERT:
-            # 小擷取檔的命中率天生偏低，不值得打擾使用者。見常數的說明。
-            return base
-        if base.ratio >= COVERAGE_ALERT_THRESHOLD:
-            # 命中率正常，不值得花第二趟全檔掃描。
-            return base
+    cheap = total <= MAX_TOTAL_FOR_CHEAP_SCAN
+    if not transport_signal and not cheap and base.ratio >= COVERAGE_ALERT_THRESHOLD:
+        # 大檔、命中率正常：第二趟全檔掃描不值得。小檔一律掃 —— 幾十毫秒換來
+        # 「那 45 格是 RADIUS」而不是「45 格未解碼」。
+        return base
 
     from telcoladder.adapters import display_filter as _claimed
 
@@ -257,22 +309,38 @@ def measure(
     # 算的是整個檔案的協定階層 —— 實測 5gc-e2e 會回報 626 格而不是未認領的
     # 459 格，於是 http2/json/pfcp 這些「已經認領過」的協定全部混進來。
     # 那會讓這個模組本身變成它要修的那種靜默錯誤。
-    proc = tshark.run(["-r", str(pcap), "-q", "-z", f"io,phs,{negated}"], timeout=300)
+    # 這一趟要吃分析用的同一組 `-o`：USER DLT 的對映沒帶上，phs 會把整份檔
+    # 報成 `user_dlt` 一片未認領 —— 而分析明明已經全部解出來了。
+    # 「盤點時用了跟分析不同的參數」正是 CLAUDE.md §4 那張表裡的一列。
+    proc = tshark.run(
+        ["-r", str(pcap), *pref_args(prefs), "-q", "-z", f"io,phs,{negated}"], timeout=300
+    )
     if proc.returncode != 0:
         return base
 
     unclaimed = _parse_phs(proc.stdout)
+    if user_dlt is None and any(c.under_user_dlt for c in unclaimed):
+        # 呼叫端沒跑 probe（`--no-auto-decode`）時這裡自己讀一格 —— 便宜，
+        # 而少了它「怎麼辦」那一句就寫不出 DLT 號碼。
+        from telcoladder.probe import encap_type, user_dlt_of
+
+        user_dlt = user_dlt_of(encap_type(pcap, tshark, prefs))
     port = None
-    if any(c.protocol == "data" for c in unclaimed):
-        port = _busiest_tcp_port(tshark, pcap, f"{negated} && data")
+    # 只有掛在 tcp 底下的 `data` 才值得去找埠 —— `user_dlt` 或 UDP 底下的
+    # 沒有 TCP 埠，問了也是白跑一趟，而且答案會被拿去組一條錯的建議。
+    if any(c.protocol == "data" and c.transport == "tcp" for c in unclaimed):
+        port = _busiest_tcp_port(tshark, pcap, f"{negated} && data", prefs=prefs)
     if port is not None:
         from telcoladder.adapters import default_decode_as
 
         effective = tuple(default_decode_as()) + tuple(decode_as)
         decoded = _port_already_decoded(port, effective)
         unclaimed = [
-            UnclaimedConversation(c.protocol, c.frames, port, decoded)
-            if c.protocol == "data" else c
+            UnclaimedConversation(
+                protocol=c.protocol, frames=c.frames, port=port,
+                already_decoded=decoded, ancestors=c.ancestors,
+            )
+            if c.protocol == "data" and c.transport == "tcp" else c
             for c in unclaimed
         ]
 
@@ -282,11 +350,24 @@ def measure(
         unclaimed=tuple(sorted(unclaimed, key=lambda c: -c.frames)),
         scanned=True,
         roles_found=roles,
+        user_dlt=user_dlt,
     )
 
 
 #: phs 葉子落在這些協定上＝上面沒有任何載荷被解剖。措辭要跟其他未認領流量分開。
 _TRANSPORT_ONLY = frozenset({"sctp", "tcp", "udp"})
+
+
+def _worth_mentioning(conv: UnclaimedConversation, total: int) -> bool:
+    """這個葉子值不值得寫一行。
+
+    傳輸層葉子（心跳、ACK）只在大檔且格數可觀時才提 —— 小檔裡它們是常態，
+    提了就是把 `ki-mismatch` 的 9 格 SCTP 心跳講成漏了信令。有名字的協定
+    （radius、arp）與 `data` 一律提：那是使用者真的沒看到的東西。
+    """
+    if conv.protocol in _TRANSPORT_ONLY:
+        return conv.frames >= MIN_INTERESTING_FRAMES and total >= MIN_TOTAL_FOR_ALERT
+    return True
 
 
 def describe(coverage: Coverage) -> list[str]:
@@ -305,14 +386,43 @@ def describe(coverage: Coverage) -> list[str]:
     missed = coverage.total - coverage.parsed
     if not coverage.scanned or missed <= 0:
         return []
+    worth = [c for c in coverage.unclaimed if _worth_mentioning(c, coverage.total)]
+    if not worth:
+        # 小檔裡只有心跳與 ACK 沒解碼 —— 那是正常的，不出聲。
+        # 「全部都警告等於沒有警告」，而這個模組的價值建立在它出聲時你會看。
+        return []
 
     pct = round((1 - coverage.ratio) * 100)
     lines = [
         _("ℹ This capture has {total} frames; I decoded {parsed}. The other {missed} ({pct}%) are not in a supported protocol.").format(total=coverage.total, parsed=coverage.parsed, missed=missed, pct=pct)
     ]
 
-    for conv in coverage.unclaimed[:3]:
-        if conv.protocol == "data":
+    for conv in worth[:3]:
+        if conv.protocol == "data" and conv.under_user_dlt:
+            # 整份檔的 link type 是使用者自訂的，tshark 一個 dissector 都不掛。
+            # 這與「TCP payload 認不出來」的處置相反：不是 decode-as，是 `-o` 的
+            # uat 對映 —— 給一條可以直接貼的。DLT 號碼從 probe 來；沒有就只講事實。
+            dlt = coverage.user_dlt
+            lines.append(
+                _("  · {frames} frames are raw payload under a user-defined link type{which} - tshark maps it to no dissector, so nothing above the link layer was decoded.").format(
+                    frames=conv.frames,
+                    which=_(" (DLT {dlt})").format(dlt=dlt) if dlt is not None else "",
+                )
+            )
+            if dlt is not None:
+                example = user_dlt_pref(dlt - LINKTYPE_USER0, "diameter")
+                lines.append(
+                    _("    If you know the payload protocol, pass it: telcoladder analyze <file> --tshark-pref '{pref}' (replace diameter with the protocol; the tool tries this itself when the first frames look like a supported protocol).").format(pref=example)
+                )
+        elif conv.protocol == "data" and conv.transport != "tcp":
+            lines.append(
+                _("  · {frames} frames are {transport} payload that tshark could not identify.").format(
+                    frames=conv.frames,
+                    # 協定名不翻譯；只有「鏈路層」是散文。
+                    transport=conv.transport.upper() if conv.transport else _("link-layer"),
+                )
+            )
+        elif conv.protocol == "data":
             where = _(" (TCP port {port})").format(port=conv.port) if conv.port else ""
             lines.append(
                 _("  · {frames} frames are TCP payload that tshark could not identify either{where}.").format(frames=conv.frames, where=where)

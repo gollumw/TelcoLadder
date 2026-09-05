@@ -427,3 +427,31 @@ def _first_frame_matching(pcap, display_filter: str) -> int:
     ).stdout.split()
     assert out, f"這份 fixture 沒有符合 {display_filter!r} 的封包"
     return int(out[0])
+
+
+# ── 兩趟分析跑不起來的檔：退回單趟，而且講出來（2026-09-05） ──────────────
+
+
+
+def _nettrace():
+    from pathlib import Path
+
+    return Path(__file__).parent / "fixtures" / "nettrace-32423" / "capture.xml"
+
+
+def test_a_ts32423_xml_trace_decodes_in_a_single_pass_and_says_so() -> None:
+    """一份真實的 SMF trace（TS 32.423 XML → EXPORTED_PDU）上解碼樹整片空白：
+    `-2` 在 wiretap 的 XML 讀取器上第二趟報錯（exit 14），而單趟正常。
+    突變：拿掉退回單趟 → 這裡是 DecodeError。"""
+    notes: list[str] = []
+    trees = decode_frames(_nettrace(), [1, 2, 3, 4], notes=notes)
+    assert set(trees) == {1, 2, 3, 4}
+    assert all(any("ngap" in n.name.lower() for n in tree) for tree in trees.values()), "解剖本身要完整"
+    assert len(notes) == 1 and "single pass" in notes[0], "退回了要講出來"
+
+
+def test_a_real_pcap_still_decodes_in_two_passes_without_a_note(e2e_pcap) -> None:
+    """對照組：兩趟成功時沒有任何但書 —— 這句話只在真的退回時出現。"""
+    notes: list[str] = []
+    decode_frames(e2e_pcap, [1], notes=notes)
+    assert notes == []

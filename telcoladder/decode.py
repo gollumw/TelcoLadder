@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark
+from telcoladder.tshark import Tshark, find_tshark, pref_args
 
 #: 點一列時，連同前後各多少列一起解碼並快取。
 WINDOW = 8
@@ -231,19 +231,36 @@ def decode_frames(
     *,
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
+    notes: list[str] | None = None,
 ) -> dict[int, tuple[DecodeNode, ...]]:
-    """解碼指定的幾格，回傳 {frame 編號: 樹}。"""
+    """解碼指定的幾格，回傳 {frame 編號: 樹}。
+
+    `notes`：呼叫端給一個 list，這裡把「這次少做了什麼」寫進去（目前只有一種：
+    兩趟分析在這種檔上跑不起來，退回單趟）。不給就只解不說 —— 但呈現層應該給，
+    因為少了跨格重組標註的樹與完整的樹長得一樣。
+    """
     wanted = sorted({n for n in numbers if n > 0})
     if not wanted:
         return {}
     tshark = tshark or find_tshark()
 
-    args = [
+    base = [
         "-r", str(pcap),
         # 只讀到最深的那一格為止。前提是 frame 編號從 1 連續 ——
         # 單一 `-r` 輸入成立，而我們永遠只給一個。
         "-c", str(wanted[-1]),
+        "-Y", _frame_filter(wanted),
+        "-T", "pdml",
+    ]
+    # 與索引、抽取吃同一組參數。**四條路徑用不同參數就是同一份檔的四個
+    # 答案** —— 而使用者只會看到其中一個。
+    base += pref_args(prefs, relax_seq=relax_seq)
+    for rule in decode_as:
+        base += ["-d", rule]
+
+    def run(two_pass: bool) -> subprocess.CompletedProcess[str]:
         # **兩趟分析（2026-08-28）。** 單趟時「這個分段的本體在哪一格重組完成」
         # 是未來的知識，tshark 寫不出來 —— 實測同一格 HTTP/2 長 JSON：
         # 單趟 0 個 `Reassembled body in frame` 標註、兩趟 31 個，而 Wireshark
@@ -252,31 +269,34 @@ def decode_frames(
         # 成本：對前 N 格多跑一趟（實測 71 格的檔 74ms → 74ms，量不出差異）。
         # **已知邊界**：重組完成格落在視窗（WINDOW=8）之外時，`-c` 讀不到它，
         # 標註仍然缺 —— 那是視窗的代價，不是這個旗標的失敗。
-        "-2",
-        "-Y", _frame_filter(wanted),
-        "-T", "pdml",
-    ]
-    # 與索引、抽取吃同一組參數。**四條路徑用不同參數就是同一份檔的四個
-    # 答案** —— 而使用者只會看到其中一個。
-    if relax_seq:
-        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
-    for rule in decode_as:
-        args += ["-d", rule]
-
-    out = subprocess.run(
-        [str(tshark.path), *args],
-        capture_output=True,
-        text=True,
-        # 與 extract.py / packets.py 同一個決定：tshark 吐 UTF-8，
-        # 但 text=True 預設跟隨系統 locale（Windows 是 cp950/cp1252）。
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    if out.returncode != 0:
-        raise DecodeError(
-            _('tshark failed to decode {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=out.returncode, stderr=out.stderr.strip())
+        args = ["-2", *base] if two_pass else base
+        return subprocess.run(
+            [str(tshark.path), *args],
+            capture_output=True,
+            text=True,
+            # 與 extract.py / packets.py 同一個決定：tshark 吐 UTF-8，
+            # 但 text=True 預設跟隨系統 locale（Windows 是 cp950/cp1252）。
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
+
+    out = run(two_pass=True)
+    if out.returncode != 0:
+        # **兩趟模式不是每種檔都跑得起來。** 3GPP TS 32.423 的 XML trace 由 wiretap
+        # 即時轉成 EXPORTED_PDU，第二趟重讀時它的 XML 讀取器報錯（tshark 4.6.8 實測
+        # exit 14，`parser error : StartTag`）；同一份檔單趟完全正常，抽取、封包清單、
+        # 原始位元組三條路也都是單趟。所以退回單趟 —— 但要**講出來**：少了跨格重組
+        # 標註的樹與完整的樹在畫面上一模一樣（2026-09-05，一份真實的 SMF trace 上
+        # 解碼樹整片空白，只寫「not loaded yet」）。
+        retry = run(two_pass=False)
+        if retry.returncode != 0:
+            raise DecodeError(
+                _('tshark failed to decode {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=out.returncode, stderr=out.stderr.strip())
+            )
+        if notes is not None:
+            notes.append(_("Decoded in a single pass: tshark's two-pass analysis fails on this file type, so cross-frame reassembly annotations (\"reassembled in frame N\") are absent. The dissection itself is complete."))
+        out = retry
     return _parse_pdml(out.stdout)
 
 

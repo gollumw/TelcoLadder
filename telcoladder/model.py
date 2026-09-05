@@ -31,6 +31,23 @@ class IdKind(StrEnum):
     SBI_STREAM = "sbi_stream"  # HTTP/2 stream，用於配對 SBI request/response
     SM_CONTEXT_REF = "sm_context_ref"  # SMF 配發的 PDU session 上下文參照
 
+    # ── 5G 的暫時身分（2026-09-05）──
+    #
+    # **真實網路的流量多數不是註冊，是 Service request** —— 而 Service request
+    # 只帶 5G-S-TMSI，不帶 SUCI。實測兩份網元 trace：28 條流程只有 1 條有
+    # SUPI，其餘 23 個 Service request 各自只靠 NGAP UE ID 成一條，summary 的
+    # 訂戶段與網頁抽屜都看不到它們。
+    #
+    # 值是 `<AMF Set ID>-<AMF Pointer>-<5G-TMSI 八位十六進位>`（48 位元的
+    # 5G-S-TMSI）；Registration request 帶的 5G-GUTI 去掉 PLMN 與 AMF Region
+    # 之後同值，週期性註冊與 Service request 因此對得上。
+    #
+    # **範圍是連線**（`identity.fiveg_s_tmsi`）：TMSI 由 AMF 配發、跨 AMF 不
+    # 唯一；同一個 TMSI 在加密的 Registration accept／Configuration update 裡
+    # 被重配時線上看不見，所以**不進 `lifecycle.REUSABLE`** —— 沒有觀測到
+    # 釋放就不猜。連線範圍比 AMF 位址更嚴：只會少併，不會多併。
+    FIVEG_S_TMSI = "fiveg_s_tmsi"
+
     # ── Phase 2：4G EPC 控制面。T4–T6 的 adapter 尚未實作 ──
     #
     # **這裡刻意沒有 `IMSI`。** 4G 的 IMSI 一律進 `SUPI` —— 兩者是同一個
@@ -113,6 +130,8 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.MSISDN: IdClass.SUBSCRIBER,
     IdKind.RAN_UE_NGAP_ID: IdClass.SUBSCRIBER,
     IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
+    # 暫時身分，但指的確實是某個 UE —— 與 NGAP 的兩把 UE ID 同一類。
+    IdKind.FIVEG_S_TMSI: IdClass.SUBSCRIBER,
     # S1AP 的兩把 UE ID 與上面 NGAP 那兩把同構：只在一條 S1 連線內唯一，
     # 但指的確實是某個 UE。一律走 `identity.scoped()`（§3.3：少了連線前綴，
     # 兩個 eNB 底下各自從 1 開始配號的用戶會被併成同一條）。
@@ -132,6 +151,31 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.DIAMETER_SESSION_ID: IdClass.SESSION,
     IdKind.SBI_STREAM: IdClass.EXCHANGE,
 }
+
+
+#: 訂戶標題的優先序：永久身分在前、暫時身分其次、連線內的 ID 最後。
+#: **只有這一份** —— `Flow.describe_identity`、`flowtable._subscriber_title`、
+#: `summary` 都從這裡取，三處各自排序就是三種標題。
+SUBSCRIBER_IDENTITY_ORDER: tuple["IdKind", ...] = (
+    IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN, IdKind.IMPI,
+    IdKind.FIVEG_S_TMSI,
+    IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID,
+    IdKind.MME_UE_S1AP_ID, IdKind.ENB_UE_S1AP_ID,
+)
+
+
+def subscriber_identity(keys: "frozenset[IdKey] | set[IdKey]") -> "IdKey | None":
+    """這組別名裡最適合當「這個訂戶叫什麼」的那一把。沒有訂戶類別名就 None。
+
+    同一種類有多個值時取字典序最小的 —— 兩台機器要給同一個標題。
+    """
+    by_kind: dict[IdKind, list[str]] = {}
+    for kind, value in keys:
+        by_kind.setdefault(kind, []).append(value)
+    for kind in SUBSCRIBER_IDENTITY_ORDER:
+        if kind in by_kind:
+            return (kind, min(by_kind[kind]))
+    return None
 
 
 def is_flow_worthy(kinds: "frozenset[IdKind] | set[IdKind]") -> bool:
@@ -202,21 +246,61 @@ NF_ROLE_HINTS_KEY = "nf_role_hints"
 #: test_the_ladder_says_where_a_borrowed_identity_came_from 釘住。
 IDENTITY_SOURCE_KEY = "identity_source"
 
+#: `Message.detail` 裡「這則訊息的兩端是誰」的提示，**只在擷取檔沒有 IP 層時**
+#: 由 adapter 填（值是應用層主機名，例如 Diameter 的 Origin-Host）。
+#:
+#: 與 `NF_ROLE_HINTS_KEY` 同一個模式：adapter 交出線路事實，核心
+#: （`telcoladder/endpoints.py`）通用處理，不認得任何一個協定。
+#: `ENDPOINT_DST_KEY` 可以缺 —— answer 不帶 Destination-Host，它的對端要
+#: 靠 `TRANSACTION_KEY` 配回同一筆交易的 request 的來源。
+ENDPOINT_SRC_KEY = "endpoint-src"
+ENDPOINT_DST_KEY = "endpoint-dst"
+
+#: `Message.detail` 裡「**匯出這份 trace 的網元**說某個位址是哪個網元」的鍵。
+#: 形狀與 `NF_ROLE_HINTS_KEY` 相同（`位址=角色;…`），差別在證據的來源：
+#: 那個是**訊息內容**寫的（F-TEID IE），這個是**trace 檔的中繼資料**寫的
+#: （TS 32.423 的 `<initiator type="AMF">`）。分成兩把鍵是為了讓 basis 分得出來
+#: —— 兩者可信度都高，但錯的方式不同（後者是匯出端的設定，不是線路）。
+TRACE_ROLE_HINTS_KEY = "trace_role_hints"
+
+#: 同一筆請求／回應交易的識別（Diameter 是 `hop:<Hop-by-Hop Id>`）。
+#: 只在沒有 IP 層時填 —— 有 IP 的擷取檔用不到它配端點。
+TRANSACTION_KEY = "transaction"
+
 
 @dataclass(frozen=True, slots=True)
 class Endpoint:
-    """一個網路端點。`role` 由 `nf.py` 事後填上，抽取階段一律留 None。"""
+    """一個網路端點。`role` 由 `nf.py` 事後填上，抽取階段一律留 None。
+
+    **`ip` 可以是空字串。** 網元匯出的裸協定（link type USER n）沒有 IP 層，
+    tshark 給不出位址；這時端點的身分只能來自協定本身 —— Diameter 的
+    Origin-Host —— 放在 `host`。**任何拿端點當鍵的地方一律用 `key`**，
+    不要直接用 `ip`：三份裸 Diameter 實測，用 `ip` 當鍵時全部端點塌成一個
+    空字串，整張梯形圖變成一條自己指向自己的泳道，一則訊息都沒少。
+    """
 
     ip: str
     port: int | None = None
     role: str | None = None
+    host: str | None = None
+    """應用層講的主機名（Diameter Origin-Host）。只在沒有 IP 層時由
+    `endpoints.fill_hostless` 填上；有 IP 的擷取檔一律 None —— 兩者都有時
+    以 IP 為鍵，主機名只是顯示用的別名，這裡刻意不做那件事。"""
+
+    @property
+    def key(self) -> str:
+        """拿端點當字典鍵、泳道鍵、比對對象時用這個：IP，沒有就主機名。"""
+        return self.ip or self.host or ""
 
     def label(self) -> str:
-        """畫圖時顯示的名字。推不出角色就老實顯示 IP —— 不猜（Rule 12）。"""
-        return self.role or self.ip
+        """畫圖時顯示的名字。推不出角色就老實顯示 IP（或主機名）—— 不猜（Rule 12）。"""
+        return self.role or self.key
 
     def with_role(self, role: str | None) -> Endpoint:
-        return Endpoint(ip=self.ip, port=self.port, role=role)
+        return Endpoint(ip=self.ip, port=self.port, role=role, host=self.host)
+
+    def with_host(self, host: str | None) -> Endpoint:
+        return Endpoint(ip=self.ip, port=self.port, role=self.role, host=host)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,7 +388,7 @@ class Flow:
         seen: dict[tuple[str, int | None], Endpoint] = {}
         for msg in self.messages:
             for ep in (msg.src, msg.dst):
-                seen.setdefault((ep.ip, ep.port), ep)
+                seen.setdefault((ep.key, ep.port), ep)
         return list(seen.values())
 
     @property
@@ -317,7 +401,8 @@ class Flow:
         for kind in (IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN, IdKind.SIP_CALL_ID):
             if kind in by_kind:
                 return f"{kind.value.upper()} {by_kind[kind]}"
-        for kind in (IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
+        # 暫時身分與連線內的 ID：順序與 `SUBSCRIBER_IDENTITY_ORDER` 一致。
+        for kind in (IdKind.FIVEG_S_TMSI, IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
             if kind in by_kind:
                 return f"{kind.value} {by_kind[kind]}"
         # 會話層的 key 接不上訂戶，但**它本身就是一個值得命名的東西** ——

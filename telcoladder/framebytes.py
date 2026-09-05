@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark
+from telcoladder.tshark import Tshark, find_tshark, pref_args
 
 
 class FrameBytesError(RuntimeError):
@@ -45,6 +45,7 @@ def frame_bytes(
     *,
     decode_as: Sequence[str] = (),
     relax_seq: bool = False,
+    prefs: Sequence[str] = (),
     tshark: Tshark | None = None,
 ) -> dict[int, str]:
     """取指定幾格的原始位元組，回傳 `{frame 編號: 小寫 hex 字串}`。
@@ -68,8 +69,7 @@ def frame_bytes(
     ]
     # 與索引、抽取吃同一組參數。**四條路徑用不同參數就是同一份檔的四個
     # 答案** —— 而使用者只會看到其中一個。
-    if relax_seq:
-        args += ["-o", "tcp.analyze_sequence_numbers:FALSE"]
+    args += pref_args(prefs, relax_seq=relax_seq)
     for rule in decode_as:
         args += ["-d", rule]
 

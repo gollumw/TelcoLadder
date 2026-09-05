@@ -78,7 +78,7 @@ from typing import IO
 from telcoladder import __version__, callflow, summary
 from telcoladder.extract import ExtractError
 from telcoladder.i18n import _
-from telcoladder.identities import no_result_explanation
+from telcoladder.identities import no_result_explanation, parse_identity
 from telcoladder.model import IdKind
 from telcoladder.pipeline import Analysis, Prefilter, analyse
 from telcoladder.prefilter import PrefilterError, TimeWindow
@@ -184,7 +184,9 @@ TOOLS: list[dict] = [
         "inputSchema": _tool_schema(
             ("supi", {"type": "string",
                       "description": "SUPI / IMSI, digits only, as returned by list_subscribers."}),
-            required=("pcap_path", "supi"),
+            ("identity", {"type": "string",
+                          "description": "Alternative to supi for subscribers that have none (most Service-request traffic): 'kind:raw' as listed under subscribers_without_supi, e.g. 'fiveg_s_tmsi:<scope>/<set>-<pointer>-<tmsi>'."}),
+            required=("pcap_path",),
         ),
     },
     {
@@ -297,9 +299,12 @@ def _list_subscribers(arguments: dict) -> tuple[str, dict]:
 def _callflow(arguments: dict) -> tuple[str, dict]:
     analysis, path = _analysis_for(arguments)
     supi = arguments.get("supi")
-    if not isinstance(supi, str) or not supi.strip():
-        raise ToolError("supi is required and must be a string of digits.")
-    result = callflow.events(analysis, supi.strip(), wire=True)
+    identity_text = arguments.get("identity")
+    identity = parse_identity(identity_text.strip()) if isinstance(identity_text, str) and identity_text.strip() else None
+    if identity is None and (not isinstance(supi, str) or not supi.strip()):
+        raise ToolError("Either supi (digits) or identity ('kind:raw', see subscribers_without_supi) is required.")
+    result = callflow.events(analysis, supi.strip() if isinstance(supi, str) and supi.strip() else None,
+                             identity=identity, wire=True)
     if "error" in result:
         # 三種「找不到」的處置完全不同（搜錯了／ECIES／沒實作）——
         # 沿用 identities 那句會分開講的解釋。

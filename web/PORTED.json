@@ -21,20 +21,21 @@
     },
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "1907eb82936223a0e3cb1b8289de3d5abe445a9332612222e448d03a21cac258",
+      "current_sha256": "7fc01d4d4039e23105455721c0916ec0e854b201d4e8d986f2d676eb07c18ebe",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。",
-      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）"
+      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
-      "current_sha256": "fb87b420f0edc52b9dd45785d51fe9d055d35d01dc530eae8a39866cabac489a",
+      "current_sha256": "721667fca51fb9a2199345f1a52a92519520e99d696ee2d288cd27dea6283930",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "接真實資料所需的型別放寬：`protocol` 從 8 值 union 改成 string（實際是 `NGAP/NAS-5GS`、`SCTP` 這類任意字串，由 tshark 的呈現決定）；`decodeTree` / `hexDump` 改選用（真實資料是懶載入，且後端還沒有 hex）；`srcPort` / `dstPort` / `domain` 改選用 —— 沒有傳輸層或判不出領域時是 undefined，**不填 0 也不預設塞 ACCESS_N1_N2**。；2026-08-21（Phase 4）:`CallFlowEvent` 加四個選用欄位 —— `identitySource`（身分跟哪個載體借的）、`protocolStack`（這一格實際疊了哪些協定）、`deltaSeconds` / `slow`（與前一則的間隔、是否超過門檻）。四個都是**靜態報告退場前只有它顯示得出來**的東西，接到梯形圖才不會隨報告一起消失。全部選用且「沒有就整個鍵不存在」，`deltaSeconds` 特別不填 0（0 是合法的間隔值）。TelecomDomain 聯集加入 CORE_DIAMETER（2026-08-23，Diameter adapter 落地）。CallFlowEvent 加 causeExplanation / causeCommon —— 白話與常見根因是**另外兩個欄位**，不是 causeText 的替代品（T-LADDER-CAUSE）（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。後端 `callflow._DOMAIN_BY_PROTOCOL` 吐得出 CORE_DIAMETER 而前端不認得的話，那些事件在每一個分頁都不會出現，而且不報錯 —— 所以這兩個檔必須跟著後端一起改。",
-      "reason": "Phase 3：CallFlowEvent 的 fromNode/toNode 從封閉的 NetworkNode union 放寬為 string（真實核網不只六個網元，角色推不出來時它是一個 IP）；CorrelationEntry 的欄位改為選用（一份只擷取到 N2 的檔案本來就不會有 UE IP —— 那是「沒觀測到」，不是「懶得填」）。 T7（2026-08-24）：新增 4G 與 IMS 的三個 Domain（ACCESS_S1_EPS／BEARER_S11_S5S8／IMS_SIP）。**T4–T6 三輪都漏了這裡** —— `domain` 是 None 的事件在 `events.filter((e) => e.domain === domain)` 底下永遠不匹配任何分頁，只在「All Domains」看得到（實測 4G 的 13 個事件全中）。刻意不重用 5G 的三個：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的。"
+      "reason": "Phase 3：CallFlowEvent 的 fromNode/toNode 從封閉的 NetworkNode union 放寬為 string（真實核網不只六個網元，角色推不出來時它是一個 IP）；CorrelationEntry 的欄位改為選用（一份只擷取到 N2 的檔案本來就不會有 UE IP —— 那是「沒觀測到」，不是「懶得填」）。 T7（2026-08-24）：新增 4G 與 IMS 的三個 Domain（ACCESS_S1_EPS／BEARER_S11_S5S8／IMS_SIP）。**T4–T6 三輪都漏了這裡** —— `domain` 是 None 的事件在 `events.filter((e) => e.domain === domain)` 底下永遠不匹配任何分頁，只在「All Domains」看得到（實測 4G 的 13 個事件全中）。刻意不重用 5G 的三個：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的。",
+      "why": "2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
     },
     "src/lib/mock-data.ts": {
       "original_sha256": "fbb7ab75556a3bc10a2cb8cb8ef38e53a06a0dec5830c848e574bedf7d26853e",
@@ -47,28 +48,28 @@
     },
     "src/components/DataMiningView.tsx": {
       "original_sha256": "bcd020e61bb79336c481db883058f855768fac1e725532deda63614cb6e128a1",
-      "current_sha256": "5a4dddf7548fe5a3a68964eb008446f0eff3c7ca1e474eeb90f9d1e068d0131f",
+      "current_sha256": "7d75725c647be4cc15cf92fb0cc7888fa065a020a7da097da80e0116ef5ed89a",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）",
       "what_changed": "解碼樹與 hex 還沒到時說「尚未載入」／「此來源尚未提供原始位元組」，而不是畫一棵空樹或一片空白 hex —— 那會讓人以為「這格沒有內容」。另外沒有埠時顯示 `IP` 而不是 `IP:undefined`；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：過濾工具列、狀態圓點、表格交替列底紋、解碼樹與 hex 容器樣式更新為 signal palette 語意色。行為未變。協定快篩鈕與身分搜尋的下拉選單改由引擎供應（`Dataset.protocolFilters` / `identityKinds`），拿掉兩份寫死的 5G 清單（2026-08-23）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。",
       "reason": "Phase 3：封包清單改為視窗化（虛擬滾動 ＋ 伺服器端分頁），過濾與身分限縮改由後端執行 —— 客戶端只看得到視窗，對它過濾的結果會隨捲動改變。 2026-08-24 清除可識別資料：真實電信商的 PLMN、由它推導的三個 IMSI、一個帶真實 TAC 的 IMEI，以及一組看起來像規劃過的內網位址，全部換成 E.212 測試網（MCC 001／MNC 01）與 **RFC 5737 保留給文件的位址**（192.0.2.0/24 給網元、198.51.100.0/24 給 UE —— 那兩段依定義不可能屬於任何人）。資料來源是公開的，但**來源公開不等於適合掛在自己名下的公開 repo**。",
-      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（色票改 CSS 變數後 -bg 是固定 alpha，修飾會靜默失效）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）"
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（色票改 CSS 變數後 -bg 是固定 alpha，修飾會靜默失效）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 EndpointCell：角色判不出但證據互斥的位址顯示虛線底線，tooltip 說是哪兩個角色打架（`nf_contradictions`）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）"
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
-      "current_sha256": "9db37cb4438a382eee1211a28fd077350210f74b96af28001f926b3a7548972b",
+      "current_sha256": "ce706028fba106f2990f911acd577bffa070f21580ccf4dd73a52393436fcd1b",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）；2026-08-31（root_cause → first_failure）",
       "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。；2026-08-21（Phase 4）:把上述四個欄位畫出來 —— 慢間隔以 `+2.50s` 標在參考點欄位旁（只標超過門檻的，每列都標等於沒標），協定堆疊與身分來源進事件詳情列。同時拆開事件詳情列的兩個把關條件:原本 `selectedEvent && selectedPacket` 綁在一起，而 `selectedPacket` 來自封包清單的**載入視窗**（前幾百列）—— 幾千格的擷取檔裡，視窗外的事件永遠配不到封包，症狀是使用者點了梯形圖卻看到「選一個信令事件」。參考點／身分來源／協定堆疊／cause 全部來自事件，照常顯示；封包徽章與解碼樹才等封包，而且「還沒載入」與「在視窗外」講成兩句不同的話。；2026-08-21（M0 最後一哩）:程序切段接進畫面 —— 梯形圖上方多一條程序選擇列（一段一個按鈕,結局用外框色與符號標示,✓/✗/⋯ 三態;incomplete 刻意不用 ✗,「沒等到結局」與「失敗」是兩件事）,選中時事件依 frame 範圍過濾。程序先於 Domain:程序是範圍,Domain 是那段之內的視角。程序按鈕的亮起條件看推導出來的 `current` 而不是 raw state `activeProcedure` —— 兩者在換訂戶時會分家（frame 編號不在新訂戶的段裡），用 raw state 會導致「畫面顯示全部但沒有任何按鈕亮」。；2026-08-22（轉 public 前置）:清掉兩處客戶識別資訊 —— 註解裡的客戶擷取檔名，以及截斷說明範例裡真實生產網路的 DNN。**兩處都是註解，建置產物不受影響**（`telcoladder/static/app.js` 逐位元組不變，已驗）。實測數字（119 字元、放大 4.1 倍）全部保留 —— 拿掉的只有身分，不是證據。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：LANE_STYLE 語意色調整、SVG 梯形圖、程序選擇列、解碼檢視器與關聯矩陣更新為 signal palette 語意色。行為未變。Domain 分頁清單加入 CORE_DIAMETER「Diameter (S6a/Cx/Gx)」（2026-08-23）。事件詳情列下方新增失敗白話與常見根因的區塊（T-LADDER-CAUSE：原本後端送 fallback 鏈，而出處永遠有值，所以白話從來沒出現在瀏覽器上）（2026-08-23） 2026-08-31：`rootCause` 改為 `firstFailure`，兩個 i18n 鍵一併改名（`root cause: {cause}` → `first failure: {cause}`、`Root cause: ` → `First failure: `）。後端欄位 `root_cause` 用一個宣稱因果的名字，而它在 `ki-mismatch` 上是錯的（#21 不是 #111 的起因），所以三個版本化契約（xdr / summary / callflow）一起改名，前端跟著。**`Most common root causes` 不動** —— 那是 cause 表的 `common_causes`，另一件事。",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。後端 `callflow._DOMAIN_BY_PROTOCOL` 吐得出 CORE_DIAMETER 而前端不認得的話，那些事件在每一個分頁都不會出現，而且不報錯 —— 所以這兩個檔必須跟著後端一起改。 改名而已，資料流與版面未變：型別由 `tsc --noEmit` 擋著，後端那側由 `test_no_surface_claims_the_first_failure_caused_the_last` 橫跨三個表面守著。",
       "reason": "Phase 3：泳道改由資料決定（原本封閉 6 值，laneX 對認不得的節點會回 0 號泳道）；繪製模式說明與「有此 Domain 但接不上這位訂戶」的誠實空狀態；關聯矩陣每一格都走「沒觀測到就說沒觀測到」；SVG 不再用 width=100% 拉伸（泳道少時會放大 4 倍）、超長 SBI 網址截斷但保留 title、加上交替列底紋與提亮的標籤顏色。 T7（2026-08-24）：新增 4G 與 IMS 的三個 Domain（ACCESS_S1_EPS／BEARER_S11_S5S8／IMS_SIP）。**T4–T6 三輪都漏了這裡** —— `domain` 是 None 的事件在 `events.filter((e) => e.domain === domain)` 底下永遠不匹配任何分頁，只在「All Domains」看得到（實測 4G 的 13 個事件全中）。刻意不重用 5G 的三個：`ACCESS_N1_N2` 這個名字對 4G 工程師是錯的。分頁鈕同時改成**只顯示這份擷取檔真的有的 Domain** —— 七個裡通常只用到兩三個，全部列出來等於要人在四個空鈕裡找那兩個。",
-      "why": "2026-08-28 雙主題（SVG 寫死色全改 var(--ladder-*/--lane-*) 經 style 引用）＋梯形圖縮放＋解碼面板依縮放停靠側欄（sticky）或頁尾"
+      "why": "2026-08-28 雙主題（SVG 寫死色全改 var(--ladder-*/--lane-*) 經 style 引用）＋梯形圖縮放＋解碼面板依縮放停靠側欄（sticky）或頁尾；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
-      "current_sha256": "54f47b8b5f92e959141fe8b0d418c293eb88cc950646bc75a6dab2b0ec742d5f",
+      "current_sha256": "daa4ea99d728eed8d1379d5bbdc4f92ddb7fcfa1bb2334ffad8fc481af81d383",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。",
       "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。",
-      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）"
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
     },
     "src/components/ProtocolTree.tsx": {
       "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
@@ -78,11 +79,12 @@
     },
     "src/lib/utils.ts": {
       "original_sha256": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e",
-      "current_sha256": "0c6da92a35502a583a6bb3a2c86cfcd037ab8fd4938263f56e5bd5a8733699fe",
+      "current_sha256": "9d49215af119c814ade39595dfd3bf8f76155072d3ffbda43d9c439f0db8b6ae",
       "since": "2026-08-23",
       "what_changed": "findSupiByTarget 從 5G 專屬的 switch（SUPI/MSISDN/IMEI/GUTI）改成吃引擎給的身分類別清單",
       "why_it_is_ok": "原本那個 switch 認得的四種都是 5G 的，於是 Diameter 的 IMPI／IMPU／Session-Id 抽得出來卻搜不到 —— 硬寫的清單不會自己知道有人加了協定。改成由 `Dataset.identityKinds` 供應，並且「一個值對到兩個以上訂戶時不挑一個」（那代表關聯把兩個人併了，挑一個會把錯誤藏成正常畫面）。",
-      "reason": "Diameter adapter 落地（2026-08-23）"
+      "reason": "Diameter adapter 落地（2026-08-23）",
+      "why": "2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
     }
   },
   "all_diverged_note": "2026-08-23：`files` 空了 —— 九個移植檔全部有意分岔，最後一個是 `lib/utils.ts`（身分搜尋改吃引擎給的類別清單，因為 Diameter 的 IMPI／IMPU／Session-Id 在 5G 專屬的 switch 底下搜不到）。後果講明白：從此沒有任何一個檔還與 TelcoShark-Sandbox 逐位元組相同，所以**畫面差異不能再歸因於建置管線** —— 那個對照基準沒了。`diverged` 的雜湊紀律因此變成唯一的防線，一個都不能鬆。"

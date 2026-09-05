@@ -255,3 +255,71 @@ def test_abs_time_is_available_on_real_fixtures(e2e_pcap: Path) -> None:
         for row in sub.sessions:
             assert row.end >= row.start
             assert row.duration == pytest.approx(row.end_rel - row.start_rel)
+
+
+# ── Diameter：未獲回應與重傳（2026-09-05） ─────────────────────────────────
+#
+# 在這之前 Diameter 沒有任何這兩種判定：一份 150 個 RAR、0 個 RAA 的裸匯出在
+# 工作階段表上是綠燈。fixture 是 `diameter-user-dlt`（三個沒有 RAA 的 RAR、
+# 一個帶 T 旗標的重送）。
+
+
+def _diameter_events(pcap: Path, kind: str) -> list:
+    from telcoladder.flowtable import analysis_events
+
+    analysis = analyse(pcap)
+    return [e for group in analysis_events(analysis).values() for e in group if e.kind == kind]
+
+
+def _oracle_unanswered_end_ids(pcap: Path, prefs: tuple[str, ...]) -> set[str]:
+    """tshark 讀不到 Diameter 對話（沒有位址），`answer_in` 不能用；
+    但 End-to-End Id 與 request 旗標是每一格自己帶的 —— 拿它們算。"""
+    import subprocess
+
+    from telcoladder.tshark import find_tshark, pref_args
+
+    proc = subprocess.run(
+        [str(find_tshark().path), "-r", str(pcap), *pref_args(prefs), "-Y", "diameter",
+         "-T", "fields", "-e", "diameter.endtoendid", "-e", "diameter.flags.request"],
+        capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    requests, answers = set(), set()
+    for line in proc.stdout.splitlines():
+        end, is_req = (line.split("\t") + [""])[:2]
+        (requests if is_req in ("True", "1") else answers).add(end)
+    return requests - answers
+
+
+def test_diameter_requests_without_an_answer_turn_the_row_amber(user_dlt_pcap: Path):
+    from telcoladder.flowtable import build_table
+    from telcoladder.tshark import user_dlt_pref
+
+    events = _diameter_events(user_dlt_pcap, "unanswered")
+    ours = {str(int(e.basis.split("End-to-End Id ")[1].split(" ")[0])) for e in events}
+    oracle = _oracle_unanswered_end_ids(user_dlt_pcap, (user_dlt_pref(0, "diameter"),))
+    assert ours == {str(int(x, 0)) for x in oracle}, "未獲回應的交易集合必須與 tshark 逐格算出來的一致"
+    assert len(events) == 3 and all(e.label == "Re-Auth Request" for e in events)
+
+    table = build_table(analyse(user_dlt_pcap))
+    session = next(s for row in table.subscribers for s in row.sessions if s.unanswered)
+    assert session.unanswered == 3
+    # 同一個訂戶的 Gx、Sh、S6a 靠 IMSI 併成一條流程，而 Sh 那裡有個 3006 失敗，
+    # 所以這條是紅不是黃 —— 那是對的。這裡守的是：三個沒回應的 RAR 進了計數與
+    # 燈號理由，而不是被靜默吞掉（修之前 unanswered 恆為 0，理由裡沒有它）。
+    assert session.light != "green"
+    # 紅燈的理由只講失敗（`_light` 的規則）；未獲回應的數字在 `unanswered` 欄。
+
+
+def test_a_t_flag_resend_is_one_confirmed_retransmission(user_dlt_pcap: Path):
+    events = _diameter_events(user_dlt_pcap, "retrans")
+    assert len(events) == 1
+    event = events[0]
+    assert event.certainty == "confirmed" and event.label == "3GPP-Update-Location Request"
+    assert len(event.frames) == 2 and "T (retransmitted) flag" in event.basis
+
+
+def test_the_relayed_fixture_stays_clean(diameter_pcap: Path):
+    """對照組：經 DRA 轉送的兩腿各有自己的 answer。鍵混掉 peer 對、或改成有方向，
+    這裡就會冒出假的「未獲回應」—— 兩個突變都做過。"""
+    assert _diameter_events(diameter_pcap, "unanswered") == []
+    assert _diameter_events(diameter_pcap, "retrans") == []

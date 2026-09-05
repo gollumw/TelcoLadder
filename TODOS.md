@@ -254,7 +254,15 @@ any real capture that starts before the NFs register.
 
 ---
 
-## T-GUTI-UI | the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A" (P3)
+## ~~T-GUTI-UI | the Discovered Sessions panel prints "5G-GUTI: Uncaptured / N/A"~~ — **completed and closed (2026-09-05)**
+
+**What was done**: the other branch of the either/or — 5G-S-TMSI is now a
+real identity (`IdKind.FIVEG_S_TMSI`, extracted from NGAP's FiveG-S-TMSI IE
+and the NAS 5GS mobile identity), so the drawer names subscribers by it and
+the permanently-empty 5G-GUTI lines (panel and matrix) are gone. Detail in
+`tests/test_tmsi_identity.py` and user-guide §7b.
+
+**Original entry (2026-08-23):**
 
 > **2026-08-23 re-verification: still open.** The same-day GUI round changed
 > the **identity-search dropdown** (removing producerless categories) and
@@ -409,11 +417,17 @@ dedup). Mutation confirms: keying on hop → `failures` becomes 2.
 
 ---
 
-## T-DIAM-MORE | the other twenty-odd Diameter interfaces (P3, **awaiting real packets**)
+## T-DIAM-MORE | the remaining Diameter interfaces (P3, **awaiting real packets**)
 
-**What**: Sh/Dh, Rx, Sy, S9, SWx/SWm/S6b/STa, Gy/Ro, Rf/Gz, SGd, T6a/T6b,
-SLg/SLh, S13. Application-Ids are recognised and command names display, but
-there is no `DIAMETER_ROLES` role inference and no cause collection.
+**What**: Dh, Sy, S9, SWm/STa, Gy/Ro, Rf/Gz, SGd, T6a/T6b, SLg/SLh, S13.
+Application-Ids are recognised and command names display, but there is no
+`DIAMETER_ROLES` role inference and no cause collection.
+
+**Narrowed 2026-09-05**: Rx, Sh, S6b and SWx came off this list the day
+real exports carried them — roles for AF/AS/AAA/PGW, the `PGW ≡ PCEF`
+role family, and base Result-Code 3006/3001/3008/3009/3011 landed with
+`tests/fixtures/diameter-user-dlt/`. The rule below is unchanged: an
+interface enters the role table only with a packet that exercises it.
 
 **Why not now**: writing role inference for an interface with no fixture is
 shipping unverified code. Every row of
@@ -1136,3 +1150,89 @@ but not a one-liner, and it deserves its own tests.
 **Depends on**: nothing.
 
 **Effort**: CC ~half a day.
+
+---
+
+## T-SBI-N2-BRIDGE | SBI-carried N2 SM information as the PFCP bridge in SMF-only traces (P2)
+
+**What**: an SMF-side EXPORTED_PDU trace has SBI, PFCP and GTP-U but no
+NGAP, so the only existing N4↔subscriber bridge (`identity.gtp_tunnel` keys
+from NGAP's UP transport information) never fires: 30 PFCP/GTP identifiers
+stayed unlinked on such a trace. But 11 of its SBI frames carry the N2 SM
+information (`PDUSessionResourceSetupRequestTransfer` under
+`http2 → mime_multipart → ngap`) with `gTP_TEID` + transport address — the
+same two facts.
+
+**Fix shape**: factor the TEID/address loop of `ngap.py` and `pfcp.py` into
+`identity.gtp_tunnels()`; in `adapters/sbi.py` dig the `ngap` block with
+`carrier.dig` and emit the keys from `carrier_keys()` **and** from a message
+for DATA-only frames (the transfer often travels in a DATA frame with no
+HEADERS in the same frame); tighten `flowtable._sbi_unanswered`'s request
+test to `"path" in detail` so those messages are not "unanswered requests".
+`5gc-e2e` frames 463/477/495/498 already carry the shape; with
+`Prefilter(display_filter="!sctp")` the SUPI flow today has no PFCP key —
+that is the red-before assertion.
+
+**Why not now**: scoped out of the 2026-09-05 batch by the user (A–F first).
+
+**Narrowed the same day**: for traces exported as TS 32.423 XML the gap is
+already closed another way — `telcoladder/nettrace.py` reads the `<ue>`
+IMSI the file attaches to every `<msg>`, so PFCP/GTP frames join their
+subscriber without any bridge (30 unlinked → 0 on the trace that motivated
+this). The item stays for pcap-form SMF captures, which carry no sidecar.
+
+**Effort**: CC ~half a day.
+
+---
+
+## T-RADIUS | a RADIUS accounting adapter (P3)
+
+**What**: the same SMF trace carried 45 RADIUS Accounting frames (20% of the
+file) with Framed-IP-Address and no User-Name. They are now *named* in the
+coverage note but still not decoded. An adapter (entry point, `radius.code`
++ `Acct-Status-Type` for labels, `ue-ipv4` in detail) would put them on the
+ladder; the UE-IP → PDU-session join is a separate decision (UE IPs are
+reused, so an `IdKind` for them needs a release event — Accounting Stop —
+and a `lifecycle` entry).
+
+**Why not now**: new protocol, no fixture yet; deferred by the user.
+
+**Effort**: CC ~3 h for the adapter, plus the join decision.
+
+---
+
+## T-3006-INFO | should DIAMETER_REDIRECT_INDICATION stay a failure? (P3)
+
+**What**: 3006 is catalogued (2026-09-05) and explained as a routing
+instruction, but `is_failure` stays True because it sits in the 3xxx
+protocol-error class. In a deployment where the DRA is deliberately a
+redirect agent, every redirected request turns red — the `pfcp.py`
+"#2/#3 are informational" shape. Demote when an operator confirms the
+redirects are routine; that changes traffic-light verdicts, so it is a
+decision, not a tidy-up.
+
+**Effort**: CC ~1 h.
+
+---
+
+## T-ENGINEER-LOOP | what a working engineer asks for after the first week (P2, a list)
+
+Recorded from the 2026-09-05 review so the order is not lost. None started.
+
+1. `telcoladder batch <dir>` — one line per file (shape, decoded %, subscribers,
+   failures, unanswered). Engineers receive directories, not files.
+2. `check <file>` that states the file's *shape* before analysis (NE trace,
+   EXPORTED_PDU, USER DLT, VLAN/SCTP, synthetic sequence numbers).
+3. A copy-able Wireshark display filter on every failure, subscriber and
+   procedure (`ngap.RAN_UE_NGAP_ID == …`); ideally "open in Wireshark at frame N".
+4. Request→response latency per transaction (SBI stream, PFCP seqno,
+   Diameter hop-by-hop, SIP CSeq are all paired already) — the foundation of
+   any KPI.
+5. `diff good.pcap bad.pcap` (T-E3).
+6. A "whose side" axis on every cause (UE / network / subscription) — content
+   work, not code.
+7. A SIP cause table (4xx/5xx/6xx + Reason: Q.850) — the IMS half of
+   "explanations with provenance" is missing it.
+8. A CLI analysis cache keyed on file hash + parameters (MCP has one; the CLI
+   re-runs tshark on every invocation).
+9. Failed-AVP / Error-Message surfaced on Diameter 5xxx answers.

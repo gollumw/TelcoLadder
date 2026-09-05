@@ -36,6 +36,9 @@ def procedure_record(p: Procedure) -> dict:
     return {
         "procedure": p.kind,
         "supi": p.supi,
+        # 沒有 SUPI 的訂戶（Service request 只帶 5G-S-TMSI）也要能分組。
+        # 加欄不升版（檔頭規則 ②）。
+        "subscriber": p.subscriber,
         "outcome": p.outcome,
         "cause": p.cause,
         "first_failure": p.first_failure,

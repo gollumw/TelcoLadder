@@ -75,6 +75,7 @@ def _guarded_analyse(args: argparse.Namespace, **kwargs):
         return analyse(
             args.pcap,
             decode_as=args.decode_as or (),
+            prefs=tuple(args.tshark_pref or ()),
             auto_decode=not args.no_auto_decode,
             prefilter=Prefilter(
                 window=TimeWindow(args.since, args.until),
@@ -175,6 +176,8 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     # 知道這件事，才有辦法判斷後面的覆蓋率該怎麼讀（也才有辦法反駁）。
     if result.auto_decode is not None:
         print(_("\nℹ This capture needed decoding adjustments, applied automatically:"), file=sys.stderr)
+        for line in (result.trace_sidecar.describe() if result.trace_sidecar else []):
+            print(f"ℹ {line}", file=sys.stderr)
         for line in result.auto_decode.describe():
             print(f"  · {line}", file=sys.stderr)
 
@@ -214,6 +217,10 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--decode-as", action="append", metavar=_("RULE"),
         help=_("Force a port to decode as a protocol, e.g. tcp.port==5062,sip. Needed when signalling runs on non-standard ports - tshark's heuristics change between versions. Repeatable."),
+    )
+    parser.add_argument(
+        "--tshark-pref", action="append", metavar=_("PREF"),
+        help=_("A tshark preference passed as -o, verbatim, to every pass (extraction, probing, coverage). Example: 'uat:user_dlts:\"User 0 (DLT=147)\",\"diameter\",\"0\",\"\",\"0\",\"\"' for a capture whose link type is USER 0 and whose payload is raw Diameter. Repeatable."),
     )
     narrow = parser.add_argument_group(
         _("Narrowing the capture first (much faster on large files)"),

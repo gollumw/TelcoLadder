@@ -68,7 +68,11 @@ export interface PacketPage {
  * 不直接沿用 `MockDataset` 這個名字是因為它已經不只是 mock；但也不改
  * `lib/types.ts`，那個檔仍與 TelcoShark-Sandbox 逐位元組相同（見 PORTED.json）。
  */
-/** 一個 IP 的網元判定：角色與**判定依據**（工具講得出依據，使用者才反駁得了）。 */
+/**
+ * 一個 IP 的網元判定：角色與**判定依據**（工具講得出依據，使用者才反駁得了）。
+ * `role` 為空字串代表**判不出、但有互斥證據**（`/identities` 的 `nf_contradictions`）：
+ * 畫面顯示裸位址，`basis` 說明是哪兩個角色互斥。
+ */
 export interface NfMapEntry {
   role: string;
   basis: string;
@@ -311,6 +315,12 @@ export interface DataSource {
    * 取不到就回 null，UI 說「尚未載入」而不是畫一棵空樹。
    */
   loadDecodeTree?(frame: number): Promise<import("@/lib/types").ProtocolNode[] | null>;
+  /**
+   * 解碼樹那條路**少做了什麼**（後端 `/decode` 的 `note`）。目前只有一種：tshark 的
+   * 兩趟分析在這種檔（TS 32.423 XML）上跑不起來、退回單趟，沒有跨格重組標註。
+   * 少了標註的樹與完整的樹長得一模一樣，所以要說出來。沒有就 null。
+   */
+  decodeNote?(): string | null;
 }
 
 /**

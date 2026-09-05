@@ -28,19 +28,21 @@ from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
 from telcoladder.identities import (
     availability,
-    session_frames,
+    identity_label,
     lookup,
     no_result_explanation,
+    parse_identity,
+    session_frames,
 )
 from telcoladder.adapters import protocol_filters
 from telcoladder.packets import COLUMN_TITLES
 from telcoladder.flowtable import FlowTable, build_table
 from telcoladder.chrome import esc
-from telcoladder.model import Flow, IdKind
+from telcoladder.model import Flow, IdKind, IdKey
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP re-export
-from telcoladder.nf import resolve_roles_with_basis
+from telcoladder.nf import resolve_roles_with_basis, role_contradictions
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
 #: 想加檔案就加在這裡；不在這裡的名字一律 404。
@@ -173,18 +175,29 @@ def decode_json(session: Session, frame: int) -> dict:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
             relax_seq = session.relax_seq
+            prefs = session.prefs
+        notes: list[str] = []
         trees = decode_frames(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
             relax_seq=relax_seq,
+            prefs=prefs,
             tshark=session.tshark,
+            notes=notes,
         )
         session.decode.put(trees)
+        if notes:
+            # 記在 session 上：同一份檔每次解碼都會退回單趟，句子只要一份，
+            # 而快取命中時也得講得出來。
+            session.decode_note = notes[0]
         cached = session.decode.get(frame)
     if cached is None:
         return {"frame": frame, "tree": [], "error": _('No frame {frame} in the capture.').format(frame=frame)}
-    return {"frame": frame, "tree": [n.to_json() for n in cached]}
+    payload = {"frame": frame, "tree": [n.to_json() for n in cached]}
+    if session.decode_note:
+        payload["note"] = session.decode_note
+    return payload
 
 
 def bytes_json(session: Session, frame: int) -> dict:
@@ -203,11 +216,13 @@ def bytes_json(session: Session, frame: int) -> dict:
             highest = session.index.rows[-1].number if session.index.rows else None
             decode_as = session.decode_as
             relax_seq = session.relax_seq
+            prefs = session.prefs
         found = frame_bytes(
             session.pcap,
             window_around(frame, highest=highest),
             decode_as=decode_as,
             relax_seq=relax_seq,
+            prefs=prefs,
             tshark=session.tshark,
         )
         session.frame_bytes.put(found)
@@ -234,12 +249,15 @@ def _basis_sentence(basis: str) -> str:
         "relay-record": _("its forwarded messages carry Route-Record (RFC 6733)"),
         "ngap-dir": _("initiator direction of {param} (TS 38.413)"),
         "wire-hint": _("stated in message content, relayed verbatim by the adapter"),
+        "trace-hint": _("stated by the exporting element in the trace file's own metadata (TS 32.423 initiator/target)"),
         "s1ap-dir": _("initiator direction of S1AP procedure {param} (TS 36.413)"),
         "pfcp-dir": _("initiator of PFCP Session Establishment (TS 29.244)"),
         "n2-port": _("listens on 38412, the N2 port (TS 38.412)"),
         "service": _("serves /{param} (TS 29.5xx service naming)"),
+        "service-consumer": _("calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)"),
         "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),
         "diameter-dir": _("initiator direction of {param} (RFC 6733 / TS 29.272)"),
+        "contradiction": _("contradictory evidence ({param}) - left unlabelled rather than guessed"),
     }.get(kind)
     if template is None:
         return basis
@@ -252,6 +270,15 @@ def nf_map_json(analysis) -> dict[str, dict[str, str]]:
     return {
         ip: {"role": role, "basis": _basis_sentence(basis)}
         for ip, (role, basis) in resolve_roles_with_basis(messages).items()
+    }
+
+
+def nf_contradictions_json(analysis) -> dict[str, str]:
+    """IP → 一句話：這個位址收到了哪些互斥的角色票。"""
+    messages = [m for flow in analysis.flows for m in flow.messages]
+    return {
+        ip: _basis_sentence("contradiction:" + _(" vs ").join(roles))
+        for ip, roles in role_contradictions(messages).items()
     }
 
 
@@ -275,6 +302,9 @@ def identities_json(session: Session, *, q: str = "") -> dict:
         # 掛在這裡而不是另開端點：前端本來就等 identities ready 才組 Dataset，
         # 而角色與身分一樣要等完整解剖。
         "nf_map": nf_map_json(analysis),
+        # 判不出的位址裡，哪些是因為證據**互斥**（同一端點回 CCR 也回 RAR）。
+        # 與「沒有證據」分開講：前者是這份擷取檔的一個事實，後者只是不知道。
+        "nf_contradictions": nf_contradictions_json(analysis),
     }
     if q:
         hits = lookup(analysis, q)
@@ -425,6 +455,14 @@ def flows_json(
             continue
         subscribers.append({
             "title": sub.title,
+            # 前端找回同一組流程靠這個，不靠標題字串。SUPI 之外的訂戶
+            # （5G-S-TMSI、NGAP UE ID）也在這裡 —— 2026-09-05 之前它們的列
+            # 存在，但抽屜只認 `SUPI ` 開頭的標題，於是看不見。
+            "identity": (
+                {"kind": sub.identity[0].value, "raw": sub.identity[1],
+                 "label": identity_label(sub.identity)}
+                if sub.identity is not None else None
+            ),
             "grouped": sub.grouped,
             "start": min(r.start for r in rows),
             "end": max(r.end for r in rows),
@@ -464,7 +502,7 @@ def flows_json(
 #: 堆疊（`http2`），硬要合成一張表反而會讓兩邊都多背對方的詞彙。
 
 
-def callflow_json(session: Session, supi: str) -> dict:
+def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey | None" = None) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
     與既有的 `/flow` / `/subscriber` 不同：那兩個回的是**渲染好的 SVG**
@@ -488,7 +526,7 @@ def callflow_json(session: Session, supi: str) -> dict:
     # 事件、參與者、程序段**只有一份**（`telcoladder/callflow.py`）——
     # MCP 的 get_subscriber_callflow 拿的是同一串；兩邊各算各的會漂移，
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
-    result = events(analysis, supi, wire=session.wire)
+    result = events(analysis, supi, identity=identity, wire=session.wire)
     if "error" in result:
         return result
     return {"ready": True, **result}

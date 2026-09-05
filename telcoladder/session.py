@@ -199,6 +199,19 @@ class Session:
     auto_decode_as: tuple[str, ...] = ()
     """這次解剖自動偵測到的額外規則。只對這份擷取檔有效，不存檔。"""
 
+    decode_note: str | None = None
+    """解碼樹那條路少做了什麼（`decode.decode_frames` 的 `notes`）。目前只有一種：
+    兩趟分析在這種檔上跑不起來、退回單趟。有值就隨每個 `/decode` 回應送出。"""
+
+    prefs: tuple[str, ...] = ()
+    """套給 tshark 的 `-o` 偏好，**與 `decode_as` 同一個地位、同四條路徑**。
+
+    建立時是空的；解剖跑完後若 `probe` 採用了自動偏好（USER DLT 對映），
+    這裡被換成解剖實際採用的那組（`_index_into`），索引跟著重建。"""
+
+    auto_prefs: tuple[str, ...] = ()
+    """這次解剖自動偵測到的額外偏好。只對這份擷取檔有效，不存檔。"""
+
     relax_seq: bool = False
     """關掉 tshark 的 TCP 序號分析。同樣由解剖的判定回寫。
 
@@ -417,6 +430,7 @@ def _index_into(session: Session) -> None:
         display_filter=session.display_filter,
         decode_as=session.decode_as,
         relax_seq=session.relax_seq,
+        prefs=session.prefs,
         tshark=session.tshark,
     ):
         rows.append(row)
@@ -468,11 +482,16 @@ def _index_into(session: Session) -> None:
         # 兩處不一致的話，同一份檔會因為「有沒有觸發自動偵測」而得到不同
         # 的解碼結果 —— 而兩個結果各自都看起來很正常。
         rules = (*default_decode_as(), *adjusted.decode_as, *session.user_decode_as)
-        if (rules, adjusted.relaxed_seq) != (session.decode_as, session.relax_seq):
+        prefs = tuple(adjusted.prefs)
+        if (rules, adjusted.relaxed_seq, prefs) != (
+            session.decode_as, session.relax_seq, session.prefs
+        ):
             with session.lock:
                 session.decode_as = rules
                 session.auto_decode_as = tuple(adjusted.decode_as)
                 session.relax_seq = adjusted.relaxed_seq
+                session.prefs = prefs
+                session.auto_prefs = prefs
                 session.progress.stage = "index"
                 # 解碼方式變了，快取裡那些是用舊參數解出來的。
                 session.decode = DecodeCache()
@@ -500,6 +519,7 @@ def _rebuild_index(session: Session) -> None:
         display_filter=session.display_filter,
         decode_as=session.decode_as,
         relax_seq=session.relax_seq,
+        prefs=session.prefs,
         tshark=session.tshark,
     ):
         rows.append(row)

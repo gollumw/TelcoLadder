@@ -92,7 +92,12 @@ export function formatTimeOffset(epochMicroseconds: number, baseEpochMicrosecond
 }
 
 export interface DiscoveredSession {
+  /** 訂戶把手：SUPI 數字，或沒有 SUPI 時的 `kind:raw`（`data/mapIndex.ts` 的 `subscriberHandle`）。 */
   supi: string;
+  /** 給人看的名字：`001010…` 或 `5G-S-TMSI 1-0-0a1b2c3d`。 */
+  label: string;
+  identityKind: string;
+  hasSupi: boolean;
   packetCount: number;
   hasError: boolean;
   firstSeenEpoch: number;
@@ -109,7 +114,9 @@ export function computeDiscoveredSessions(packets: RawPacket[]): DiscoveredSessi
     entry.firstSeenEpoch = Math.min(entry.firstSeenEpoch, p.epochMicroseconds);
     bySupi.set(p.correlatedSupi, entry);
   }
-  return Array.from(bySupi.entries()).map(([supi, v]) => ({ supi, ...v }));
+  return Array.from(bySupi.entries()).map(([supi, v]) => ({
+    supi, label: supi, identityKind: "supi", hasSupi: true, ...v,
+  }));
 }
 
 /** A session with no Registration ever captured is "mid-stream" regardless of error state; otherwise error beats connected. */

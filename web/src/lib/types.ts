@@ -54,6 +54,8 @@ export interface RawPacket {
    *  背景雜訊（DNS／NTP／ARP）本來就不屬於任何一個領域。 */
   domain?: TelecomDomain;
   correlatedSupi?: string;
+  /** `correlatedSupi` 給人看的形式（沒有 SUPI 的訂戶是 `5G-S-TMSI …`）。沒有就顯示 `correlatedSupi`。 */
+  correlatedLabel?: string;
   status: PacketStatus;
   /** 解碼樹。**接真實資料後是懶載入的** —— 一份擷取幾十萬格，不可能
    *  預先全解。還沒取到時是 undefined，UI 要說「載入中」而不是畫一棵空樹。 */

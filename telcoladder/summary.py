@@ -38,9 +38,9 @@ from telcoladder import xdr
 from telcoladder.causes import lookup
 from telcoladder.coverage import describe as describe_coverage
 from telcoladder.i18n import _
-from telcoladder.identities import enumerate_identities, find_flows
+from telcoladder.identities import enumerate_identities, find_flows, identity_label
 from telcoladder.model import Flow, IdClass, IdKind, Message
-from telcoladder.nf import participant_rank
+from telcoladder.nf import participant_rank, resolve_roles_with_basis, role_contradictions
 from telcoladder.pdusession import extract as pdu_sessions_of
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
@@ -154,11 +154,16 @@ def _not_visible(analysis: Analysis) -> dict:
         # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
         "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
+        # TS 32.423 XML trace 的旁路事實（角色、FQDN、逐則 IMSI）。與 auto_decode 同一族：
+        # 「我為了看到它做了什麼」。不是那種檔就是空 list。
+        "trace_sidecar": list(analysis.trace_sidecar.describe()) if analysis.trace_sidecar else [],
         "undecoded_traffic": [
             {
                 "protocol": conv.protocol,
                 "frames": conv.frames,
                 "port": conv.port,
+                "transport": conv.transport or None,
+                "under_user_dlt": conv.under_user_dlt,
                 "already_decoded": conv.already_decoded,
                 "decode_as_hint": conv.decode_as_hint(),
             }
@@ -173,22 +178,36 @@ def _not_visible(analysis: Analysis) -> dict:
 
 
 def _network_elements(analysis: Analysis) -> list[dict]:
+    messages = [m for f in analysis.flows for m in f.messages]
+    basis_by_key = {k: b for k, (_r, b) in resolve_roles_with_basis(messages).items()}
+    contradictions = role_contradictions(messages)
     seen: dict[str, dict] = {}
     for flow in analysis.flows:
         for msg in flow.messages:
             for endpoint in (msg.src, msg.dst):
                 entry = seen.setdefault(
-                    endpoint.ip, {"role": endpoint.role, "ip": endpoint.ip,
-                                  "ports": set(), "messages": 0, "_ep": endpoint},
+                    endpoint.key, {"role": endpoint.role, "ip": endpoint.ip,
+                                   "host": endpoint.host,
+                                   "ports": set(), "messages": 0, "_ep": endpoint},
                 )
                 if endpoint.port is not None:
                     entry["ports"].add(endpoint.port)
                 entry["messages"] += 1
     out = []
-    for entry in sorted(seen.values(), key=lambda e: (participant_rank(e["_ep"]), e["ip"])):
+    for entry in sorted(seen.values(), key=lambda e: (participant_rank(e["_ep"]), e["_ep"].key)):
         out.append({
             "role": entry["role"],  # 判不出就是 None —— 不猜（nf.py 的規矩）
             "ip": entry["ip"],
+            # 沒有 IP 層的匯出（裸 Diameter）：端點只有主機名。有 IP 時一律 None。
+            "host": entry["host"],
+            # 角色的依據（機器形式，語言無關）。判不出時：有互斥證據就寫
+            # `contradiction:PCEF vs PCRF`，沒有任何證據就是 None ——
+            # 這兩種「沒有名字」在畫面上一樣，處置不一樣。
+            "role_basis": (
+                basis_by_key.get(entry["_ep"].key)
+                or ("contradiction:" + " vs ".join(contradictions[entry["_ep"].key])
+                    if entry["_ep"].key in contradictions else None)
+            ),
             "ports": sorted(entry["ports"]),
             "messages": entry["messages"],
         })
@@ -248,6 +267,33 @@ def _subscribers(analysis: Analysis) -> tuple[list[dict], list[dict]]:
     return subscribers, unlinked
 
 
+def _subscribers_without_supi(analysis: Analysis) -> list[dict]:
+    """接不到 SUPI、但確實是一個人的流程組 —— **真實網路的多數**。
+
+    實測兩份網元 trace：28 條流程只有 1 條有 SUPI，其餘 23 個 Service request
+    各自只帶 5G-S-TMSI。`subscribers` 只列 SUPI，那些人在摘要裡連一列都沒有，
+    失敗清單裡也對不回是誰。這裡用與工作階段表同一套分組（`flowtable`）
+    列出來，每組帶 `identity`（`kind:raw`，MCP 的 get_subscriber_callflow 吃它）。
+    `subscribers` 與 `unlinked_identities` 不動 —— 加一個頂層鍵，不升版。
+    """
+    from telcoladder.flowtable import build_table
+
+    out = []
+    for row in build_table(analysis).subscribers:
+        if not row.grouped or row.identity is None or row.identity[0] is IdKind.SUPI:
+            continue
+        out.append({
+            "identity": {"kind": row.identity[0].value, "raw": row.identity[1],
+                         "label": identity_label(row.identity)},
+            "flows": len(row.sessions),
+            "messages": row.messages,
+            "failures": row.failures,
+            "unanswered": row.unanswered,
+        })
+    out.sort(key=lambda s: (s["identity"]["kind"], s["identity"]["raw"]))
+    return out
+
+
 def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]]:
     end = capture_end(analysis)
     procedures: list[dict] = []
@@ -289,6 +335,7 @@ def build(analysis: Analysis, *, source_name: str) -> dict:
         "not_visible": _not_visible(analysis),
         "network_elements": _network_elements(analysis),
         "subscribers": subscribers,
+        "subscribers_without_supi": _subscribers_without_supi(analysis),
         "unlinked_identities": unlinked,
         "procedures": procedures,
         "failures": failures,
@@ -370,7 +417,7 @@ def render_markdown(doc: dict) -> str:
     # 讀不出來」。兩句反過來排，讀的人會先看到「--decode-as 沒用」再看到
     # 「decode-as 有用」—— 兩句都對，但順序錯了就像互相矛盾。
     # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過，略去。
-    items += nv["narrowed"] + nv["auto_decode"] + nv["coverage_notes"][1:]
+    items += nv["narrowed"] + nv["auto_decode"] + nv.get("trace_sidecar", []) + nv["coverage_notes"][1:]
     out += [f"- {line}" for line in items] or [f'- {_("Everything decoded; nothing was narrowed or adjusted.")}']
 
     # ── 網元 ──
@@ -398,6 +445,15 @@ def render_markdown(doc: dict) -> str:
         out += _table(["SUPI", _("Flows"), _("Messages"), _("Failures"), _("Other identifiers"), _("PDU sessions")], rows)
     else:
         out.append(_("No subscriber identity could be extracted."))
+    if doc.get("subscribers_without_supi"):
+        out += ["", f'### {_("Subscribers without a SUPI")}', ""]
+        out.append(_("These are real subscribers whose permanent identity never appeared in cleartext - most Service-request traffic looks like this. The 5G-S-TMSI (or NGAP UE ID) is the only handle; a SUPI is assigned inside ciphered messages."))
+        out.append("")
+        out += _table(
+            [_("Identity"), _("Flows"), _("Messages"), _("Failures"), _("Unanswered")],
+            [[s["identity"]["label"], s["flows"], s["messages"], s["failures"], s["unanswered"]]
+             for s in doc["subscribers_without_supi"]],
+        )
     if doc["unlinked_identities"]:
         out += ["", f'### {_("Identities not linked to a SUPI")}', ""]
         out += [f'- {u["kind"]} {u["value"]}' + (f' (scope {u["scope"]})' if u["scope"] else "")
@@ -409,7 +465,7 @@ def render_markdown(doc: dict) -> str:
         rows = []
         for p in doc["procedures"]:
             rows.append([
-                p["supi"] or "—", p["procedure"],
+                p["supi"] or p.get("subscriber") or "—", p["procedure"],
                 f'{OUTCOME_MARK[p["outcome"]]} {p["outcome"]}',
                 f'{p["start_frame"]}–{p["end_frame"]}', f'{p["duration_s"]}s',
                 _ref_text(p["cause_ref"]) if p["cause_ref"]
@@ -417,7 +473,7 @@ def render_markdown(doc: dict) -> str:
                 if p["outcome"] == "success" and p["failures"]
                 else (p["note"] or "—"),
             ])
-        out += _table(["SUPI", _("Procedure"), _("Outcome"), _("Frames"), _("Duration"), _("Cause / note")], rows)
+        out += _table([_("Subscriber"), _("Procedure"), _("Outcome"), _("Frames"), _("Duration"), _("Cause / note")], rows)
     else:
         out.append(_("No procedure could be segmented (no NAS/NGAP opener seen)."))
 

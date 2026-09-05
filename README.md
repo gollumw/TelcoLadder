@@ -10,7 +10,7 @@ spans four interfaces, and they belong on one ladder rather than in four windows
 
 Every cause code is resolved through a hand-verified table to the specification
 it comes from, what it means in plain language, and the root causes that
-actually produce it in the field — **488 of them**, every name taken verbatim
+actually produce it in the field — **493 of them**, every name taken verbatim
 from `tshark` and re-checked against it by a test. Every network function is
 named rather than shown as an IP, with the evidence for that name on hover.
 Nothing is generated: a cause the table does not carry is reported as not
@@ -477,10 +477,13 @@ the top of `.github/workflows/ci.yml`.
   address falls back to an unlabelled IP. That is the correct failure direction,
   but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
   `Origin-Host`, and it signs its own passage with a `Route-Record`.
-- **Diameter covers three interfaces, and no clause numbers.** S6a/S6d, Cx/Dx
-  and Gx have network-function roles and curated causes; the other twenty-odd
-  3GPP applications decode and display their Application-Id but get no role
-  inference and no cause lookup — an honest "not done yet" rather than a guess.
+- **Diameter covers seven interfaces, and no clause numbers.** S6a/S6d, Cx/Dx,
+  Gx, Rx, Sh, S6b and SWx have network-function roles and curated causes; the
+  remaining 3GPP applications decode and display their Application-Id but get
+  no role inference — an honest "not done yet" rather than a guess. Raw
+  exports with no IP layer (pcap link type USER 0, every frame a bare
+  Diameter message) are detected, mapped for tshark, and their endpoints
+  named from Origin-Host.
   The cause **names** are pinned against `tshark`'s own tables by a test; the
   **clause numbers are not transcribed**, so a Diameter cause prints its spec
   (`3GPP TS 29.230`, `RFC 6733`) without a section. No clause in this repo is
@@ -522,6 +525,11 @@ the top of `.github/workflows/ci.yml`.
   count is cross-checked against tshark). What it does *not* do yet is
   aggregate: no throughput, no sequence-gap loss, no Echo RTT. Every G-PDU is
   one row — honest, but heavy user-plane captures will want `--since/--until`.
+- **Subscribers without a SUPI are named by their 5G-S-TMSI** (2026-09-05).
+  Most live traffic is Service requests, which carry no SUCI; those UEs now
+  appear as `5G-S-TMSI …` in the drawer, the summary and the xDR. The key is
+  scoped to the NG connection, and a TMSI re-allocated inside one capture
+  (in ciphered messages) merges two people — the tool cannot see that.
 - **NAS after Security Mode Command is encrypted** and its content is invisible.
   Those packets still appear as their NGAP carrier. This is how the network
   works, not a parsing failure.

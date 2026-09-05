@@ -13,7 +13,7 @@ from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
-from telcoladder.model import IDENTITY_SOURCE_KEY, Endpoint, IdKind
+from telcoladder.model import IDENTITY_SOURCE_KEY, Endpoint, IdKind, IdKey
 from telcoladder.nf import participant_rank
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
@@ -59,7 +59,10 @@ _DOMAIN_BY_PROTOCOL = {
 }
 
 
-def events(analysis: Analysis, supi: str, *, wire: bool = True) -> dict:
+def events(
+    analysis: Analysis, supi: str | None = None, *, identity: IdKey | None = None,
+    wire: bool = True,
+) -> dict:
     """一個訂戶的事件、參與者、程序段。查無此訂戶回 `{"error": ...}`。
 
     與既有的 `/flow` / `/subscriber` 不同：那兩個回的是**渲染好的 SVG**
@@ -77,9 +80,13 @@ def events(analysis: Analysis, supi: str, *, wire: bool = True) -> dict:
     `wire`：這份分析是線路視圖（一格一列）還是流程視圖 —— 呼叫端要講出來，
     因為 NAS 畫在哪一段取決於它，而讀圖的人看不出模式。
     """
-    flows = find_flows(analysis, IdKind.SUPI, supi)
+    # `identity` 是任何一把訂戶鍵（5G-S-TMSI、NGAP UE ID…）—— 真實網路多數
+    # 訂戶沒有 SUPI（Service request 只帶 5G-S-TMSI），只認 SUPI 的梯形圖等於
+    # 對多數人不存在。`supi` 保留為舊介面。
+    key = identity if identity is not None else (IdKind.SUPI, supi or "")
+    flows = find_flows(analysis, key[0], key[1])
     if not flows:
-        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi)}
+        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi or key[1])}
 
     # 「落在擷取結尾附近」的判定以**整份擷取檔**為準（理由見
     # `procedures.capture_end`）。走那個函式而不是在這裡再算一次 ——
