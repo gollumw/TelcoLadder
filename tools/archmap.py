@@ -70,7 +70,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
         "procedures", "pdusession", "identities", "flowtable", "callflow",
     )),
     ("L5", "出口", "三條交集為零的呈現路徑", (
-        "render_mermaid", "summary", "xdr", "viewer",
+        "render_mermaid", "summary", "xdr", "viewer", "overview",
     )),
     ("L6", "入口", "使用者與 agent 從這裡進來", (
         "cli", "__main__", "web", "session", "mcp",

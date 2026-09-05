@@ -215,6 +215,9 @@ export function SessionAnalysisView({
   //: 梯形圖縮放。放大（>1）同時切換版面 —— 見 ZOOM_LEVELS 的說明。
   const [zoom, setZoom] = useState<number>(1);
   const [activePduSessionId, setActivePduSessionId] = useState<number | null>(null);
+  //: 只看失敗與停滯（`slow`＝間隔超過引擎的 SLOW_GAP，1 秒）。這是**視角**不是範圍：
+  //: 疊在程序與 Domain 之後。幾百則訊息裡找那兩支紅箭，靠的就是這個。
+  const [onlyAnomalies, setOnlyAnomalies] = useState(false);
 
   const identity = supi ? identities.find((i) => i.supi === supi) : undefined;
   const isMidStream = identity?.captureStatus === "mid-stream";
@@ -247,8 +250,18 @@ export function SessionAnalysisView({
         (e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame,
       );
     }
-    return domain === "ALL" ? events : events.filter((e) => e.domain === domain);
-  }, [supiEvents, domain, current]);
+    events = domain === "ALL" ? events : events.filter((e) => e.domain === domain);
+    return onlyAnomalies ? events.filter((e) => e.status === "ERROR" || e.slow) : events;
+  }, [supiEvents, domain, current, onlyAnomalies]);
+
+  //: 開關藏掉了幾則 —— 要講，不然圖上的空白像「這段沒有訊息」。
+  const hiddenByAnomalyFilter = useMemo(() => {
+    if (!onlyAnomalies) return 0;
+    let events = supiEvents;
+    if (current) events = events.filter((e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame);
+    if (domain !== "ALL") events = events.filter((e) => e.domain === domain);
+    return events.length - filteredEvents.length;
+  }, [onlyAnomalies, supiEvents, current, domain, filteredEvents]);
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
@@ -475,7 +488,7 @@ export function SessionAnalysisView({
               只用到兩三個 —— 全部列出來的話，使用者要在四個永遠是空的鈕裡面
               找那兩個有東西的。這與 `DataMiningView` 那兩份寫死清單改成由引擎
               供應是同一個判斷：**畫面只該列真的存在的東西**（§10）。 */}
-          <div className="mb-3 flex flex-wrap gap-1">
+          <div className="mb-3 flex flex-wrap items-center gap-1">
             {DOMAIN_TABS.filter(
               (tab) => tab.id === "ALL" || presentDomains.has(tab.id),
             ).map((tab) => (
@@ -493,6 +506,22 @@ export function SessionAnalysisView({
                 {tab.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setOnlyAnomalies((v) => !v)}
+              title={t("Show only failed messages and gaps longer than 1 s (the engine's slow-gap threshold)")}
+              className={cn(
+                "ml-auto rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                onlyAnomalies
+                  ? "border-signal-red-border bg-signal-red-bg text-signal-red"
+                  : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
+              )}
+            >
+              {t("Anomalies & stalls only")}
+              {onlyAnomalies && hiddenByAnomalyFilter > 0 && (
+                <span className="ml-1 opacity-70">{t("({n} hidden)", { n: hiddenByAnomalyFilter })}</span>
+              )}
+            </button>
           </div>
           <p className="mb-2 text-xs text-fg-dim">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
 

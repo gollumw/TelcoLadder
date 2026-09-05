@@ -11,6 +11,7 @@
 
 import type { CallFlowEvent, CorrelationEntry, RawPacket, TelecomDomain } from "@/lib/types";
 import type { DiscoveredSession } from "@/lib/utils";
+import type { Overview, OverviewSubscriberRef } from "./source";
 
 /** `/index` 回的一列。欄位名是後端 `viewer.index_json` 決定的。 */
 export interface IndexRow {
@@ -460,4 +461,123 @@ export function toProtocolNodes(
         : undefined,
     };
   });
+}
+
+// ── 首屏總覽 ──────────────────────────────────────────────
+
+/** `/overview` 的訂戶把手：與 `/flows` 的 `identity` 同一個形狀。 */
+export interface OverviewRefJson {
+  kind: string;
+  raw: string;
+  label: string;
+  frame?: number;
+}
+
+export interface OverviewJson {
+  verdict: "red" | "amber" | "green" | "empty";
+  subscribers: { total: number; red: number; amber: number; green: number; unattributed_flows: number };
+  procedures: { total: number; success: number; failure: number; incomplete: number };
+  events: { failures: number; unanswered: number; retrans: number };
+  not_visible: {
+    ciphered_nas: number;
+    ecies_protected_suci: number;
+    frames_not_decoded: number | null;
+    only_n2: boolean;
+    undecoded_traffic: Array<{ protocol: string; frames: number; port: number | null; decode_as_hint: string | null }>;
+    coverage_notes: string[];
+    auto_decode: string[];
+    trace_sidecar: string[];
+    narrowed: string[];
+  };
+  causes: Array<{
+    key: string;
+    message: string;
+    protocol: string;
+    citation: string | null;
+    known: boolean;
+    explanation: string | null;
+    common_causes: string[];
+    count: number;
+    frames: number[];
+    subscribers: OverviewRefJson[];
+  }>;
+  failed_procedures: Array<{
+    procedure: string;
+    subscriber_ref: OverviewRefJson | null;
+    start_frame: number;
+    end_frame: number;
+    cause: string | null;
+    first_failure: string | null;
+    pdu_session_id: string | null;
+    failures: number;
+    duration_s: number;
+    note: string;
+  }>;
+}
+
+/** 與 `subscriberHandle` 同一條規則：SUPI 是數字本身，其餘是 `kind:raw`。 */
+export function refToSubscriber(ref: OverviewRefJson): OverviewSubscriberRef {
+  return {
+    handle: ref.kind === "supi" ? ref.raw : `${ref.kind}:${ref.raw}`,
+    label: ref.label,
+    ...(ref.frame !== undefined ? { frame: ref.frame } : {}),
+  };
+}
+
+export function toOverview(body: OverviewJson): Overview {
+  const nv = body.not_visible;
+  return {
+    verdict: body.verdict,
+    subscribers: {
+      total: body.subscribers.total,
+      red: body.subscribers.red,
+      amber: body.subscribers.amber,
+      green: body.subscribers.green,
+      unattributedFlows: body.subscribers.unattributed_flows,
+    },
+    procedures: body.procedures,
+    events: body.events,
+    notVisible: {
+      cipheredNas: nv.ciphered_nas,
+      protectedSuci: nv.ecies_protected_suci,
+      framesNotDecoded: nv.frames_not_decoded,
+      onlyN2: nv.only_n2,
+      undecodedTraffic: (nv.undecoded_traffic ?? []).map((u) => ({
+        protocol: u.protocol,
+        frames: u.frames,
+        port: u.port,
+        decodeAsHint: u.decode_as_hint,
+      })),
+      // 四組都是引擎寫好的句子，順序：自動調整 → 旁路事實 → 收窄 → coverage。
+      // 它們是給 CLI／Markdown 的原文，帶 `**粗體**` 標記；瀏覽器顯示純文字，把標記拿掉
+      // （只動排版，不動一個字）。
+      notes: [...(nv.auto_decode ?? []), ...(nv.trace_sidecar ?? []), ...(nv.narrowed ?? []), ...(nv.coverage_notes ?? [])].map(
+        (line) => line.replace(/\*\*/g, ""),
+      ),
+    },
+    causes: (body.causes ?? []).map((c) => ({
+      key: c.key,
+      message: c.message,
+      protocol: c.protocol,
+      citation: c.citation,
+      known: c.known,
+      explanation: c.explanation,
+      commonCauses: c.common_causes ?? [],
+      count: c.count,
+      frames: c.frames,
+      subscribers: (c.subscribers ?? []).map(refToSubscriber),
+    })),
+    failedProcedures: (body.failed_procedures ?? []).map((p) => ({
+      kind: p.procedure,
+      subscriber: p.subscriber_ref ? refToSubscriber(p.subscriber_ref) : null,
+      startFrame: p.start_frame,
+      endFrame: p.end_frame,
+      cause: p.cause,
+      firstFailure: p.first_failure,
+      pduSessionId: p.pdu_session_id,
+      failures: p.failures,
+      durationS: p.duration_s,
+      note: p.note,
+    })),
+  };
 }

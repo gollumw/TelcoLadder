@@ -36,6 +36,8 @@ import {
   toCallFlowEvent,
   toCallFlowProcedure,
   toCorrelationEntry,
+  toOverview,
+  type OverviewJson,
   type CallFlowEventJson,
   type CallFlowProcedureJson,
   type PduSessionJson,
@@ -53,6 +55,7 @@ import type {
   Dataset,
   DecodeAsRule,
   DecodeAsState,
+  Overview,
   PacketPage,
   ProtocolFilter,
 } from "./source";
@@ -303,6 +306,14 @@ export function apiSource(sid: string | null): DataSource {
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
       };
+    },
+
+    async loadOverview(): Promise<Overview> {
+      // 整份檔的首屏事實，後端對全母體算（`telcoladder/overview.py`）。
+      // 這裡只翻欄位名，不算任何數字 —— 算了就是第二份會漂移的判斷。
+      const body = await getJson<OverviewJson & { ready: boolean }>(`/api/${need()}/overview`);
+      if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
+      return toOverview(body);
     },
 
     async loadDecodeAs(): Promise<DecodeAsState> {

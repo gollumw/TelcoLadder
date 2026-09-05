@@ -177,6 +177,12 @@ def _not_visible(analysis: Analysis) -> dict:
     }
 
 
+def not_visible(analysis: Analysis) -> dict:
+    """「看不見什麼」那一節，給其他出口共用（`overview` 的首屏）。
+    **同一份句子** —— 兩個出口各寫一份措辭，症狀是 CLI 說 212 格沒解碼、畫面說別的。"""
+    return _not_visible(analysis)
+
+
 def _network_elements(analysis: Analysis) -> list[dict]:
     messages = [m for f in analysis.flows for m in f.messages]
     basis_by_key = {k: b for k, (_r, b) in resolve_roles_with_basis(messages).items()}

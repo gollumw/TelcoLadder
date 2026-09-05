@@ -502,6 +502,37 @@ def flows_json(
 #: 堆疊（`http2`），硬要合成一張表反而會讓兩邊都多背對方的詞彙。
 
 
+def _overview_for(session: Session) -> dict | None:
+    """首屏總覽，首次要求時算、之後用快取 —— **按語言分**，理由同 `_table_for`：
+    卡片上的白話與常見根因是用當下語言選出來的字串。"""
+    table = _table_for(session)
+    if table is None:
+        return None
+    lang = i18n.current()
+    with session.lock:
+        analysis = session.analysis
+        cached = session.overview
+    if isinstance(cached, dict) and lang in cached:
+        return cached[lang]
+    from telcoladder.overview import build_overview
+
+    doc = build_overview(analysis, table)
+    with session.lock:
+        store = session.overview if isinstance(session.overview, dict) else {}
+        store[lang] = doc
+        session.overview = store
+    return doc
+
+
+def overview_json(session: Session) -> dict:
+    """整份擷取檔的首屏事實（`telcoladder/overview.py`）。`analysis` 沒好時回
+    `ready: false` —— 不假裝已有答案。"""
+    doc = _overview_for(session)
+    if doc is None:
+        return {"ready": False}
+    return {"ready": True, **doc}
+
+
 def callflow_json(session: Session, supi: str | None = None, *, identity: "IdKey | None" = None) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 

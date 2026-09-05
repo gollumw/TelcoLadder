@@ -52,6 +52,7 @@ VIEWER_ROUTES = [
     ("GET", "/api/whatever/bytes"),
     ("GET", "/api/whatever/identities"),
     ("GET", "/api/whatever/callflow"),
+    ("GET", "/api/whatever/overview"),
     ("GET", "/api/whatever/correlation"),
     ("GET", "/api/whatever/decode-as"),
     ("POST", "/api/whatever/decode-as"),

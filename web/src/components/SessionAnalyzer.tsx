@@ -2,17 +2,21 @@
 
 import { setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
-import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, Binary, Moon, Sun } from "lucide-react";
+import { Activity, Clock, Upload, Loader2, CheckCircle2, LayoutList, LayoutDashboard, Binary, Moon, Sun } from "lucide-react";
 import { setTheme, useTheme } from "../theme";
 import { cn } from "@/lib/utils";
 import type { Dataset, PacketPage } from "@/data/source";
 import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
+import { ExecutiveOverview } from "./ExecutiveOverview";
 
 const TIME_RANGES = ["Last 5 minutes", "Last hour", "Last 24 hours", "Custom range"]; // t() 在渲染時翻
 
-type Mode = "mining" | "session";
+//: 三層，由淺入深：總覽（誰失敗、為什麼）→ 梯形圖（一個訂戶的信令時序）
+//: → 封包（Wireshark 視圖）。2026-09-05 之前只有後兩層，而且落地在封包清單 ——
+//: 對第一次打開這份檔的人，那是一面十六進位牆。
+type Mode = "overview" | "flow" | "mining";
 
 // **這裡是 GUI 與資料之間唯一的接縫（Phase 2 起）。**
 // 移植進來時是 `const { … } = mockData`（靜態 import）。改成 prop 之後這個
@@ -20,6 +24,8 @@ type Mode = "mining" | "session";
 // Phase 3 換後端不會碰到它們。取資料與載入／失敗狀態由 `App.tsx` 負責。
 export default function SessionAnalyzer({
   data,
+  overview,
+  overviewError,
   packetRows,
   packetTotals,
   onNeedRows,
@@ -39,6 +45,9 @@ export default function SessionAnalyzer({
   onRequestTree,
 }: {
   data: Dataset;
+  /** 首屏總覽（`/overview`，全母體）。null＝還在算。 */
+  overview: import("@/data/source").Overview | null;
+  overviewError: string | null;
   /** 已取到的封包，鍵是**篩選後的序位**（不是 frame 編號）。缺的鍵＝還沒取。 */
   packetRows: Record<number, RawPacket>;
   packetTotals: Omit<PacketPage, "rows" | "offset">;
@@ -70,8 +79,8 @@ export default function SessionAnalyzer({
   const theme = useTheme();
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
-  // Data Mining is home (資料母體); Session Analysis is a drill-down (Projection View).
-  const [mode, setMode] = useState<Mode>("mining");
+  // 總覽是家。封包清單仍然是資料母體，但它是第三層 —— 從總覽或梯形圖下鑽進去。
+  const [mode, setMode] = useState<Mode>("overview");
   const [focusedSupi, setFocusedSupi] = useState<string | null>(null);
   const [displayFilter, setDisplayFilter] = useState("");
   const [onlySessionFilter, setOnlySessionFilter] = useState(false);
@@ -89,7 +98,7 @@ export default function SessionAnalyzer({
 
   // 切到某個訂戶才去要他的梯形圖 —— 整份擷取檔的訊息可能有幾十萬則。
   useEffect(() => {
-    if (mode === "session" && focusedSupi) onRequestCallFlow(focusedSupi);
+    if (mode === "flow" && focusedSupi) onRequestCallFlow(focusedSupi);
   }, [mode, focusedSupi, onRequestCallFlow]);
 
   function handleReassociate() {
@@ -101,7 +110,12 @@ export default function SessionAnalyzer({
   function handleCorrelateSession(supi: string, frame: number) {
     setFocusedSupi(supi);
     setSelectedFrame(frame);
-    setMode("session");
+    setMode("flow");
+  }
+
+  /** 總覽 → 梯形圖：選中那個訂戶、選中那一格。與封包清單的「Correlate」同一條路。 */
+  function handleOpenLadder(handle: string, frame: number) {
+    handleCorrelateSession(handle, frame);
   }
 
   function handleBackToDataMining() {
@@ -161,6 +175,28 @@ export default function SessionAnalyzer({
             <div className="flex rounded-lg border border-border bg-surface-2 p-0.5">
               <button
                 type="button"
+                onClick={() => setMode("overview")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "overview" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
+                )}
+              >
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                {t("Overview")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("flow")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "flow" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
+                )}
+              >
+                <LayoutList className="h-3.5 w-3.5" />
+                {t("Call Flow Ladder")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode("mining")}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
@@ -169,17 +205,6 @@ export default function SessionAnalyzer({
               >
                 <Binary className="h-3.5 w-3.5" />
                 {t("Data Mining (Wireshark view)")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("session")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
-                  mode === "session" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
-                )}
-              >
-                <LayoutList className="h-3.5 w-3.5" />
-                Session Analysis
               </button>
             </div>
           </div>
@@ -219,7 +244,14 @@ export default function SessionAnalyzer({
           </div>
         </header>
 
-        {mode === "mining" ? (
+        {mode === "overview" ? (
+          <ExecutiveOverview
+            overview={overview}
+            error={overviewError}
+            onOpenLadder={handleOpenLadder}
+            onOpenPacket={handleViewInDataMining}
+          />
+        ) : mode === "mining" ? (
           <DataMiningView
             discoveredSessions={data.discoveredSessions}
             firstFrameBySupi={data.firstFrameBySupi}
