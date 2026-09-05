@@ -48,16 +48,17 @@ import {
   type FlowSubscriber,
   type IndexRow,
 } from "./mapIndex";
-import type {
-  CallFlow,
-  CallFlowParticipant,
-  DataSource,
-  Dataset,
-  DecodeAsRule,
-  DecodeAsState,
-  Overview,
-  PacketPage,
-  ProtocolFilter,
+import {
+  currentToken,
+  type CallFlow,
+  type CallFlowParticipant,
+  type DataSource,
+  type Dataset,
+  type DecodeAsRule,
+  type DecodeAsState,
+  type Overview,
+  type PacketPage,
+  type ProtocolFilter,
 } from "./source";
 
 /** 後端 `/index` 的上限。要更多列得分頁，不是把這個數字調大。 */
@@ -70,8 +71,14 @@ export class NotConnectedError extends Error {
   }
 }
 
+/** 語言標頭，加上（只在 token 模式）存取 token。 */
+function apiHeaders(): Record<string, string> {
+  const token = currentToken();
+  return token ? { ...langHeader(), "X-TelcoLadder-Token": token } : langHeader();
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: langHeader() });
+  const response = await fetch(path, { headers: apiHeaders() });
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok || body.error) {
     throw new NotConnectedError(body.error ?? t("{path} returned HTTP {status}", { path, status: response.status }));
@@ -89,7 +96,7 @@ async function postForm<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", ...langHeader() },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", ...apiHeaders() },
     body: new URLSearchParams(fields).toString(),
   });
   const body = (await response.json()) as T & { error?: string };

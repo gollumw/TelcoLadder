@@ -1117,7 +1117,26 @@ change is a `summary_version` bump.
 
 ---
 
-## T-HOSTBIND | `--host` off loopback turns the Host check into decoration (P0)
+## ~~T-HOSTBIND | `--host` off loopback turns the Host check into decoration~~ (**completed 2026-09-05**)
+
+**What was done**: `serve()` refuses a non-loopback bind without `--token`
+(exit 2, reason printed) — the rule that lived only in a document is now in
+the program. With a token: every request must carry it (`X-TelcoLadder-Token`
+or `?token=`; `/static/` is exempt, it is public code); the Host allowlist is
+replaced by the token check (DNS rebinding needs a request the server
+accepts, and the attacker's page has no token); `POST /open` by path answers
+403 and the home page does not render the form; uploads carry the token and
+the `/app/` URL passes it to the React page via `data-token`. `_read_form`
+caps `Content-Length` at 1 MiB and answers 400 on a non-numeric or negative
+value instead of raising out of `do_POST`. Six tests in `tests/test_web.py`.
+
+**Not done, deliberately**: the home page still has no CSP (inline script
+and style). Moving it to a static file touches `chrome.py`'s theme CSS and
+is not part of the network-exposure fix; the page makes no external
+requests, so the missing header protects against nothing that exists today.
+
+Original entry follows.
+
 
 **What**: `cli.py:319-322` and `web.py:836-850` accept any bind address.
 The Host-header allowlist (`web.py:129-145`) is a DNS-rebinding defence for

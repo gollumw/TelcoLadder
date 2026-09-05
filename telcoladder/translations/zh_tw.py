@@ -97,6 +97,25 @@ CATALOG: dict[str, str] = {
     "Port to listen on (default {port})": "監聽的 port（預設 {port}）",
     "Address to bind. Default is 127.0.0.1 only - this server runs tshark on paths it is handed, so exposing it means exposing a capture analyser to the network.":
         "監聽位址。預設只綁 127.0.0.1 —— 這是一個會拿路徑去執行 tshark 的伺服器，改成對外監聽等於把客戶封包分析器暴露到網路上。",
+    "Required when --host is not a loopback address (also read from TELCOLADDER_TOKEN). Every request must then carry it, and opening a capture by path is disabled - only uploads are accepted.":
+        "--host 不是迴圈位址時必填（也讀環境變數 TELCOLADDER_TOKEN）。之後每個請求都要帶它，而貼路徑開檔會關掉 —— 只接受上傳。",
+    "SECRET": "密鑰",
+    "Refusing to bind {host}: this server runs tshark on paths it is handed. Off 127.0.0.1 it needs --token (or TELCOLADDER_TOKEN); with a token, only uploads are accepted.":
+        "拒絕綁定 {host}：這個伺服器會拿交給它的路徑執行 tshark。離開 127.0.0.1 需要 --token（或 TELCOLADDER_TOKEN）；有 token 時只接受上傳。",
+    "  Access token required on every request (?token= or the {header} header); opening by path is disabled.":
+        "  每個請求都要帶存取 token（?token= 或 {header} 標頭）；貼路徑開檔已關閉。",
+    "Refused: this server is reachable from the network and requires the access token.":
+        "拒絕：這個伺服器可從網路連到，需要存取 token。",
+    "Opening a capture by path is disabled while the server is reachable from the network.":
+        "伺服器可從網路連到時，不接受以路徑開啟擷取檔。",
+    "Upload the file instead - the path form only exists for a server bound to 127.0.0.1.":
+        "請改用上傳 —— 貼路徑那個表單只在綁 127.0.0.1 的伺服器上存在。",
+    "Opening by path is off": "貼路徑開檔已關閉",
+    "this server is reachable from the network, so it only accepts uploads. Bind to 127.0.0.1 to paste a path.":
+        "這個伺服器可從網路連到，所以只接受上傳。要貼路徑請綁 127.0.0.1。",
+    "Content-Length is not a number.": "Content-Length 不是數字。",
+    "Content-Length is negative.": "Content-Length 是負數。",
+    "Form body too large ({n} bytes; the limit is {limit}).": "表單本體太大（{n} 位元組；上限 {limit}）。",
     "Release an uploaded copy after this much idle time (default {seconds}). Captures opened by path are unaffected - those are never copied.":
         "互動檢視器閒置多久就釋放上傳的複本（預設 {seconds} 秒）。貼路徑開的不受影響 —— 那從來不複製。",
     "Disable the interactive viewer entirely. The viewer keeps uploaded copies in the temp directory for a while; use this if you do not want that.":

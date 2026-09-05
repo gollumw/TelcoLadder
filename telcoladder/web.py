@@ -34,10 +34,18 @@ multipart 解析器約 80 行、且是容易寫錯的那種程式碼。所以兩
 
 貼路徑確實是一個檔案讀取能力，但綁在迴圈位址、單一使用者本來就擁有整台
 機器 —— 上面兩條才是真正的把關。
+
+**離開迴圈位址要付兩個代價，程式會強制**（2026-09-05，T-HOSTBIND）：
+`--host` 不是 127.0.0.1／localhost／::1 時，沒有 `--token` 就拒絕啟動；
+有 token 時每個請求都要帶它（`X-TelcoLadder-Token` 標頭或 `?token=`），
+而 **貼路徑那條入口整個關掉**，只剩上傳 —— 在區網上「拿任何路徑去跑 tshark」
+是遠端讀檔，不是方便。Host 檢查在 token 模式下改由 token 取代：DNS rebinding
+的前提是攻擊者的頁面能發出被接受的請求，而它拿不到 token。
 """
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import signal
@@ -95,6 +103,24 @@ from telcoladder.viewer import (
 DEFAULT_PORT = 3005
 DEFAULT_HOST = "127.0.0.1"
 
+#: 這些綁定位址不需要 token —— 只有這台機器自己連得到。
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+#: `<form>` 本體的上限。貼路徑與 decode-as 規則都是幾百個位元組的事；
+#: 一個宣告 2 GB 的 `Content-Length` 不是表單，是叫伺服器配記憶體。
+MAX_FORM_BYTES = 1 << 20  # 1 MiB
+
+#: 帶 token 的標頭名。查詢字串 `?token=` 也收 —— 首頁是瀏覽器直接打的，加不了標頭。
+TOKEN_HEADER = "X-TelcoLadder-Token"
+
+
+def is_loopback(host: str) -> bool:
+    return host.strip().lower() in _LOOPBACK_HOSTS
+
+
+class _BadRequest(Exception):
+    """請求本身不合法（不是使用者的檔案有問題）。`_do_post` 接住它回 400。"""
+
 #: 上傳的大小上限。超過就請使用者改用貼路徑 —— 那條路零複製、不落地、
 #: 立刻開始，把 2GB 透過 HTTP 搬給同一台機器上的伺服器本來就沒有意義。
 #: 這不是技術限制，是把使用者導向比較好的那條路。
@@ -132,8 +158,37 @@ class _Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         return {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
 
+    def _token(self) -> str | None:
+        return getattr(self.server, "token", None) or None
+
+    def _token_presented(self) -> bool:
+        """請求帶的 token 對不對。定時比較 —— 這是個秘密，不是個字串。"""
+        expected = self._token() or ""
+        query = parse_qs(urlsplit(self.path).query)
+        given = self.headers.get(TOKEN_HEADER) or (query.get("token") or [""])[0]
+        return bool(given) and hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
+
     def _rejected_by_origin_checks(self) -> bool:
-        """`Host` 與 `Origin` 都對才放行。不對就 403 並且**不解釋細節**。"""
+        """`Host` 與 `Origin` 都對才放行。不對就 403 並且**不解釋細節**。
+
+        **token 模式**（非迴圈位址綁定）：Host 允許清單換成 token 檢查。
+        `/static/` 例外 —— 那是公開的程式碼，不是資料，而首頁的 `<script>`
+        標籤帶不了標頭。
+        """
+        if self._token():
+            route = urlsplit(self.path).path
+            if route.startswith("/static/"):
+                return False
+            if not self._token_presented():
+                self._send_html(_error_page(_('Refused: this server is reachable from the network and requires the access token.')), HTTPStatus.FORBIDDEN)
+                return True
+            origin = self.headers.get("Origin")
+            host = (self.headers.get("Host") or "").lower()
+            if origin and urlsplit(origin).netloc.lower() != host:
+                self._send_html(_error_page(_('Refused: cross-origin request.')), HTTPStatus.FORBIDDEN)
+                return True
+            return False
+
         if (self.headers.get("Host") or "").lower() not in self._allowed_hosts():
             self._send_html(_error_page(_('Refused: the Host header is not a loopback address.')), HTTPStatus.FORBIDDEN)
             return True
@@ -174,7 +229,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _app_url(self, sid: str) -> str:
         lang = self._explicit_language()
-        return f"/app/{sid}" + (f"?lang={lang}" if lang else "")
+        params = [f"lang={lang}"] if lang else []
+        if self._token():
+            params.append(f"token={self._token()}")
+        return f"/app/{sid}" + ("?" + "&".join(params) if params else "")
 
     def do_GET(self) -> None:  # noqa: N802 —— BaseHTTPRequestHandler 的命名慣例
         with i18n.use(self._request_language()):
@@ -185,7 +243,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         route = urlsplit(self.path).path
         if route == "/":
-            self._send_html(_home_page())
+            self._send_html(_home_page(self._token()))
         elif route.startswith("/static/") and self._viewer_enabled():
             self._send_static(route[len("/static/"):])
         elif route.startswith("/app/") and self._viewer_enabled():
@@ -202,6 +260,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _do_post(self) -> None:
         if self._rejected_by_origin_checks():
             return
+        try:
+            self._dispatch_post()
+        except _BadRequest as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def _dispatch_post(self) -> None:
         route = urlsplit(self.path).path
         if route == "/open" and self._viewer_enabled():
             self._handle_open()
@@ -264,7 +328,7 @@ class _Handler(BaseHTTPRequestHandler):
                 HTTPStatus.NOT_FOUND,
             )
             return
-        body = app_page(session, idle_ttl=self._store.idle_ttl).encode("utf-8")
+        body = app_page(session, idle_ttl=self._store.idle_ttl, token=self._token()).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -492,7 +556,19 @@ class _Handler(BaseHTTPRequestHandler):
         """貼路徑開檢視器。**零複製** —— 那是使用者自己的檔案。
 
         普通的 `<form>`，關掉 JS 照樣能用。
+
+        **token 模式下整條關掉。** 在區網上「把任何路徑交給 tshark」是遠端讀檔；
+        上傳那條沒有這個問題（讀的是請求本體）。
         """
+        if self._token():
+            self._send_html(
+                _error_page(
+                    _('Opening a capture by path is disabled while the server is reachable from the network.'),
+                    hint=_('Upload the file instead - the path form only exists for a server bound to 127.0.0.1.'),
+                ),
+                HTTPStatus.FORBIDDEN,
+            )
+            return
         form = self._read_form()
         wire = (form.get("flow") or [""])[0] != "1"
         pcap = self._pcap_from_form(form)
@@ -577,7 +653,18 @@ class _Handler(BaseHTTPRequestHandler):
     # ── 貼路徑：零複製，且不需要 JavaScript ───────────────────────
 
     def _read_form(self) -> dict[str, list[str]]:
-        length = int(self.headers.get("Content-Length") or 0)
+        """讀 urlencoded 表單。`Content-Length` 不是數字、負數、或超過
+        `MAX_FORM_BYTES` 都是 400 —— 之前非數字會以 `ValueError` 炸出
+        `do_POST`，而負數與巨大值會照單全收。"""
+        raw = self.headers.get("Content-Length") or "0"
+        try:
+            length = int(raw)
+        except ValueError:
+            raise _BadRequest(_('Content-Length is not a number.')) from None
+        if length < 0:
+            raise _BadRequest(_('Content-Length is negative.'))
+        if length > MAX_FORM_BYTES:
+            raise _BadRequest(_('Form body too large ({n} bytes; the limit is {limit}).').format(n=length, limit=MAX_FORM_BYTES))
         return parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
 
     def _pcap_from_form(self, form: dict[str, list[str]]) -> Path | None:
@@ -772,7 +859,27 @@ def _language_switch() -> str:
 # * 上傳一律走互動檢視器。這裡原本有個預設不勾的核取方塊決定要不要進互動介面，
 #   不勾就悄悄送去舊的靜態報告 —— 那是個陷阱：使用者拖檔進來，拿到的是他沒要的
 #   版本，而畫面上沒有任何地方說發生了什麼。靜態報告已於 Phase 4 退場。
-def _home_page() -> str:
+def _path_form(token: str | None) -> str:
+    """貼路徑那一段。token 模式（非迴圈位址）**不渲染表單**，而是說為什麼沒有。"""
+    if token:
+        return (
+            f'<p class="hint"><b>{esc(_("Opening by path is off"))}</b> — '
+            f'{esc(_("this server is reachable from the network, so it only accepts uploads. Bind to 127.0.0.1 to paste a path."))}</p>'
+        )
+    return f"""<form class="path" method="post" action="/open">
+  <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="{esc(_('Capture file path'))}">
+  <button type="submit">{esc(_('Open'))}</button>
+  <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
+    {esc(_('Flow view - one row per message, NAS drawn UE↔AMF (the default is the wire view, one row per packet)'))}</label>
+</form>
+<p class="hint">
+  {_('<b>Use this one for large files.</b> Pasting a path copies nothing, writes nothing, starts immediately - pushing hundreds of MB over HTTP to a server on the same machine buys you nothing.<br>Both routes open the interactive interface (filter, per-packet decode and bytes, ladder, correlation matrix). The packet list appears while indexing, so the first page is quick; <b>subscriber identities, the ladder and the matrix wait for the full dissection</b>.<br>For a text diagram you can paste into a document, use the CLI: <code>telcoladder analyze &lt;pcap&gt;</code> - it also takes a time range, a subscriber, and a tshark filter.')}
+</p>"""
+
+
+def _home_page(token: str | None = None) -> str:
+    # token 模式的上傳要帶標頭；沒有 token 時這一行是空物件，行為不變。
+    token_header = json.dumps({TOKEN_HEADER: token} if token else {})
     body = f"""{_language_switch()}{_tshark_banner()}
 <div class="drop" id="drop">
   <h2>{esc(_('Drop a pcap here'))}</h2>
@@ -783,15 +890,7 @@ def _home_page() -> str:
 
 <div class="or">{esc(_('or'))}</div>
 
-<form class="path" method="post" action="/open">
-  <input type="text" name="path" placeholder="/path/to/capture.pcap" aria-label="{esc(_('Capture file path'))}">
-  <button type="submit">{esc(_('Open'))}</button>
-  <label class="opt"><input type="checkbox" name="flow" id="flow" value="1">
-    {esc(_('Flow view - one row per message, NAS drawn UE↔AMF (the default is the wire view, one row per packet)'))}</label>
-</form>
-<p class="hint">
-  {_('<b>Use this one for large files.</b> Pasting a path copies nothing, writes nothing, starts immediately - pushing hundreds of MB over HTTP to a server on the same machine buys you nothing.<br>Both routes open the interactive interface (filter, per-packet decode and bytes, ladder, correlation matrix). The packet list appears while indexing, so the first page is quick; <b>subscriber identities, the ladder and the matrix wait for the full dissection</b>.<br>For a text diagram you can paste into a document, use the CLI: <code>telcoladder analyze &lt;pcap&gt;</code> - it also takes a time range, a subscriber, and a tshark filter.')}
-</p>
+{_path_form(token)}
 
 <div class="spinner" id="spin">{esc(_('Analysing…'))}</div>
 
@@ -806,9 +905,11 @@ def _home_page() -> str:
     spin.classList.add('on');
     var flow = document.getElementById('flow');
     var q = flow && flow.checked ? '?flow=1' : '';
+    var headers = {token_header};
+    headers['X-TelcoLadder-Filename'] = encodeURIComponent(f.name);
     fetch('/open-upload' + q, {{
       method: 'POST',
-      headers: {{ 'X-TelcoLadder-Filename': encodeURIComponent(f.name) }},
+      headers: headers,
       body: f
     }})
       .then(function (r) {{
@@ -849,6 +950,7 @@ def make_server(
     *,
     idle_ttl: float = IDLE_TTL,
     viewer: bool = True,
+    token: str | None = None,
 ) -> ThreadingHTTPServer:
     """建好伺服器但不開始服務。測試靠這個拿到真的 socket。
 
@@ -863,6 +965,7 @@ def make_server(
     server.daemon_threads = True
     server.lang = i18n.current()  # type: ignore[attr-defined]  —— handler 執行緒不繼承 contextvars
     server.store = SessionStore(idle_ttl=idle_ttl) if viewer else None  # type: ignore[attr-defined]
+    server.token = token or None  # type: ignore[attr-defined]  —— 非迴圈位址綁定的門票（檔頭「安全」一節）
     return server
 
 
@@ -914,10 +1017,18 @@ def serve(
     *,
     idle_ttl: float = IDLE_TTL,
     viewer: bool = True,
+    token: str | None = None,
 ) -> int:
-    server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer)
+    if not is_loopback(host) and not token:
+        # **拒絕，不是警告。** 這台伺服器拿使用者給的路徑跑 tshark；開在區網上
+        # 而沒有門票，等於把「讀任何檔」交給同網段的每一台機器。
+        print(_('Refusing to bind {host}: this server runs tshark on paths it is handed. Off 127.0.0.1 it needs --token (or TELCOLADDER_TOKEN); with a token, only uploads are accepted.').format(host=host))
+        return 2
+    server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer, token=token)
     bound_host, bound_port = server.server_address[:2]
     print(_('TelcoLadder → http://{host}:{port}   (Ctrl-C to stop)').format(host=bound_host, port=bound_port))
+    if token:
+        print(_('  Access token required on every request (?token= or the {header} header); opening by path is disabled.').format(header=TOKEN_HEADER))
     try:
         find_tshark()
     except TsharkNotFound as exc:

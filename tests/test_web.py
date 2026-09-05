@@ -212,6 +212,110 @@ def test_same_origin_post_is_allowed(server):
     assert status == 200, "同源的 POST 被自己的頁面擋掉了"
 
 
+# ── ① b：離開迴圈位址（T-HOSTBIND，2026-09-05）────────────────────────
+#
+# `--host` 一直接受任何值，而 Host 允許清單只認迴圈位址 —— 綁 0.0.0.0 時，
+# 區網上任何人送 `Host: 127.0.0.1:3005` 就通過，然後 `POST /open` 不需要 sid
+# 就能叫 tshark 讀任意路徑。「不得對外監聽」寫在文件裡，程式沒有守。
+
+
+def test_a_network_bind_without_a_token_is_refused_before_binding(capsys):
+    """`serve --host 0.0.0.0` 沒有 token → 非零退出，並說出原因。**先拒絕再綁**。"""
+    rc = web.serve(host="0.0.0.0", port=0)
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "--token" in out and "tshark" in out
+    assert web.is_loopback("127.0.0.1") and web.is_loopback("localhost") and web.is_loopback("::1")
+    assert not web.is_loopback("0.0.0.0") and not web.is_loopback("192.0.2.10")
+
+
+@pytest.fixture
+def token_server() -> Iterator[tuple[str, int]]:
+    """有 token 的伺服器。仍綁 127.0.0.1（測試不該真的開到區網上），
+    但 token 模式的所有規則都由 `token` 這個參數觸發，與綁定位址無關。"""
+    srv = make_server("127.0.0.1", 0, token="s3cret-for-tests")
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield srv.server_address[0], srv.server_address[1]
+    finally:
+        srv.shutdown()
+        if srv.store is not None:
+            srv.store.close_all()
+        srv.server_close()
+        thread.join(timeout=5)
+
+
+def test_token_mode_gates_every_route_except_the_public_bundle(token_server):
+    """沒 token → 403；標頭或 `?token=` 都可以；`/static/` 是公開程式碼，不擋。
+
+    首頁與 `/app/` 是瀏覽器直接打的，加不了標頭 —— 所以查詢字串也要收；
+    而 `/static/app.js` 由 `<script src>` 載入，兩者都帶不了，所以放行。
+    """
+    status, body = _get(token_server, "/")
+    assert status == 403 and "token" in body.lower()
+    status, _ = _get(token_server, "/", headers={"X-TelcoLadder-Token": "s3cret-for-tests"})
+    assert status == 200
+    status, _ = _get(token_server, "/?token=s3cret-for-tests")
+    assert status == 200
+    status, _ = _get(token_server, "/?token=wrong")
+    assert status == 403
+    status, _ = _get(token_server, "/static/theme.js")
+    assert status == 200, "公開的程式碼不該要 token —— 首頁的 <script src> 帶不了標頭"
+    # token 模式下 Host 不必是迴圈位址：區網上的客戶端送的是自己連到的位址。
+    status, _ = _get(token_server, "/?token=s3cret-for-tests", headers={"Host": "192.0.2.10:3005"})
+    assert status == 200
+
+
+def test_token_mode_disables_opening_by_path(token_server):
+    """有 token 時 `/open`（貼路徑）一律 403 —— 在區網上那是遠端讀檔。上傳照常。"""
+    import json
+
+    status, body = _post(token_server, "/open?token=s3cret-for-tests", f"path={KI_MISMATCH}".encode())
+    assert status == 403 and "path" in body.lower()
+    status, page = _get(token_server, "/?token=s3cret-for-tests")
+    assert 'action="/open"' not in page, "首頁不該再渲染一個註定 403 的表單"
+    status, body = _post(token_server, "/open-upload?token=s3cret-for-tests", KI_MISMATCH.read_bytes(), headers={
+        "Content-Type": "application/octet-stream",
+        "X-TelcoLadder-Filename": "capture.pcap",
+    })
+    assert status == 200, body
+    url = json.loads(body)["url"]
+    assert "token=s3cret-for-tests" in url, "轉去的 /app/ 網址要帶 token，否則 React 頁一開就 403"
+    status, shell = _get(token_server, url)
+    assert status == 200 and 'data-token="s3cret-for-tests"' in shell, "React 從 <script data-token> 拿門票"
+
+
+def _raw(server, request: bytes) -> tuple[int, str]:
+    """用裸 socket 送請求 —— urllib 會自己算 Content-Length，測不到壞的值。"""
+    host, port = server
+    with socket.create_connection((host, port), timeout=5) as sock:
+        sock.sendall(request)
+        sock.shutdown(socket.SHUT_WR)
+        chunks = []
+        while True:
+            data = sock.recv(65536)
+            if not data:
+                break
+            chunks.append(data)
+    text = b"".join(chunks).decode("utf-8", "replace")
+    return int(text.split(" ", 2)[1]), text
+
+
+@pytest.mark.parametrize("length", ["abc", "-1", str(web.MAX_FORM_BYTES + 1)])
+def test_a_bad_content_length_is_a_400_not_a_traceback(server, length):
+    """非數字曾經以 ValueError 炸出 do_POST；負數與巨大值曾經照單全收。"""
+    host, port = server
+    request = (
+        f"POST /open HTTP/1.1\r\nHost: {host}:{port}\r\n"
+        f"Content-Type: application/x-www-form-urlencoded\r\n"
+        f"Content-Length: {length}\r\nConnection: close\r\n\r\n"
+    ).encode()
+    status, text = _raw(server, request)
+    assert status == 400, text[:300]
+    assert "Traceback" not in text
+
+
 # ── ② 兩個入口，一條管線 ──────────────────────────────────────────────
 
 

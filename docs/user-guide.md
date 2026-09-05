@@ -170,6 +170,12 @@ Uploaded files auto-release after 15 idle minutes (`--idle-ttl`
 adjusts); to keep any file from landing on disk at all, use
 `--no-viewer` — the CLI is then the only path.
 
+The server binds 127.0.0.1 only. Binding another address (`--host`) is
+refused unless you also pass `--token` (or set `TELCOLADDER_TOKEN`);
+with a token every request must carry it, and **opening by path is
+disabled** — on a network, handing arbitrary paths to tshark is remote
+file reading, so only uploads are accepted.
+
 ### 3b. Produce Mermaid (paste to GitHub / commit)
 
 ```bash

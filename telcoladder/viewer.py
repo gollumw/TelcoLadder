@@ -624,7 +624,12 @@ def decode_as_json(session: Session) -> dict:
     }
 
 
-def app_page(session: Session, *, idle_ttl: float) -> str:
+def _token_attr(token: str | None) -> str:
+    """token 模式下 React 從這裡拿門票（與 sid 同一個標籤）。沒有就沒有這個屬性。"""
+    return f' data-token="{esc(token)}"' if token else ""
+
+
+def app_page(session: Session, *, idle_ttl: float, token: str | None = None) -> str:
     """React 介面（`/app/<sid>`）的外殼 —— **這是唯一一個檢視器頁面**。
 
     舊的零依賴 JS 檢視器 `/v/<sid>` 在移植期間當對照組並存，已於 Phase 4
@@ -654,7 +659,7 @@ def app_page(session: Session, *, idle_ttl: float) -> str:
 </head>
 <body class="font-sans antialiased">
 <div id="root"></div>
-<script type="module" src="/static/app.js" data-sid="{esc(session.sid)}"></script>
+<script type="module" src="/static/app.js" data-sid="{esc(session.sid)}"{_token_attr(token)}></script>
 </body>
 </html>
 """
