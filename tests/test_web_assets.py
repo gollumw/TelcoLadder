@@ -282,6 +282,56 @@ def test_the_only_data_seam_is_the_source_layer() -> None:
     )
 
 
+#: 允許用計時器推動狀態的元件。**現在是空的，而空的就是不變量。**
+#: 要加一項（例如自動消失的提示條）就寫在這裡並說明它報告的是什麼 ——
+#: 改得過去是刻意的，但要改得出聲。
+_TIMER_DRIVEN_STATE_ALLOWED: frozenset[str] = frozenset()
+
+
+def test_no_control_reports_success_from_a_timer() -> None:
+    """按鈕不准用計時器假裝自己做完了事。
+
+    2026-09-05 修掉的那顆「上傳 PCAP / 重新關聯」就是這個形狀：處理函式整個
+    只有兩行 `setTimeout` —— 轉 0.9 秒假圈圈，接著打勾說「已重新關聯 N 個封包」，
+    然後復原。它不上傳、不重新關聯、**不送任何請求**。從設計沙盒移植進來時
+    留下的空殼，一直沒接上。
+
+    這是本專案最在意的那一類：**畫面宣稱成功，而什麼都沒發生**，使用者沒有
+    任何辦法察覺 —— 他按了、看到綠勾，合理地以為檔案進去了。真實的完成訊號
+    只能來自請求的結果（prop 回呼）或一次真正的導覽。
+
+    同一輪拿掉的還有時間範圍下拉：`timeRange` 只被那個 select 自己讀寫，
+    而預設值「最近 1 小時」等於在宣稱底下每個數字只涵蓋那一小時。
+
+    突變：把 `setTimeout(() => setReassociateState("done"), 900)` 放回去 → 紅。
+    """
+    offenders = []
+    for path in sorted((_WEB / "src").rglob("*.tsx")):
+        if path.name in _TIMER_DRIVEN_STATE_ALLOWED:
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"setTimeout\s*\(\s*\(\s*\)\s*=>\s*set[A-Z]", line):
+                offenders.append(f"{path.name}:{lineno}")
+    assert not offenders, (
+        f"這些地方用計時器推動狀態：{offenders}。\n"
+        "完成訊號要來自請求的結果，不是計時器 —— 計時器只會讓畫面**宣稱**做完了。"
+    )
+
+
+def test_the_removed_fake_controls_do_not_come_back() -> None:
+    """那兩個控制項的字串不得回到原始碼或建置產物。
+
+    翻譯表那邊已有「沒人用的 key 要紅」的守衛，但**字串消失不等於控制項消失**
+    —— 有人可以換個措辭再做一顆一樣假的。這裡釘的是這兩句話本身，因為它們
+    各自都是一個宣稱：一句宣稱重新關聯完成了，一句宣稱畫面只涵蓋一小時。
+    """
+    haystack = "\n".join(
+        p.read_text(encoding="utf-8") for p in (_WEB / "src").rglob("*.ts*")
+    ) + _BUILT_JS.read_text(encoding="utf-8")
+    for claim in ("Re-correlated", "Upload PCAP / re-correlate", "Last 24 hours"):
+        assert claim not in haystack, f"假控制項的字串又出現了：{claim!r}"
+
+
 # ── 伺服器端產的那兩頁（首頁 / 錯誤頁）────────────────────────────────
 #
 # 它們**不吃 Tailwind** —— 樣式來自 `chrome.CHROME_CSS` ＋ `web._EXTRA_CSS`，
