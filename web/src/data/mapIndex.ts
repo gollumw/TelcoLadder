@@ -509,6 +509,7 @@ export interface OverviewJson {
     count: number;
     frames: number[];
     subscribers: OverviewRefJson[];
+    peers: OverviewPeerJson[];
   }>;
   failed_procedures: Array<{
     procedure: string;
@@ -521,7 +522,14 @@ export interface OverviewJson {
     failures: number;
     duration_s: number;
     note: string;
+    peers: OverviewPeerJson[];
   }>;
+}
+
+interface OverviewPeerJson {
+  src: string;
+  dst: string;
+  frame: number;
 }
 
 /** 與 `subscriberHandle` 同一條規則：SUPI 是數字本身，其餘是 `kind:raw`。 */
@@ -575,6 +583,7 @@ export function toOverview(body: OverviewJson): Overview {
       count: c.count,
       frames: c.frames,
       subscribers: (c.subscribers ?? []).map(refToSubscriber),
+      peers: c.peers ?? [],
     })),
     failedProcedures: (body.failed_procedures ?? []).map((p) => ({
       kind: p.procedure,
@@ -587,6 +596,7 @@ export function toOverview(body: OverviewJson): Overview {
       failures: p.failures,
       durationS: p.duration_s,
       note: p.note,
+      peers: p.peers ?? [],
     })),
   };
 }

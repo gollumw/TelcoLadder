@@ -314,6 +314,12 @@ const zh_TW: Record<string, string> = {
   "No plain-language explanation is catalogued for this cause.": "這個 cause 還沒有收錄白話說明。",
   "Most common root causes (field experience)": "現場最常見的根因（現場經驗）",
   "From the cause table, written by people - what usually causes this code in the field, not a diagnosis of this capture.": "來自 cause 表、由人寫的：這個號碼在現場通常是什麼造成的 —— 不是對這份擷取檔的診斷。",
+  "{n} occurrence(s)": "{n} 次",
+  "Between": "端點",
+  "Between (no subscriber is identifiable in these messages)":
+    "端點（這些訊息裡認不出任何訂戶）",
+  "No subscriber is identifiable in these messages": "這些訊息裡認不出任何訂戶",
+  "No message carried a subscriber identity": "沒有任何訊息帶得出訂戶身分",
   "Affected subscribers": "受影響的訂戶",
   "Open this subscriber's ladder at the failing message": "打開這位訂戶的梯形圖並跳到失敗那一則",
   "Open in ladder": "在梯形圖中開啟",
