@@ -4,15 +4,31 @@
 判定不出來時一律退回顯示 IP —— **不猜**。一個標錯網元名稱的時序圖
 比一個標著 IP 的更糟：後者只是不方便，前者會讓人得出錯誤結論。
 
-判定階梯由強到弱，先命中者為準：
+證據分四層，**由強到弱；只有最強那一層的票會被計算**（`EVIDENCE_TIER`）：
 
-1. **協定角色訊息**：只有 gNB 會送 NGSetupRequest / InitialUEMessage；
-   只有 SMF 會送 PFCP Session Establishment Request。這是最強的證據。
-2. **標準埠**：N2（NGAP）的 AMF 側固定聽 38412（TS 38.412）。
-   PFCP 的 8805 **不算** —— 那個埠 N4 兩端都在聽，判不出誰是誰。
-3. **SBI 路徑前綴**：`:path` 的第一段就是服務名，而服務名對應 NF 型別
-   （TS 29.5xx 的命名慣例）。`User-Agent` 則帶發送端的 NF 型別（TS 29.500）。
-4. 都沒命中 → 留 None，畫圖時顯示 IP。
+0. **線路上寫著的，與協定方向**：訊息內容直接指名某位址是哪個網元（adapter 以
+   `NF_ROLE_HINTS_KEY` 交出來，`wire-hint`）、trace 檔的 `<initiator type>`（`trace-hint`）；只有 gNB 會送
+   InitialUEMessage、只有 SMF 會送 PFCP Session Establishment Request、
+   S6a 的 AIR 一定從 MME 出去（`ngap-dir` / `s1ap-dir` / `pfcp-dir` / `diameter-dir`）。
+1. **標準埠**：N2 的 AMF 側固定聽 38412（TS 38.412，`n2-port`）。PFCP 的 8805
+   **不算** —— 那個埠 N4 兩端都在聽，判不出誰是誰。
+2. **SBI 服務名**：`:path` 的第一段就是服務名，服務名對應提供它的 NF
+   （`service`）；消費者唯一的服務也指名呼叫方（`service-consumer`）。
+3. **`User-Agent`**：發送端自己宣稱的 NF 型別（TS 29.500）。最弱 —— 它是一個
+   字串，而且經過轉送時描述的是原始發送端。
+
+**矛盾只在同一層內成立。** 2026-09-03 之前每一層票數相等，`len(candidates)==1`
+才採納：一票 `user-agent` 就能否決 `wire-hint`，整條泳道退回 IP，而畫面上沒有
+任何地方說「本來判得出，被一票弱證據否決了」（T-NFLADDER）。現在低層永遠不能
+否決高層；最強那一層內部互斥才留白，並由 `role_contradictions()` 講出是哪幾個
+角色打架。
+
+**同一層內矛盾時，再以 (位址, 埠) 為鍵試一次**：NAT／VIP 後面的兩個網元共用
+一個 IP、各聽各的埠，分開看各自都判得出。判得出就以 `ip:port` 為鍵回傳，
+`apply_roles` 先查它再查裸 IP。分不開才真的留白。
+
+都沒命中 → 留 None，畫圖時顯示 IP。**不猜**：標錯比不標更糟，這一條沒變 ——
+變的只是否決的順序。
 """
 
 from __future__ import annotations
@@ -274,12 +290,17 @@ def resolve_roles_with_basis(messages: list[Message]) -> dict[str, tuple[str, st
     回傳 IP → (角色, 依據句)。判不出來的 IP 不會出現在結果裡；
     **為什麼判不出來**由 `role_contradictions()` 回答。
     """
-    relays, votes = _tally(messages)
+    relays, votes, port_votes = _tally(messages)
     resolved: dict[str, tuple[str, str]] = dict(relays)
     for ip, candidates in votes.items():
         role = _collapse(candidates)
         if role is not None:
-            resolved[ip] = (role, candidates[role] if role in candidates else next(iter(candidates.values())))
+            # 依據取自最強那一層 —— 給人看的那一句要對得上「為什麼採納」。
+            top = _strongest(candidates)
+            resolved[ip] = (role, top.get(role) or next(iter(top.values())))
+            continue
+        # IP 層矛盾：NAT／VIP 後面可能是兩台各聽各的埠。分得開就以 `ip:port` 為鍵。
+        resolved.update(_split_by_port(ip, port_votes))
     return resolved
 
 
@@ -292,11 +313,12 @@ def role_contradictions(messages: list[Message]) -> dict[str, tuple[str, ...]]:
     一機扮兩角），工具正確地不標它，卻沒說為什麼。這裡把「為什麼」交出去，
     措辭只寫事實，不下結論。
     """
-    _relays, votes = _tally(messages)
+    _relays, votes, port_votes = _tally(messages)
     return {
-        ip: tuple(sorted(candidates))
+        # 只列最強那一層裡打架的角色 —— 被壓過的弱票不是矛盾的一方。
+        ip: tuple(sorted(_strongest(candidates)))
         for ip, candidates in votes.items()
-        if _collapse(candidates) is None
+        if _collapse(candidates) is None and not _split_by_port(ip, port_votes)
     }
 
 
@@ -310,19 +332,75 @@ ROLE_FAMILIES: tuple[frozenset[str], ...] = (
 _FAMILY_NAME = {frozenset({"PGW", "PCEF"}): "PGW"}
 
 
+#: 依據種類 → 證據層（0 最強）。檔頭有各層的理由。**沒列的種類算最弱**：
+#: 新加一種證據而忘了在這裡宣告它的強度，它只會被壓過，不會去否決別人。
+EVIDENCE_TIER: dict[str, int] = {
+    "wire-hint": 0, "trace-hint": 0,
+    "ngap-dir": 0, "s1ap-dir": 0, "pfcp-dir": 0, "diameter-dir": 0,
+    "n2-port": 1,
+    "service": 2, "service-consumer": 2,
+    "user-agent": 3,
+}
+_WEAKEST = max(EVIDENCE_TIER.values()) + 1
+
+
+def _tier(basis: str) -> int:
+    return EVIDENCE_TIER.get(basis.partition(":")[0], _WEAKEST)
+
+
+def _strongest(candidates: dict[str, str]) -> dict[str, str]:
+    """只留最強那一層的票。同一個角色多張票時 `vote()` 已只留第一個依據，
+    所以這裡每個角色一個依據，層級看那一個。"""
+    if not candidates:
+        return {}
+    best = min(_tier(basis) for basis in candidates.values())
+    return {role: basis for role, basis in candidates.items() if _tier(basis) == best}
+
+
 def _collapse(candidates: dict[str, str]) -> str | None:
-    """一組角色票 → 一個角色，或 None（矛盾）。"""
-    if len(candidates) == 1:
-        return next(iter(candidates))
-    roles = frozenset(candidates)
+    """一組角色票 → 一個角色，或 None（**最強那一層內**矛盾）。
+
+    低層的票不參與：一票 `user-agent` 不能讓 `n2-port` 判出來的 AMF 消失。
+    突變：拿掉 `_strongest` → `test_a_weak_vote_cannot_veto_a_strong_one` 紅。
+    """
+    top = _strongest(candidates)
+    if len(top) == 1:
+        return next(iter(top))
+    roles = frozenset(top)
     for family in ROLE_FAMILIES:
         if roles <= family:
             return _FAMILY_NAME[family]
     return None
 
 
-def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[str, dict[str, str]]]:
-    """第一趟找轉送者、第二趟收票。回傳 (轉送者, 位址 → {角色: 依據})。
+def _split_by_port(ip: str, port_votes: dict[tuple[str, int], dict[str, str]]) -> dict[str, tuple[str, str]]:
+    """同一個 IP 在最強層內矛盾時，看每個埠各自能不能判出來。
+
+    兩個以上的埠、每個埠都判得出、而且判出來的角色**確實不同**（相同的話 IP 層
+    就不會矛盾）才算分開成功。回傳 `ip:port` → (角色, 依據)；分不開回空 dict。
+    """
+    ports = sorted(port for key, port in port_votes if key == ip)
+    if len(ports) < 2:
+        return {}
+    out: dict[str, tuple[str, str]] = {}
+    for port in ports:
+        candidates = port_votes[(ip, port)]
+        role = _collapse(candidates)
+        if role is None:
+            return {}
+        top = _strongest(candidates)
+        out[f"{ip}:{port}"] = (role, top.get(role) or next(iter(top.values())))
+    if len({role for role, _b in out.values()}) < 2:
+        return {}
+    return out
+
+
+def _tally(messages: list[Message]) -> tuple[
+    dict[str, tuple[str, str]], dict[str, dict[str, str]], dict[tuple[str, int], dict[str, str]]
+]:
+    """第一趟找轉送者、第二趟收票。回傳 (轉送者, 位址 → {角色: 依據}, (位址, 埠) → {角色: 依據})。
+
+    第三份是同一批票依埠再記一次 —— 只在 IP 層矛盾時才會被看（`_split_by_port`）。
 
     依據是**機器形式** `kind[:param]`（如 `n2-port`、`service:nudm-sdm`、
     `mirror:20`）—— 語言無關，句子由呈現層依請求語言產生（`viewer.BASIS_TEXT`，
@@ -339,6 +417,10 @@ def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[st
     """
     relays = find_relays(messages)
     votes: dict[str, dict[str, str]] = defaultdict(dict)
+    port_votes: dict[tuple[str, int], dict[str, str]] = defaultdict(dict)
+    # 正在處理的那則訊息的兩端 —— `vote()` 靠它把票也記到 (位址, 埠) 上。
+    # 線路提示（wire-hint）指名的位址若不是這則的兩端，就沒有埠可記，只記 IP 層。
+    current: tuple[Endpoint, ...] = ()
     # 以 3xxx 協定錯誤收尾的 Diameter 交易：回的是 agent，不是應用對端
     # （`_diameter_vote` 的說明）。先掃一遍收齊，投票時整筆跳過。
     agent_transactions = frozenset(
@@ -361,8 +443,12 @@ def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[st
         if ip in relays:
             return
         votes[ip].setdefault(role, why)
+        for endpoint in current:
+            if endpoint.key == ip and endpoint.port is not None:
+                port_votes[(ip, endpoint.port)].setdefault(role, why)
 
     for msg in messages:
+        current = (msg.src, msg.dst)
         src_ip, dst_ip = _endpoint_key(msg.src), _endpoint_key(msg.dst)
 
         # ── 階梯 1：只有某一方會發起的程序 ──
@@ -471,10 +557,10 @@ def _tally(messages: list[Message]) -> tuple[dict[str, tuple[str, str]], dict[st
                     # 照收會把 SMF 這一票投在 SCP 身上。`vote()` 會擋掉。
                     vote(src_ip, nf_type, f"user-agent:{agent}")
 
-    # 只採納沒有矛盾的判定（`_collapse`）。同一個 IP 收到兩種互斥的角色代表
-    # 推論鏈有問題，這時寧可不標 —— 標錯比不標更糟；矛盾本身由
-    # `role_contradictions` 講出來。
-    return relays, votes
+    # 只採納沒有矛盾的判定（`_collapse`，看最強那一層）。同一個 IP 在最強層
+    # 收到兩種互斥的角色代表推論鏈有問題，這時寧可不標 —— 標錯比不標更糟；
+    # 矛盾本身由 `role_contradictions` 講出來。
+    return relays, votes, port_votes
 
 
 def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Message]:
@@ -486,9 +572,15 @@ def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Me
     """
     roles = resolve_roles(messages)
 
+    def role_of(endpoint: Endpoint) -> str | None:
+        # 先查 `ip:port`（VIP 後面分開判出來的），再查裸位址。
+        if endpoint.port is not None and f"{endpoint.key}:{endpoint.port}" in roles:
+            return roles[f"{endpoint.key}:{endpoint.port}"]
+        return roles.get(endpoint.key)
+
     for msg in messages:
-        msg.src = msg.src.with_role(roles.get(msg.src.key))
-        msg.dst = msg.dst.with_role(roles.get(msg.dst.key))
+        msg.src = msg.src.with_role(role_of(msg.src))
+        msg.dst = msg.dst.with_role(role_of(msg.dst))
 
         if nas_from_ue and msg.protocol == "nas-5gs":
             # gNB 那一側換成 UE。判不出 gNB 是誰就維持原樣，不硬改。

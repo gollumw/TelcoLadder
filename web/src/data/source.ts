@@ -423,6 +423,15 @@ export function currentSid(): string | null {
   return script?.dataset.sid ?? null;
 }
 
+/**
+ * 伺服器綁在非迴圈位址時的門票（`viewer.app_page()` 注在同一個 `<script>` 上）。
+ * 沒有就是 null —— 本機模式沒有這回事，一個標頭都不多送。
+ */
+export function currentToken(): string | null {
+  const script = document.querySelector<HTMLScriptElement>("script[data-sid]");
+  return script?.dataset.token ?? null;
+}
+
 export function wantsApiSource(): boolean {
   const asked = new URLSearchParams(window.location.search).get("source");
   if (asked === "mock") return false;

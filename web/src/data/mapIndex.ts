@@ -361,6 +361,9 @@ export interface PduSessionJson {
   qosFlowId?: SourcedJson;
   upfN3Teid?: SourcedJson;
   gnbN3Teid?: SourcedJson;
+  upfN3TeidObserved?: SourcedJson;
+  n3UplinkPackets?: SourcedJson;
+  n3DownlinkPackets?: SourcedJson;
 }
 
 function sourceLine(field: SourcedJson | undefined): string | undefined {
@@ -390,6 +393,9 @@ export function toCorrelationEntry(row: PduSessionJson): CorrelationEntry {
     ueIp: row.ueIp?.value,
     upfN3Teid: row.upfN3Teid?.value,
     gnbN3Teid: row.gnbN3Teid?.value,
+    upfN3TeidObserved: row.upfN3TeidObserved?.value,
+    n3UplinkPackets: asNumber(row.n3UplinkPackets),
+    n3DownlinkPackets: asNumber(row.n3DownlinkPackets),
     qosFlowId: asNumber(row.qosFlowId),
     fiveQi: asNumber(row.fiveQi),
     // GUTI 還沒抽 —— 留空，呈現層會顯示 Uncaptured / N/A。
@@ -399,6 +405,9 @@ export function toCorrelationEntry(row: PduSessionJson): CorrelationEntry {
       ueIp: sourceLine(row.ueIp),
       upfN3Teid: sourceLine(row.upfN3Teid),
       gnbN3Teid: sourceLine(row.gnbN3Teid),
+      upfN3TeidObserved: sourceLine(row.upfN3TeidObserved),
+      n3UplinkPackets: sourceLine(row.n3UplinkPackets),
+      n3DownlinkPackets: sourceLine(row.n3DownlinkPackets),
       qosFlowId: sourceLine(row.qosFlowId),
     },
   };

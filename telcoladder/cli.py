@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 from pathlib import Path
@@ -209,6 +210,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         port=args.port,
         idle_ttl=args.idle_ttl,
         viewer=not args.no_viewer,
+        token=args.token or None,
     )
 
 
@@ -333,6 +335,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=IDLE_TTL,
         metavar=_("SECONDS"),
         help=_("Release an uploaded copy after this much idle time (default {seconds}). Captures opened by path are unaffected - those are never copied.").format(seconds=int(IDLE_TTL)),
+    )
+    serve_cmd.add_argument(
+        "--token",
+        default=os.environ.get("TELCOLADDER_TOKEN", ""),
+        metavar=_("SECRET"),
+        help=_("Required when --host is not a loopback address (also read from TELCOLADDER_TOKEN). Every request must then carry it, and opening a capture by path is disabled - only uploads are accepted."),
     )
     serve_cmd.add_argument(
         "--no-viewer",

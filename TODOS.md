@@ -1001,7 +1001,24 @@ string: if `#111` has English `plain`, the schema may not say otherwise.
 
 ---
 
-## T-INDEXRACE | the published packet index aliases the list the worker is still appending to (P0)
+## ~~T-INDEXRACE | the published packet index aliases the list the worker is still appending to~~ (**completed 2026-09-05**)
+
+**What was done**: `session._publish()` hands out a copy (`rows[:]`) every
+`_PUBLISH_EVERY` rows, so a published list is never mutated again;
+`viewer.index_json` and `effective_matched` take the snapshot and the
+filter set under the lock and do the O(N) paging outside it. Each
+`start_index()` bumps `Session.index_generation`; the worker checks it at
+every publish and at the stage transitions, and a superseded worker (a
+`/decode-as` rerun started a new one) stops writing entirely — before, two
+workers overwrote the same list and whichever finished last set `done`.
+`/refilter` moved into `viewer.refilter()` with a `filter_generation`: a
+slow tshark run whose result arrives after a newer filter is dropped, and
+the response reports the filter actually in force. Five tests in
+`tests/test_index_race.py`, no tshark involved; mutation-checked
+(publishing the live list fails three of them).
+
+Original entry follows.
+
 
 **What**: `session._index_into` publishes `session.index.rows = rows` under
 the lock every `_PUBLISH_EVERY` rows (`session.py:426-429`) and then keeps
@@ -1039,7 +1056,25 @@ it. That is one change, not three.
 
 ---
 
-## T-NFLADDER | `nf.py` documents a priority ladder and implements unanimity (P0)
+## ~~T-NFLADDER | `nf.py` documents a priority ladder and implements unanimity~~ (**completed 2026-09-05**)
+
+**What was done**: evidence is tiered (`nf.EVIDENCE_TIER`): wire/trace
+statements and protocol-direction rules (0) > the N2 port (1) > SBI
+service names (2) > `User-Agent` (3); undeclared kinds are weakest.
+`_collapse` looks only at the strongest tier that voted, so a lower tier
+can never veto a higher one and a contradiction blanks a role only within
+that tier; `role_contradictions` names only the roles that actually
+fought. When the strongest tier does contradict, `_split_by_port` retries
+per `(address, port)` and, if each port resolves to a different role,
+returns `ip:port` keys — `apply_roles` and the packet list's endpoint cell
+look those up before the bare address. Twelve tests in
+`tests/test_nf_ladder.py`, including a pin of every fixture's resolved
+roles (none may change or disappear) and a mutation check (flattening the
+tiers fails two tests). The module docstring now describes what the code
+does.
+
+Original entry follows.
+
 
 **What**: the module docstring (`nf.py:6-15`) says "判定階梯由強到弱，先命中者
 為準". The code (`nf.py:366-370`) accepts an IP's role only when
@@ -1079,7 +1114,29 @@ touches `viewer._basis_sentence` (new basis codes) and the i18n catalogue.
 
 ---
 
-## T-MATRIX-N4 | the PDU-session matrix promises three interfaces and joins two (P0)
+## ~~T-MATRIX-N4 | the PDU-session matrix promises three interfaces and joins two~~ (**completed 2026-09-05**)
+
+**What was done**: PFCP carries no PDU Session ID IE, so the reverse
+lookup lives in `pdusession._join_user_plane`, not in an adapter: the
+tunnel key `gtp_tunnel(address, TEID)` that NGAP's promised F-TEID yields
+is the same key the PFCP and GTP-U adapters already emit as identity, so
+the matrix maps key → (session, UPF/gNB side) and scans the flow. Three
+new cells, each `Sourced`: `upf_n3_teid_observed` (the F-TEID the UPF
+actually allocated, source the PFCP Session Establishment Response,
+shown as Wireshark's PFCP pane shows it), `n3_uplink_packets` /
+`n3_downlink_packets` (G-PDUs seen per direction — a count, not a KPI).
+An N2-only capture has none of the three; that is absence, not a promise.
+The browser matrix shows the observed TEID beside the promised one and
+the G-PDU counts. Oracle tests: the observed TEID equals the promised
+one byte for byte and appears in tshark's `pfcp.f_teid.teid`; the
+downlink count equals tshark's G-PDU count for that TEID and address
+(10 on `userplane`). Mutation-checked (skipping the join fails two).
+
+**Not done**: the `summary` JSON's `pdu_sessions` keeps its pinned field
+set; the new cells are on `/correlation` only.
+
+Original entry follows.
+
 
 **What**: `pdusession.py`'s header says it assembles a data connection from
 fields scattered across **three** interfaces. Only two adapters write the
@@ -1117,7 +1174,26 @@ change is a `summary_version` bump.
 
 ---
 
-## T-HOSTBIND | `--host` off loopback turns the Host check into decoration (P0)
+## ~~T-HOSTBIND | `--host` off loopback turns the Host check into decoration~~ (**completed 2026-09-05**)
+
+**What was done**: `serve()` refuses a non-loopback bind without `--token`
+(exit 2, reason printed) — the rule that lived only in a document is now in
+the program. With a token: every request must carry it (`X-TelcoLadder-Token`
+or `?token=`; `/static/` is exempt, it is public code); the Host allowlist is
+replaced by the token check (DNS rebinding needs a request the server
+accepts, and the attacker's page has no token); `POST /open` by path answers
+403 and the home page does not render the form; uploads carry the token and
+the `/app/` URL passes it to the React page via `data-token`. `_read_form`
+caps `Content-Length` at 1 MiB and answers 400 on a non-numeric or negative
+value instead of raising out of `do_POST`. Six tests in `tests/test_web.py`.
+
+**Not done, deliberately**: the home page still has no CSP (inline script
+and style). Moving it to a static file touches `chrome.py`'s theme CSS and
+is not part of the network-exposure fix; the page makes no external
+requests, so the missing header protects against nothing that exists today.
+
+Original entry follows.
+
 
 **What**: `cli.py:319-322` and `web.py:836-850` accept any bind address.
 The Host-header allowlist (`web.py:129-145`) is a DNS-rebinding defence for

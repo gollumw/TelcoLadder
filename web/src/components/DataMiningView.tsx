@@ -469,10 +469,10 @@ export function DataMiningView({
                     </td>
                     <td className="px-2 py-1 text-fg-dim">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
                     <td className="px-2 py-1 text-fg-muted">
-                      <EndpointCell ip={p.srcIp} port={p.srcPort} nf={nfMap[p.srcIp]} />
+                      <EndpointCell ip={p.srcIp} port={p.srcPort} nf={nfMap[`${p.srcIp}:${p.srcPort}`] ?? nfMap[p.srcIp]} />
                     </td>
                     <td className="px-2 py-1 text-fg-muted">
-                      <EndpointCell ip={p.dstIp} port={p.dstPort} nf={nfMap[p.dstIp]} />
+                      <EndpointCell ip={p.dstIp} port={p.dstPort} nf={nfMap[`${p.dstIp}:${p.dstPort}`] ?? nfMap[p.dstIp]} />
                     </td>
                     <td className="px-2 py-1 text-signal-cyan-fg font-medium">{p.protocol}</td>
                     <td className="px-2 py-1 text-fg-dim">{p.length}</td>

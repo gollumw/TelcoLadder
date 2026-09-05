@@ -889,11 +889,31 @@ export function SessionAnalysisView({
                       source={activeSession.sourceInterfaces.upfN3Teid ?? "—"}
                       uncaptured={!activeSession.upfN3Teid}
                     />
+                    {/* N4 實際配發的值，與上一列 NGAP 承諾的並排 —— 兩者相等是 N2 沒騙人的
+                        證據；只抓 N2 的檔沒有這一格（不是漏接，是檔案裡沒有 PFCP）。
+                        寫法各照 Wireshark 自己的窗格：NGAP 是 `00:00:c8:58`，PFCP 是 `0x0000c858`。 */}
+                    <MatrixRow
+                      label="UPF N3 TEID (N4 observed)"
+                      value={formatUncaptured(activeSession.upfN3TeidObserved)}
+                      source={activeSession.sourceInterfaces.upfN3TeidObserved ?? "—"}
+                      uncaptured={!activeSession.upfN3TeidObserved}
+                    />
                     <MatrixRow
                       label="gNB N3 TEID"
                       value={formatUncaptured(activeSession.gnbN3Teid)}
                       source={activeSession.sourceInterfaces.gnbN3Teid ?? "—"}
                       uncaptured={!activeSession.gnbN3Teid}
+                    />
+                    {/* 隧道上看到的 G-PDU 數 —— 計數，不是 KPI（沒有吞吐、沒有遺失率）。 */}
+                    <MatrixRow
+                      label="N3 G-PDUs (uplink / downlink)"
+                      value={
+                        activeSession.n3UplinkPackets === undefined && activeSession.n3DownlinkPackets === undefined
+                          ? formatUncaptured(undefined)
+                          : `${activeSession.n3UplinkPackets ?? 0} / ${activeSession.n3DownlinkPackets ?? 0}`
+                      }
+                      source={activeSession.sourceInterfaces.n3DownlinkPackets ?? activeSession.sourceInterfaces.n3UplinkPackets ?? "—"}
+                      uncaptured={activeSession.n3UplinkPackets === undefined && activeSession.n3DownlinkPackets === undefined}
                     />
                     <MatrixRow
                       label="QFI / 5QI"
