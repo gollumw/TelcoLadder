@@ -30,7 +30,7 @@ plugin contract in [docs/plugin-contract.md](docs/plugin-contract.md).
    once the finding is written. From it you may record **numbers and shapes**
    ("14 events, 1 lane"; "SBI carried NAS and we missed it") and nothing
    else: no addresses, hostnames, DNNs, PLMN identifiers, filenames,
-   topology, or employer. Rule 4 is the general form; this is the case where
+   topology, or employer. Red line 4 above is the general form; this is the case where
    the data is not yours to trade off, so there is no judgement call to make.
    Every leak this project has had came from **writing about** a capture, not
    from committing one.
