@@ -54,6 +54,15 @@ def test_the_readme_states_the_real_number_of_catalogued_causes() -> None:
         f"重跑檔頭那行 Chrome 指令把 docs/social-preview.png 也一起更新"
     )
 
+    # 第三處：`AGENTS.md` 拿這個數字對 agent 說明「你引用的是什麼」。它一樣會過期，
+    # 而 agent 不會去查證我們自己寫的數字。
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    in_agents = re.search(r"(\d+) catalogued cause values", agents)
+    assert in_agents, "AGENTS.md 不再宣稱一個數字了 —— 改了句子請一併改這條測試"
+    assert int(in_agents.group(1)) == measured, (
+        f"AGENTS.md 說 {in_agents.group(1)} 條 cause，實際 {measured} 條"
+    )
+
 
 def test_the_readme_coverage_table_counts_each_generation() -> None:
     """README 的「What it reads」表把 775 拆成三代 —— **三個數字，三句宣稱**。

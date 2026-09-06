@@ -48,3 +48,41 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The MCP Registry entry is only a pointer to the PyPI package, so it must go
+  # up after the package exists: the registry verifies namespace ownership by
+  # fetching this version's README from PyPI and looking for its `mcp-name:`
+  # token. Hence `needs: publish`, not a second workflow on `push: tags` — that
+  # would race this one and validate against a version that is not there yet.
+  registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    # Deliberately NOT `environment: pypi`. That environment is what PyPI's
+    # trusted publisher is bound to; this job's OIDC token should buy exactly
+    # one thing, publishing under our own MCP namespace, and nothing else.
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned and checksum-verified. The upstream instructions pipe
+      # `releases/latest/download/...` straight into tar inside a job that can
+      # mint an OIDC token; upstream publishes checksums, so this costs two
+      # lines and removes an unreviewed binary from the trust path.
+      - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: "1.8.1"
+        run: |
+          base="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}"
+          curl -fsSL -O "$base/mcp-publisher_linux_amd64.tar.gz"
+          curl -fsSL -O "$base/registry_${MCP_PUBLISHER_VERSION}_checksums.txt"
+          grep ' mcp-publisher_linux_amd64.tar.gz$' "registry_${MCP_PUBLISHER_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+
+      - name: Authenticate to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      # If this fails validation on a fresh release, PyPI has not propagated
+      # yet: re-run this job. It is never a missing token — there isn't one.
+      - name: Publish
+        run: ./mcp-publisher publish

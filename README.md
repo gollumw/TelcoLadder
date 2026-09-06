@@ -1,5 +1,7 @@
 # TelcoLadder
 
+<!-- mcp-name: io.github.gollumw/telcoladder -->
+
 [![CI](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/telcoladder)](https://pypi.org/project/telcoladder/)
 [![Python](https://img.shields.io/pypi/pyversions/telcoladder)](https://pypi.org/project/telcoladder/)
@@ -387,6 +389,9 @@ the large-capture path works with scripting turned off.
 telcoladder summarize capture.pcapng            # paste into the prompt, or into the ticket
 claude mcp add telcoladder -- telcoladder mcp   # or mount it as tools
 ```
+
+The tool contract an agent should read first — what each tool answers, and the
+rules that keep an answer trustworthy — is [`AGENTS.md`](AGENTS.md).
 
 `summarize` is the same analysis as `analyze` and `serve`, written as one page an
 agent can read without hallucinating a state machine: what the capture contains,
