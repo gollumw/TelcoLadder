@@ -44,6 +44,45 @@ def test_the_readme_states_the_real_number_of_catalogued_causes() -> None:
     )
 
 
+def test_the_readme_coverage_table_counts_each_generation() -> None:
+    """README 的「What it reads」表把 775 拆成三代 —— **三個數字，三句宣稱**。
+
+    總數那條測試守不到拆分：4G 加一張表、IMS 少一張，總數對得上、分項卻錯了，
+    而讀者看的正是分項（「IMS 有 333 條」才是他決定要不要用的理由）。
+    表名的前綴就是世代，量出來比對。
+    """
+    from telcoladder.causes import _load_tables
+
+    generations = {
+        "5G core": ("ngap_", "nas_5g", "pfcp"),
+        "4G / EPC": ("s1ap_", "nas_eps", "gtpv2"),
+        "IMS": ("diameter_", "sip_status", "q850", "megaco"),
+    }
+    tables = _load_tables()
+    assigned = {
+        name: gen
+        for name in tables
+        for gen, prefixes in generations.items()
+        if name.startswith(prefixes)
+    }
+    assert set(assigned) == set(tables), (
+        f"這些表沒有被歸到任何世代，README 的表就漏了它們："
+        f"{sorted(set(tables) - set(assigned))}"
+    )
+
+    measured = {gen: 0 for gen in generations}
+    for name, entries in tables.items():
+        measured[assigned[name]] += len(entries)
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    for gen, count in measured.items():
+        row = re.search(rf"^\| \*\*{re.escape(gen)}\*\* \|.*\| (\d+) \|$", readme, re.M)
+        assert row, f"README 的覆蓋表沒有 {gen} 這一列了 —— 改了表請一併改這條測試"
+        assert int(row.group(1)) == count, (
+            f"README 說 {gen} 有 {row.group(1)} 條 cause，實際 {count} 條"
+        )
+
+
 def test_the_readme_does_not_promise_a_clause_for_every_cause() -> None:
     """**7 張表有 clause，11 張沒有** —— 4G（S1AP / NAS-EPS）、GTPv2、PFCP
     與 Diameter 只帶規範文件，不帶條號，因為那些條號沒有經過人工核對

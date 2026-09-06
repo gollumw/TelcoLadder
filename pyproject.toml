@@ -33,7 +33,7 @@ dependencies = [
 Homepage = "https://github.com/gollumw/TelcoLadder"
 Repository = "https://github.com/gollumw/TelcoLadder"
 Issues = "https://github.com/gollumw/TelcoLadder/issues"
-Documentation = "https://github.com/gollumw/TelcoLadder/blob/master/docs/WALKTHROUGH.md"
+Documentation = "https://github.com/gollumw/TelcoLadder/blob/master/docs/user-guide.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
