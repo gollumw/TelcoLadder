@@ -108,8 +108,8 @@ causes:
 
   3006:
     name: "DIAMETER_REDIRECT_INDICATION"
-    plain: 'A redirect agent is telling the sender to send this request somewhere else (Redirect-Host) - it is a routing instruction, not a rejection of the subscriber.'
-    plain_zh: 'redirect agent 告訴發送端「這個請求改送別處」（Redirect-Host）—— 這是路由指示，不是拒絕訂戶。'
+    plain: 'A redirect agent is telling the sender to send this request somewhere else (Redirect-Host) - it is a routing instruction, not a rejection of the subscriber; the outcome is whatever the re-sent request gets. When the answer carries no Redirect-Host the sender has nowhere to go, and that is a failure.'
+    plain_zh: 'redirect agent 告訴發送端「這個請求改送別處」（Redirect-Host）—— 這是路由指示，不是拒絕訂戶；結局要看重送之後拿到什麼。回應裡沒有 Redirect-Host 時發送端無處可去，那才是失敗。'
     common_causes:
       - 'The DRA is configured as a redirect agent for this realm or application, so the client is expected to re-send to the Redirect-Host itself'
       - 'The request carried no Destination-Host, so realm routing landed on the redirect agent instead of the serving node'

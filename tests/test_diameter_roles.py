@@ -65,8 +65,11 @@ def test_roles_on_the_four_new_interfaces(messages) -> None:
         "as01": "AS",       # Sh：UDR 的發起方、PNR 的接收方
         "aaa01": "AAA",     # SWx：MAR／SAR 的發起方；S6b：AA 的回應方
         "pgw01": "PGW",     # Gx 說它是 PCEF、S6b 說它是 PGW —— 同一台，見 ROLE_FAMILIES
+        # 回 3006 ＋ Redirect-Host 的那台是 redirect agent —— Cx／Sh 上叫 SLF
+        # （TS 29.228／29.328）。2026-09-06 之前它沒有角色（「只出現在一個 3006
+        # answer 裡」），現在 Redirect-Host 就是證據：它在告訴發送端該問誰。
+        "dra01": "SLF",
     }
-    assert "dra01" not in roles, "只出現在一個 3006 answer 裡的 redirect agent 沒有角色證據"
 
 
 def test_a_pgw_seen_on_gx_and_s6b_is_one_device_not_a_contradiction(messages) -> None:
@@ -150,7 +153,11 @@ def test_3006_is_catalogued_as_a_routing_instruction(messages) -> None:
     assert ref is not None and ref.name == "DIAMETER_REDIRECT_INDICATION"
     assert "not a rejection" in ref.plain
     redirected = [m for m in messages if m.cause == CauseRef("diameter_base", 3006)]
-    assert len(redirected) == 1 and redirected[0].is_failure
+    assert len(redirected) == 1
+    # 帶 Redirect-Host 的 3006 是路由指示，**不是失敗**（2026-09-06；完整的三種
+    # 形狀在 `tests/test_diameter_redirect.py`）。cause 照給，梯形圖仍看得到出處。
+    assert not redirected[0].is_failure
+    assert redirected[0].detail["redirect-host"].startswith("aaa://")
     assert "Redirect-Host" in redirected[0].detail.get("cause_plain", "")
 
 

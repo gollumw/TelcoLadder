@@ -92,6 +92,26 @@ class Frame:
         return _as_dict_list(self.layers.get(name))
 
 
+def fragment_frames(frame: Frame) -> set[int]:
+    """這一格若是 IP 重組的最後一片，回傳它由哪些格拼成（含自己）。
+
+    tshark 只在完成重組的那一格解碼上層協定，並在它的 `ip` 層列出所有分片的
+    格號（`ip.fragment`，ek 下是 `ip_ip_fragment` 的清單）。前面那些片在協定
+    階層裡是 `ip → data` —— 不是漏掉的信令。沒有分片就是空集合。
+    """
+    out: set[int] = set()
+    for ip_layer in _as_dict_list(frame.layers.get("ip")):
+        value = ip_layer.get("ip_ip_fragment")
+        for item in (value if isinstance(value, list) else [value]):
+            if item is None:
+                continue
+            try:
+                out.add(int(item))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def _as_dict_list(value: Any) -> list[dict[str, Any]]:
     if value is None:
         return []

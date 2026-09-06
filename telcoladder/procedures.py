@@ -315,14 +315,18 @@ def _distinct(messages: list[Message]) -> list[Message]:
     取不到 End-to-End Id 的訊息一律各自保留：**寧可多算，也不要把兩則
     真的不同的訊息併掉**（併掉會讓一次失敗消失，那是更糟的方向）。
     """
-    seen: set[tuple[str, bool]] = set()
+    seen: set[tuple] = set()
     out: list[Message] = []
     for msg in messages:
         end_to_end = msg.detail.get("end-to-end-id")
         if end_to_end is None:
             out.append(msg)
             continue
-        key = (end_to_end, msg.label.endswith(" Request"))
+        # 標籤分得開請求與回應（`… Request`／`… Answer`；SIP 是方法名與狀態列），
+        # cause 分得開**同一筆交易先後兩個不同的回應** —— redirect（3006）之後
+        # 重送、再收到 2001，那是兩則不同的訊息，同一個 End-to-End。少了 cause
+        # 這一項，成功的那則會被 3006 吃掉，整段看起來像沒人回過。
+        key = (end_to_end, msg.label, msg.cause)
         if key in seen:
             continue
         seen.add(key)
@@ -369,6 +373,11 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         requests = [m for m in distinct if m.label.endswith(" Request")]
         answers = [m for m in distinct if not m.label.endswith(" Request")]
         failed = [m for m in answers if m.is_failure]
+        # 3006 ＋ Redirect-Host 只是「改送別處」（adapter 已不把它當失敗）。
+        # 結局要看重送之後的 answer；**沒有那個 answer 的段不能算成功** ——
+        # 它唯一收到的回話是一句「去問別人」。
+        redirected = [m for m in answers if "redirect-host" in m.detail]
+        settled = [m for m in answers if "redirect-host" not in m.detail]
 
         # 段名取**開段的那個命令**。同一個 session 上有多種命令時（Gx 的
         # CCR-I/U/T 其實都是 272）第一個請求就是它的身分。
@@ -380,13 +389,16 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             cause = _cause_text(failed[-1])
             first = _cause_text(failed[0])
             first_failure = first if first != cause else None
-        elif answers:
+        elif settled:
             outcome, cause, first_failure = "success", None, None
         else:
             outcome, cause, first_failure = "incomplete", None, None
 
         note = ""
-        if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
+        if outcome == "incomplete" and redirected:
+            hosts = {h for m in redirected for h in m.detail["redirect-host"].split(",")}
+            note = _('Redirected to {n} host(s); no answer to the redirected request was seen').format(n=len(hosts))
+        elif outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
             note = _('Near the end of the capture - may simply be cut off')
 
         procedures.append(Procedure(

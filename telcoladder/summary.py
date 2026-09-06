@@ -131,10 +131,9 @@ _N2_PROTOCOLS = frozenset({"ngap", "nas-5gs"})
 def _not_visible(analysis: Analysis) -> dict:
     coverage = analysis.coverage
     protocols = {m.protocol for f in analysis.flows for m in f.messages}
-    undecoded = (
-        coverage.total - coverage.parsed
-        if coverage is not None and coverage.total is not None else None
-    )
+    # 分片算已解碼（`Coverage.missed` 的說明）—— 否則 SIP over UDP 的檔會報四成沒解碼。
+    undecoded = coverage.missed if coverage is not None else None
+    esp = sum(c.frames for c in (coverage.unclaimed if coverage is not None else ()) if c.protocol == "esp")
     return {
         "ciphered_nas": analysis.ciphered,
         "ecies_protected_suci": analysis.protected_suci,
@@ -145,6 +144,11 @@ def _not_visible(analysis: Analysis) -> dict:
         # coverage.looks_n2_only 只在命中率低到觸發掃描時才出聲，這裡無條件看。
         "only_n2": bool(protocols) and protocols <= _N2_PROTOCOLS,
         "frames_not_decoded": undecoded,
+        # 已解碼訊息的前段 IP 分片：不在 frames_decoded 裡、也不在 frames_not_decoded 裡。
+        # 少了這個數字，decoded ＋ not_decoded ≠ total，讀的人會去找一個不存在的洞。
+        "ip_fragments_reassembled": coverage.fragments if coverage is not None else 0,
+        # IPsec ESP 的格數（Gm 通常在裡面）。tshark 讀不到內容，這裡也不假裝知道是什麼。
+        "ipsec_esp": esp,
         "sbi_streams_with_undecoded_headers": len(analysis.sbi_undecoded),
         # **沒解碼的那些格是什麼、加參數救不救得回來。** 5gc-e2e 的 449 格裡有 212 格
         # 是埠 7777 的 TCP payload，而那個埠**已經**在解 HTTP/2 了 —— 讀不出來是因為
@@ -415,6 +419,10 @@ def render_markdown(doc: dict) -> str:
         items.append(_("{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.").format(n=nv["ecies_protected_suci"]))
     if nv["frames_not_decoded"]:
         items.append(_("{n} of {total} frames were not decoded into any supported protocol.").format(n=nv["frames_not_decoded"], total=total))
+    if nv.get("ip_fragments_reassembled"):
+        items.append(_("{n} frames are earlier IP fragments of messages that were reassembled and decoded on their last fragment - they are part of decoded messages, not missing signalling.").format(n=nv["ip_fragments_reassembled"]))
+    if nv.get("ipsec_esp"):
+        items.append(_("{n} frames are IPsec ESP; nothing inside them can be read (Gm between UE and P-CSCF is normally IPsec-protected). tshark can decrypt them given the ESP SAs; otherwise capture inside the P-CSCF.").format(n=nv["ipsec_esp"]))
     if nv["sbi_streams_with_undecoded_headers"]:
         items.append(_("{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.").format(n=nv["sbi_streams_with_undecoded_headers"]))
     # 順序與 CLI 相同（cli._cmd_analyze 的三段註解）：收窄 → 自動調整 → 覆蓋率。

@@ -1351,17 +1351,24 @@ and a `lifecycle` entry).
 
 ---
 
-## T-3006-INFO | should DIAMETER_REDIRECT_INDICATION stay a failure? (P3)
+## ~~T-3006-INFO | should DIAMETER_REDIRECT_INDICATION stay a failure?~~ (**completed 2026-09-06**)
 
-**What**: 3006 is catalogued (2026-09-05) and explained as a routing
-instruction, but `is_failure` stays True because it sits in the 3xxx
-protocol-error class. In a deployment where the DRA is deliberately a
+**Ruling (user, 2026-09-06)**: a 3006 that carries `Redirect-Host` is a
+routing instruction (RFC 6733 §6.1.7 — the redirect agent names the host,
+the requester re-sends), so `is_failure` is now False for exactly that
+shape; a 3006 **without** `Redirect-Host` stays a failure (the sender has
+nowhere to go). The node answering 3006 + `Redirect-Host` is named **SLF**
+(TS 29.228 / TS 29.328). At procedure level a session whose only answer is
+the redirect is `incomplete` with the note "Redirected to N host(s); no
+answer to the redirected request was seen" — not a success. Fixture
+`tests/fixtures/diameter-redirect/` carries the three shapes
+(followed / unfollowed / no host); `tests/test_diameter_redirect.py`.
+
+**Original description**: 3006 is catalogued (2026-09-05) and explained as
+a routing instruction, but `is_failure` stays True because it sits in the
+3xxx protocol-error class. In a deployment where the DRA is deliberately a
 redirect agent, every redirected request turns red — the `pfcp.py`
-"#2/#3 are informational" shape. Demote when an operator confirms the
-redirects are routine; that changes traffic-light verdicts, so it is a
-decision, not a tidy-up.
-
-**Effort**: CC ~1 h.
+"#2/#3 are informational" shape.
 
 ---
 

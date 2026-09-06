@@ -32,6 +32,7 @@ from telcoladder.endpoints import fill_hostless
 from telcoladder.nettrace import Sidecar, apply as apply_trace, is_nettrace, read_hints
 from telcoladder.lifecycle import apply as apply_lifecycle
 from telcoladder.coverage import Coverage, measure
+from telcoladder.extract import fragment_frames
 from telcoladder.extract import read_frames
 from telcoladder.model import (
     BLIND_CIPHERED_NAS,
@@ -266,8 +267,9 @@ def _extract(
     relax_seq: bool,
     prefs: Sequence[str] = (),
     display_filter: str | None = None,
-) -> tuple[list[Message], int, int, set]:
-    """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數)。
+) -> tuple[list[Message], int, int, set, set[int]]:
+    """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數, HPACK 缺口的
+    stream, 已重組訊息的前段 IP 分片格)。
 
     抽成函式是因為 `analyse` 可能要跑第二趟 —— 兩趟必須**逐字一樣**，
     否則採用與否的比較（訊息數）就不是在比同一件事。
@@ -276,11 +278,16 @@ def _extract(
     ciphered = 0
     protected_suci = 0
     undecoded: set = set()
+    fragments: set[int] = set()
     for frame in read_frames(
         pcap, decode_as=rules, relax_seq=relax_seq, prefs=prefs,
         display_filter=display_filter,
     ):
         messages.extend(parse_frame(frame))
+        # 超過 MTU 的訊息（SIP over UDP 常見）被 IP 分片；tshark 在**最後一片**
+        # 重組並解碼，前面幾片在 phs 裡是 `ip → data` 的葉子。它們不是漏掉的
+        # 信令 —— 是已解碼訊息的一部分。重組的那一格自己列著所有分片的格號。
+        fragments |= fragment_frames(frame)
         # **不指名任何 adapter** —— 問過所有人，誰有盲點誰自己回報。
         # 契約詞彙在 `model.py`，鉤子的理由在 `adapters.blind_spots()`。
         for spot in blind_spots(frame):
@@ -290,7 +297,7 @@ def _extract(
                 protected_suci += 1
             elif spot.kind == BLIND_UNDECODED_STREAM and spot.key is not None:
                 undecoded.add(spot.key)
-    return messages, ciphered, protected_suci, undecoded
+    return messages, ciphered, protected_suci, undecoded, fragments
 
 
 def _port_of(rule: str) -> int | None:
@@ -422,7 +429,7 @@ def _analyse_within(
         narrowing=narrowing,
         slice_note=slice_note,
     ) if not prefilter.is_empty() else None
-    messages, ciphered, protected_suci, sbi_undecoded = _extract(
+    messages, ciphered, protected_suci, sbi_undecoded, fragments = _extract(
         pcap, rules, relax_seq=False, prefs=prefs, display_filter=effective_filter
     )
 
@@ -469,7 +476,7 @@ def _analyse_within(
         if extra or shape.synthetic_seq or extra_prefs:
             # 使用者自己給的規則永遠排最後 —— tshark 同一個選擇器取最後一條。
             retry_rules = (*default_decode_as(), *extra, *decode_as)
-            retried, retry_ciphered, retry_suci, retry_undecoded = _extract(
+            retried, retry_ciphered, retry_suci, retry_undecoded, retry_fragments = _extract(
                 pcap, retry_rules, relax_seq=shape.synthetic_seq,
                 prefs=(*extra_prefs, *prefs), display_filter=effective_filter,
             )
@@ -488,8 +495,8 @@ def _analyse_within(
                     user_dlt=shape.user_dlt if extra_prefs else None,
                     user_dlt_dissector=shape.payload_dissector if extra_prefs else None,
                 )
-                messages, ciphered, protected_suci, sbi_undecoded = (
-                    retried, retry_ciphered, retry_suci, retry_undecoded
+                messages, ciphered, protected_suci, sbi_undecoded, fragments = (
+                    retried, retry_ciphered, retry_suci, retry_undecoded, retry_fragments
                 )
 
     # TS 32.423 XML trace：檔案自己寫著每則訊息的對端型別、FQDN 與 IMSI，tshark
@@ -516,6 +523,8 @@ def _analyse_within(
         coverage = measure(
             pcap,
             parsed_frames=len({m.frame for m in messages}),
+            # 已解碼訊息的前段分片：解碼了，只是不在產出訊息的那一格。
+            fragment_frames=len(fragments - {m.frame for m in messages}),
             roles_found={e.role for m in messages for e in (m.src, m.dst) if e.role},
             # **要含自動加上去的規則。** coverage 靠這份清單判斷「這個埠
             # 已經在解了卻仍讀不出來」，漏掉會讓它建議一條早就生效的指令。
