@@ -174,11 +174,30 @@ class Coverage:
     """擷取檔的 link type 是使用者自訂的 USER n（147 + n）時的值，由 `probe` 提供。
     用來把「怎麼辦」寫成一條可以直接貼的 `--tshark-pref`。"""
 
+    fragments: int = 0
+    """已解碼訊息的**前段 IP 分片**格數（`extract.fragment_frames`）。
+
+    tshark 在最後一片重組並解碼，前面的片在 phs 裡是 `ip → data`。它們不是
+    漏掉的信令，是同一則訊息的前半 —— 不從 `parsed` 裡數（那一格沒有產出
+    訊息），但也不能算進「沒解碼」：一份 SIP over UDP 的擷取檔常有四成的格
+    是這種分片，把它們講成「不在支援的協定裡」就是在報一個不存在的缺口。
+    """
+
+    esp_pairs: int | None = None
+    """IPsec ESP 流量橫跨幾對位址。`None` 代表沒有 ESP 或沒去數。"""
+
     @property
     def ratio(self) -> float | None:
         if not self.total:
             return None
         return self.parsed / self.total
+
+    @property
+    def missed(self) -> int | None:
+        """真的沒解碼的格數：總數扣掉有產出的、再扣掉已解碼訊息的分片。"""
+        if self.total is None:
+            return None
+        return max(self.total - self.parsed - self.fragments, 0)
 
     @property
     def looks_n2_only(self) -> bool:
@@ -268,6 +287,7 @@ def measure(
     unclaimed_tcp_frames: int = 0,
     prefs: Sequence[str] = (),
     user_dlt: int | None = None,
+    fragment_frames: int = 0,
     tshark: Tshark | None = None,
 ) -> Coverage:
     """量這份擷取檔的覆蓋率。**便宜的那一半永遠跑，貴的那一半條件觸發。**
@@ -286,12 +306,13 @@ def measure(
         return Coverage(total=None, parsed=parsed_frames, roles_found=roles)
 
     total = total_packets(pcap, tshark=tshark)
-    base = Coverage(total=total, parsed=parsed_frames, roles_found=roles, user_dlt=user_dlt)
+    base = Coverage(total=total, parsed=parsed_frames, roles_found=roles, user_dlt=user_dlt,
+                    fragments=fragment_frames)
 
     if total is None or total == 0 or base.ratio is None:
         return base
-    if total - parsed_frames <= 0:
-        # 全部解出來了，沒有東西要解釋。
+    if base.missed is not None and base.missed <= 0:
+        # 全部解出來了（分片算已解碼），沒有東西要解釋。
         return base
     # **傳輸層零產出的訊號優先於命中率。** 命中率高不代表沒漏東西 ——
     # 見 `_TRANSPORT_SIGNAL_NOTE`。
@@ -318,7 +339,12 @@ def measure(
     if proc.returncode != 0:
         return base
 
-    unclaimed = _parse_phs(proc.stdout)
+    unclaimed = _discount_fragments(_parse_phs(proc.stdout), fragment_frames)
+    esp_pairs = None
+    if any(c.protocol == "esp" for c in unclaimed):
+        # 幾對位址之間有 ESP —— 讀的人要知道看不見的是「一條 Gm」還是「整個網段」。
+        # 數不到就是 None，不估。
+        esp_pairs = _esp_address_pairs(tshark, pcap, prefs=prefs)
     if user_dlt is None and any(c.under_user_dlt for c in unclaimed):
         # 呼叫端沒跑 probe（`--no-auto-decode`）時這裡自己讀一格 —— 便宜，
         # 而少了它「怎麼辦」那一句就寫不出 DLT 號碼。
@@ -351,7 +377,64 @@ def measure(
         scanned=True,
         roles_found=roles,
         user_dlt=user_dlt,
+        fragments=fragment_frames,
+        esp_pairs=esp_pairs,
     )
+
+
+def _discount_fragments(unclaimed: list[UnclaimedConversation], fragments: int) -> list[UnclaimedConversation]:
+    """把已解碼訊息的前段分片從 `ip → data` 的葉子裡扣掉。
+
+    phs 只看得到「這一格 tshark 解到 `data` 為止」，分不出它是不明載荷還是
+    某則已解碼訊息的前半 —— 那件事只有抽取那一趟知道（重組的那一格列著
+    分片的格號）。扣的是**不掛在傳輸層底下**的 `data`（分片沒有 UDP 標頭）。
+    扣到零就整個拿掉：講「0 格是鏈路層載荷」沒有意義。
+    """
+    if fragments <= 0:
+        return unclaimed
+    out: list[UnclaimedConversation] = []
+    left = fragments
+    for conv in unclaimed:
+        if conv.protocol == "data" and not conv.transport and not conv.under_user_dlt and left > 0:
+            taken = min(conv.frames, left)
+            left -= taken
+            if conv.frames - taken <= 0:
+                continue
+            conv = UnclaimedConversation(
+                protocol=conv.protocol, frames=conv.frames - taken, port=conv.port,
+                already_decoded=conv.already_decoded, ancestors=conv.ancestors,
+            )
+        out.append(conv)
+    return out
+
+
+def _esp_address_pairs(tshark: Tshark, pcap: Path, *, prefs: Sequence[str] = ()) -> int | None:
+    """ESP 流量橫跨幾對（無向）位址。"""
+    proc = tshark.run(
+        ["-r", str(pcap), *pref_args(prefs), "-Y", "esp", "-T", "fields",
+         "-e", "ip.src", "-e", "ip.dst", "-e", "ipv6.src", "-e", "ipv6.dst"],
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        return None
+    pairs: set[frozenset[str]] = set()
+    for line in proc.stdout.splitlines():
+        ends = [v.strip() for v in line.split("\t") if v.strip()]
+        if len(ends) >= 2:
+            pairs.add(frozenset(ends[:2]))
+    return len(pairs)
+
+
+#: tshark 認得、本工具**還沒有 adapter** 的協定，以及它在電信擷取檔裡通常是什麼。
+#: 講得出「那是什麼」的一行，跟「N 格是 isup」是兩回事：前者讀的人知道
+#: 該不該在意，後者只是一個名字。**這裡的措辭不是判定**，只是命名。
+KNOWN_UNSUPPORTED: dict[str, str] = {
+    "isup": "ISUP over M3UA - PSTN breakout via the MGCF",
+    "camel": "CAMEL/CAP - IN service trigger",
+    "dns": "DNS - ENUM/NAPTR routing lookups",
+    "radius": "RADIUS accounting",
+    "megaco": "H.248/MEGACO media-gateway control",
+}
 
 
 #: phs 葉子落在這些協定上＝上面沒有任何載荷被解剖。措辭要跟其他未認領流量分開。
@@ -383,7 +466,7 @@ def describe(coverage: Coverage) -> list[str]:
     """
     if coverage.total is None or coverage.ratio is None:
         return []
-    missed = coverage.total - coverage.parsed
+    missed = coverage.missed or 0
     if not coverage.scanned or missed <= 0:
         return []
     worth = [c for c in coverage.unclaimed if _worth_mentioning(c, coverage.total)]
@@ -392,13 +475,35 @@ def describe(coverage: Coverage) -> list[str]:
         # 「全部都警告等於沒有警告」，而這個模組的價值建立在它出聲時你會看。
         return []
 
-    pct = round((1 - coverage.ratio) * 100)
+    pct = round(missed / coverage.total * 100)
     lines = [
         _("ℹ This capture has {total} frames; I decoded {parsed}. The other {missed} ({pct}%) are not in a supported protocol.").format(total=coverage.total, parsed=coverage.parsed, missed=missed, pct=pct)
     ]
+    if coverage.fragments:
+        # 排在所有未認領流量之前：它解釋的是「為什麼解碼的格數比總數少那麼多」，
+        # 而答案是「沒有少」。
+        lines.append(
+            _("  · {frames} frames are earlier IP fragments of messages that were reassembled and decoded - nothing is missing there.").format(frames=coverage.fragments)
+        )
 
     for conv in worth[:3]:
-        if conv.protocol == "data" and conv.under_user_dlt:
+        if conv.protocol == "esp":
+            # Gm（UE↔P-CSCF）依 TS 33.203 走 IPsec；ESP 裡面 tshark 一個位元組都
+            # 讀不到。處置與 decode-as 無關：要嘛給 SA（tshark 能解），要嘛
+            # 換擷取點。「N 格是 esp」讓讀的人以為那是可以加參數救回來的東西。
+            pairs = (
+                _(" between {pairs} address pair(s)").format(pairs=coverage.esp_pairs)
+                if coverage.esp_pairs is not None else ""
+            )
+            lines.append(
+                _("  · {frames} frames are IPsec ESP{pairs} (Gm between UE and P-CSCF is normally IPsec-protected); nothing inside can be read. tshark can decrypt them given the ESP SAs (-o esp.enable_encryption_decode:TRUE plus the SA table); otherwise capture inside the P-CSCF.").format(frames=conv.frames, pairs=pairs)
+            )
+        elif conv.protocol in KNOWN_UNSUPPORTED:
+            lines.append(
+                _("  · {frames} frames are {protocol} ({what}) - recognised, but this tool has no adapter for it yet.").format(
+                    frames=conv.frames, protocol=conv.protocol, what=KNOWN_UNSUPPORTED[conv.protocol])
+            )
+        elif conv.protocol == "data" and conv.under_user_dlt:
             # 整份檔的 link type 是使用者自訂的，tshark 一個 dissector 都不掛。
             # 這與「TCP payload 認不出來」的處置相反：不是 decode-as，是 `-o` 的
             # uat 對映 —— 給一條可以直接貼的。DLT 號碼從 probe 來；沒有就只講事實。

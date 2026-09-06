@@ -663,7 +663,10 @@ PARTICIPANT_ORDER = (
     # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
     # Rx 的 AF 貼著 P-CSCF（它多半就是 P-CSCF）；Sh 的 AS 在 S-CSCF 之後；
     # 3GPP AAA 貼著 HSS（SWx 的對端）。
-    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "AS", "HSS", "AAA", "PCEF", "PCRF",
+    # SLF（Cx／Sh 的 redirect agent，2026-09-06）貼在 HSS 前面：查詢先到它，
+    # 再被指到 HSS。MGC／MGW 是 H.248 的兩端（Iq／Mn／Mp 分不出來，故用中性名）。
+    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "AS", "SLF", "HSS", "AAA", "PCEF", "PCRF",
+    "MGC", "MGW",
 )
 
 

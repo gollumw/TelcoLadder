@@ -72,6 +72,7 @@ from telcoladder.identity import globally_unique, imsi_from_ims_identity
 from telcoladder.model import (
     ENDPOINT_DST_KEY,
     ENDPOINT_SRC_KEY,
+    NF_ROLE_HINTS_KEY,
     TRANSACTION_KEY,
     CauseRef,
     Endpoint,
@@ -186,6 +187,15 @@ _AVP_EXPERIMENTAL_RESULT_CODE = 298
 #: 小於這個值的結果碼是成功或資訊性的（RFC 6733 §7.1：1xxx 資訊、2xxx 成功）。
 _FIRST_FAILURE_CODE = 3000
 
+#: `DIAMETER_REDIRECT_INDICATION`（RFC 6733 §7.1.3）。落在 3xxx 協定錯誤那一段，
+#: 但**帶著 Redirect-Host 時它不是拒絕**：redirect agent（Cx／Sh 上是 SLF，
+#: TS 29.228／29.328）在告訴發送端「改送這台」，發送端重送，結局由重送後
+#: 的那個 answer 決定。把它標紅的症狀是：每一筆走過 SLF 的 Cx／Sh 交易都
+#: 是紅的，而它們全部成功 —— 與 `pfcp.py` 的 #2/#3、`sip.py` 的 401 同一族
+#: （流程不是結局）。**沒有 Redirect-Host 的 3006 仍然是失敗**：那時發送端
+#: 無處可去。用戶裁定 2026-09-06。
+_REDIRECT_INDICATION = 3006
+
 
 def _hex_bytes(value: Any) -> bytes | None:
     """`-T ek` 的 `aa:bb:cc` 字串 → bytes。不是那個形狀就回 None。"""
@@ -271,7 +281,16 @@ def _result(block: dict[str, Any]) -> tuple[CauseRef | None, bool]:
         # 請求本來就沒有結果碼；回應少了它是對端實作有問題，但不是我們能
         # 判定的失敗 —— 不標。
         return None, False
+    if code == _REDIRECT_INDICATION and _redirect_hosts(block):
+        # 路由指示，不是拒絕（見 `_REDIRECT_INDICATION`）。cause 照給 ——
+        # 梯形圖上仍要看得到「這是 3006」與它的出處。
+        return CauseRef(table="diameter_base", value=code), False
     return CauseRef(table="diameter_base", value=code), code >= _FIRST_FAILURE_CODE
+
+
+def _redirect_hosts(block: dict[str, Any]) -> list[str]:
+    """`Redirect-Host`（AVP 292）—— redirect agent 要發送端改送的主機。"""
+    return [str(h).strip() for h in _as_list(block.get("diameter_diameter_Redirect-Host")) if h]
 
 
 def _identity_keys(block: dict[str, Any]) -> set[IdKey]:
@@ -392,6 +411,18 @@ def parse(frame: Frame) -> list[Message]:
                 detail[ENDPOINT_DST_KEY] = destination_host
             if hop is not None:
                 detail[TRANSACTION_KEY] = f"hop:{hop}"
+
+        redirect_hosts = _redirect_hosts(block)
+        if redirect_hosts:
+            detail["redirect-host"] = ",".join(redirect_hosts)
+            if cause is not None and cause.value == _REDIRECT_INDICATION and cause.table == "diameter_base":
+                # **回 3006 ＋ Redirect-Host 的那台就是 redirect agent。** Cx／Sh 上
+                # 那是 SLF（TS 29.228／29.328）。這是線路上寫著的事實，走通用的
+                # 角色提示鍵交給 `nf.py`，與 `gtpv2.py`／`sip.py` 同一條路。
+                # 裸匯出（沒有 IP 層）時端點鍵是 Origin-Host，提示也用它。
+                sender = frame.src_ip or origin_host
+                if sender:
+                    detail[NF_ROLE_HINTS_KEY] = f"{sender}=SLF"
 
         end_to_end = _to_int(first(block.get("diameter_diameter_endtoendid")))
         if end_to_end is not None:

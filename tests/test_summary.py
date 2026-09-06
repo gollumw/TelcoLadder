@@ -91,6 +91,8 @@ NOT_VISIBLE_FIELDS = {
     "ciphered_nas", "ecies_protected_suci", "frames_not_decoded",
     "sbi_streams_with_undecoded_headers", "undecoded_traffic", "coverage_notes",
     "narrowed", "auto_decode", "trace_sidecar", "only_n2",
+    # 2026-09-06：分片算已解碼、ESP 是看不見的（加欄不升版）。
+    "ip_fragments_reassembled", "ipsec_esp",
 }
 
 
@@ -476,3 +478,41 @@ def test_chinese_summary_translates_the_headings(ki) -> None:
         md = summary.render_markdown(summary.build(ki, source_name="x"))
     assert "## Not visible to this tool" not in md
     assert "Synch failure (#21) — 3GPP TS 24.501 §9.11.3.2" in md, "規範名稱與條號語言中性，不翻"
+
+
+# ── 分片與 ESP（2026-09-06） ─────────────────────────────────────────────
+
+
+def _with_coverage(**kwargs) -> Analysis:
+    from telcoladder.coverage import Coverage
+
+    analysis = _synthetic()
+    analysis.flows[0].messages[1].protocol = "sbi"   # 避開「只有 N2」那句
+    return replace(analysis, coverage=Coverage(total=100, parsed=2, scanned=True, **kwargs))
+
+
+def test_fragments_of_decoded_messages_are_counted_separately_not_as_undecoded() -> None:
+    """decoded ＋ not_decoded ≠ total 時讀的人會去找一個不存在的洞。分片是已解碼
+    訊息的前半：不在 decoded 裡（那一格沒產出訊息）、也不能在 not_decoded 裡。
+
+    突變：`frames_not_decoded` 改回 total − parsed → 第二個斷言紅。
+    """
+    doc = summary.build(_with_coverage(fragments=40), source_name="x")
+    nv = doc["not_visible"]
+    assert nv["ip_fragments_reassembled"] == 40
+    assert nv["frames_not_decoded"] == 100 - 2 - 40
+    md = summary.render_markdown(doc)
+    assert "40 frames are earlier IP fragments" in md
+    base = summary.render_markdown(summary.build(_with_coverage(), source_name="x"))
+    assert "IP fragments" not in base
+
+
+def test_esp_has_its_own_counter_and_sentence() -> None:
+    from telcoladder.coverage import UnclaimedConversation
+
+    esp = UnclaimedConversation(protocol="esp", frames=12, ancestors=("eth", "ip"))
+    doc = summary.build(_with_coverage(unclaimed=(esp,)), source_name="x")
+    assert doc["not_visible"]["ipsec_esp"] == 12
+    md = summary.render_markdown(doc)
+    assert "12 frames are IPsec ESP" in md and "capture inside the P-CSCF" in md
+    assert summary.build(_with_coverage(), source_name="x")["not_visible"]["ipsec_esp"] == 0

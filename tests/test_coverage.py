@@ -205,3 +205,78 @@ def test_small_files_are_always_scanned_when_anything_is_undecoded(e2e_pcap: Pat
     cov = measure(e2e_pcap, parsed_frames=500)
     assert cov.scanned
     assert cov.unclaimed, "掃了就該有清單"
+
+
+# ── 分片、ESP、認得但沒有 adapter 的協定（2026-09-06） ─────────────────
+
+
+def _conv(protocol: str, frames: int, *ancestors: str) -> UnclaimedConversation:
+    return UnclaimedConversation(protocol=protocol, frames=frames, ancestors=ancestors or ("eth", "ip"))
+
+
+def test_fragments_of_decoded_messages_are_not_missing_signalling():
+    """SIP over UDP 超過 MTU 就被 IP 分片；tshark 在最後一片解碼，前面幾片在 phs 裡是
+    `ip → data`。它們是已解碼訊息的前半 —— 講成「不在支援的協定裡」是在報一個
+    不存在的缺口。
+
+    突變：`_discount_fragments` 直接回傳輸入 → 第二個斷言紅；`missed` 不扣分片 →
+    第一個斷言紅。
+    """
+    cov = Coverage(
+        total=300, parsed=100, scanned=True, fragments=142,
+        unclaimed=tuple(coverage_module._discount_fragments(
+            [_conv("data", 142), _conv("esp", 33), _conv("dns", 12, "eth", "ip", "udp")], 142)),
+    )
+    assert cov.missed == 300 - 100 - 142
+    assert [c.protocol for c in cov.unclaimed] == ["esp", "dns"], "分片扣光了的 data 葉子要整個拿掉"
+    lines = describe(cov)
+    assert "The other 58 (19%)" in lines[0], lines[0]
+    assert any("142 frames are earlier IP fragments" in line and "nothing is missing" in line for line in lines)
+
+
+def test_fragments_only_partly_cover_the_data_leaf():
+    """分片比 `data` 葉子少時只扣一部分 —— 剩下的仍然是真的不明載荷。"""
+    (data,) = coverage_module._discount_fragments([_conv("data", 100)], 40)
+    assert data.frames == 60
+
+
+def test_fragments_never_touch_transport_or_user_dlt_payload():
+    """分片沒有 UDP／TCP 標頭，所以只扣**不掛在傳輸層底下**的 `data`；
+    掛在 tcp 底下的與 USER DLT 底下的是別的東西，扣了會把真的缺口藏起來。"""
+    convs = [_conv("data", 50, "eth", "ip", "tcp"), _conv("data", 50, "user_dlt")]
+    assert coverage_module._discount_fragments(convs, 50) == convs
+
+
+def test_when_everything_undecoded_is_fragments_nothing_is_reported():
+    cov = Coverage(total=10, parsed=5, scanned=True, fragments=5, unclaimed=())
+    assert cov.missed == 0
+    assert describe(cov) == []
+
+
+def test_esp_is_named_and_told_what_to_do():
+    """「N 格是 esp」讓讀的人以為加個參數就救得回來。ESP 的處置是給 SA 或換擷取點，
+    與 decode-as 無關 —— 句子要講出這兩條路，以及它橫跨幾對位址。"""
+    cov = Coverage(total=300, parsed=200, scanned=True, esp_pairs=2, unclaimed=(_conv("esp", 33),))
+    (headline, esp) = describe(cov)
+    assert "33 frames are IPsec ESP between 2 address pair(s)" in esp
+    assert "esp.enable_encryption_decode" in esp and "capture inside the P-CSCF" in esp
+    # 數不到對數就不講對數 —— 不估。
+    without = describe(Coverage(total=300, parsed=200, scanned=True, unclaimed=(_conv("esp", 33),)))
+    assert "address pair" not in without[1] and "IPsec ESP" in without[1]
+
+
+@pytest.mark.parametrize("protocol, what", [
+    ("isup", "PSTN breakout"),
+    ("camel", "IN service trigger"),
+    ("dns", "ENUM/NAPTR"),
+])
+def test_known_but_unsupported_protocols_are_named_not_just_counted(protocol, what):
+    """「N 格是 isup」只是一個名字；讀的人要知道那在電信擷取檔裡通常是什麼、
+    以及本工具還沒有它的 adapter。
+
+    突變：把該協定從 `KNOWN_UNSUPPORTED` 拿掉 → 退回通用句子，這條紅。
+    """
+    cov = Coverage(total=300, parsed=200, scanned=True,
+                   unclaimed=(_conv(protocol, 7, "eth", "ip", "sctp"),))
+    (_headline, line) = describe(cov)
+    assert what in line and "no adapter for it yet" in line

@@ -52,6 +52,11 @@ def diameter():
     return _overview("diameter-user-dlt")
 
 
+@pytest.fixture(scope="module")
+def epc_ims():
+    return _overview("diameter-epc-ims")
+
+
 def test_there_is_no_score(ki) -> None:
     """一個 0–100 的數字看起來跟量出來的一樣可信，而它的權重是編的。
     這條擋的是下一個人「順手加一個健康度」。"""
@@ -71,12 +76,19 @@ def test_lights_add_up_to_the_flowtable(multi) -> None:
     assert doc["subscribers"]["unattributed_flows"] == sum(len(r.sessions) for r in orphans) == 9
 
 
-def test_verdict_is_the_worst_light_not_the_first(diameter, multi) -> None:
-    """紅、黃各一 → 紅；順序無關。"""
-    doc, _a, table = diameter
-    assert [r.light for r in table.subscribers if r.grouped] == ["red", "amber"]
+def test_verdict_is_the_worst_light_not_the_first(epc_ims, diameter, multi) -> None:
+    """第一列綠、後面紅 → 紅；順序無關。全黃的檔是黃，不是綠也不是紅。
+
+    （2026-09-06 之前這條用 `diameter-user-dlt`，它的紅來自一個帶 Redirect-Host
+    的 3006 —— 那不再是失敗，所以那份檔現在是兩列黃。）
+    """
+    doc, _a, table = epc_ims
+    assert [r.light for r in table.subscribers if r.grouped] == ["green", "red", "red"]
     assert doc["verdict"] == "red"
     assert multi[0]["verdict"] == "red"
+    amber_doc, _a, amber_table = diameter
+    assert {r.light for r in amber_table.subscribers if r.grouped} == {"amber"}
+    assert amber_doc["verdict"] == "amber"
 
 
 def test_a_clean_capture_is_green_and_an_empty_one_says_empty() -> None:

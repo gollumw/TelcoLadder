@@ -196,6 +196,19 @@ CATALOG: dict[str, str] = {
     "    That port is already being decoded as HTTP/2 and still cannot be read - usually the capture started **after the TCP connection was established**, so tshark never saw the HTTP/2 header table and cannot reassemble. --decode-as will not help; change how you capture (start before the connection comes up).":
         "    那個埠已經被要求解成 HTTP/2 了，仍然讀不出來 —— 通常代表**擷取起點晚於 TCP 連線建立**，tshark 沒看到 HTTP/2 的標頭表就無法重組。加 --decode-as 沒有用，要改的是擷取方式（在連線建立前就開始抓）。",
     "  · {frames} frames are {protocol}.": "  · {frames} 格是 {protocol}。",
+    "  · {frames} frames are earlier IP fragments of messages that were reassembled and decoded - nothing is missing there.":
+        "  · {frames} 格是已重組並解碼的訊息的前段 IP 分片 —— 那裡沒有漏掉任何東西。",
+    " between {pairs} address pair(s)": "，橫跨 {pairs} 對位址",
+    "  · {frames} frames are IPsec ESP{pairs} (Gm between UE and P-CSCF is normally IPsec-protected); nothing inside can be read. tshark can decrypt them given the ESP SAs (-o esp.enable_encryption_decode:TRUE plus the SA table); otherwise capture inside the P-CSCF.":
+        "  · {frames} 格是 IPsec ESP{pairs}（UE 與 P-CSCF 之間的 Gm 通常受 IPsec 保護）；裡面的內容讀不到。給 tshark ESP 的 SA（-o esp.enable_encryption_decode:TRUE 加上 SA 表）它能解開；否則要在 P-CSCF 內側擷取。",
+    "  · {frames} frames are {protocol} ({what}) - recognised, but this tool has no adapter for it yet.":
+        "  · {frames} 格是 {protocol}（{what}）—— 認得出來，但本工具還沒有它的 adapter。",
+    "{n} frames are earlier IP fragments of messages that were reassembled and decoded on their last fragment - they are part of decoded messages, not missing signalling.":
+        "{n} 格是訊息的前段 IP 分片，訊息在最後一片重組並解碼 —— 它們是已解碼訊息的一部分，不是漏掉的信令。",
+    "{n} frames are IPsec ESP; nothing inside them can be read (Gm between UE and P-CSCF is normally IPsec-protected). tshark can decrypt them given the ESP SAs; otherwise capture inside the P-CSCF.":
+        "{n} 格是 IPsec ESP；裡面的內容讀不到（UE 與 P-CSCF 之間的 Gm 通常受 IPsec 保護）。給 tshark ESP 的 SA 它能解開；否則要在 P-CSCF 內側擷取。",
+    "Redirected to {n} host(s); no answer to the redirected request was seen":
+        "被指示改送 {n} 台主機；沒有看到重送後的回應",
     "  · {frames} frames are {protocol} with nothing above the transport layer (heartbeats, acknowledgements, association control) - no signalling inside them.":
         "  · {frames} 格是 {protocol}，傳輸層之上什麼都沒有（心跳、確認、關聯控制）—— 裡面沒有信令。",
     "  · The only network functions identified are {roles} - this may be an N2-only capture (SMF/UPF need N4 PFCP or SBI traffic), or the undecoded payload above may actually be SBI. The two call for different action: the first means a different capture point, the second means --decode-as.":
