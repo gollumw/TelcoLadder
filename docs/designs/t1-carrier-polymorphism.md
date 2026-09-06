@@ -321,7 +321,7 @@ merge conflicts.
 .venv/bin/telcoladder analyze tests/fixtures/multi-imsi/capture.pcap --html /tmp/a.html
 ```
 
-Manual: run the user's real ue_trace and confirm the
+Manual: run an NE trace carrying SBI and confirm the
 `PDU session establishment reject` appears in the output (currently
 entirely invisible).
 

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.gollumw/telcoladder",
+  "description": "Turn a signalling pcap into per-subscriber call flows: 5G, 4G and IMS, every failure explained",
+  "repository": {
+    "url": "https://github.com/gollumw/TelcoLadder",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/gollumw/TelcoLadder/blob/master/AGENTS.md",
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "telcoladder",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

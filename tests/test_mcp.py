@@ -393,6 +393,39 @@ def test_bad_narrowing_values_are_tool_errors_not_crashes(arguments, fragment) -
     assert fragment in result["content"][0]["text"]
 
 
+def test_agents_md_lists_exactly_the_tools_that_exist() -> None:
+    """`AGENTS.md` 是給**使用這個工具的 agent** 看的契約，它抄了一份工具清單 ——
+    那就是 `mcp.TOOLS` 的第二份副本，而副本會漂 —— 同一份事實只准一個來源。
+
+    兩個方向都會壞，而且都是靜默的：漏掉一個工具，agent 不知道它存在；寫了一個
+    不存在的工具，agent 呼叫下去拿到 `-32602`，然後把這個工具當成壞的。
+
+    突變：`AGENTS.md` 刪掉任一個工具名 → 紅；加一個不存在的名字 → 紅。
+    """
+    agents = (Path(__file__).parent.parent / "AGENTS.md").read_text(encoding="utf-8")
+    real = {t["name"] for t in mcp.TOOLS}
+
+    missing = sorted(name for name in real if name not in agents)
+    assert not missing, f"AGENTS.md 沒提到這些真的存在的工具：{missing}"
+
+    # 反方向：文件裡出現的 `xxx_yyy` 形狀的名字，必須真的是工具或別的已知詞。
+    named = set(re.findall(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`", agents))
+    invented = sorted(n for n in named if n.endswith(("_capture", "_subscribers", "_callflow", "_failures")) and n not in real)
+    assert not invented, f"AGENTS.md 提到不存在的工具：{invented}"
+
+
+def test_agents_md_does_not_duplicate_the_contributor_guide() -> None:
+    """AGENTS.md 講「怎麼用這個工具」，CLAUDE.md 講「怎麼改這個 repo」。兩者混在
+    一起，維護的人就得同時改兩份，而漏改一份沒有任何東西會說。它只准指過去。
+    """
+    agents = (Path(__file__).parent.parent / "AGENTS.md").read_text(encoding="utf-8")
+    assert "CLAUDE.md" in agents, "AGENTS.md 應該把要改 repo 的人指去 CLAUDE.md"
+    for owned_by_claude_md in ("Red lines", "Testing discipline", "Measured decisions"):
+        assert owned_by_claude_md not in agents, (
+            f"AGENTS.md 複製了 CLAUDE.md 的「{owned_by_claude_md}」段落 —— 指過去，不要抄"
+        )
+
+
 def test_subscriber_narrowing_is_deliberately_not_exposed() -> None:
     """`--subscriber` 會把整個 N2 排除掉，CLI 因此附一份排除報告。
 
