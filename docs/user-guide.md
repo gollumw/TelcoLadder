@@ -287,6 +287,25 @@ cause explanations were Chinese-only until the bilingual tables landed
 
 ---
 
+### SMF-side captures with no NGAP
+
+A trace taken at the SMF has SBI, PFCP and GTP-U but no N2, and the only
+thing that ties a PFCP session to a subscriber is the GTP-U tunnel
+endpoint the two sides share. Without NGAP that bridge has nothing to
+stand on, and the User Plane stays empty for everyone.
+
+It works anyway, because the same two facts travel inside SBI: the
+`PDUSessionResourceSetupRequestTransfer` is the second part of a
+`multipart/related` body, and it carries the TEID and the transport
+address in the same fields N2 uses. Those become the same key, so the N4
+session joins its subscriber with no NGAP in the file at all.
+
+**One half is still missing.** The gNB's downlink endpoint travels in a
+frame that carries nothing else, and the tool emits no message for it, so
+downlink GTP-U in an SMF-only capture stays unattributed. Uplink joins.
+
+---
+
 ### Signalling that belongs to nobody
 
 Some flows have no subscriber to hang on. Diameter's `CER`/`CEA` and

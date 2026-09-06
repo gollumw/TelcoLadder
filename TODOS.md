@@ -1266,7 +1266,44 @@ but not a one-liner, and it deserves its own tests.
 
 ---
 
-## T-SBI-N2-BRIDGE | SBI-carried N2 SM information as the PFCP bridge in SMF-only traces (P2)
+## ~~T-SBI-N2-BRIDGE | SBI-carried N2 SM information as the PFCP bridge in SMF-only traces~~ (**completed 2026-09-06**)
+
+**What was done**: `sbi.carrier_keys` now digs the `ngap` block out of the
+carrier with `carrier.dig` and emits `identity.gtp_tunnels()` from its
+`gTP_TEID` + `TransportLayerAddressIPv4` — byte-for-byte the keys NGAP would
+emit from the same two fields, which is the whole point: two paths that
+compute different keys look correct on both sides and simply never merge.
+
+The paired TEID/address loop now has one definition (`identity.gtp_tunnels`);
+`ngap.py` and `pfcp.py` were each carrying their own copy, and a third in
+`sbi.py` would have been three that drift.
+
+**Measured** on `5gc-e2e` with `!sctp` (NGAP removed — the shape of an
+SMF-side trace): the subscriber's flow went from 77 messages with no PFCP key
+at all, to 81 with `pfcp_seid` and `gtp_teid`; flows 7 → 6. Exactly that PDU
+session's four N4 messages joined, and the other orphaned PFCP stayed
+orphaned — a test asserts both halves, because a key that merged everything
+would satisfy the first assertion alone. The unfiltered capture is unchanged
+at 7 flows.
+
+**Deliberately not done**, against the fix shape this entry originally
+proposed:
+
+- **No message for DATA-only frames.** Frames 495/498 carry only the gNB's
+  downlink F-TEID and produce no message today, so they stay invisible and
+  that endpoint does not enter the flow. Consequence: in an SMF-only trace
+  with N3, downlink G-PDUs would still be orphaned. The captures that
+  motivated this carry no GTP-U, so the change would be surface without a
+  measurement behind it.
+- **`flowtable._sbi_unanswered` not tightened.** That was only needed to stop
+  the new DATA messages being counted as unanswered requests. With no such
+  messages, changing the request test would be a change no test can fail on.
+
+Eight tests, mutation-checked twice (no dig, and dropping the address from
+the key).
+
+Original entry follows.
+
 
 **What**: an SMF-side EXPORTED_PDU trace has SBI, PFCP and GTP-U but no
 NGAP, so the only existing N4↔subscriber bridge (`identity.gtp_tunnel` keys

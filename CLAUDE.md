@@ -64,6 +64,7 @@ Each is documented in depth where it lives; every failure mode here is
 | carried protocols nest inside the carrier layer | `adapters/carrier.py` | SBI-carried NAS becomes invisible |
 | NGAP/S1AP Cause is a CHOICE; five groups each number from 0 | `data/causes/` | a right-looking wrong explanation |
 | connection-scoped and episodic identity keys | `identity.py`, `lifecycle.py` | two subscribers merge into one flow |
+| the GTP-U tunnel key is `(address, TEID)`, computed in one place | `identity.gtp_tunnels` | NGAP, PFCP and SBI-carried N2 compute different keys and never merge |
 | Diameter Result-Code vs Experimental-Result-Code are two number spaces | `adapters/diameter.py` | same |
 | decode tree runs tshark two-pass (`-2`) | `decode.py` | cross-frame reassembly links vanish |
 | exactly one rendering implementation per judgement | `render_mermaid.py` + `web/` | two surfaces drift, no error |
