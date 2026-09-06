@@ -1,0 +1,702 @@
+# ITU-T Q.850 cause values, as carried in the SIP Reason header
+# (`Reason: Q.850;cause=16;text="Normal call clearing"`, RFC 3326) on BYE,
+# CANCEL and final responses - and as the MGCF maps ISUP releases into SIP.
+#
+# ## Names are the oracle's, prose is ours
+#
+# Every `name` is verbatim from `tshark -G values` for `sip.reason_cause_q850`,
+# and a test re-runs that oracle. The `Unassigned` values are kept (the table
+# must be complete against the oracle) with a single explanation: the value
+# means nothing in Q.850.
+#
+# ## `outcome: user` - a call outcome, not a network failure
+#
+# 16 (normal clearing), 17 (busy), 18 (no response), 19 (no answer) and
+# 21 (call rejected) describe what the parties did, not what the network
+# failed to do (user ruling 2026-09-06). `causes.is_user_outcome()` reads it.
+#
+# ## No clause numbers
+#
+# Q.850 is one ITU-T recommendation with one table; a clause would add
+# nothing, and none was human-verified (CLAUDE.md red line 3).
+
+table: q850
+spec: "ITU-T Q.850"
+
+causes:
+  0:
+    name: 'Valid cause code not yet received'
+    plain: 'No valid cause has been received yet (a placeholder, not a release reason).'
+    plain_zh: '還沒有收到有效的 cause（佔位值，不是釋放原因）。'
+
+  1:
+    name: 'Unallocated (unassigned) number'
+    plain: 'The called number is not allocated to any subscriber.'
+    plain_zh: '被叫號碼沒有分配給任何訂戶。'
+    common_causes:
+      - 'Misdialled or non-existent number'
+      - 'Number-range not loaded on the gateway or PSTN switch'
+    common_causes_zh:
+      - '撥錯或不存在的號碼'
+      - '閘道或 PSTN 交換機沒有載入這個號段'
+
+  2:
+    name: 'No route to specified transit network'
+    plain: 'No route exists to the transit network the call asked for.'
+    plain_zh: '沒有通往所要求的中繼網路的路由。'
+
+  3:
+    name: 'No route to destination'
+    plain: 'No route to the destination: the network cannot reach the called party''s network.'
+    plain_zh: '沒有通往目的地的路由：網路到不了被叫方的網路。'
+    common_causes:
+      - 'Routing table on the MGCF/BGCF has no entry for this number range'
+      - 'Interconnect towards the destination carrier is down'
+    common_causes_zh:
+      - 'MGCF／BGCF 的路由表沒有這個號段'
+      - '往目的地電信商的互連斷了'
+
+  4:
+    name: 'Send special information tone'
+    plain: 'The network asks the caller''s side to play a special information tone.'
+    plain_zh: '網路要求主叫側播放特殊資訊音。'
+
+  5:
+    name: 'Misdialled trunk prefix'
+    plain: 'The trunk prefix was misdialled.'
+    plain_zh: '撥錯了中繼前綴。'
+
+  6:
+    name: 'Channel unacceptable'
+    plain: 'The channel identified is not acceptable to the sender.'
+    plain_zh: '指定的通道對發送端不可接受。'
+
+  7:
+    name: 'Call awarded and being delivered in an established channel'
+    plain: 'The call was awarded and is being delivered on an already-established channel.'
+    plain_zh: '電話已被授予，正在一條已建立的通道上遞送。'
+
+  8:
+    name: 'Preemption'
+    plain: 'A higher-precedence call preempted this one.'
+    plain_zh: '更高優先權的通話搶占了這一通。'
+
+  9:
+    name: 'Preemption - circuit reserved for reuse'
+    plain: 'Preemption; the circuit is reserved for reuse.'
+    plain_zh: '被搶占；電路保留給重用。'
+
+  10:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  11:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  12:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  13:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  14:
+    name: 'QoR: ported number'
+    plain: 'Query on release: the number has been ported to another network.'
+    plain_zh: '釋放時查詢：號碼已攜出到別的網路。'
+
+  15:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  16:
+    name: 'Normal call clearing'
+    outcome: user
+    plain: 'Normal call clearing: one party hung up. This is how a completed call ends.'
+    plain_zh: '正常清除：一方掛斷。這是一通完成的電話結束的方式。'
+
+  17:
+    name: 'User busy'
+    outcome: user
+    plain: 'The called user is busy.'
+    plain_zh: '被叫使用者忙線。'
+
+  18:
+    name: 'No user responding'
+    outcome: user
+    plain: 'The called user did not respond to the call setup (no alerting received).'
+    plain_zh: '被叫使用者對呼叫建立沒有回應（沒有收到振鈴）。'
+    common_causes:
+      - 'Terminating device unreachable or powered off on the PSTN/CS side'
+    common_causes_zh:
+      - 'PSTN／CS 側的被叫裝置不可達或關機'
+
+  19:
+    name: 'No answer from user (user alerted)'
+    outcome: user
+    plain: 'The called user was alerted but did not answer within the timer.'
+    plain_zh: '被叫使用者有振鈴但在計時器內沒有接聽。'
+
+  20:
+    name: 'Subscriber absent'
+    plain: 'The subscriber is absent: the mobile is switched off or out of coverage.'
+    plain_zh: '訂戶不在：手機關機或不在涵蓋範圍。'
+
+  21:
+    name: 'Call rejected'
+    outcome: user
+    plain: 'The call was rejected by the called party (or a service acting for them), not because of network trouble.'
+    plain_zh: '電話被被叫方（或代表他的服務）拒絕，不是網路問題。'
+
+  22:
+    name: 'Number changed'
+    plain: 'The called number has changed; the new number may be carried in the diagnostic.'
+    plain_zh: '被叫號碼已變更；新號碼可能帶在診斷欄位裡。'
+
+  23:
+    name: 'Redirection to new destination'
+    plain: 'The call is being redirected to a new destination.'
+    plain_zh: '電話正被導向新的目的地。'
+
+  24:
+    name: 'Call rejected due to feature at the destination'
+    plain: 'A feature at the destination rejected the call.'
+    plain_zh: '目的地的某項功能拒絕了這通電話。'
+
+  25:
+    name: 'Exchange routing error'
+    plain: 'An exchange routing error occurred.'
+    plain_zh: '交換機路由錯誤。'
+
+  26:
+    name: 'Non-selected user clearing'
+    plain: 'A non-selected user cleared the call (multi-terminal answering).'
+    plain_zh: '未被選中的使用者清除了電話（多終端應答）。'
+
+  27:
+    name: 'Destination out of order'
+    plain: 'The destination is out of order: the interface to it is not functioning.'
+    plain_zh: '目的地故障：往它的介面沒有在運作。'
+
+  28:
+    name: 'Invalid number format (address incomplete)'
+    plain: 'The number format is invalid or the address is incomplete.'
+    plain_zh: '號碼格式無效或位址不完整。'
+
+  29:
+    name: 'Facility rejected'
+    plain: 'The requested facility was rejected by the network.'
+    plain_zh: '網路拒絕了所要求的設施。'
+
+  30:
+    name: 'Response to STATUS ENQUIRY'
+    plain: 'This is a response to a STATUS ENQUIRY, not a release.'
+    plain_zh: '這是對 STATUS ENQUIRY 的回覆，不是釋放。'
+
+  31:
+    name: 'Normal unspecified'
+    plain: 'A normal event that no other normal-class cause describes.'
+    plain_zh: '正常事件，但沒有其他正常類 cause 能描述。'
+
+  32:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  33:
+    name: 'Circuit out of order'
+    plain: 'The circuit is out of order.'
+    plain_zh: '電路故障。'
+
+  34:
+    name: 'No circuit/channel available'
+    plain: 'No circuit or channel is available to carry the call.'
+    plain_zh: '沒有可用的電路或通道承載這通電話。'
+    common_causes:
+      - 'Trunk group towards the PSTN is full - a capacity problem at the MGCF/MGW'
+    common_causes_zh:
+      - '往 PSTN 的中繼群滿了 —— MGCF／MGW 的容量問題'
+
+  35:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  36:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  37:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  38:
+    name: 'Network out of order'
+    plain: 'The network is out of order and will stay so for a while.'
+    plain_zh: '網路故障，且會持續一段時間。'
+
+  39:
+    name: 'Permanent frame mode connection out of service'
+    plain: 'The permanent frame-mode connection is out of service.'
+    plain_zh: '永久訊框模式連線停止服務。'
+
+  40:
+    name: 'Permanent frame mode connection operational'
+    plain: 'The permanent frame-mode connection is operational again.'
+    plain_zh: '永久訊框模式連線恢復運作。'
+
+  41:
+    name: 'Temporary failure'
+    plain: 'A temporary failure; the call may succeed if retried shortly.'
+    plain_zh: '暫時性故障；稍後重試可能成功。'
+    common_causes:
+      - 'A transient fault on the PSTN side - retry succeeds; repeated 41s point at an unstable link'
+    common_causes_zh:
+      - 'PSTN 側的瞬時故障 —— 重試會成功；反覆出現 41 指向不穩定的鏈路'
+
+  42:
+    name: 'Switching equipment congestion'
+    plain: 'Switching equipment congestion; the exchange is overloaded.'
+    plain_zh: '交換設備壅塞；交換機過載。'
+
+  43:
+    name: 'Access information discarded'
+    plain: 'Access information was discarded because it could not be delivered.'
+    plain_zh: '存取資訊因無法遞送而被丟棄。'
+
+  44:
+    name: 'Requested circuit/channel not available'
+    plain: 'The requested circuit or channel is not available.'
+    plain_zh: '所要求的電路或通道不可用。'
+
+  45:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  46:
+    name: 'Precedence call blocked'
+    plain: 'A precedence call was blocked.'
+    plain_zh: '優先權通話被阻擋。'
+
+  47:
+    name: 'Resources unavailable, unspecified'
+    plain: 'Resources are unavailable for an unspecified reason.'
+    plain_zh: '資源不可用，原因未指明。'
+
+  48:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  49:
+    name: 'Quality of service unavailable'
+    plain: 'The requested quality of service cannot be provided.'
+    plain_zh: '無法提供所要求的服務品質。'
+
+  50:
+    name: 'Requested facility not subscribed'
+    plain: 'The requested facility is not subscribed.'
+    plain_zh: '所要求的設施沒有訂閱。'
+
+  51:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  52:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  53:
+    name: 'Outgoing calls barred within CUG'
+    plain: 'Outgoing calls are barred within the closed user group.'
+    plain_zh: '封閉使用者群組內禁止撥出。'
+
+  54:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  55:
+    name: 'Incoming calls barred within CUG'
+    plain: 'Incoming calls are barred within the closed user group.'
+    plain_zh: '封閉使用者群組內禁止撥入。'
+
+  56:
+    name: 'Call waiting not subscribed'
+    plain: 'Call waiting is not subscribed.'
+    plain_zh: '沒有訂閱來電等待。'
+
+  57:
+    name: 'Bearer capability not authorized'
+    plain: 'The bearer capability is not authorised for this user.'
+    plain_zh: '這個使用者沒有被授權此承載能力。'
+
+  58:
+    name: 'Bearer capability not presently available'
+    plain: 'The bearer capability is not available at present.'
+    plain_zh: '承載能力目前不可用。'
+
+  59:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  60:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  61:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  62:
+    name: 'Inconsistency in designated outgoing access information and subscriber class'
+    plain: 'The outgoing access information is inconsistent with the subscriber class.'
+    plain_zh: '撥出存取資訊與訂戶類別不一致。'
+
+  63:
+    name: 'Service or option not available, unspecified'
+    plain: 'A service or option is unavailable for an unspecified reason.'
+    plain_zh: '服務或選項不可用，原因未指明。'
+
+  64:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  65:
+    name: 'Bearer capability not implemented'
+    plain: 'The bearer capability is not implemented.'
+    plain_zh: '承載能力未實作。'
+
+  66:
+    name: 'Channel type not implemented'
+    plain: 'The channel type is not implemented.'
+    plain_zh: '通道類型未實作。'
+
+  67:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  68:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  69:
+    name: 'Requested facility not implemented'
+    plain: 'The requested facility is not implemented.'
+    plain_zh: '所要求的設施未實作。'
+
+  70:
+    name: 'Only restricted digital information bearer capability is available'
+    plain: 'Only restricted digital information bearer capability is available.'
+    plain_zh: '只有受限數位資訊承載能力可用。'
+
+  71:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  72:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  73:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  74:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  75:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  76:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  77:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  78:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  79:
+    name: 'Service or option not implemented, unspecified'
+    plain: 'A service or option is not implemented, unspecified.'
+    plain_zh: '服務或選項未實作，未指明。'
+
+  80:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  81:
+    name: 'Invalid call reference value'
+    plain: 'The call reference value is invalid.'
+    plain_zh: '呼叫參考值無效。'
+
+  82:
+    name: 'Identified channel does not exist'
+    plain: 'The identified channel does not exist.'
+    plain_zh: '指定的通道不存在。'
+
+  83:
+    name: 'Call identity does not exist for suspended call'
+    plain: 'A suspended call exists, but not with this call identity.'
+    plain_zh: '有暫停的通話，但不是這個呼叫識別。'
+
+  84:
+    name: 'Call identity in use'
+    plain: 'The call identity is already in use.'
+    plain_zh: '呼叫識別已在使用中。'
+
+  85:
+    name: 'No call suspended'
+    plain: 'No call is suspended.'
+    plain_zh: '沒有暫停中的通話。'
+
+  86:
+    name: 'Call having the requested call identity has been cleared'
+    plain: 'The call with the requested identity has already been cleared.'
+    plain_zh: '帶這個識別的通話已經被清除。'
+
+  87:
+    name: 'Called user not member of CUG'
+    plain: 'The called user is not a member of the closed user group.'
+    plain_zh: '被叫使用者不是封閉使用者群組的成員。'
+
+  88:
+    name: 'Incompatible destination'
+    plain: 'The destination is incompatible with the requested service.'
+    plain_zh: '目的地與所要求的服務不相容。'
+
+  89:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  90:
+    name: 'Non-existing CUG'
+    plain: 'The closed user group does not exist.'
+    plain_zh: '封閉使用者群組不存在。'
+
+  91:
+    name: 'Invalid transit network selection (national use)'
+    plain: 'The transit network selection is invalid.'
+    plain_zh: '中繼網路選擇無效。'
+
+  92:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  93:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  94:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  95:
+    name: 'Invalid message, unspecified'
+    plain: 'An invalid message was received, unspecified.'
+    plain_zh: '收到無效訊息，未指明。'
+
+  96:
+    name: 'Mandatory information element is missing'
+    plain: 'A mandatory information element is missing.'
+    plain_zh: '缺少必要的資訊元素。'
+
+  97:
+    name: 'Message type non-existent or not implemented'
+    plain: 'The message type is non-existent or not implemented.'
+    plain_zh: '訊息類型不存在或未實作。'
+
+  98:
+    name: 'Message not compatible with call state or message type non-existent or not implemented'
+    plain: 'The message is not compatible with the call state, or its type is not implemented.'
+    plain_zh: '訊息與通話狀態不相容，或其類型未實作。'
+
+  99:
+    name: 'Information element nonexistent or not implemented'
+    plain: 'An information element does not exist or is not implemented.'
+    plain_zh: '資訊元素不存在或未實作。'
+
+  100:
+    name: 'Invalid information element contents'
+    plain: 'The contents of an information element are invalid.'
+    plain_zh: '資訊元素的內容無效。'
+
+  101:
+    name: 'Message not compatible with call state'
+    plain: 'The message is not compatible with the call state.'
+    plain_zh: '訊息與通話狀態不相容。'
+
+  102:
+    name: 'Recovery on timer expiry'
+    plain: 'Recovery on timer expiry: a protocol timer ran out and the call was cleared.'
+    plain_zh: '計時器到期後的恢復：某個協定計時器耗盡，通話被清除。'
+    common_causes:
+      - 'A Q.931/ISUP timer on the gateway expired waiting for the far end'
+    common_causes_zh:
+      - '閘道上的 Q.931／ISUP 計時器在等待對端時到期'
+
+  103:
+    name: 'Parameter non-existent or not implemented - passed on'
+    plain: 'A parameter is non-existent or not implemented and was passed on.'
+    plain_zh: '參數不存在或未實作，已被傳遞。'
+
+  104:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  105:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  106:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  107:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  108:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  109:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  110:
+    name: 'Message with unrecognized parameter discarded'
+    plain: 'A message with an unrecognised parameter was discarded.'
+    plain_zh: '帶無法辨識參數的訊息被丟棄。'
+
+  111:
+    name: 'Protocol error, unspecified'
+    plain: 'A protocol error, unspecified.'
+    plain_zh: '協定錯誤，未指明。'
+
+  112:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  113:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  114:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  115:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  116:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  117:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  118:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  119:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  120:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  121:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  122:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  123:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  124:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  125:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  126:
+    name: 'Unassigned'
+    plain: 'Not assigned by ITU-T Q.850. A network sending this value is using a private or wrong code; the SIP status it accompanies is the only reliable meaning.'
+    plain_zh: 'ITU-T Q.850 沒有指派這個值。送出它的網路用的是私有或錯誤的碼；同行的 SIP 狀態碼才是可靠的意思。'
+
+  127:
+    name: 'Interworking, unspecified'
+    plain: 'Interworking: the reason came from another network and cannot be mapped more precisely.'
+    plain_zh: '互通：原因來自別的網路，無法更精確地對映。'
+    common_causes:
+      - 'The PSTN or a foreign network released with a cause the MGCF could not translate'
+    common_causes_zh:
+      - 'PSTN 或外部網路以 MGCF 無法轉換的 cause 釋放'

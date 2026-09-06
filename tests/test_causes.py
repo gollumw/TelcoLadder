@@ -124,7 +124,8 @@ def test_every_table_declares_its_source(path):
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     # 出處不必然是 3GPP —— Diameter 的基礎結果碼出自 IETF（2026-08-23）。
-    assert raw["spec"].startswith(("3GPP TS", "RFC ")), raw["spec"]
+    # ITU-T 是第三個來源（2026-09-06 的 Q.850 表）—— 規範文件，不是條號。
+    assert raw["spec"].startswith(("3GPP TS", "RFC ", "ITU-T ")), raw["spec"]
     # **`clause` 選用。** 有些登錄表沒有單一節號可指（Diameter 的號碼由
     # 不同 RFC 陸續補進同一個 IANA 登錄），而人工核對還沒做。
     # 有寫就必須是節號的形狀；沒寫就是明確的「還沒核對」，不是漏填。
@@ -168,6 +169,10 @@ def test_all_expected_tables_are_present():
         # PFCP（2026-08-29）—— 補上 CI 檔頭記了很久的缺口：「失敗訊息標得
         # 出來、給不出條文出處」。adapter 的 CauseRef 同日接上。
         "pfcp",
+        # SIP 狀態碼與 Reason 標頭裡的 Q.850（2026-09-06，T-ENGINEER-LOOP #7）——
+        # IMS 那一半的「帶出處的解釋」。兩張都對 oracle 完整；`outcome: user`
+        # 把「一方自己的結局」與網路失敗分開（判準在表裡，不在程式裡）。
+        "sip_status", "q850",
     }
 
 
@@ -187,6 +192,10 @@ _ORACLE_COMPLETE = {
     "ngap_misc": "ngap.misc",
     "nas_5gmm": "nas-5gs.mm.5gmm_cause",
     "nas_5gsm": "nas-5gs.sm.5gsm_cause",
+    # SIP／Q.850（2026-09-06）。`sip.Status-Code` 本身沒有值表，oracle 是
+    # Reason 標頭欄位的那兩張 —— 同一組號碼、同一套名稱。
+    "sip_status": "sip.reason_cause_sip",
+    "q850": "sip.reason_cause_q850",
 }
 
 
@@ -385,3 +394,48 @@ def test_annotate_stores_the_source_language_not_the_translation() -> None:
 
     assert annotated("en") == annotated("zh_TW"), "annotate() 的結果隨語言變 —— 會被快取跨語言汙染"
     assert not _CJK.search(annotated("zh_TW"))
+
+
+# ── SIP／Q.850（2026-09-06） ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("table", ["sip_status", "q850"])
+def test_the_sip_tables_print_no_clause_number(table) -> None:
+    """條號刻意沒有：狀態碼散在 RFC 3261 與十幾份擴充 RFC 裡、Q.850 只有一張表，
+    而且沒有一條經過逐條核對（CLAUDE.md 紅線 3）。有人補上就紅。"""
+    raw = yaml.safe_load((_CAUSES_DIR / f"{table}.yaml").read_text(encoding="utf-8"))
+    assert "clause" not in raw, "有人補了 clause。條號必須人工逐條核對過才准印。"
+
+
+def test_user_outcomes_are_exactly_the_agreed_codes() -> None:
+    """哪些號碼是「一方自己的結局」是內容裁定（2026-09-06），釘住免得被順手擴大或
+    縮小：SIP 480/486/487/600/603，Q.850 16/17/18/19/21。"""
+    from telcoladder.causes import is_user_outcome
+    from telcoladder.model import CauseRef
+
+    sip = yaml.safe_load((_CAUSES_DIR / "sip_status.yaml").read_text(encoding="utf-8"))["causes"]
+    q850 = yaml.safe_load((_CAUSES_DIR / "q850.yaml").read_text(encoding="utf-8"))["causes"]
+    assert {v for v, b in sip.items() if b.get("outcome")} == {480, 486, 487, 600, 603}
+    assert {v for v, b in q850.items() if b.get("outcome")} == {16, 17, 18, 19, 21}
+    assert is_user_outcome(CauseRef("sip_status", 486))
+    assert not is_user_outcome(CauseRef("sip_status", 503))
+    assert not is_user_outcome(CauseRef("sip_status", 401)), "挑戰步驟不是結局，是流程"
+    assert not is_user_outcome(None)
+    assert not is_user_outcome(CauseRef("sip_status", 12345)), "不認得的號碼不猜"
+
+
+def test_an_unknown_outcome_value_is_refused_at_load_time(tmp_path, monkeypatch) -> None:
+    """`outcome: usr` 這種拼錯會讓那條規則靜默失效 —— 486 又變回紅燈而畫面什麼都
+    不說。載入時就擋。"""
+    import telcoladder.causes as causes_mod
+    from telcoladder.plugins import PluginError
+
+    (tmp_path / "bogus.yaml").write_text(
+        "table: bogus\nspec: x\ncauses:\n  1: {name: A, plain: a, plain_zh: 甲, outcome: usr}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(causes_mod, "_table_dirs", lambda: [("test", tmp_path)])
+    causes_mod._load_tables.cache_clear()
+    with pytest.raises(PluginError, match="only values"):
+        causes_mod._load_tables()
+    causes_mod._load_tables.cache_clear()
