@@ -79,6 +79,9 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.GTP_TEID_C: "GTP TEID-C (control plane)",
     IdKind.ENB_UE_S1AP_ID: "eNB UE S1AP ID",
     IdKind.MME_UE_S1AP_ID: "MME UE S1AP ID",
+    IdKind.H248_CONTEXT: "H.248 context",
+    IdKind.H248_TRANSACTION: "H.248 transaction",
+    IdKind.MEDIA_ENDPOINT: "SDP media endpoint",
 }
 
 #: 為什麼這個類別現在搜不到。UI 直接顯示這句話，不要自己另寫。

@@ -59,6 +59,7 @@ Check the protocol tree for these names:
 | `http2` (SBI) | ⚠ cleartext h2c decodes (SUPI correlation, SCP relay detection included); **TLS-encrypted does not** — real networks mostly run TLS |
 | `pfcp` (UDP 8805) | ✅ N4 session messages; causes catalogued (29 entries, oracle-pinned, no clause numbers) |
 | `s1ap` / `nas-eps` / `gtpv2` | ✅ **4G/EPC control plane** (2026-08-24): S1AP carrying NAS-EPS, GTPv2-C on S11 and S5/S8; the IMSI joins S1-MME and S11 into one subscriber flow. All 236 causes catalogued, no clause numbers |
+| `megaco` | ✅ H.248/MEGACO between a media gateway controller and its gateway (Add/Modify/Subtract/Notify and replies; Error descriptors as catalogued failures). Joins the SIP call through the SDP media endpoint; ends labelled `MGC`/`MGW`, no reference point claimed |
 | `sip` / `diameter` | ✅ SIP (Gm; keyed on `From`, never `To`) and Diameter (S6a/S6d, Cx/Dx, Gx, Rx, Sh, S6b, SWx with roles and causes; other applications decode with their Application-Id but get no role inference — §7). Raw exports with no IP layer (link type USER 0) are detected and mapped, §8 |
 | `gtp` (user plane) | ✅ **N3 tunnel attribution** (2026-08-21) — G-PDUs join subscriber flows by (destination, TEID), QFI is read. **No usage KPIs yet**: no throughput, no sequence gaps, no Echo RTT; every G-PDU is one row, so pair large files with `--since/--until` |
 
@@ -382,6 +383,15 @@ reachable (480), or the caller cancelled (487). The network delivered the
 call; a party ended it. Those are not red — the classification lives in the
 cause table (`outcome: user` in `sip_status.yaml` and `q850.yaml`), not in
 code, and the Overview counts them separately.
+
+H.248 (MEGACO) between a media gateway controller and its gateway is on
+the ladder too, under the *Media control (H.248)* tab: Add / Modify /
+Subtract / Notify with their replies, an Error descriptor as a catalogued
+failure. The gateway's media address and port from the Add reply are the
+same pair the SIP SDP carries, so the H.248 leg joins the call it belongs
+to. The two ends are labelled `MGC` / `MGW` — H.248 alone cannot tell Iq
+(P-CSCF↔IMS-AGW) from Mn (MGCF↔IM-MGW) from Mp (MRFC↔MRFP), so no
+reference point is claimed.
 
 At a core capture point one SIP message is seen on every leg it crosses
 (UE→P-CSCF→S-CSCF→AS→…). The procedure's `messages` counts every

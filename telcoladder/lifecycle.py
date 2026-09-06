@@ -92,6 +92,10 @@ REUSABLE: frozenset[IdKind] = frozenset({
     IdKind.GTP_TEID,
     IdKind.SM_CONTEXT_REF,
     IdKind.SBI_STREAM,
+    # H.248（2026-09-06）：context 號碼由 MGW 回收（Subtract 最後一個 termination
+    # 就釋放），媒體埠同樣回收 —— 不釋放，下一通拿到同一個埠的電話會黏上上一通。
+    IdKind.H248_CONTEXT,
+    IdKind.MEDIA_ENDPOINT,
 })
 
 
@@ -115,9 +119,18 @@ def apply(messages: list[Message]) -> list[Message]:
     episode: dict[IdKey, int] = defaultdict(int)
     #: 每把 key **這一輪**跟誰同時出現過。釋放時要一起帶走。
     associates: dict[IdKey, set[IdKey]] = defaultdict(set)
+    #: **不可回收的錨**（SIP Call-ID）這一輪帶過哪些可回收的鍵。BYE 沒有 SDP，
+    #: 它能宣告的只有「這通電話結束了」；電話的媒體端點是從 INVITE／183／200
+    #: 的 SDP 來的，要靠這張表才找得回來。錨本身不回收，所以不進 `associates`。
+    anchored: dict[IdKey, set[IdKey]] = defaultdict(set)
 
-    def release(keys: set[IdKey]) -> None:
-        """釋放這些 key 與它們這一輪的關聯。"""
+    def release(keys: set[IdKey], *, with_associates: bool = True) -> None:
+        """釋放這些 key —— 預設連它們這一輪的關聯一起放掉。
+
+        `with_associates=False` 給錨的釋放用：SIP 的 BYE 結束的是**這通電話的媒體**
+        （它帶過的端點），不是 MGW 上那個 context —— MGCF 的 Subtract 總是在 BYE
+        之後才來，那時 context 還活著；連坐放掉的話，Subtract 會落成一條孤兒流程。
+        """
         closure: set[IdKey] = set()
         pending = list(keys)
         while pending:
@@ -125,7 +138,8 @@ def apply(messages: list[Message]) -> list[Message]:
             if key in closure:
                 continue
             closure.add(key)
-            pending.extend(associates.get(key, set()) - closure)
+            if with_associates:
+                pending.extend(associates.get(key, set()) - closure)
         for key in closure:
             episode[key] += 1
             # 切斷雙向關聯 —— 留著的話下一輪會繼承上一輪的鄰居。
@@ -150,10 +164,18 @@ def apply(messages: list[Message]) -> list[Message]:
 
             for key in live:
                 associates[key] |= live - {key}
+            for anchor in msg.identity_keys - live:
+                anchored[anchor] |= live
 
         released = _reusable(msg.releases)
         if released:
             release(released)
+        anchored_release: set[IdKey] = set()
+        for anchor in msg.releases - released:
+            # 錨的釋放 = 它這一輪帶過的可回收鍵（只有它們，不連坐）。
+            anchored_release |= anchored.pop(anchor, set())
+        if anchored_release:
+            release(anchored_release, with_associates=False)
 
     return messages
 

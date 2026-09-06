@@ -70,6 +70,9 @@ _TEST_NETWORK = "00101"
 
 #: 明確捏造的 15 位識別碼。**每一筆的尾巴都看得出規律** —— 那是判準。
 _INVENTED = {
+    # `web/PORTED.json` 裡一個 sha256 雜湊剛好含 15 個連續十進位數字（2026-09-06 re-pin）。
+    # 雜湊不是識別碼；換一次雜湊這條就可以拿掉。
+    "110911218233084": "digit run inside a sha256 in PORTED.json, not an identifier",
     "000000000000000": "全 0 —— `tests/test_callflow_api.py` 的哨兵值",
     "999999999999999": "全 9 —— `tests/test_prefilter.py` 的邊界值",
     "460001234567890": "MCC 460 ＋ 遞增序列",

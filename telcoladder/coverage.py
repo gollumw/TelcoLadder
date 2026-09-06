@@ -433,7 +433,6 @@ KNOWN_UNSUPPORTED: dict[str, str] = {
     "camel": "CAMEL/CAP - IN service trigger",
     "dns": "DNS - ENUM/NAPTR routing lookups",
     "radius": "RADIUS accounting",
-    "megaco": "H.248/MEGACO media-gateway control",
 }
 
 

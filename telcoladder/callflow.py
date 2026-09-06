@@ -56,6 +56,8 @@ _DOMAIN_BY_PROTOCOL = {
     "nas-eps": "ACCESS_S1_EPS",
     "gtpv2": "BEARER_S11_S5S8",
     "sip": "IMS_SIP",
+    # H.248（2026-09-06）：媒體閘道控制自成一頁 —— 它與 SIP 訊令是同一通電話的兩層。
+    "megaco": "IMS_MEDIA_CONTROL",
 }
 
 

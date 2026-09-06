@@ -10,7 +10,8 @@ export type TelecomDomain =
   // 這個名字對 4G 工程師是錯的（他看的是 S1-MME）。見 `callflow.py`。
   | "ACCESS_S1_EPS"
   | "BEARER_S11_S5S8"
-  | "IMS_SIP";
+  | "IMS_SIP"
+  | "IMS_MEDIA_CONTROL";
 
 export type NetworkNode = "UE" | "gNB" | "AMF" | "SMF" | "UPF" | "AUSF";
 

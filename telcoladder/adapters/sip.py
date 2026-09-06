@@ -38,7 +38,7 @@ from typing import Any
 from telcoladder.adapters.carrier import dig
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import globally_unique, imsi_from_ims_identity
+from telcoladder.identity import globally_unique, imsi_from_ims_identity, media_endpoint
 from telcoladder.model import (
     NF_ROLE_HINTS_KEY,
     CauseRef,
@@ -168,6 +168,23 @@ def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     SDP 自己只有媒體位址與埠，認不出是誰；身分全部在 SIP 這一層。
     """
     return _identity_keys(block)
+
+
+def _media_keys(block: dict[str, Any]) -> set[IdKey]:
+    """SDP 的 `c=` 位址 ＋ `m=` 埠 → 媒體端點鍵。**這是 H.248 接上這通電話的橋**
+    （`identity.media_endpoint`，與 `adapters/megaco.py` 用同一份正規化）。
+    位址與埠是位置對位置的陣列，與 GTP-U 的 TEID／位址一樣。"""
+    keys: set[IdKey] = set()
+    for sdp in dig(block, "sdp"):
+        addresses = sdp.get("sdp_sdp_connection_info_address")
+        ports = sdp.get("sdp_sdp_media_port")
+        addresses = addresses if isinstance(addresses, list) else [addresses]
+        ports = ports if isinstance(ports, list) else [ports]
+        for address, port in zip(addresses, ports):
+            key = media_endpoint(address, port)
+            if key is not None:
+                keys.add(key)
+    return keys
 
 
 def _media_ports(block: dict[str, Any]) -> list[str]:
@@ -300,6 +317,14 @@ def parse(frame: Frame) -> list[Message]:
         else:
             cause = reason_cause
 
+        keys = set(_identity_keys(block)) | _media_keys(block)
+        releases: set[IdKey] = set()
+        if method == "BYE":
+            # **BYE 結束這通電話的媒體。** 媒體埠會被回收（UE 與 MGW 都是），下一通
+            # 拿到同一個埠的電話不能黏上這一通。BYE 自己不帶 SDP，所以釋放的是
+            # Call-ID 這個錨 —— `lifecycle` 會把這一輪跟它同框出現過的可回收鍵一起放掉。
+            releases = {k for k in keys if k[0] is IdKind.SIP_CALL_ID}
+
         messages.append(
             Message(
                 frame=frame.number,
@@ -309,7 +334,8 @@ def parse(frame: Frame) -> list[Message]:
                 src=Endpoint(frame.src_ip, frame.src_port),
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
-                identity_keys=_identity_keys(block),
+                identity_keys=frozenset(keys),
+                releases=frozenset(releases),
                 cause=cause,
                 is_failure=(status is not None
                             and status >= _FIRST_FAILURE_CODE

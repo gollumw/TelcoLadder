@@ -10,7 +10,7 @@ spans four interfaces, and they belong on one ladder rather than in four windows
 
 Every cause code is resolved through a hand-verified table to the specification
 it comes from, what it means in plain language, and the root causes that
-actually produce it in the field — **696 of them**, every name taken verbatim
+actually produce it in the field — **775 of them**, every name taken verbatim
 from `tshark` and re-checked against it by a test. Every network function is
 named rather than shown as an IP, with the evidence for that name on hover.
 Nothing is generated: a cause the table does not carry is reported as not

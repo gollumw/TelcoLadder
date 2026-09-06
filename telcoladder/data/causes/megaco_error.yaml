@@ -1,0 +1,426 @@
+# H.248 / MEGACO error codes (ITU-T H.248.8), as the MG returns them in the
+# Error descriptor of a Reply. Names verbatim from `tshark -G values` for
+# `megaco.error_code`; a test re-runs that oracle. No clause numbers: the
+# codes are one table in H.248.8 and none was human-verified per code
+# (CLAUDE.md red line 3).
+
+table: megaco_error
+spec: "ITU-T H.248.8"
+
+causes:
+  400:
+    name: 'Syntax error in message'
+    plain: 'The MG could not parse the message at all.'
+    plain_zh: 'MG 完全解不開這則訊息。'
+
+  401:
+    name: 'Protocol Error'
+    plain: 'A protocol error the MG cannot classify further.'
+    plain_zh: 'MG 無法進一步分類的協定錯誤。'
+
+  402:
+    name: 'Unauthorized'
+    plain: 'The sender is not authorised to control this MG.'
+    plain_zh: '發送端沒有被授權控制這台 MG。'
+
+  403:
+    name: 'Syntax error in transaction request'
+    plain: 'The transaction request has a syntax error.'
+    plain_zh: '交易請求有語法錯誤。'
+
+  406:
+    name: 'Version Not Supported'
+    plain: 'The H.248 version in the message is not supported.'
+    plain_zh: '訊息裡的 H.248 版本不支援。'
+
+  410:
+    name: 'Incorrect identifier'
+    plain: 'An identifier in the message is malformed.'
+    plain_zh: '訊息裡的某個識別碼格式不對。'
+
+  411:
+    name: 'The transaction refers to an unknown ContextId'
+    plain: 'The context named in the transaction does not exist on the MG - it was already subtracted, or never created here.'
+    plain_zh: '交易指名的 context 在 MG 上不存在 —— 已經被 Subtract 掉了，或從來不在這台上。'
+    common_causes:
+      - 'The MGC kept a context after the MG had released it (MGC and MG state out of step after a restart or failover)'
+      - 'A command was sent to the wrong MG after a re-route'
+    common_causes_zh:
+      - 'MG 已釋放的 context，MGC 還留著（重啟或切換後兩邊狀態脫節）'
+      - '改路之後命令送到了另一台 MG'
+
+  412:
+    name: 'No ContextIDs available'
+    plain: 'The MG has run out of context identifiers.'
+    plain_zh: 'MG 的 context 識別碼用完了。'
+
+  421:
+    name: 'Unknown action or illegal combination of actions'
+    plain: 'The action is unknown, or the combination of actions is not allowed.'
+    plain_zh: '動作不明，或動作的組合不被允許。'
+
+  422:
+    name: 'Syntax Error in Action'
+    plain: 'Syntax error inside an action.'
+    plain_zh: '動作裡有語法錯誤。'
+
+  430:
+    name: 'Unknown TerminationID'
+    plain: 'The termination named does not exist on this MG.'
+    plain_zh: '指名的 termination 在這台 MG 上不存在。'
+    common_causes:
+      - 'Termination naming differs between the MGC''s configuration and the MG''s (a trunk or IP termination that was renamed or unequipped)'
+    common_causes_zh:
+      - 'MGC 設定裡的 termination 名稱與 MG 的不一致（改過名或已拆掉的中繼／IP termination）'
+
+  431:
+    name: 'No TerminationID matched a wildcard'
+    plain: 'No termination matched the wildcard.'
+    plain_zh: '沒有 termination 符合這個通配。'
+
+  432:
+    name: 'Out of TerminationIDs or No TerminationID available'
+    plain: 'No termination is available - the MG is out of the requested resource.'
+    plain_zh: '沒有可用的 termination —— MG 的這種資源用完了。'
+    common_causes:
+      - 'Ephemeral (IP) terminations exhausted under load: a capacity problem, and the SIP side usually shows 503'
+    common_causes_zh:
+      - '負載下暫時性（IP）termination 用完：容量問題，SIP 側通常同時出現 503'
+
+  433:
+    name: 'TerminationID is already in a Context'
+    plain: 'The termination is already in another context.'
+    plain_zh: '這個 termination 已經在別的 context 裡。'
+
+  434:
+    name: 'Max number of Terminations in a Context exceeded'
+    plain: 'The context already holds the maximum number of terminations.'
+    plain_zh: '這個 context 的 termination 數已達上限。'
+
+  435:
+    name: 'Termination ID is not in specified Context'
+    plain: 'The termination is not in the context named.'
+    plain_zh: '這個 termination 不在指名的 context 裡。'
+
+  440:
+    name: 'Unsupported or unknown Package'
+    plain: 'The package is unsupported or unknown.'
+    plain_zh: '這個 package 不支援或不明。'
+
+  441:
+    name: 'Missing Remote or Local Descriptor'
+    plain: 'A Remote or Local descriptor is missing where one is required.'
+    plain_zh: '缺少必要的 Remote 或 Local descriptor。'
+
+  442:
+    name: 'Syntax Error in Command'
+    plain: 'Syntax error inside a command.'
+    plain_zh: '命令裡有語法錯誤。'
+
+  443:
+    name: 'Unsupported or Unknown Command'
+    plain: 'The command is unsupported or unknown.'
+    plain_zh: '這個命令不支援或不明。'
+
+  444:
+    name: 'Unsupported or Unknown Descriptor'
+    plain: 'The descriptor is unsupported or unknown.'
+    plain_zh: '這個 descriptor 不支援或不明。'
+
+  445:
+    name: 'Unsupported or Unknown Property'
+    plain: 'The property is unsupported or unknown.'
+    plain_zh: '這個屬性不支援或不明。'
+
+  446:
+    name: 'Unsupported or Unknown Parameter'
+    plain: 'The parameter is unsupported or unknown.'
+    plain_zh: '這個參數不支援或不明。'
+
+  447:
+    name: 'Descriptor not legal in this command'
+    plain: 'The descriptor is not legal in this command.'
+    plain_zh: '這個 descriptor 不能出現在此命令裡。'
+
+  448:
+    name: 'Descriptor appears twice in a command'
+    plain: 'The descriptor appears twice in one command.'
+    plain_zh: '同一個 descriptor 在一個命令裡出現兩次。'
+
+  450:
+    name: 'No such property in this package'
+    plain: 'The package has no such property.'
+    plain_zh: '這個 package 沒有這個屬性。'
+
+  451:
+    name: 'No such event in this package'
+    plain: 'The package has no such event.'
+    plain_zh: '這個 package 沒有這個事件。'
+
+  452:
+    name: 'No such signal in this package'
+    plain: 'The package has no such signal.'
+    plain_zh: '這個 package 沒有這個訊號。'
+
+  453:
+    name: 'No such statistic in this package'
+    plain: 'The package has no such statistic.'
+    plain_zh: '這個 package 沒有這個統計。'
+
+  454:
+    name: 'No such parameter value in this package'
+    plain: 'The package has no such parameter value.'
+    plain_zh: '這個 package 沒有這個參數值。'
+
+  455:
+    name: 'Property illegal in this Descriptor'
+    plain: 'The property is not legal in this descriptor.'
+    plain_zh: '這個屬性不能出現在此 descriptor 裡。'
+
+  456:
+    name: 'Property appears twice in this Descriptor'
+    plain: 'The property appears twice in this descriptor.'
+    plain_zh: '同一個屬性在此 descriptor 裡出現兩次。'
+
+  457:
+    name: 'Missing parameter in signal or event'
+    plain: 'A signal or event is missing a required parameter.'
+    plain_zh: '訊號或事件缺少必要參數。'
+
+  458:
+    name: 'Unexpected Event/Request ID'
+    plain: 'The event or request identifier was not expected.'
+    plain_zh: '非預期的事件或請求識別碼。'
+
+  459:
+    name: 'Unsupported or Unknown Profile'
+    plain: 'The profile is unsupported or unknown.'
+    plain_zh: '這個 profile 不支援或不明。'
+
+  471:
+    name: 'Implied Add for Multiplex failure'
+    plain: 'The implied Add for a multiplex failed.'
+    plain_zh: '多工隱含的 Add 失敗。'
+
+  500:
+    name: 'Internal software Failure in MG'
+    plain: 'Internal software failure in the MG.'
+    plain_zh: 'MG 內部軟體故障。'
+
+  501:
+    name: 'Not Implemented'
+    plain: 'The MG has not implemented what was asked.'
+    plain_zh: 'MG 沒有實作被要求的東西。'
+
+  502:
+    name: 'Not ready.'
+    plain: 'The MG is not ready to serve.'
+    plain_zh: 'MG 還沒準備好服務。'
+
+  503:
+    name: 'Service Unavailable'
+    plain: 'The MG''s service is unavailable.'
+    plain_zh: 'MG 的服務不可用。'
+
+  504:
+    name: 'Command Received from unauthorized entity'
+    plain: 'The command came from an entity the MG does not accept commands from.'
+    plain_zh: '命令來自 MG 不接受其命令的實體。'
+
+  505:
+    name: 'Transaction Request Received before a Service Change Reply has been received'
+    plain: 'A transaction arrived before the Service Change handshake completed.'
+    plain_zh: 'Service Change 交握完成前就收到交易。'
+
+  506:
+    name: 'Number of Transaction Pendings Exceeded'
+    plain: 'Too many transactions are pending.'
+    plain_zh: '待處理的交易太多。'
+
+  510:
+    name: 'Insufficient resources'
+    plain: 'The MG has insufficient resources for the request.'
+    plain_zh: 'MG 的資源不足以處理這個請求。'
+    common_causes:
+      - 'DSP or bandwidth exhausted on the gateway - a capacity problem visible as 503 on the SIP side'
+    common_causes_zh:
+      - '閘道的 DSP 或頻寬用完 —— 容量問題，SIP 側看到的是 503'
+
+  512:
+    name: 'Media Gateway unequipped to detect requested Event'
+    plain: 'The MG cannot detect the requested event.'
+    plain_zh: 'MG 無法偵測被要求的事件。'
+
+  513:
+    name: 'Media Gateway unequipped to generate requested Signals'
+    plain: 'The MG cannot generate the requested signal.'
+    plain_zh: 'MG 無法產生被要求的訊號。'
+
+  514:
+    name: 'Media Gateway cannot send the specified announcement'
+    plain: 'The MG cannot play the specified announcement.'
+    plain_zh: 'MG 無法播放指定的公告。'
+
+  515:
+    name: 'Unsupported Media Type'
+    plain: 'The media type is not supported.'
+    plain_zh: '媒體類型不支援。'
+    common_causes:
+      - 'Codec or packetisation in the Local/Remote descriptor that the gateway cannot handle - the SIP side shows 488'
+    common_causes_zh:
+      - 'Local／Remote descriptor 裡的編解碼器或封包化是閘道處理不了的 —— SIP 側是 488'
+
+  517:
+    name: 'Unsupported or invalid mode'
+    plain: 'The stream mode is unsupported or invalid.'
+    plain_zh: '串流模式不支援或無效。'
+
+  518:
+    name: 'Event buffer full'
+    plain: 'The event buffer is full.'
+    plain_zh: '事件緩衝區滿了。'
+
+  519:
+    name: 'Out of space to store digit map'
+    plain: 'No space left to store the digit map.'
+    plain_zh: '沒有空間存放 digit map。'
+
+  520:
+    name: 'Digit Map undefined in the MG'
+    plain: 'The digit map is not defined in the MG.'
+    plain_zh: 'MG 裡沒有定義這個 digit map。'
+
+  521:
+    name: 'Termination is ServiceChanging'
+    plain: 'The termination is in the middle of a service change.'
+    plain_zh: '這個 termination 正在 service change 中。'
+
+  526:
+    name: 'Insufficient bandwidth'
+    plain: 'Insufficient bandwidth for the request.'
+    plain_zh: '頻寬不足以處理這個請求。'
+
+  529:
+    name: 'Internal hardware failure in MG'
+    plain: 'Internal hardware failure in the MG.'
+    plain_zh: 'MG 內部硬體故障。'
+
+  530:
+    name: 'Temporary Network failure'
+    plain: 'A temporary network failure on the MG side.'
+    plain_zh: 'MG 側暫時性網路故障。'
+
+  531:
+    name: 'Permanent Network failure'
+    plain: 'A permanent network failure on the MG side.'
+    plain_zh: 'MG 側永久性網路故障。'
+
+  532:
+    name: 'Audited Property, Statistic, Event or Signal does not exist'
+    plain: 'The audited property, statistic, event or signal does not exist.'
+    plain_zh: '稽核的屬性、統計、事件或訊號不存在。'
+
+  533:
+    name: 'Response exceeds maximum transport PDU size'
+    plain: 'The response would exceed the maximum transport PDU size.'
+    plain_zh: '回應會超過傳輸層 PDU 的最大長度。'
+
+  534:
+    name: 'Illegal write or read only property'
+    plain: 'Illegal write to a read-only property.'
+    plain_zh: '對唯讀屬性的非法寫入。'
+
+  540:
+    name: 'Unexpected initial hook state'
+    plain: 'The initial hook state was not the expected one.'
+    plain_zh: '初始摘掛機狀態不是預期的。'
+
+  581:
+    name: 'Does Not Exist'
+    plain: 'The item referred to does not exist.'
+    plain_zh: '所指的項目不存在。'
+
+  600:
+    name: 'Illegal syntax within an announcement specification'
+    plain: 'Illegal syntax within an announcement specification.'
+    plain_zh: '公告規格裡有非法語法。'
+
+  601:
+    name: 'Variable type not supported'
+    plain: 'The variable type is not supported.'
+    plain_zh: '變數型別不支援。'
+
+  602:
+    name: 'Variable value out of range'
+    plain: 'The variable value is out of range.'
+    plain_zh: '變數值超出範圍。'
+
+  603:
+    name: 'Category not supported'
+    plain: 'The category is not supported.'
+    plain_zh: '類別不支援。'
+
+  604:
+    name: 'Selector type not supported'
+    plain: 'The selector type is not supported.'
+    plain_zh: '選擇器型別不支援。'
+
+  605:
+    name: 'Selector value not supported'
+    plain: 'The selector value is not supported.'
+    plain_zh: '選擇器值不支援。'
+
+  606:
+    name: 'Unknown segment ID'
+    plain: 'The segment identifier is unknown.'
+    plain_zh: '段識別碼不明。'
+
+  607:
+    name: 'Mismatch between play specification and provisioned data'
+    plain: 'The play specification does not match the provisioned data.'
+    plain_zh: '播放規格與已配置的資料不符。'
+
+  608:
+    name: 'Provisioning error'
+    plain: 'A provisioning error on the MG.'
+    plain_zh: 'MG 的配置錯誤。'
+
+  609:
+    name: 'Invalid offset'
+    plain: 'The offset is invalid.'
+    plain_zh: '偏移量無效。'
+
+  610:
+    name: 'No free segment IDs'
+    plain: 'No free segment identifiers.'
+    plain_zh: '沒有空閒的段識別碼。'
+
+  611:
+    name: 'Temporary segment not found'
+    plain: 'The temporary segment was not found.'
+    plain_zh: '找不到暫時段。'
+
+  612:
+    name: 'Segment in use'
+    plain: 'The segment is in use.'
+    plain_zh: '段正在使用中。'
+
+  613:
+    name: 'ISP port limit overrun'
+    plain: 'The ISP port limit was exceeded.'
+    plain_zh: '超過 ISP 埠上限。'
+
+  614:
+    name: 'No modems available'
+    plain: 'No modems are available.'
+    plain_zh: '沒有可用的數據機。'
+
+  615:
+    name: 'Calling number unacceptable'
+    plain: 'The calling number is unacceptable.'
+    plain_zh: '主叫號碼不可接受。'
+
+  616:
+    name: 'Called number unacceptable'
+    plain: 'The called number is unacceptable.'
+    plain_zh: '被叫號碼不可接受。'
