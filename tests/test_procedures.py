@@ -290,6 +290,9 @@ PROCEDURE_FIELDS = {
     # **加欄不升版**（xdr 檔頭規則）—— 既有的 jq 一個都不會壞，而少了它，
     # 這個工具唯一講得出「這代表什麼」的地方就出不了 xDR。
     "sequence",
+    # 2026-09-06：SIP 通話的 KPI 與釋放原因。非通話段全 null（沒量到的不填）。
+    # 加欄不升版。
+    "ring_s", "answer_s", "talk_s", "released_by", "release_cause", "final_status",
 }
 
 

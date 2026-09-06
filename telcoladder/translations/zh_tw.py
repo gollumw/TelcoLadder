@@ -209,6 +209,8 @@ CATALOG: dict[str, str] = {
         "{n} 格是 IPsec ESP；裡面的內容讀不到（UE 與 P-CSCF 之間的 Gm 通常受 IPsec 保護）。給 tshark ESP 的 SA 它能解開；否則要在 P-CSCF 內側擷取。",
     "Cause {table} #{value} declares outcome {outcome!r}; the only values this tool understands are {allowed}.":
         "Cause {table} #{value} 宣告的 outcome 是 {outcome!r}；本工具只認得 {allowed}。",
+    "Redirected ({code}); the retried call is a separate dialog":
+        "被重導（{code}）；重打的那通是另一個 dialog",
     "Redirected to {n} host(s); no answer to the redirected request was seen":
         "被指示改送 {n} 台主機；沒有看到重送後的回應",
     "  · {frames} frames are {protocol} with nothing above the transport layer (heartbeats, acknowledgements, association control) - no signalling inside them.":

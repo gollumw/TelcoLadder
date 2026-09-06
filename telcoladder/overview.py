@@ -57,7 +57,7 @@ from telcoladder.identities import identity_label
 from telcoladder.model import Message
 from telcoladder.packets import frame_filter
 from telcoladder.pipeline import Analysis
-from telcoladder.procedures import capture_end, segment_flow
+from telcoladder.procedures import _distinct, capture_end, segment_flow
 from telcoladder.summary import not_visible
 from telcoladder.xdr import procedure_record
 
@@ -123,10 +123,13 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
     for flow_id, flow in enumerate(analysis.flows):
         owner = owner_of_flow.get(flow_id)
         ref = _subscriber_ref(owner) if owner is not None else None
+        # **同一則訊息在轉送路徑上會被看到好幾次**（Diameter 的 DRA 兩腿、SIP 的
+        # 每一跳）。卡片的 `count` 數的是去重後的觀測（與 `procedures.failures`
+        # 同一把鑰匙），`frames` 仍列出每一腿 —— display filter 要選得到每一格。
+        observed = {m.frame for m in _distinct(sorted(flow.messages, key=lambda m: m.frame))}
         for msg in flow.messages:
             if not msg.is_failure:
                 continue
-            failures_total += 1
             key = _cause_key(msg)
             card = cards.get(key)
             if card is None:
@@ -151,8 +154,11 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
                     "_seen": set(),
                     "_peers_seen": set(),
                 }
-            card["count"] += 1
             card["frames"].append(msg.frame)
+            if msg.frame not in observed:
+                continue
+            failures_total += 1
+            card["count"] += 1
             pair = (msg.src.label(), msg.dst.label())
             if pair not in card["_peers_seen"]:
                 card["_peers_seen"].add(pair)
@@ -175,7 +181,7 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
 
     # ── 程序結局 ───────────────────────────────────────────────────────
     end = capture_end(analysis)
-    outcomes = {"success": 0, "failure": 0, "incomplete": 0}
+    outcomes = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0}
     failed_procedures: list[dict] = []
     for flow_id, flow in enumerate(analysis.flows):
         segments, _unassigned = segment_flow(flow, capture_end=end)

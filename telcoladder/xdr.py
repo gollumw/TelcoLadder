@@ -57,6 +57,16 @@ def procedure_record(p: Procedure) -> dict:
              "frames": list(p.sequence.frames)}
             if p.sequence is not None else None
         ),
+        # SIP 通話的 KPI（2026-09-06）。非通話段全是 null —— 沒量到的不填。加欄不升版。
+        "ring_s": p.ring_s,
+        "answer_s": p.answer_s,
+        "talk_s": p.talk_s,
+        "released_by": p.released_by,
+        "release_cause": (
+            {"table": p.release_cause.table, "value": p.release_cause.value}
+            if p.release_cause is not None else None
+        ),
+        "final_status": p.final_status,
     }
 
 

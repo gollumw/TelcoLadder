@@ -66,6 +66,8 @@ Each is documented in depth where it lives; every failure mode here is
 | connection-scoped and episodic identity keys | `identity.py`, `lifecycle.py` | two subscribers merge into one flow |
 | the GTP-U tunnel key is `(address, TEID)`, computed in one place | `identity.gtp_tunnels` | NGAP, PFCP and SBI-carried N2 compute different keys and never merge |
 | Diameter Result-Code vs Experimental-Result-Code are two number spaces | `adapters/diameter.py` | same |
+| one SIP message seen on several legs is one observation: dedup key `(Call-ID/CSeq, label, cause)` | `procedures._distinct`, `adapters/sip.py` | one 486 counted once per leg; a call's message count multiplied by the hop count |
+| SIP user outcomes (busy, declined, cancelled) come from the cause table's `outcome: user`, never from code | `data/causes/sip_status.yaml`, `causes.annotate` | every busy callee turns the verdict red, or the set silently drifts |
 | decode tree runs tshark two-pass (`-2`) | `decode.py` | cross-frame reassembly links vanish |
 | exactly one rendering implementation per judgement | `render_mermaid.py` + `web/` | two surfaces drift, no error |
 

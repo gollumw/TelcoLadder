@@ -78,7 +78,36 @@ _CHALLENGE_CODES = frozenset({401, 407})
 
 #: 從這個狀態碼起算失敗（RFC 3261 §7.2：1xx 暫時、2xx 成功、3xx 重導）。
 #: 3xx 刻意不算 —— 重導是正常的路由行為，不是這通電話失敗了。
+#:
+#: **這裡只畫號碼段的界線。** 480／486／487／600／603 這些「一方自己的結局」
+#: （忙線、拒接、取消）在 `sip_status.yaml` 裡標著 `outcome: user`，由
+#: `causes.annotate()` 依表降級 —— adapter 不認得那張表，也不該認得：判準是
+#: 內容，住在表裡（用戶裁定 2026-09-06）。
 _FIRST_FAILURE_CODE = 400
+
+#: 從這個狀態碼起給 `CauseRef`（3xx 起：重導也值得一句出處）。
+_FIRST_CAUSE_CODE = 300
+
+
+def _reason(block: dict[str, Any]) -> tuple[CauseRef | None, str, str]:
+    """`Reason` 標頭（RFC 3326）→ `(cause, 機器形式, 文字)`。
+
+    BYE／CANCEL 沒有狀態碼，**釋放原因只在這裡** —— `Reason: Q.850;cause=16`
+    是 MGCF 把 PSTN 那一側的 ISUP 釋放帶進 SIP 的地方，也是「正常掛斷」與
+    「被網路切斷」唯一分得開的線索。Q.850 查 `q850` 表，SIP 查 `sip_status`。
+    tshark 已經把三個成分拆開了；沒有 Reason 就是三個空值。
+    """
+    protocol = str(first(block.get("sip_sip_reason_protocols")) or "").strip()
+    q850 = _to_int(first(block.get("sip_sip_reason_cause_q850")))
+    sip_cause = _to_int(first(block.get("sip_sip_reason_cause_sip")))
+    text = str(first(block.get("sip_sip_reason_text")) or "").strip().strip('"')
+    if q850 is not None:
+        return CauseRef(table="q850", value=q850), f"Q.850;cause={q850}", text
+    if sip_cause is not None:
+        return CauseRef(table="sip_status", value=sip_cause), f"SIP;cause={sip_cause}", text
+    if protocol:
+        return None, protocol, text
+    return None, "", ""
 
 
 def _identity_keys(block: dict[str, Any]) -> frozenset[IdKey]:
@@ -158,6 +187,18 @@ def _media_ports(block: dict[str, Any]) -> list[str]:
     return ports
 
 
+def _media_addresses(block: dict[str, Any]) -> list[str]:
+    """SDP 的 `c=` 位址 —— 與埠成對才指得出一個媒體端點（H.248 那一側的
+    Local／Remote descriptor 帶的就是這一對）。"""
+    out: list[str] = []
+    for sdp in dig(block, "sdp"):
+        value = sdp.get("sdp_sdp_connection_info_address")
+        for addr in (value if isinstance(value, list) else [value]):
+            if addr is not None:
+                out.append(str(addr))
+    return out
+
+
 def _role_hints(block: dict[str, Any], frame: Frame) -> str:
     """誰是 UE、誰是 P-CSCF —— **由 `Contact` 標頭判，不由方向判**。
 
@@ -208,6 +249,34 @@ def parse(frame: Frame) -> list[Message]:
         cseq = first(block.get("sip_sip_CSeq"))
         if cseq:
             detail["CSeq"] = str(cseq)
+        cseq_method = first(block.get("sip_sip_CSeq_method"))
+        if cseq_method:
+            # 回應不帶方法，**CSeq 說它回的是哪一個請求** —— 200 OK 是接聽
+            # （INVITE）還是只是 PRACK 的確認，全靠這一欄。
+            detail["cseq-method"] = str(cseq_method)
+        call_id = first(block.get("sip_sip_Call-ID"))
+        if call_id and cseq:
+            # **同一則訊息在核網的擷取點會被看到好幾腿**（UE↔P-CSCF、P-CSCF↔S-CSCF、
+            # S-CSCF↔AS…）。Via 的 branch 每一跳都換，Call-ID＋CSeq 不換 —— 那才是
+            # 「這是同一則訊息」的身分，與 Diameter 的 End-to-End Id 同一把鑰匙
+            # （`procedures._distinct`）。用 frame 去數，一個 486 會被算成四次失敗。
+            detail["end-to-end-id"] = f"{str(call_id).strip()}/{str(cseq).strip()}"
+        from_tag = first(block.get("sip_sip_from_tag"))
+        if from_tag:
+            # 誰掛的電話：BYE 的 From tag 等於 INVITE 的 From tag 就是主叫掛的。
+            detail["from-tag"] = str(from_tag)
+        to_tag = first(block.get("sip_sip_to_tag"))
+        if to_tag:
+            detail["to-tag"] = str(to_tag)
+        vias = block.get("sip_sip_Via")
+        if vias is not None:
+            # 事實，不是判定：幾跳。中繼偵測（`relay-record`）還沒做（檔頭）。
+            detail["via-count"] = str(len(vias) if isinstance(vias, list) else 1)
+        reason_cause, reason_text_machine, reason_text = _reason(block)
+        if reason_text_machine:
+            detail["reason"] = reason_text_machine
+        if reason_text:
+            detail["reason-text"] = reason_text
         request_uri = first(block.get("sip_sip_r-uri"))
         if request_uri:
             detail["Request-URI"] = str(request_uri)
@@ -221,6 +290,15 @@ def parse(frame: Frame) -> list[Message]:
             # 而一個沒有讀者的 `detail` 鍵正是 §5.5 那條「刪 renderer 前先問
             # 誰在讀」的反面：這裡是明知還沒有讀者，並且寫下為什麼。
             detail["SDP media ports"] = ",".join(ports)
+        addresses = _media_addresses(block)
+        if addresses:
+            detail["SDP media address"] = ",".join(addresses)
+
+        # 出處：回應查狀態碼（3xx 起），請求（BYE／CANCEL）只有 Reason 標頭可查。
+        if status is not None:
+            cause = CauseRef(table="sip_status", value=status) if status >= _FIRST_CAUSE_CODE else None
+        else:
+            cause = reason_cause
 
         messages.append(
             Message(
@@ -232,9 +310,7 @@ def parse(frame: Frame) -> list[Message]:
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
                 identity_keys=_identity_keys(block),
-                # SIP 的狀態碼不進 cause 表 —— 原因片語就在線路上，
-                # 而 `CauseRef` 是給「號碼要查表才有意義」的協定用的。
-                cause=None,
+                cause=cause,
                 is_failure=(status is not None
                             and status >= _FIRST_FAILURE_CODE
                             and status not in _CHALLENGE_CODES),

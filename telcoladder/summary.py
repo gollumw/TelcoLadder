@@ -49,7 +49,8 @@ from telcoladder.procedures import capture_end, segment_flow
 SUMMARY_VERSION = 2
 
 #: 結局 → 一眼看得出的記號。與 React 介面的 `OUTCOME_MARK` 同一套語彙。
-OUTCOME_MARK = {"success": "✓", "failure": "✗", "incomplete": "⋯"}
+#: `ended-by-user` 用 ○：不是 ✗（不是失敗）、不是 ✓（沒接成）—— 一方自己結束的。
+OUTCOME_MARK = {"success": "✓", "failure": "✗", "incomplete": "⋯", "ended-by-user": "○"}
 
 
 # ── 建構 ────────────────────────────────────────────────────────────────
@@ -78,6 +79,18 @@ def _cause_ref(msg: Message) -> dict | None:
         "table": info.table, "value": info.value, "known": True,
         "name": info.name, "spec": info.spec, "clause": info.clause,
     }
+
+
+def _cause_ref_of(ref: "CauseRef | None") -> dict | None:
+    """`_cause_ref` 的 CauseRef 版 —— 同一個形狀，給沒有訊息可指的欄位用。"""
+    if ref is None:
+        return None
+    info = lookup(ref)
+    if info is None:
+        return {"table": ref.table, "value": ref.value, "known": False,
+                "name": None, "spec": None, "clause": None}
+    return {"table": info.table, "value": info.value, "known": True,
+            "name": info.name, "spec": info.spec, "clause": info.clause}
 
 
 def _failure_record(msg: Message, supi: str | None) -> dict:
@@ -323,7 +336,11 @@ def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]
             # 中途那次 Synch failure 記在 `failures` 欄與失敗清單裡，不掛在
             # 結局上。掛上去的話，成功列會帶著一個 cause，讀的人會把它當失敗。
             record["cause_ref"] = (
-                _cause_ref(failed[-1]) if failed and p.outcome == "failure" else None
+                _cause_ref(failed[-1]) if failed and p.outcome == "failure"
+                # 一方自己結束的通話：出處是釋放原因（486、Reason Q.850 #16…），
+                # 不是失敗 —— 但讀的人要知道是誰、為什麼掛的。
+                else _cause_ref_of(p.release_cause) if p.outcome == "ended-by-user"
+                else None
             )
             record["first_failure_ref"] = (
                 _cause_ref(failed[0]) if p.first_failure and len(failed) > 1 else None
