@@ -1,29 +1,32 @@
 # TelcoLadder
 
 [![CI](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/telcoladder)](https://pypi.org/project/telcoladder/)
+[![Python](https://img.shields.io/pypi/pyversions/telcoladder)](https://pypi.org/project/telcoladder/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 Point it at a signalling capture and get the call flow **per subscriber, with
-every failure explained**. It reads **5G core** (NGAP, NAS-5GS, HTTP/2 SBI, PFCP,
-GTP-U), **4G/EPC** (S1AP, NAS-EPS, GTPv2-C) and **IMS** (SIP, Diameter), and
+every failure explained**. It reads **5G core**, **4G/EPC** and **IMS**, and
 correlates one subscriber across all three onto a single timeline — a VoLTE call
 spans four interfaces, and they belong on one ladder rather than in four windows.
-
-Every cause code is resolved through a hand-verified table to the specification
-it comes from, what it means in plain language, and the root causes that
-actually produce it in the field — **775 of them**, every name taken verbatim
-from `tshark` and re-checked against it by a test. Every network function is
-named rather than shown as an IP, with the evidence for that name on hover.
-Nothing is generated: a cause the table does not carry is reported as not
-catalogued, because a wrong citation is worse than none.
 
 Output is Mermaid you can paste into GitHub, an interactive viewer in your
 browser, or one page of facts for an AI agent.
 
+```bash
+pip install telcoladder
+telcoladder check                           # verifies tshark and its dissectors
+telcoladder analyze failed_attach.pcapng    # Mermaid on stdout
+```
+
 ![Drop a capture, get each subscriber's correlated ladder — failures explained with their specification reference and the most common field causes](docs/demo.gif)
 
-```bash
-telcoladder analyze failed_attach.pcapng
-```
+## Why
+
+Reading a 5G call flow in the Wireshark GUI means scrolling packet by packet,
+and every unfamiliar cause code sends you back to the specs. TelcoLadder turns the
+capture into a diagram, names the network functions, and cites the specification
+the cause code comes from:
 
 ```mermaid
 sequenceDiagram
@@ -50,18 +53,56 @@ computes an AUTS the network cannot resynchronise from, so you get `#21` and
 then a bare `#111`. The cause table says so because we ran it, not because it
 sounded right.
 
-Reading a 5G call flow in the Wireshark GUI means scrolling packet by packet,
-and every unfamiliar cause code sends you back to the specs. TelcoLadder turns the
-capture into a diagram, names the network functions, and cites the clause the
-cause code comes from.
+## What it reads
 
-The same capture in the browser: a packet list with real tshark display filters,
-per-frame decode tree and hex, the subscriber list, the ladder, and a per-PDU-session
-correlation matrix where **every cell cites the frame it came from**.
+| Generation | Protocols | Cause explanations |
+|---|---|---|
+| **5G core** | NGAP, NAS-5GS, HTTP/2 SBI, PFCP, GTP-U | 206 |
+| **4G / EPC** | S1AP, NAS-EPS, GTPv2-C | 236 |
+| **IMS** | SIP (calls, KPIs), Diameter, H.248/MEGACO | 333 |
+
+Every cause code is resolved through a hand-verified table to the specification
+it comes from, what it means in plain language, and the root causes that
+actually produce it in the field — **775 of them**, every name taken verbatim
+from `tshark` and re-checked against it by a test. Nothing is generated: a cause
+the table does not carry is reported as not catalogued, because a wrong citation
+is worse than none. Every network function is named rather than shown as an IP,
+with the evidence for that name on hover.
+
+**Status: early.** The 5G interfaces — N2/NAS, SBI, N4 and N3 — are each
+exercised against real testbed captures, including one that carries N2, SBI and
+N4 from a single registration, and one where the N3 tunnel endpoint is
+byte-for-byte the one NGAP promised. The 4G and IMS fixtures are written byte by
+byte with `tshark` as the oracle, so they are exact about the protocol and say
+nothing about a real deployment; what each cannot prove is listed in its own
+`scenario.md`. Read [Honest limitations](#honest-limitations) before you rely on
+it.
+
+## Prior art, and why this exists anyway
+
+These tools came first and are worth your time. TelcoLadder is not trying to
+replace them.
+
+| Project | What it does | Why TelcoLadder still exists |
+|---|---|---|
+| [telekom/5g-trace-visualizer](https://github.com/telekom/5g-trace-visualizer) | pcap → SVG sequence diagrams for 5GC (HTTP/2, NAS, PFCP). Deutsche Telekom, Apache-2.0. | Unmaintained since Aug 2023. PlantUML output needs `plantuml.jar`; driven from Jupyter notebooks with a large config surface aimed at k8s deployments. |
+| [irontec/sngrep](https://github.com/irontec/sngrep) | Excellent, actively maintained ncurses SIP flow viewer. | Terminal-only and SIP-only — you cannot paste its output into a document, and it does not touch 5G. |
+| [sipcapture/homer](https://github.com/sipcapture/homer) | Full capture platform: server, agents, database, web UI. | It is infrastructure you deploy and operate. TelcoLadder is a command you run against one file. |
+| [dgudtsov/pcap2uml](https://github.com/dgudtsov/pcap2uml) | IMS call flows across SIP/Diameter/MAP/CAMEL → PlantUML. | The closest in spirit. No 5G support (no NGAP/NAS-5GS), PlantUML output. |
+| [agranig/pcap2mermaid](https://github.com/agranig/pcap2mermaid) | SIP → Mermaid, in Perl. | Two days of commits in January 2019, then nothing. It proved people want this; nobody picked it up. |
+
+What none of them do together: 5G **and** IMS in one correlated diagram, Mermaid
+as the output, and a spec-cited explanation of what went wrong.
+
+The same capture in the browser:
 
 ```bash
 telcoladder serve            # → http://localhost:3005, drop a capture on the page
 ```
+
+A packet list with real tshark display filters, per-frame decode tree and hex,
+the subscriber list, the ladder, and a per-PDU-session correlation matrix where
+**every cell cites the frame it came from**.
 
 ![TelcoLadder browser interface](docs/images/browser.png)
 
@@ -71,25 +112,18 @@ telcoladder serve            # → http://localhost:3005, drop a capture on the 
 
 > Operating guide for real captures (workflows and capability boundaries): [docs/user-guide.md](docs/user-guide.md)
 
-**Status: early.** N2/NAS (NGAP + NAS-5GS), SBI, N4 (PFCP), and N3 (GTP-U) are
-each exercised against real testbed captures, including one that carries N2, SBI
-and N4 from a single registration, and one where the N3 tunnel endpoint is
-byte-for-byte the one NGAP promised. What those captures do *not* contain is
-the long tail — see [Honest limitations](#honest-limitations) before you rely
-on it.
-
 ---
 
 ## What it does today
 
-- **Reads** NGAP, NAS-5GS, HTTP/2 SBI, PFCP and GTP-U (5G); S1AP, NAS-EPS and
-  GTPv2-C (4G/EPC); SIP and Diameter (IMS) from `pcap` / `pcapng` via `tshark` —
-  three generations of signalling on one timeline, not three separate tools.
+- **Reads all three generations from one `pcap` / `pcapng`** via `tshark` (the
+  table above lists them) — one timeline, not three separate tools.
 - **Names the network functions** instead of showing IP addresses, and shows
-  the IP when the evidence is ambiguous rather than guessing. The 23 roles the
+  the IP when the evidence is ambiguous rather than guessing. The 29 roles the
   test captures actually produce: `gNB`, `AMF`, `AUSF`, `UDM`, `UDR`, `PCF`,
   `BSF`, `NRF`, `SMF`, `UPF`, `SCP` (5G); `eNB`, `MME`, `SGW`, `PGW`, `HSS`,
-  `PCRF`, `PCEF`, `DRA` (4G/EPC); `UE`, `P-CSCF`, `I-CSCF`, `S-CSCF` (IMS).
+  `PCRF`, `PCEF`, `DRA`, `AAA` (4G/EPC); `UE`, `P-CSCF`, `I-CSCF`, `S-CSCF`,
+  `SLF`, `AS`, `AF`, `MGC`, `MGW` (IMS).
 - **Understands relays.** A production core almost always has one — a 5G
   **SCP**, a Diameter **DRA**, a SIP proxy — and then every message's wire peer
   is the middlebox, not the network function you care about. TelcoLadder reads the
@@ -119,15 +153,34 @@ on it.
   on millisecond rhythms, so a hole that big is a timer waiting.
 - **Cites the spec** for cause codes, from a hand-checked static table.
   Never generated, never guessed.
-- **Reads Diameter** — S6a/S6d, Cx/Dx and Gx today, plus the base protocol
-  (`CER`, `DWR`, `DPR`). It names the network functions from *who initiates
+- **Reads Diameter** — S6a/S6d, Cx/Dx, Sh, Rx, Gx, SWx and S6b, plus the base
+  protocol (`CER`, `DWR`, `DPR`). It names the network functions from *who initiates
   which command* — that is the only way to tell an I-CSCF from an S-CSCF,
   since their addresses look identical — spots a **DRA** from the
   `Route-Record` it is required to leave behind, and joins one subscriber's
   S6a, Gx and Cx exchanges into a single flow. Two separate cause tables,
   because `Result-Code 5001` (*AVP unsupported*) and
   `Experimental-Result-Code 5001` (*user unknown*) are different questions
-  with the same number.
+  with the same number. A `Result-Code` **3006** carrying a `Redirect-Host` is a
+  routing instruction, not a rejection (RFC 6733 §6.1.7) — the node that answers
+  it is named **SLF** — so a multi-HSS core does not light up red on every
+  successful lookup.
+- **Treats a SIP call as a procedure.** Segmented by Call-ID, with the KPIs the
+  question actually needs — time to ring, to answer, and talk time — plus who
+  released the call and why, read from the `Reason` header back to its Q.850 or
+  SIP cause. A busy or declined callee is a fourth outcome, **`ended-by-user`**:
+  the network delivered the call, so it is not a failure. That classification
+  lives in the cause table (`outcome: user`), never in code, so it cannot
+  silently drift.
+- **Counts one message once, however many legs it crossed.** Captured in the
+  core, a single `486 Busy Here` is seen on every hop between the UE and the
+  MGCF. The procedure records how many observations it saw *and* how many
+  distinct events they were — one busy callee is one outcome, not five failures.
+- **Reads H.248/MEGACO** between a media gateway controller and its gateway.
+  Roles come from *which side issues which command* — never from direction,
+  since `Notify` runs the other way — and the SDP media endpoint (`c=` address
+  with `m=` port) is what joins a gateway leg to its SIP call, the same way the
+  GTP-U tunnel endpoint joins N4 to N2.
 - **Splits a subscriber's traffic into procedures** — registration, PDU session
   establishment, service request, deregistration — each with its own outcome,
   cause, first failure and duration. A long capture of one subscriber is three
@@ -135,8 +188,8 @@ on it.
   ask is "why did the *second* one fail".
 - **Exports procedure records as JSON** (`--xdr`), one object per procedure:
   who, which procedure, outcome, cause and first failure, duration. Byte-for-byte
-  reproducible for the same capture, so `jq` can answer "what is the failure
-  rate across this batch" without anyone reading a diagram.
+  reproducible, so `jq` can answer "what is the failure rate across this batch"
+  without anyone reading a diagram.
 - **Speaks English or Traditional Chinese** — `--lang zh_TW`, or the EN / 中文
   switch in the browser. Deliberately not the system locale; see
   [Language](#language).
@@ -149,12 +202,10 @@ on it.
   MCP client can call `summarize_capture`, `list_subscribers`,
   `get_subscriber_callflow` and `diagnose_failures` as tools. Stdio only, no
   network listener, no extra dependencies.
-- **Three ways to look at it**: `analyze` writes Mermaid — a text file you can
-  version-control, diff, and paste into GitHub; `serve` opens an interactive
-  browser view of the same capture (packet list with real tshark display
-  filters, per-frame decode tree, the call-flow ladder, a PDU-session
-  correlation matrix); `summarize` writes the one-page summary above. There is
-  no rendered report format — see the note on the retired `--html` report below.
+- **Three ways to look at it**: `analyze` writes Mermaid you can version-control,
+  diff and paste into GitHub; `serve` opens the browser view of the same capture;
+  `summarize` writes the one-page summary above. There is no rendered report
+  format — see the note on the retired `--html` report below.
 
 ## Install
 
@@ -307,10 +358,7 @@ the fault is.
 telcoladder serve            # → http://localhost:3005
 ```
 
-Drop a capture onto the page, or paste a path. This is the full interface:
-a Wireshark-style packet list with real tshark display filters, per-frame decode
-trees and hex, the subscriber list, the call-flow ladder, and a PDU-session
-correlation matrix where **every cell cites the message and frame it came from**.
+Drop a capture onto the page, or paste a path.
 
 **Paste the path for anything large.** It reads the file where it already is:
 no copy, no temp file, starts immediately. Pushing a few hundred MB through HTTP
@@ -380,8 +428,8 @@ The real gap in the open-source tooling is not drawing 5G call flows — it is
 VoWiFi spans SIP (IMS), Diameter (Cx/Dx/Rx/S6a/SWx/SWm), GTP/NAS (EPC), and
 NGAP (5G), and no open tool stitches those into a single diagram.
 
-**That gap is now closed for the control plane.** S1AP, NAS-EPS, GTPv2-C, SIP
-and Diameter all ship today, and they correlate: in the 4G VoLTE test capture,
+**That gap is now closed for the control plane.** S1AP, NAS-EPS, GTPv2-C, SIP,
+Diameter and H.248 all ship today, and they correlate: in the 4G VoLTE test capture,
 one subscriber's S1-MME attach, S11 bearer setup and Gm registration land in a
 **single** flow of 21 messages — bridged by the IMSI that GTPv2-C carries and
 by the no-ISIM IMPU that SIP derives back to it. The second subscriber does the
@@ -393,39 +441,33 @@ names zero adapters (`tools/archmap.py` reports it, and a test fails if the
 count leaves zero). Getting there took two rounds of paying that debt down —
 SBI had forced `DECODE_AS` into the contract, and NAS-5GS and SBI had left the
 pipeline importing them by name, which is now the optional `blind_spots()` hook.
-The three most recent adapters each landed without the core changing a line.
+
+What that does *not* claim is that no core file ever changes. H.248 needed three
+new identity kinds and a lifecycle rule, because it introduced a kind of key the
+engine had never held — a media endpoint that both a gateway and a call refer to,
+and that gets recycled the moment the call ends. The core learned a new **shape**;
+it still does not know what H.248 is.
 
 What is still missing, honestly:
 
-- **The 4G and IMS cause tables.** 286 cause values are extracted and none are
-  explained yet — `describe()` says "not in this tool" rather than guessing.
-  Spec-cited explanation is the whole point of this tool, so this is the next
-  piece of work, not polish.
-- **Media.** SIP records the SDP ports; nothing reads them yet. RTP/RTCP
-  correlation is the next adapter.
-- **A real IMS capture.** The 4G/IMS fixtures are hand-written byte by byte,
-  with `tshark` as the oracle. What that cannot prove is listed in each
+- **Clause numbers outside 5G.** 7 of the 21 cause tables cite a clause; the
+  other 14 — 4G, GTPv2, PFCP, Diameter, SIP, Q.850, H.248 — print the
+  specification document and stop there. The names in all 21 are pinned against
+  `tshark`; a clause number is only printed once a human has transcribed it, so
+  the gap is deliberate and visible rather than filled with a plausible guess.
+- **Media itself.** The SDP media endpoint is read and used to join an H.248 leg
+  to its SIP call, but nothing reads the stream: no RTP/RTCP adapter, so no jitter,
+  loss or MOS. That is the next adapter.
+- **A real IMS capture.** The 4G and IMS fixtures are written byte by byte with
+  `tshark` as the oracle. What that cannot prove is listed in each
   `scenario.md`, and the CI badge does not cover it.
+- **The PSTN edge.** ISUP-over-M3UA and CAMEL are recognised in a capture and
+  reported as such, but neither has an adapter — a breakout call goes dark at the
+  MGCF.
 
 After that: local-LLM root-cause narration over the extracted facts and the
 cause table. The model narrates; it never produces a clause number — that rule
 is in `CONTRIBUTING.md` and it applies to the model too.
-
-## Prior art, and why this exists anyway
-
-These tools came first and are worth your time. TelcoLadder is not trying to
-replace them.
-
-| Project | What it does | Why TelcoLadder still exists |
-|---|---|---|
-| [telekom/5g-trace-visualizer](https://github.com/telekom/5g-trace-visualizer) | pcap → SVG sequence diagrams for 5GC (HTTP/2, NAS, PFCP). Deutsche Telekom, Apache-2.0. | Unmaintained since Aug 2023. PlantUML output needs `plantuml.jar`; driven from Jupyter notebooks with a large config surface aimed at k8s deployments. |
-| [irontec/sngrep](https://github.com/irontec/sngrep) | Excellent, actively maintained ncurses SIP flow viewer. | Terminal-only and SIP-only — you cannot paste its output into a document, and it does not touch 5G. |
-| [sipcapture/homer](https://github.com/sipcapture/homer) | Full capture platform: server, agents, database, web UI. | It is infrastructure you deploy and operate. TelcoLadder is a command you run against one file. |
-| [dgudtsov/pcap2uml](https://github.com/dgudtsov/pcap2uml) | IMS call flows across SIP/Diameter/MAP/CAMEL → PlantUML. | The closest in spirit. No 5G support (no NGAP/NAS-5GS), PlantUML output. |
-| [agranig/pcap2mermaid](https://github.com/agranig/pcap2mermaid) | SIP → Mermaid, in Perl. | Two days of commits in January 2019, then nothing. It proved people want this; nobody picked it up. |
-
-What none of them do together: 5G **and** IMS in one correlated diagram, Mermaid
-as the output, and a spec-cited explanation of what went wrong.
 
 ## How it is verified
 
@@ -477,17 +519,13 @@ the top of `.github/workflows/ci.yml`.
   address falls back to an unlabelled IP. That is the correct failure direction,
   but it is a real gap. Diameter will be sturdier here: a DRA may not rewrite
   `Origin-Host`, and it signs its own passage with a `Route-Record`.
-- **Diameter covers seven interfaces, and no clause numbers.** S6a/S6d, Cx/Dx,
+- **Diameter covers seven interfaces.** S6a/S6d, Cx/Dx,
   Gx, Rx, Sh, S6b and SWx have network-function roles and curated causes; the
   remaining 3GPP applications decode and display their Application-Id but get
   no role inference — an honest "not done yet" rather than a guess. Raw
   exports with no IP layer (pcap link type USER 0, every frame a bare
   Diameter message) are detected, mapped for tshark, and their endpoints
   named from Origin-Host.
-  The cause **names** are pinned against `tshark`'s own tables by a test; the
-  **clause numbers are not transcribed**, so a Diameter cause prints its spec
-  (`3GPP TS 29.230`, `RFC 6733`) without a section. No clause in this repo is
-  machine-generated, and an absent one is better than a wrong one.
   The fixture is written byte by byte from RFC 6733 rather than captured — it
   has no SCTP, no message reassembly and invented timing; see
   `tests/fixtures/diameter-epc-ims/scenario.md`.
@@ -498,11 +536,26 @@ the top of `.github/workflows/ci.yml`.
   maintenance and stay out of the procedure list rather than padding it. A request
   relayed through a DRA is seen twice; it is counted as one failure, keyed on the
   End-to-End Identifier that RFC 6733 §6.2 requires a relay to preserve.
-- **PFCP carries no cause explanations.** The adapter reads message types and
-  SEIDs and marks failures, but TS 29.244's cause table has not been
-  transcribed yet, so a failed N4 message is highlighted without a clause
-  citation. Transcribing that table is manual work by design — no clause number
-  in this repo is machine-generated.
+- **SIP calls are cut by Call-ID, and the proxies are not yet named.** A call is
+  the messages sharing one Call-ID (RFC 3261 §8.1.1.4), and the same message seen
+  on several legs is deduplicated on `(Call-ID/CSeq, label, cause)` — so a core
+  capture point does not multiply one failure by the hop count. What is *not*
+  done: `Via` is recorded but not yet used to identify which proxy is which, so
+  the Mw and ISC reference points are unlabelled, and no MSISDN is derived from
+  `P-Asserted-Identity`.
+- **H.248 gets no reference point, deliberately.** Iq (P-CSCF↔IMS-AGW), Mn
+  (MGCF↔IM-MGW) and Mp (MRFC↔MRFP) are the same protocol with different parties,
+  and H.248 alone cannot tell them apart — so the roles are the neutral `MGC` and
+  `MGW`, and the reference point is left empty rather than guessed. A transaction
+  carrying several commands at once is decoded one command per row, but no
+  fixture exercises that path yet.
+- **Only the 5G tables cite a clause.** 7 of the 21 cause tables carry clause
+  numbers; the other 14 — S1AP, NAS-EPS, GTPv2, PFCP, Diameter, SIP, Q.850 and
+  H.248 — print the specification document (`3GPP TS 29.244`, `RFC 3261`,
+  `ITU-T Q.850` …) and no section. The **names** in all 21 are pinned against
+  `tshark`'s own tables by a test; the clause numbers are transcribed by a human
+  or not printed at all. No clause in this repo is machine-generated, and an
+  absent one is better than a wrong one.
 - **N4 joins the subscriber through the GTP-U tunnel endpoint, not the SEID.**
   No message carries both a SUPI and a PFCP SEID. What both sides *do* carry is
   the F-TEID the UPF allocates: it appears in the PFCP Session Establishment
