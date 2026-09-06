@@ -26,7 +26,6 @@ IPsec；內容是不透明的位元組）。
 
 時序是編的；單一訂戶；沒有 SCTP 分段；ESP 內容讀不到（本來就是這樣）；
 沒有 RTP、ISUP、CAMEL；被叫側的 P-CSCF／UE 不在圖上（電話全部往 MGCF 出局）。
-H.248（MGCF↔MGW）在下一批加進來。
 
 ## 重新產生
 
@@ -68,6 +67,9 @@ SCSCF = "198.51.100.7"
 ICSCF = "198.51.100.31"
 AS_ = "198.51.100.71"
 MGCF = "198.51.100.81"
+#: MGCF 控制的媒體閘道（H.248 的 MGW）。它回的媒體位址／埠會出現在 MGCF 往 S-CSCF
+#: 那一腿的 SIP SDP 裡 —— 那正是 H.248 接上通話的橋。
+MGW = "198.51.100.91"
 HSS = "198.51.100.21"
 
 HOST = {
@@ -260,6 +262,63 @@ def cx(t0: float) -> list[Packet]:
     return [(t, _sctp(src, dst, sp, dp, tsn, raw)) for t, src, dst, sp, dp, tsn, raw in frames]
 
 
+# ── H.248 over SCTP（MGCF ↔ MGW） ──────────────────────────────────────────
+
+H248_PORT = 2944
+H248_PPID = 7
+
+
+def _h248(src: str, dst: str, tsn: int, text: str) -> bytes:
+    """**每個方向自己的 verification tag，TSN 每格遞增** —— 同一個 tag 底下重複的 TSN
+    會被 tshark 當成重送而不解剖，症狀是「回覆全部消失」。"""
+    payload = text.encode()
+    pad = (-len(payload)) % 4
+    chunk = struct.pack("!BBHIHHI", 0, 3, 16 + len(payload), tsn, 0, tsn, H248_PPID) + payload + b"\x00" * pad
+    vtag = 0x6B6B0001 if src == MGCF else 0x6B6B0002
+    header = struct.pack("!HHII", H248_PORT, H248_PORT, vtag, 0)
+    return _g.ip_packet(src, dst, header[:8] + struct.pack("<I", _g.crc32c(header + chunk)) + chunk)
+
+
+def _h248_sdp(address: str, port: str | int) -> str:
+    return f"v=0\r\nc=IN IP4 {address}\r\nm=audio {port} RTP/AVP 96\r\n"
+
+
+def h248_call(t_add: float, t_modify: float, t_subtract: float, ue_port: int) -> list[Packet]:
+    """通話 1 的媒體：MGCF 在 MGW 上開 context（Add，位址與埠讓 MGW 選）→ MGW 回它
+    配好的 60000（**與 SIP 183／200 的 SDP 同一對**）→ 收到 UE 的 SDP 後 Modify（Remote）
+    → MGW 送一個 Notify → BYE 之後 Subtract。外加一筆對不存在的 context 下的 Subtract，
+    MGW 回 Error 411。"""
+    mgc, mgw = f"MEGACO/1 [{MGCF}]:{H248_PORT}", f"MEGACO/1 [{MGW}]:{H248_PORT}"
+    out: list[Packet] = [
+        (t_add, _h248(MGCF, MGW, 1,
+            f"{mgc}\r\nTransaction = 1 {{\r\n Context = $ {{\r\n  Add = ip/1/1/$ {{\r\n"
+            f"   Media {{ Stream = 1 {{ LocalControl {{ Mode = SendRecv }}, Local {{\r\n{_h248_sdp('$', '$')}}} }} }}\r\n  }}\r\n }}\r\n}}\r\n")),
+        (t_add + 0.006, _h248(MGW, MGCF, 2,
+            f"{mgw}\r\nReply = 1 {{\r\n Context = 1 {{\r\n  Add = ip/1/1/1 {{\r\n"
+            f"   Media {{ Stream = 1 {{ Local {{\r\n{_h248_sdp(MGW, 60000)}}} }} }}\r\n  }}\r\n }}\r\n}}\r\n")),
+        (t_modify, _h248(MGCF, MGW, 3,
+            f"{mgc}\r\nTransaction = 2 {{\r\n Context = 1 {{\r\n  Modify = ip/1/1/1 {{\r\n"
+            f"   Media {{ Stream = 1 {{ Remote {{\r\n{_h248_sdp(UE, ue_port)}}} }} }}\r\n  }}\r\n }}\r\n}}\r\n")),
+        (t_modify + 0.005, _h248(MGW, MGCF, 4,
+            f"{mgw}\r\nReply = 2 {{\r\n Context = 1 {{\r\n  Modify = ip/1/1/1\r\n }}\r\n}}\r\n")),
+        (t_modify + 2.000, _h248(MGW, MGCF, 5,
+            f"{mgw}\r\nTransaction = 100 {{\r\n Context = 1 {{\r\n  Notify = ip/1/1/1 {{\r\n"
+            f"   ObservedEvents = 1 {{ 20260906T10000000:nt/qualert }}\r\n  }}\r\n }}\r\n}}\r\n")),
+        (t_modify + 2.004, _h248(MGCF, MGW, 6,
+            f"{mgc}\r\nReply = 100 {{\r\n Context = 1 {{\r\n  Notify = ip/1/1/1\r\n }}\r\n}}\r\n")),
+        (t_subtract, _h248(MGCF, MGW, 7,
+            f"{mgc}\r\nTransaction = 3 {{\r\n Context = 1 {{\r\n  Subtract = ip/1/1/1 {{ Audit {{ Statistics }} }}\r\n }}\r\n}}\r\n")),
+        (t_subtract + 0.006, _h248(MGW, MGCF, 8,
+            f"{mgw}\r\nReply = 3 {{\r\n Context = 1 {{\r\n  Subtract = ip/1/1/1 {{ Statistics {{ rtp/ps=1200 }} }}\r\n }}\r\n}}\r\n")),
+        # 對一個不存在的 context 下 Subtract：MGW 回 Error 411。**這不屬於任何通話**。
+        (t_subtract + 1.000, _h248(MGCF, MGW, 9,
+            f"{mgc}\r\nTransaction = 4 {{\r\n Context = 7 {{\r\n  Subtract = ip/1/1/2\r\n }}\r\n}}\r\n")),
+        (t_subtract + 1.005, _h248(MGW, MGCF, 10,
+            f"{mgw}\r\nReply = 4 {{\r\n Context = 7 {{\r\n  Error = 411 {{ \"The transaction refers to an unknown ContextId\" }}\r\n }}\r\n}}\r\n")),
+    ]
+    return out
+
+
 # ── 通話 ──────────────────────────────────────────────────────────────────
 
 
@@ -286,16 +345,16 @@ def call_answered(t0: float) -> list[Packet]:
     out: list[Packet] = []
     out += d.request("INVITE", 1, extra=pre, body=sdp(49152), with_to_tag=False, t0=t0)
     out += d.response(100, "Trying", 1, "INVITE", with_to_tag=False, t0=t0 + 0.012)
-    out += d.response(183, "Session Progress", 1, "INVITE", body=sdp(60000, MGCF), t0=t0 + 0.180,
+    out += d.response(183, "Session Progress", 1, "INVITE", body=sdp(60000, MGW), t0=t0 + 0.180,
                       extra=[("Require", "100rel"), ("RSeq", "1")])
     out += d.request("PRACK", 2, extra=[("RAck", "1 1 INVITE")], t0=t0 + 0.200)
     out += d.response(200, "OK", 2, "PRACK", t0=t0 + 0.215)
     out += d.request("UPDATE", 3, body=sdp(49152), t0=t0 + 0.400)
-    out += d.response(200, "OK", 3, "UPDATE", body=sdp(60000, MGCF), t0=t0 + 0.420)
+    out += d.response(200, "OK", 3, "UPDATE", body=sdp(60000, MGW), t0=t0 + 0.420)
     out += d.response(180, "Ringing", 1, "INVITE", t0=t0 + 1.500, extra=[("Require", "100rel"), ("RSeq", "2")])
     out += d.request("PRACK", 4, extra=[("RAck", "2 1 INVITE")], t0=t0 + 1.520)
     out += d.response(200, "OK", 4, "PRACK", t0=t0 + 1.535)
-    out += d.response(200, "OK", 1, "INVITE", body=sdp(60000, MGCF), t0=t0 + 4.500)
+    out += d.response(200, "OK", 1, "INVITE", body=sdp(60000, MGW), t0=t0 + 4.500)
     out += d.request("ACK", 1, t0=t0 + 4.520)
     # 12.5 秒的通話後主叫掛斷；Reason 是 MGCF 那一側慣用的 Q.850。
     out += d.request("BYE", 5, extra=[("Reason", 'Q.850;cause=16;text="Normal call clearing"')], t0=t0 + 17.000)
@@ -319,7 +378,7 @@ def call_cancelled(t0: float) -> list[Packet]:
     out: list[Packet] = []
     out += d.request("INVITE", 1, body=sdp(49156), with_to_tag=False, t0=t0)
     out += d.response(100, "Trying", 1, "INVITE", with_to_tag=False, t0=t0 + 0.010)
-    out += d.response(183, "Session Progress", 1, "INVITE", body=sdp(60002, MGCF), t0=t0 + 0.200)
+    out += d.response(183, "Session Progress", 1, "INVITE", body=sdp(60002, MGW), t0=t0 + 0.200)
     out += d.request("CANCEL", 1, extra=[("Reason", 'SIP;cause=200;text="Call completed elsewhere"')], t0=t0 + 2.000)
     out += d.response(200, "OK", 1, "CANCEL", t0=t0 + 2.010)
     out += d.response(487, "Request Terminated", 1, "INVITE", t0=t0 + 2.030)
@@ -346,6 +405,8 @@ def build() -> list[Packet]:
         packets.append((0.200 + i * 0.010, _esp(UE, PCSCF, 0x1001, i + 1)))
         packets.append((0.205 + i * 0.010, _esp(PCSCF, UE, 0x2001, i + 1)))
     packets += call_answered(1.000)
+    # 通話 1 的 H.248：INVITE 到 MGCF 之後 Add；收到 UE 的 SDP（INVITE 帶的）後 Modify；BYE 之後 Subtract。
+    packets += h248_call(1.150, 1.300, 18.050, 49152)
     packets += call_busy(20.000)
     packets += call_cancelled(25.000)
     packets += call_failed(30.000)

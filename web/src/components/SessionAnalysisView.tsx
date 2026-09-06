@@ -70,6 +70,7 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "ACCESS_S1_EPS", label: "Access & Mobility (S1-MME)" },
   { id: "BEARER_S11_S5S8", label: "Bearer (S11/S5-S8)" },
   { id: "IMS_SIP", label: "IMS (SIP Gm/Mw)" },
+  { id: "IMS_MEDIA_CONTROL", label: "Media control (H.248)" },
 ];
 
 //: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**

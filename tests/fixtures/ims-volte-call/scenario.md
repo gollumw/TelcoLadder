@@ -1,6 +1,6 @@
 # ims-volte-call — one subscriber, four calls, seen from a core capture point
 
-Ethernet/IPv4, 169 frames, written byte-by-byte by `make.py` (self-produced,
+Ethernet/IPv4, 179 frames, written byte-by-byte by `make.py` (self-produced,
 this repository's licence; byte-reproducible: fixed timestamps, no
 randomness).
 
@@ -25,6 +25,8 @@ while the ladder still renders.
 | call 2 | INVITE → 100 → 180 → 486 → ACK | `ended-by-user` (busy) |
 | call 3 | INVITE → 100 → 183 → CANCEL (`Reason: SIP;cause=200`) → 200 → 487 → ACK | `ended-by-user` (caller cancelled) |
 | call 4 | INVITE → 100 → 503 → ACK | failure, counted once across five legs |
+| 30–31, 47–48, 74–75, 96–97 | H.248 over SCTP (MGCF ↔ MGW): Add (context `$`) → Reply (context 1, Local `c=`/`m=` = the MGW's 60000) → Modify (Remote = the UE's SDP) → Reply → Notify → Reply → Subtract → Reply | the media joins call 1 through `identity.media_endpoint`; Subtract Reply releases the context and the port |
+| 98–99 | Subtract on context 7 → **Error 411** | a catalogued H.248 failure that belongs to no call |
 
 Addresses: RFC 5737 (`192.0.2.10` UE, `198.51.100.0/24` core). IMPU in
 the TS 23.003 IMSI-derived shape on the E.212 test PLMN 001/01; callee is a
@@ -32,7 +34,7 @@ the TS 23.003 IMSI-derived shape on the E.212 test PLMN 001/01; callee is a
 
 ## Cross-validation
 
-tshark recognises every SIP frame (158 SIP over UDP, 0 malformed), the
+tshark recognises every SIP frame (158 SIP over UDP, 10 H.248 over SCTP, 0 malformed), the
 adapter's method/status counts equal `tshark -Y sip -T fields`, and the
 fragmented INVITE is reassembled on its last fragment (`ip.fragment` lists
 both frames).
@@ -47,8 +49,11 @@ both frames).
 * **AS and MGCF have no role** — SIP alone does not say who they are, and
   this fixture carries no Diameter or H.248 evidence for them. That is the
   honest gap, not a miss.
-* **No SCTP fragmentation, no RTP, no ISUP/CAMEL, no H.248** (H.248 is the
-  next batch). The ESP payload is opaque by construction.
+* **No SCTP fragmentation, no RTP, no ISUP/CAMEL.** The ESP payload is
+  opaque by construction. H.248 carries one command per transaction; the
+  several-commands-per-transaction path in the adapter has no frames here.
+* **AS has no role, MGCF is `MGC` and the gateway `MGW`** — H.248 alone
+  cannot tell Iq from Mn from Mp, so no reference point is claimed.
 * **Via relay detection is not exercised** — the multi-leg shape is here,
   the rule is not written yet (TODOS T-SIP-VIA).
 

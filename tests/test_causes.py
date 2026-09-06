@@ -173,6 +173,8 @@ def test_all_expected_tables_are_present():
         # IMS 那一半的「帶出處的解釋」。兩張都對 oracle 完整；`outcome: user`
         # 把「一方自己的結局」與網路失敗分開（判準在表裡，不在程式裡）。
         "sip_status", "q850",
+        # H.248 的 Error descriptor（2026-09-06，與 megaco adapter 同日）。
+        "megaco_error",
     }
 
 
@@ -196,6 +198,7 @@ _ORACLE_COMPLETE = {
     # Reason 標頭欄位的那兩張 —— 同一組號碼、同一套名稱。
     "sip_status": "sip.reason_cause_sip",
     "q850": "sip.reason_cause_q850",
+    "megaco_error": "megaco.error_code",
 }
 
 
@@ -399,7 +402,7 @@ def test_annotate_stores_the_source_language_not_the_translation() -> None:
 # ── SIP／Q.850（2026-09-06） ──────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("table", ["sip_status", "q850"])
+@pytest.mark.parametrize("table", ["sip_status", "q850", "megaco_error"])
 def test_the_sip_tables_print_no_clause_number(table) -> None:
     """條號刻意沒有：狀態碼散在 RFC 3261 與十幾份擴充 RFC 裡、Q.850 只有一張表，
     而且沒有一條經過逐條核對（CLAUDE.md 紅線 3）。有人補上就紅。"""

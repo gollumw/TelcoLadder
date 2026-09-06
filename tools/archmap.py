@@ -60,7 +60,8 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("L2", "adapters", "entry point 註冊，加協定不必改核心", (
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",
         "adapters.pfcp", "adapters.gtp", "adapters.diameter", "adapters.s1ap",
-        "adapters.naseps", "adapters.gtpv2", "adapters.sip", "adapters.carrier",
+        "adapters.naseps", "adapters.gtpv2", "adapters.sip", "adapters.megaco",
+        "adapters.carrier",
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
@@ -145,6 +146,9 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "註冊與 INVITE。**只收 `From` 當關聯鍵** —— 收 `To` 會把「A 打給 C」與"
      "「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用"
      "同一份判準），那是 IMS 接上 EPC 的橋。**Mw 刻意不收**（沒有封包驗過）。"),
+    ("IMS 媒體控制", "adapters.megaco", "Iq · Mn · Mp", "shipped",
+     "H.248 的 MGC↔MGW。**參考點不填**（三對節點的訊息長得一樣，分不出是哪一對）。"
+     "接上 SIP 通話靠 `identity.media_endpoint(位址, 埠)` —— 與 GTP-U 隧道同構的橋。"),
     ("IMS 媒體", "adapters.rtp", "—", "deferred",
      "E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。"),
 ]

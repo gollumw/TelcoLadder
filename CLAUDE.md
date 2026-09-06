@@ -68,6 +68,7 @@ Each is documented in depth where it lives; every failure mode here is
 | Diameter Result-Code vs Experimental-Result-Code are two number spaces | `adapters/diameter.py` | same |
 | one SIP message seen on several legs is one observation: dedup key `(Call-ID/CSeq, label, cause)` | `procedures._distinct`, `adapters/sip.py` | one 486 counted once per leg; a call's message count multiplied by the hop count |
 | SIP user outcomes (busy, declined, cancelled) come from the cause table's `outcome: user`, never from code | `data/causes/sip_status.yaml`, `causes.annotate` | every busy callee turns the verdict red, or the set silently drifts |
+| the SDP media endpoint key is `(c= address, m= port)`, computed in one place; BYE and Subtract Reply release it | `identity.media_endpoint`, `lifecycle.py` | H.248 never joins its call, or two calls that reuse a gateway port merge |
 | decode tree runs tshark two-pass (`-2`) | `decode.py` | cross-frame reassembly links vanish |
 | exactly one rendering implementation per judgement | `render_mermaid.py` + `web/` | two surfaces drift, no error |
 

@@ -74,6 +74,21 @@ class IdKind(StrEnum):
     DIAMETER_SESSION_ID = "diameter_session_id"
     GTP_TEID = "gtp_teid"
 
+    # ── IMS 媒體控制（2026-09-06，H.248） ──
+    #
+    # `H248_CONTEXT`：MGW 上的一個 context（一通電話的媒體橋接），範圍是 MGW 位址
+    # （context 號碼由每台 MGW 自己配、會回收 —— 進 `lifecycle.REUSABLE`）。
+    # `MEDIA_ENDPOINT`：SDP 的 `c=` 位址＋`m=` 埠。**這是 H.248 接上 SIP 通話的橋**：
+    # MGW 在 Add Reply 的 Local descriptor 裡回的位址／埠，會出現在 S-CSCF↔MGCF
+    # 那一腿的 SIP SDP 裡 —— 兩邊都帶著同一對事實，與 GTP-U 的 (位址, TEID) 同構
+    # （`identity.media_endpoint`，正規化只有一份）。埠會回收，所以也進 `REUSABLE`。
+    H248_CONTEXT = "h248_context"
+    MEDIA_ENDPOINT = "media_endpoint"
+    #: 一筆 H.248 交易的 Request 與 Reply（範圍是發起方的位址）。**Add Request 帶的
+    #: context 與 SDP 都是 `$`（讓 MGW 選）—— 它唯一能接上 Reply 的就是交易號。**
+    #: 與 `SBI_STREAM` 同一類：配對用，自己不成一條流程。
+    H248_TRANSACTION = "h248_transaction"
+
     @property
     def id_class(self) -> "IdClass":
         """這把別名指向什麼層級的東西。見 `IdClass`。"""
@@ -139,6 +154,10 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.MME_UE_S1AP_ID: IdClass.SUBSCRIBER,
     IdKind.PFCP_SEID: IdClass.SESSION,
     IdKind.SM_CONTEXT_REF: IdClass.SESSION,
+    # 一通電話的媒體：context 與媒體端點都指向「這一通」，不是「這個人」。
+    IdKind.H248_CONTEXT: IdClass.SESSION,
+    IdKind.MEDIA_ENDPOINT: IdClass.SESSION,
+    IdKind.H248_TRANSACTION: IdClass.EXCHANGE,
     IdKind.GTP_TEID: IdClass.SESSION,
     # **控制面的 TEID 必須與使用者面分開，不能共用 `GTP_TEID`。**
     # GTP-C 走 2123、GTP-U 走 2152，而**同一台 SGW 兩者常是同一個 IP** ——

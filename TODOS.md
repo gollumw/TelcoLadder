@@ -1411,6 +1411,22 @@ Recorded from the 2026-09-05 review so the order is not lost. None started.
 
 ---
 
+## T-H248-MULTI | several commands per H.248 transaction (P3)
+
+**What**: `adapters/megaco.py` emits one `Message` per command and reads
+`command` / `termid` as position-aligned arrays, but no fixture carries a
+transaction with more than one command (a real Add+Modify in one
+transaction, or a Reply listing several terminations). The array path is
+written, not exercised.
+
+**Why not now**: the fixture's H.248 leg was kept to one command per
+transaction to stay readable; adding a multi-command transaction is a
+fixture task with its own tshark iteration.
+
+**Effort**: CC ~1 h.
+
+---
+
 ## T-SIP-VIA | SIP relay detection and the Mw / ISC reference points (P3)
 
 **What**: `adapters/sip.py` records `via-count` but does not fill

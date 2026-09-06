@@ -107,6 +107,31 @@ def gtp_tunnel(address: str, teid: object) -> IdKey | None:
     return _tunnel(IdKind.GTP_TEID, address, teid)
 
 
+def media_endpoint(address: object, port: object) -> IdKey | None:
+    """SDP 的媒體端點 —— **`c=` 位址 ＋ `m=` 埠**，H.248 接上 SIP 通話的橋。
+
+    MGW 在 Add／Modify Reply 的 Local descriptor 裡回它配好的位址與埠；MGCF 把
+    同一對寫進往 S-CSCF 那一腿的 SIP SDP 裡。兩邊都帶著同一對事實，所以只要算出
+    同一把 key，`correlate` 就會把 H.248 的 context 併進這通電話 —— 與 N4↔N2 靠
+    `gtp_tunnel(位址, TEID)` 完全同構。
+
+    **範圍是位址**（同一個埠號在不同 MGW 上是不同端點），**正規化只在這裡**：
+    位址去空白、埠轉 int（H.248 的 `$` 通配與 SDP 的 `0` 都不是端點 → None）。
+    埠會回收 —— 同一台 MGW 下一通電話可能拿到同一個埠，所以這個種類進
+    `lifecycle.REUSABLE`，由 Subtract Reply（H.248 側）與 BYE（SIP 側）釋放。
+    """
+    text = str(address or "").strip()
+    if not text or text in ("$", "0.0.0.0"):
+        return None
+    try:
+        number = int(str(port).strip())
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return scoped(IdKind.MEDIA_ENDPOINT, text, number)
+
+
 def gtp_tunnels(teids: object, addresses: object) -> set[IdKey]:
     """成對的 TEID／位址欄位 → 一組隧道 key。
 

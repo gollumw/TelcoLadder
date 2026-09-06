@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from telcoladder.flowtable import build_table
-from telcoladder.model import CauseRef
+from telcoladder.model import CauseRef, IdKind
 from telcoladder.overview import build_overview
 from telcoladder.pipeline import analyse
 from telcoladder.procedures import capture_end, segment_flow
@@ -60,10 +60,11 @@ def calls(procedures):
 
 
 def test_the_capture_is_one_subscriber_across_sip_and_cx(analysis) -> None:
-    """IMPU（推導形狀）與 Cx 的 User-Name 指向同一個 IMSI → 一條流程。"""
-    assert len(analysis.flows) == 1
-    protocols = {m.protocol for m in analysis.flows[0].messages}
-    assert protocols == {"sip", "diameter"}
+    """IMPU（推導形狀）與 Cx 的 User-Name 指向同一個 IMSI → 一條訂戶流程；
+    H.248 靠媒體端點併進來。另一條是不屬於任何通話的閘道錯誤（`test_adapter_megaco`）。"""
+    (subscriber,) = [f for f in analysis.flows if any(k[0] is IdKind.SUPI for k in f.identity_keys)]
+    protocols = {m.protocol for m in subscriber.messages}
+    assert protocols == {"sip", "diameter", "megaco"}
 
 
 def test_message_counts_agree_with_tshark(analysis) -> None:
@@ -82,7 +83,7 @@ def test_message_counts_agree_with_tshark(analysis) -> None:
         method, _tab, status = line.partition("\t")
         oracle[method or status] = oracle.get(method or status, 0) + 1
     mine: dict[str, int] = {}
-    for m in analysis.flows[0].messages:
+    for m in (m for f in analysis.flows for m in f.messages):
         if m.protocol == "sip":
             key = m.label.split(" ", 1)[0]
             mine[key] = mine.get(key, 0) + 1
@@ -114,7 +115,7 @@ def test_a_user_outcome_is_not_a_failure_anywhere(analysis, calls) -> None:
     """**訊息層、程序層、總覽、燈號都不把 486／487 當失敗。** 網路把電話送到了。"""
     busy, cancelled = calls[1], calls[2]
     assert busy.failures == 0 and cancelled.failures == 0
-    for m in analysis.flows[0].messages:
+    for m in (m for f in analysis.flows for m in f.messages):
         if m.label.startswith(("486", "487")):
             assert not m.is_failure, m.label
             assert m.cause == CauseRef("sip_status", int(m.label[:3]))
@@ -122,9 +123,9 @@ def test_a_user_outcome_is_not_a_failure_anywhere(analysis, calls) -> None:
     doc = build_overview(analysis, table)
     assert doc["procedures"]["ended-by-user"] == 2
     assert doc["procedures"]["failure"] == 1
-    # 唯一的紅來自 503 —— 拿掉那通就是綠（`verdict` 只看失敗、重送、未回應）。
+    # 紅來自 503（與一筆不屬於任何通話的 H.248 錯誤）—— 486／487 不在卡片上。
     assert doc["verdict"] == "red"
-    assert {c["message"] for c in doc["causes"]} == {"503 Service Unavailable"}
+    assert {c["message"] for c in doc["causes"]} == {"503 Service Unavailable", "Error Reply"}
 
 
 def test_the_network_failure_is_still_red(calls) -> None:
@@ -155,7 +156,7 @@ def test_the_overview_card_counts_once_but_lists_every_leg(analysis) -> None:
     """cause 卡的 `count` 是去重後的一次；`frames` 列出五腿，display filter 才選得到
     每一格。"""
     doc = build_overview(analysis, build_table(analysis))
-    (card,) = doc["causes"]
+    (card,) = [c for c in doc["causes"] if c["message"].startswith("503")]
     assert card["count"] == 1
     assert len(card["frames"]) == LEGS
 
