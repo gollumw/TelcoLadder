@@ -36,11 +36,22 @@ def test_the_readme_states_the_real_number_of_catalogued_causes() -> None:
     from telcoladder.causes import _load_tables
 
     measured = sum(len(t) for t in _load_tables().values())
-    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
     claimed = re.search(r"\*\*(\d+) of them\*\*", readme)
     assert claimed, "README 開場不再宣稱一個數字了 —— 改了句子請一併改這條測試"
     assert int(claimed.group(1)) == measured, (
         f"README 說 {claimed.group(1)} 條 cause，實際 {measured} 條"
+    )
+
+    # 同一個數字也印在社群預覽圖上。**圖片本身沒人會 grep**，但它的產生器會 ——
+    # 表長了而圖沒重畫，那張圖就在 GitHub、Slack、X 上替我們說一句過期的話。
+    card = (root / "docs" / "social-preview.html").read_text(encoding="utf-8")
+    on_card = re.search(r">(\d+) spec-cited cause explanations<", card)
+    assert on_card, "社群預覽圖不再宣稱一個數字了 —— 改了版面請一併改這條測試"
+    assert int(on_card.group(1)) == measured, (
+        f"docs/social-preview.html 說 {on_card.group(1)} 條，實際 {measured} 條 —— "
+        f"重跑檔頭那行 Chrome 指令把 docs/social-preview.png 也一起更新"
     )
 
 
