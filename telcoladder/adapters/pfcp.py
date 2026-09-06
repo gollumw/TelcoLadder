@@ -21,7 +21,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import connection_scope, gtp_tunnel, scoped
+from telcoladder.identity import connection_scope, gtp_tunnel, gtp_tunnels, scoped
 from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "pfcp"
@@ -95,16 +95,10 @@ def _tunnel_keys(block: dict[str, Any]) -> set[IdKey]:
     """
     keys: set[IdKey] = set()
 
-    teids = block.get("pfcp_pfcp_f_teid_teid")
-    addresses = block.get("pfcp_pfcp_f_teid_ipv4_addr")
-    teids = teids if isinstance(teids, list) else [teids]
-    addresses = addresses if isinstance(addresses, list) else [addresses]
-    # **只走成對的部分。** 長度不一致時多出來的那幾個配不到位址，
-    # 而沒有位址的 TEID 不能建 key（見 `identity.gtp_tunnel`）。
-    for teid, address in zip(teids, addresses):
-        key = gtp_tunnel(str(address or ""), teid)
-        if key is not None:
-            keys.add(key)
+    keys |= gtp_tunnels(
+        block.get("pfcp_pfcp_f_teid_teid"),
+        block.get("pfcp_pfcp_f_teid_ipv4_addr"),
+    )
 
     outer = gtp_tunnel(
         str(first(block.get("pfcp_pfcp_outer_hdr_creation_ipv4")) or ""),

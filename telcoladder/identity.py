@@ -107,6 +107,27 @@ def gtp_tunnel(address: str, teid: object) -> IdKey | None:
     return _tunnel(IdKind.GTP_TEID, address, teid)
 
 
+def gtp_tunnels(teids: object, addresses: object) -> set[IdKey]:
+    """成對的 TEID／位址欄位 → 一組隧道 key。
+
+    `-T ek` 把同名欄位收成陣列，而 TEID 與位址是**位置對位置**的：第 i 個
+    TEID 配第 i 個位址。三個 adapter（NGAP、PFCP、SBI 夾帶的 N2 SM info）
+    都要做同一件事，各寫一份就是三份會漂 —— 而漂的症狀是「明明是同一條隧道，
+    就是併不起來」，沒有任何一層會報錯。
+
+    **只走成對的部分。** 長度不一致時多出來的 TEID 配不到位址，而沒有位址的
+    TEID 不能建 key（理由見 `gtp_tunnel`：同一份檔裡兩個 TEID 都是 3 是常態）。
+    """
+    left = teids if isinstance(teids, list) else [teids]
+    right = addresses if isinstance(addresses, list) else [addresses]
+    out: set[IdKey] = set()
+    for teid, address in zip(left, right):
+        key = gtp_tunnel(str(address or ""), teid)
+        if key is not None:
+            out.add(key)
+    return out
+
+
 def gtp_control_tunnel(address: str, teid: object) -> IdKey | None:
     """S11／S5-S8 的 **GTP-C** 端點 —— 與上面那個是**兩個號碼空間**。
 

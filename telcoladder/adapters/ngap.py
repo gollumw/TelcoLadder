@@ -11,7 +11,7 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
-from telcoladder.identity import connection_scope, gtp_tunnel, scoped, fiveg_s_tmsi
+from telcoladder.identity import connection_scope, gtp_tunnels, scoped, fiveg_s_tmsi
 from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
 
 NAME = "ngap"
@@ -185,14 +185,10 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
     # GTP-U 隧道端點 —— **N4（PFCP）靠這個才接得上訂戶**。
     # 見 `identity.gtp_tunnel`：範圍是位址而不是連線，因為 N4 與 N2 走的
     # 是完全不同的連線。
-    teids = block.get("ngap_ngap_gTP_TEID")
-    addresses = block.get("ngap_ngap_TransportLayerAddressIPv4")
-    teids = teids if isinstance(teids, list) else [teids]
-    addresses = addresses if isinstance(addresses, list) else [addresses]
-    for teid, address in zip(teids, addresses):
-        tunnel = gtp_tunnel(str(address or ""), teid)
-        if tunnel is not None:
-            keys.add(tunnel)
+    keys |= gtp_tunnels(
+        block.get("ngap_ngap_gTP_TEID"),
+        block.get("ngap_ngap_TransportLayerAddressIPv4"),
+    )
 
     return frozenset(keys)
 

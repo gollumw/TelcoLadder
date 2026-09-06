@@ -15,7 +15,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import connection_scope, globally_unique, scoped
+from telcoladder.identity import connection_scope, globally_unique, gtp_tunnels, scoped
 from telcoladder.model import BLIND_UNDECODED_STREAM, BlindSpot, Endpoint, IdKey, IdKind, Message
 
 NAME = "sbi"
@@ -311,6 +311,35 @@ def _as_list(value: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _n2_tunnel_keys(block: dict[str, Any]) -> set[IdKey]:
+    """SBI 夾帶的 **N2 SM information** 裡的 GTP-U 隧道端點。
+
+    **SMF 側的擷取檔沒有 NGAP。** N4（PFCP）接回訂戶的唯一橋是
+    `identity.gtp_tunnel`，而那把鑰匙一直只有 NGAP 發得出來 —— 於是一份
+    只有 SBI／PFCP／GTP-U 的 SMF trace 上，PFCP 自成孤兒流程，畫面上
+    User Plane 那個 Domain 對那個訂戶永遠是空的（T-SBI-N2-BRIDGE）。
+
+    但那兩個事實**就在 SBI 的本體裡**：`PDUSessionResourceSetupRequestTransfer`
+    以 `multipart/related` 的第二段送出，tshark 會把它解成
+    `http2 → mime_multipart → ngap`，欄位名與 N2 上的一模一樣。所以這裡挖出來
+    的是同一組 TEID ＋ 位址，算出的 key 與 NGAP 那條路逐字相同 —— 兩邊算不出
+    同一把鑰匙的話，症狀是「明明是同一條隧道，就是併不起來」。
+
+    **走 `carrier.dig` 而不是寫死路徑**（`http2.mime_multipart.ngap`）：
+    tshark 換版本改了中間層名字時，寫死的路徑會靜默失效，而靜默失效正是
+    這一段要修的東西本身（§3.1 的同一課）。
+    """
+    from telcoladder.adapters.carrier import dig
+
+    keys: set[IdKey] = set()
+    for ngap_block in dig(block, "ngap"):
+        keys |= gtp_tunnels(
+            ngap_block.get("ngap_ngap_gTP_TEID"),
+            ngap_block.get("ngap_ngap_TransportLayerAddressIPv4"),
+        )
+    return keys
+
+
 def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     """契約入口（見 adapters/__init__.py）：SBI 夾帶的載荷靠這個歸戶。
 
@@ -326,6 +355,7 @@ def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     if imsi:
         # SUPI 全網唯一，不加範圍前綴（同 parse() 的理由）。
         keys.add(globally_unique(IdKind.SUPI, imsi))
+    keys |= _n2_tunnel_keys(block)
     return frozenset(keys)
 
 
