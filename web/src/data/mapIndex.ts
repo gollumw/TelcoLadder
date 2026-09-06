@@ -46,6 +46,7 @@ export function domainFromStack(stack: string): TelecomDomain | undefined {
   if (layers.has("pfcp") || layers.has("gtp")) return "USER_PLANE_N4_N3";
   if (layers.has("http2")) return "CORE_SBI";
   if (layers.has("diameter")) return "CORE_DIAMETER";
+  if (layers.has("sip")) return "IMS_SIP";
   return undefined;
 }
 
@@ -263,7 +264,7 @@ export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, 
 /** `/callflow` 回的一則事件。欄位名由後端 `viewer.callflow_json` 決定。 */
 export interface CallFlowProcedureJson {
   kind: string;
-  outcome: "success" | "failure" | "incomplete";
+  outcome: "success" | "failure" | "incomplete" | "ended-by-user";
   cause: string | null;
   first_failure: string | null;
   pdu_session_id: string | null;
@@ -504,7 +505,7 @@ export interface OverviewRefJson {
 export interface OverviewJson {
   verdict: "red" | "amber" | "green" | "empty";
   subscribers: { total: number; red: number; amber: number; green: number; unattributed_flows: number };
-  procedures: { total: number; success: number; failure: number; incomplete: number };
+  procedures: { total: number; success: number; failure: number; incomplete: number; "ended-by-user": number };
   events: { failures: number; unanswered: number; retrans: number };
   not_visible: {
     ciphered_nas: number;

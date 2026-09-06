@@ -148,7 +148,7 @@ export function mockSource(): DataSource {
       return {
         verdict: sessions.length === 0 ? "empty" : red > 0 ? "red" : "green",
         subscribers: { total: sessions.length, red, amber: 0, green: sessions.length - red, unattributedFlows: 0 },
-        procedures: { total: 0, success: 0, failure: 0, incomplete: 0 },
+        procedures: { total: 0, success: 0, failure: 0, incomplete: 0, "ended-by-user": 0 },
         events: { failures: errors.length, unanswered: 0, retrans: 0 },
         notVisible: { cipheredNas: 0, protectedSuci: 0, framesNotDecoded: 0, onlyN2: false, undecodedTraffic: [], notes: [] },
         causes: Array.from(byCause.values()),

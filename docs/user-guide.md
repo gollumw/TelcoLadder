@@ -367,6 +367,27 @@ field experience, written by a person, and a citation would be invented.
 
 ---
 
+### Calls (SIP) are procedures too
+
+Since 2026-09-06 a SIP dialog is one procedure: `sip-call` for an INVITE
+dialog, `sip-register` for a registration, `sip-<method>` otherwise. A call
+carries its own fields — `ring_s` (INVITE → first 180/183), `answer_s`
+(INVITE → 200 OK), `talk_s` (200 OK → BYE), `released_by` (caller or callee,
+from the BYE's tag), `release_cause` (the `Reason` header, Q.850 or SIP, or
+the final response) and `final_status`.
+
+A call has **four** outcomes. Besides success / failure / incomplete there is
+**`ended-by-user`**: the callee was busy (486), declined (603), was not
+reachable (480), or the caller cancelled (487). The network delivered the
+call; a party ended it. Those are not red — the classification lives in the
+cause table (`outcome: user` in `sip_status.yaml` and `q850.yaml`), not in
+code, and the Overview counts them separately.
+
+At a core capture point one SIP message is seen on every leg it crosses
+(UE→P-CSCF→S-CSCF→AS→…). The procedure's `messages` counts every
+observation; `failures` counts each failure once — the same rule as the
+Diameter End-to-End Id.
+
 ## 5. Five things to know when interpreting
 
 **1. Cause clauses are looked up, never AI-generated.** The

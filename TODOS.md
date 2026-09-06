@@ -1393,7 +1393,9 @@ Recorded from the 2026-09-05 review so the order is not lost. None started.
    Still open: subscriber-level filters, and "open in Wireshark at frame N".
 4. Request→response latency per transaction (SBI stream, PFCP seqno,
    Diameter hop-by-hop, SIP CSeq are all paired already) — the foundation of
-   any KPI.
+   any KPI. **SIP calls done 2026-09-06** (`ring_s` / `answer_s` / `talk_s`
+   on `sip-call` procedures); the per-transaction latency for the other
+   protocols is still open.
 5. `diff good.pcap bad.pcap` (T-E3).
 6. A "whose side" axis on every cause (UE / network / subscription) — content
    work, not code.
@@ -1406,3 +1408,54 @@ Recorded from the 2026-09-05 review so the order is not lost. None started.
 8. A CLI analysis cache keyed on file hash + parameters (MCP has one; the CLI
    re-runs tshark on every invocation).
 9. Failed-AVP / Error-Message surfaced on Diameter 5xxx answers.
+
+---
+
+## T-SIP-VIA | SIP relay detection and the Mw / ISC reference points (P3)
+
+**What**: `adapters/sip.py` records `via-count` but does not fill
+`relay-record`, so P-CSCF / S-CSCF / AS are never told apart by SIP alone
+(the fixture `ims-volte-call` has AS and MGCF with no role). RFC 3261 §16.6:
+a proxy adds its own `Via`; a request with ≥ 2 `Via` was forwarded by its
+sender. `interfaces.py` deliberately lacks Mw (P-CSCF↔S-CSCF) and ISC
+(S-CSCF↔AS) until roles come from packets, not guesses.
+
+**Why not now**: relay detection marks a proxy, not *which* CSCF it is;
+the useful split (P-CSCF vs S-CSCF vs AS) needs `Route` / `Service-Route`
+/ `P-Served-User` reading and a ruling on how much to trust header
+positions. Content decision, deferred.
+
+**Effort**: CC ~3 h.
+
+---
+
+## T-SIP-PAI | MSISDN from P-Asserted-Identity (P3)
+
+**What**: `IdKind.MSISDN` exists but nothing produces it. SIP's
+`P-Asserted-Identity` and `tel:` URIs carry the number; Diameter Sh/Rx carry
+it in `Subscription-Id`. A producer would let the packet list be searched by
+number.
+
+**Why not now**: the phone-number guard net (red line 4) exists precisely
+because this is the field most likely to leak into a comment; the producer
+needs its own scenario.md discipline and a decision on whether the number
+is a correlation key (it identifies a person as well as an IMPU does) or a
+display fact.
+
+**Effort**: CC ~2 h plus the ruling.
+
+---
+
+## T-ISUP-CAMEL | ISUP-over-M3UA and CAMEL adapters (P3)
+
+**What**: PSTN breakout (MGCF → ISUP IAM/ACM/ANM/REL over M3UA) and IN
+triggers (CAMEL InitialDP) appear in VoLTE captures beside the SIP legs.
+They are now *named* in the coverage note but not decoded. An ISUP adapter
+would bring the release cause (Q.850 in the REL) onto the same ladder as
+the SIP `Reason` header that carries it — the two halves of one release.
+
+**Why not now**: no fixture yet (hand-writing M3UA/SCCP/ISUP is a day of
+byte work), and the join key (CIC ↔ SIP dialog) is only available through
+the MGCF's own mapping, which the wire does not carry.
+
+**Effort**: CC ~1 day for ISUP with a fixture; CAMEL separately.

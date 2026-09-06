@@ -97,7 +97,8 @@ from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
-from telcoladder.model import Flow, IdKind, Message, subscriber_identity, SequenceRef
+from telcoladder.causes import is_user_outcome
+from telcoladder.model import CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
 
@@ -150,7 +151,13 @@ class Procedure:
 
     kind: str
     supi: str | None
-    outcome: str  # "success" | "failure" | "incomplete"
+    outcome: str
+    """`"success"` | `"failure"` | `"incomplete"` | `"ended-by-user"`。
+
+    第四個值（2026-09-06）是 SIP 通話的：被叫忙線、拒接、主叫取消 —— 網路把電話
+    送到了，只是沒接成。**不是失敗、也不是成功**；哪些號碼算，寫在 cause 表的
+    `outcome: user` 欄（`causes.is_user_outcome`）。每個列舉結局的地方都要認得它
+    （`tests/test_sip_calls.py` 掃這件事）。"""
     cause: str | None
     first_failure: str | None
     pdu_session_id: str | None
@@ -173,6 +180,22 @@ class Procedure:
     `SUPI …`，沒有就是 `5G-S-TMSI …` 或 `AMF UE NGAP ID …`。**真實網路多數
     程序段沒有 SUPI**，xDR 只有 `supi` 欄的話那些列全是 null，消費端無法按
     訂戶分組。"""
+
+    # ── SIP 通話的 KPI（2026-09-06）。非通話段一律 None：沒量到的不填看起來像樣的值。
+    ring_s: float | None = None
+    """INVITE 到第一個 180／183 的秒數 —— 電話多久才到達對端。"""
+    answer_s: float | None = None
+    """INVITE 到 200 OK 的秒數（接通時間）。"""
+    talk_s: float | None = None
+    """200 OK 到 BYE 的秒數（通話長度）。沒接通就是 None。"""
+    released_by: str | None = None
+    """`"caller"` | `"callee"`：BYE 的 From tag 等於 INVITE 的 From tag 就是主叫掛的；
+    CANCEL 永遠是主叫。"""
+    release_cause: "CauseRef | None" = None
+    """釋放原因的出處：BYE／CANCEL 的 Reason 標頭（Q.850 或 SIP），沒有 Reason 時
+    是結束這通電話的最終回應碼。文字由呈現層查表。"""
+    final_status: int | None = None
+    """INVITE 的最終回應碼（200、486、487、503…）。沒等到就是 None。"""
 
 
 def _opens(msg: Message) -> _Kind | None:
@@ -421,6 +444,149 @@ def _diameter_segments(messages: list[Message], supi: str | None,
     return procedures, unassigned
 
 
+#: SIP 的協定名（`adapters/sip.py` 的 `NAME`）。與 `_DIAMETER` 同一個理由。
+_SIP = "sip"
+
+
+def _sip_status(msg: Message) -> int | None:
+    """回應的狀態碼；請求回 None。標籤是 `"486 Busy Here"` 或 `"INVITE"`。"""
+    head = msg.label.split(" ", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
+def _sip_segments(messages: list[Message], supi: str | None,
+                  capture_end: float, subscriber: str | None = None) -> tuple[list[Procedure], list[Message]]:
+    """SIP 以 **Call-ID** 為單位切段 —— RFC 3261 §8.1.1.4 要求它在一個 dialog 的
+    所有訊息上相同，邊界跟 Diameter 的 Session-Id 一樣是協定自己標在線路上的。
+
+    ## 段的種類
+
+    開段的請求方法決定：`INVITE` → `sip-call`、`REGISTER` → `sip-register`、
+    其他 → `sip-<method>`（OPTIONS、SUBSCRIBE、MESSAGE…）。re-INVITE／UPDATE／PRACK
+    與 BYE 都屬於同一個 dialog，不另開段。
+
+    ## 通話的結局有四種
+
+    * 200 OK（對 INVITE）→ **success**：接通了。之後的 BYE 只是釋放。
+    * 最終回應在 cause 表裡標著 `outcome: user`（486 忙線、487 取消、603 拒接…）
+      → **ended-by-user**：網路把電話送到了，一方自己結束的。**不點紅燈**，
+      但也不是成功（用戶裁定 2026-09-06）。
+    * 其他 ≥ 400 → **failure**。
+    * 沒等到最終回應 → **incomplete**（落在檔尾附近時加註）。3xx 也算這裡：
+      重導之後的重打是另一個 Call-ID，這一段本身沒有結局。
+
+    ## 去重
+
+    核網擷取點上同一則訊息會被看到好幾腿（`_distinct`，鍵是 Call-ID/CSeq）。
+    `messages` 記原始觀測數、`failures` 記去重後的 —— 與 Diameter 同一條規矩：
+    一個 486 在四腿上看到四次，是一次結局，不是四次失敗。
+    """
+    groups: dict[tuple, list[Message]] = {}
+    unassigned: list[Message] = []
+    for msg in messages:
+        call_ids = sorted(k for k in msg.identity_keys if k[0] is IdKind.SIP_CALL_ID)
+        if not call_ids:
+            unassigned.append(msg)
+            continue
+        groups.setdefault(call_ids[0], []).append(msg)
+
+    procedures: list[Procedure] = []
+    for window in groups.values():
+        window.sort(key=lambda m: m.frame)
+        distinct = _distinct(window)
+        requests = [m for m in distinct if _sip_status(m) is None]
+        if not requests:
+            # 只看到回應（請求走了沒擷取到的那一腿）：沒有開段的方法，誠實留在未指派堆。
+            unassigned.extend(window)
+            continue
+        method = requests[0].label
+        kind = {"INVITE": "sip-call", "REGISTER": "sip-register"}.get(method, f"sip-{method.lower()}")
+        failed = [m for m in distinct if m.is_failure]
+
+        def _final(to_method: str) -> Message | None:
+            for m in distinct:
+                code = _sip_status(m)
+                if code is not None and code >= 200 and m.detail.get("cseq-method") == to_method:
+                    return m
+            return None
+
+        final = _final(method)
+        answered = final is not None and _sip_status(final) < 300
+        ring = answer = talk = None
+        released_by = release_cause = None
+        # 只有通話填 KPI 欄；註冊的 401 是挑戰不是結局，填進 `final_status` 會誤導。
+        final_status = _sip_status(final) if final is not None and kind == "sip-call" else None
+
+        if kind == "sip-call":
+            invite = requests[0]
+            early = next((m for m in distinct if _sip_status(m) in (180, 183)
+                          and m.detail.get("cseq-method") == "INVITE"), None)
+            if early is not None:
+                ring = round(early.ts - invite.ts, 6)
+            if answered:
+                answer = round(final.ts - invite.ts, 6)
+            bye = next((m for m in distinct if m.label == "BYE"), None)
+            cancel = next((m for m in distinct if m.label == "CANCEL"), None)
+            if bye is not None:
+                if answered:
+                    talk = round(bye.ts - final.ts, 6)
+                released_by = "caller" if bye.detail.get("from-tag") == invite.detail.get("from-tag") else "callee"
+                release_cause = bye.cause
+            elif cancel is not None:
+                released_by = "caller"
+                release_cause = cancel.cause
+            if release_cause is None and final is not None and not answered:
+                # 沒有 Reason 標頭時，結束這通電話的就是那個最終回應碼本身。
+                release_cause = final.cause
+
+        if answered:
+            outcome, cause, first_failure = "success", None, None
+        elif final is not None and is_user_outcome(final.cause):
+            outcome, cause, first_failure = "ended-by-user", _cause_text(final), None
+        elif failed:
+            outcome = "failure"
+            cause = _cause_text(failed[-1])
+            first = _cause_text(failed[0])
+            first_failure = first if first != cause else None
+        elif kind != "sip-call" and any(
+            (_sip_status(m) or 0) // 100 == 2 for m in distinct
+        ):
+            outcome, cause, first_failure = "success", None, None
+        else:
+            outcome, cause, first_failure = "incomplete", None, None
+
+        note = ""
+        if outcome == "incomplete" and final is not None and 300 <= _sip_status(final) < 400:
+            note = _("Redirected ({code}); the retried call is a separate dialog").format(code=_sip_status(final))
+        elif outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
+            note = _("Near the end of the capture - may simply be cut off")
+
+        procedures.append(Procedure(
+            kind=kind,
+            supi=supi,
+            subscriber=subscriber,
+            outcome=outcome,
+            cause=cause,
+            first_failure=first_failure,
+            pdu_session_id=None,
+            start_frame=window[0].frame,
+            end_frame=window[-1].frame,
+            messages=len(window),
+            failures=len(failed),
+            duration=window[-1].ts - window[0].ts,
+            protocols=tuple(sorted({m.protocol for m in window})),
+            sequence=_match_sequence(failed),
+            note=note,
+            ring_s=ring,
+            answer_s=answer,
+            talk_s=talk,
+            released_by=released_by,
+            release_cause=release_cause,
+            final_status=final_status,
+        ))
+    return procedures, unassigned
+
+
 def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], list[Message]]:
     """把一條流程切成程序段。回傳 (段, 未指派的訊息)。
 
@@ -435,8 +601,12 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     # Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那個
     # 視窗的耗時與訊息數會因此變成錯的（而且看起來完全合理）。
     diameter = [m for m in flow.messages if m.protocol == _DIAMETER]
-    others = [m for m in flow.messages if m.protocol != _DIAMETER]
+    sip = [m for m in flow.messages if m.protocol == _SIP]
+    others = [m for m in flow.messages if m.protocol not in (_DIAMETER, _SIP)]
     procedures, unassigned = _diameter_segments(diameter, supi, capture_end, subscriber)
+    sip_procedures, sip_unassigned = _sip_segments(sip, supi, capture_end, subscriber)
+    procedures += sip_procedures
+    unassigned += sip_unassigned
 
     active_kind: _Kind | None = None
     window: list[Message] = []

@@ -663,7 +663,11 @@ _TEST_NETWORK_PREFIX = _TEST_NETWORK  # "00101"
 #: 明確捏造的電話號碼。**加一筆等於在說「這是我編的」** —— 比照 `_INVENTED`。
 #: 判準相同：尾巴看得出規律。今天是空的，那不是漏了，是版控裡真的一個都沒有
 #: （加這道網時實測三種形狀全部零命中）。
-_INVENTED_NUMBERS: dict[str, str] = {}
+_INVENTED_NUMBERS: dict[str, str] = {
+    # `tests/fixtures/ims-volte-call/make.py` 的被叫號碼：NANP 保留給文件與虛構
+    # 用途的 555-01xx 段（+1 555 0100）—— 不是任何人的號碼，形狀上就看得出來。
+    "15550100": "NANP documentation range 555-01xx, the fixture's callee",
+}
 
 
 def _phone_digits(raw: str) -> str:

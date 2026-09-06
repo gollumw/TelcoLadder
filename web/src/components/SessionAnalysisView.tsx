@@ -82,6 +82,8 @@ const PROCEDURE_LABEL: Record<string, string> = {
   "service-request": "Service request",
   deregistration: "Deregistration",
   "ue-context-release": "Context release",
+  "sip-register": "IMS registration",
+  "sip-call": "Call (SIP)",
 };
 
 //: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
@@ -90,6 +92,8 @@ const OUTCOME_STYLE: Record<string, string> = {
   success: "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted transition-colors",
   failure: "border-signal-red-border bg-signal-red-bg text-signal-red hover:border-signal-red shadow-sm font-semibold transition-colors",
   incomplete: "border-signal-amber-border bg-signal-amber-bg text-signal-amber hover:border-signal-amber font-medium transition-colors",
+  // 一方自己結束的通話（忙線、拒接、取消）：不紅、不綠 —— 中性。
+  "ended-by-user": "border-border bg-surface-2 text-fg-muted hover:border-border-focus transition-colors",
 };
 
 //: 結局的符號。**incomplete 用 ⋯ 不用 ✗** —— 「沒等到結局」與「失敗」
@@ -98,6 +102,7 @@ const OUTCOME_MARK: Record<string, string> = {
   success: "✓",
   failure: "✗",
   incomplete: "⋯",
+  "ended-by-user": "○",
 };
 
 const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {

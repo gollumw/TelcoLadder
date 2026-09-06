@@ -293,6 +293,12 @@ def annotate(messages: list) -> list:
             continue
         msg.detail["cause_note"] = describe(msg.cause)
         info = lookup(msg.cause)
+        if info is not None and info.outcome == "user" and msg.is_failure:
+            # **表說這是一方自己的結局，就不是網路失敗。** 被叫忙線、拒接、主叫
+            # 取消 —— 網路把電話送到了。這是判準從表進入判定的唯一一點：
+            # adapter 只畫號碼段的界線，哪些號碼算「使用者的結局」是內容
+            # （用戶裁定 2026-09-06）。程序層把這種段記成 `ended-by-user`。
+            msg.is_failure = False
         if info and info.plain:
             # **存英文原文，不存翻譯。** `annotate()` 跑在 `analyse()` 裡，而
             # `Analysis` 會被 MCP 跨語言快取 —— 在這裡選語言的話，先用 zh 問過
