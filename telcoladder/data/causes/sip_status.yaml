@@ -1,0 +1,516 @@
+# SIP response status codes - RFC 3261 §21 plus the IANA-registered extensions,
+# as IMS (3GPP TS 24.229) uses them.
+#
+# ## Names are the oracle's, prose is ours
+#
+# Every `name` is verbatim from `tshark -G values` for `sip.reason_cause_sip`
+# (there is no value table for `sip.Status-Code` itself), and a test re-runs
+# that oracle. The `-Others` placeholders (199/299/...) and 999 are tshark's own
+# catch-alls; they are kept so the table is complete against the oracle.
+#
+# ## `outcome: user` - a call outcome, not a network failure
+#
+# 480, 486, 487, 600 and 603 mean the network delivered the call and a party
+# was busy, absent, declined or cancelled. They are not red; the procedure's
+# outcome becomes "ended-by-user" (user ruling 2026-09-06). The classification
+# lives here, not in code - `causes.is_user_outcome()` only reads it.
+#
+# ## No clause numbers
+#
+# The status codes are defined across RFC 3261 and a dozen extension RFCs; the
+# section numbers were not human-verified per code, so none is printed
+# (CLAUDE.md red line 3). 401/407 need no marker: the adapter never flags them.
+
+table: sip_status
+spec: "RFC 3261 / 3GPP TS 24.229"
+
+causes:
+  100:
+    name: 'Trying'
+    plain: 'The next hop received the request and is working on it. It stops the sender''s retransmissions; it says nothing about the outcome.'
+    plain_zh: '下一跳收到了請求、正在處理。它只是讓發送端停止重送，不代表任何結局。'
+
+  180:
+    name: 'Ringing'
+    plain: 'The callee''s device is alerting. The call has reached the far end.'
+    plain_zh: '被叫端的裝置正在響鈴。電話已經到達對端。'
+
+  181:
+    name: 'Call Is Being Forwarded'
+    plain: 'A proxy is forwarding the call to another destination (call forwarding, hunt group).'
+    plain_zh: '有代理正把這通電話轉往別的目的地（來電轉接、群組代接）。'
+
+  182:
+    name: 'Queued'
+    plain: 'The call is queued at the far end and will be answered when a resource frees up.'
+    plain_zh: '電話在對端排隊，等資源空出來才會被接。'
+
+  183:
+    name: 'Session Progress'
+    plain: 'Early media or session progress: in VoLTE this carries the SDP answer so preconditions and the bearer can be set up before ringing.'
+    plain_zh: '早期媒體／會談進度：VoLTE 裡它帶著 SDP answer，讓前置條件與承載能在響鈴前建好。'
+
+  199:
+    name: 'Informational - Others'
+    plain: 'A 1xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 1xx。'
+
+  200:
+    name: 'OK'
+    plain: 'The request succeeded. For an INVITE this is the answer; for REGISTER it is the binding being accepted.'
+    plain_zh: '請求成功。對 INVITE 是接聽；對 REGISTER 是綁定被接受。'
+
+  202:
+    name: 'Accepted'
+    plain: 'Accepted for later processing (typically REFER); the outcome arrives in a NOTIFY.'
+    plain_zh: '已接受、稍後處理（通常是 REFER）；結局之後由 NOTIFY 帶回。'
+
+  204:
+    name: 'No Notification'
+    plain: 'Success with no notification body (RFC 5839).'
+    plain_zh: '成功，不帶通知本文（RFC 5839）。'
+
+  299:
+    name: 'Success - Others'
+    plain: 'A 2xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 2xx。'
+
+  300:
+    name: 'Multiple Choices'
+    plain: 'The request-URI resolves to several possible destinations; the Contact list says which.'
+    plain_zh: 'Request-URI 對應到多個可能的目的地；Contact 清單列著它們。'
+
+  301:
+    name: 'Moved Permanently'
+    plain: 'The user has moved permanently; retry at the Contact address and update address books.'
+    plain_zh: '使用者永久搬走了；改用 Contact 位址重試並更新通訊錄。'
+
+  302:
+    name: 'Moved Temporarily'
+    plain: 'Try the Contact address instead, for this request only. Normal in IMS for call diversion.'
+    plain_zh: '這一次改打 Contact 位址。IMS 裡的來電轉接常這樣做。'
+
+  305:
+    name: 'Use Proxy'
+    plain: 'The request must go through the proxy named in Contact.'
+    plain_zh: '請求必須經過 Contact 指名的代理。'
+
+  380:
+    name: 'Alternative Service'
+    plain: 'The requested service is not available, but an alternative is (used for emergency-call redirection in IMS).'
+    plain_zh: '要求的服務不可用，但有替代方案（IMS 用它把緊急通話導向別處）。'
+
+  399:
+    name: 'Redirection - Others'
+    plain: 'A 3xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 3xx。'
+
+  400:
+    name: 'Bad Request'
+    plain: 'The request was malformed and the receiver could not understand it.'
+    plain_zh: '請求格式錯誤，接收端讀不懂。'
+    common_causes:
+      - 'A header the far end cannot parse - compare the request on the leg before and after any SBC or IBCF that rewrites headers'
+      - 'An oversized or fragmented UDP request that arrived truncated'
+    common_causes_zh:
+      - '對端解不開的某個標頭 —— 比對經過 SBC／IBCF 改寫前後兩腿的請求'
+      - '過大或被分片的 UDP 請求到達時被截斷'
+
+  401:
+    name: 'Unauthorized'
+    plain: 'Authentication is required: the network is challenging the UE (WWW-Authenticate). In IMS registration this is the normal first reply, not a failure.'
+    plain_zh: '需要認證：網路在挑戰 UE（WWW-Authenticate）。IMS 註冊裡這是正常的第一個回覆，不是失敗。'
+
+  402:
+    name: 'Payment Required'
+    plain: 'Reserved for future use (payment required); not used in IMS.'
+    plain_zh: '保留未來使用（需付費）；IMS 不用。'
+
+  403:
+    name: 'Forbidden'
+    plain: 'The server understood the request and refuses it. In IMS this is the catch-all for subscription and policy rejections.'
+    plain_zh: '伺服器讀懂了請求但拒絕。IMS 裡這是訂閱與策略類拒絕的萬用碼。'
+    common_causes:
+      - 'The subscriber is not provisioned for this service (no VoLTE entitlement, barred number)'
+      - 'Identity mismatch: the P-Asserted-Identity or From does not match the registered IMPU'
+      - 'The request arrived on an unregistered contact or after the registration expired'
+      - 'Roaming or interconnect policy at the IBCF/BGCF blocked the destination'
+    common_causes_zh:
+      - '訂戶沒有這項服務的授權（沒開 VoLTE、號碼被限制）'
+      - '身分不符：P-Asserted-Identity 或 From 與已註冊的 IMPU 對不上'
+      - '請求來自未註冊的 contact，或註冊已過期'
+      - 'IBCF／BGCF 的漫遊或互連策略擋掉了目的地'
+
+  404:
+    name: 'Not Found'
+    plain: 'The user does not exist at the domain in the Request-URI (the server is authoritative for that domain).'
+    plain_zh: 'Request-URI 的網域裡沒有這個使用者（伺服器對該網域有權威）。'
+    common_causes:
+      - 'The called number is not provisioned in the HSS (Cx LIR/UAR returned user unknown)'
+      - 'Number normalisation went wrong - the Request-URI carries a format the S-CSCF does not translate'
+      - 'ENUM/NAPTR lookup failed and the call fell through to a domain that does not serve the number'
+    common_causes_zh:
+      - '被叫號碼沒有在 HSS 裡開戶（Cx LIR／UAR 回了 user unknown）'
+      - '號碼正規化出錯 —— Request-URI 的格式是 S-CSCF 不會轉換的'
+      - 'ENUM／NAPTR 查詢失敗，電話落到一個不服務這個號碼的網域'
+
+  405:
+    name: 'Method Not Allowed'
+    plain: 'The method is not allowed for this address.'
+    plain_zh: '這個位址不允許該方法。'
+
+  406:
+    name: 'Not Acceptable'
+    plain: 'No acceptable response representation exists for the Accept header the client sent.'
+    plain_zh: '找不到符合客戶端 Accept 標頭的回應格式。'
+
+  407:
+    name: 'Proxy Authentication Required'
+    plain: 'The proxy requires authentication (Proxy-Authenticate). A challenge step, not a failure.'
+    plain_zh: '代理需要認證（Proxy-Authenticate）。這是挑戰步驟，不是失敗。'
+
+  408:
+    name: 'Request Timeout'
+    plain: 'No response arrived in time; the transaction timed out somewhere downstream.'
+    plain_zh: '沒有及時收到回應；交易在下游某處逾時了。'
+    common_causes:
+      - 'The callee''s device is unreachable (out of coverage, IMS PDN dropped) and the terminating side gave up waiting'
+      - 'A downstream node is down or overloaded - look for the hop where the request went out and nothing came back'
+      - 'Paging or CS fallback on the terminating side took longer than the originating timer'
+    common_causes_zh:
+      - '被叫裝置不可達（沒訊號、IMS PDN 掉了），被叫側等到放棄'
+      - '下游某個節點掛了或過載 —— 找請求出去之後就沒有回話的那一跳'
+      - '被叫側的尋呼或 CS fallback 花的時間超過主叫側的計時器'
+
+  410:
+    name: 'Gone'
+    plain: 'The resource is gone permanently and no forwarding address is known.'
+    plain_zh: '資源永久消失，沒有轉接位址。'
+
+  412:
+    name: 'Conditional Request Failed'
+    plain: 'A conditional request''s precondition failed (RFC 3903 SIP-If-Match).'
+    plain_zh: '條件請求的前置條件不成立（RFC 3903 的 SIP-If-Match）。'
+
+  413:
+    name: 'Request Entity Too Large'
+    plain: 'The request body is larger than the server accepts.'
+    plain_zh: '請求本文超過伺服器接受的大小。'
+
+  414:
+    name: 'Request-URI Too Long'
+    plain: 'The Request-URI is too long for the server.'
+    plain_zh: 'Request-URI 對伺服器來說太長。'
+
+  415:
+    name: 'Unsupported Media Type'
+    plain: 'The body''s media type is not supported (Content-Type).'
+    plain_zh: '本文的媒體類型不支援（Content-Type）。'
+
+  416:
+    name: 'Unsupported URI Scheme'
+    plain: 'The Request-URI scheme is not supported (for example tel: where only sip: is accepted).'
+    plain_zh: '不支援 Request-URI 的 scheme（例如只收 sip: 卻來了 tel:）。'
+
+  420:
+    name: 'Bad Extension'
+    plain: 'The request requires an extension (Require/Proxy-Require) the server does not understand; Unsupported lists it.'
+    plain_zh: '請求要求一個伺服器不懂的擴充（Require／Proxy-Require）；Unsupported 列出是哪個。'
+    common_causes:
+      - 'A Require: precondition or 100rel that a legacy interconnect partner does not implement'
+    common_causes_zh:
+      - '對方是不實作 precondition 或 100rel 的舊互連對端，而請求用 Require 強制要求了'
+
+  421:
+    name: 'Extension Required'
+    plain: 'The server needs an extension the client did not offer (Require in the response says which).'
+    plain_zh: '伺服器需要客戶端沒提供的擴充（回應的 Require 說是哪個）。'
+
+  422:
+    name: 'Session Timer Too Small'
+    plain: 'The Session-Expires value is below the server''s minimum (Min-SE).'
+    plain_zh: 'Session-Expires 低於伺服器的最小值（Min-SE）。'
+
+  423:
+    name: 'Interval Too Brief'
+    plain: 'The registration or subscription Expires value is shorter than the server allows (Min-Expires).'
+    plain_zh: '註冊或訂閱的 Expires 比伺服器允許的最短值還短（Min-Expires）。'
+
+  428:
+    name: 'Use Identity Header'
+    plain: 'An Identity header is required (RFC 8224 STIR).'
+    plain_zh: '需要 Identity 標頭（RFC 8224 STIR）。'
+
+  429:
+    name: 'Provide Referrer Identity'
+    plain: 'A referrer identity is required (RFC 3892).'
+    plain_zh: '需要 referrer 身分（RFC 3892）。'
+
+  430:
+    name: 'Flow Failed'
+    plain: 'The flow to the registered contact failed (RFC 5626 outbound).'
+    plain_zh: '往已註冊 contact 的流程失敗（RFC 5626 outbound）。'
+
+  433:
+    name: 'Anonymity Disallowed'
+    plain: 'Anonymous requests are not accepted by this destination (RFC 5079).'
+    plain_zh: '這個目的地不接受匿名請求（RFC 5079）。'
+
+  436:
+    name: 'Bad Identity-Info'
+    plain: 'The Identity-Info header is bad (RFC 4474).'
+    plain_zh: 'Identity-Info 標頭有問題（RFC 4474）。'
+
+  437:
+    name: 'Unsupported Certificate'
+    plain: 'The certificate referenced by Identity-Info is not acceptable (RFC 4474).'
+    plain_zh: 'Identity-Info 指向的憑證不被接受（RFC 4474）。'
+
+  438:
+    name: 'Invalid Identity Header'
+    plain: 'The Identity header failed verification (RFC 8224).'
+    plain_zh: 'Identity 標頭驗證失敗（RFC 8224）。'
+
+  439:
+    name: 'First Hop Lacks Outbound Support'
+    plain: 'The first hop does not support outbound flows (RFC 5626).'
+    plain_zh: '第一跳不支援 outbound 流程（RFC 5626）。'
+
+  440:
+    name: 'Max-Breadth Exceeded'
+    plain: 'Forking breadth exceeded Max-Breadth (RFC 5393).'
+    plain_zh: '分叉寬度超過 Max-Breadth（RFC 5393）。'
+
+  470:
+    name: 'Consent Needed'
+    plain: 'Consent of the recipient is needed before this request can be relayed (RFC 5360).'
+    plain_zh: '轉送這個請求前需要接收方同意（RFC 5360）。'
+
+  480:
+    name: 'Temporarily Unavailable'
+    outcome: user
+    plain: 'The callee''s end is currently unavailable: registered but not reachable, or not answering within the network''s timer. A call outcome, not a network fault.'
+    plain_zh: '被叫端目前不可用：有註冊但聯絡不到，或在網路的計時器內沒有接聽。這是通話結局，不是網路故障。'
+    common_causes:
+      - 'The callee''s device lost the IMS PDN or radio while still registered - the terminating S-CSCF/P-CSCF could not deliver the INVITE'
+      - 'No-answer timer expired (call forwarding on no reply usually follows with a 181 or a new INVITE)'
+      - 'Do-not-disturb or a similar supplementary service on the terminating side'
+    common_causes_zh:
+      - '被叫裝置在仍註冊的狀態下掉了 IMS PDN 或無線 —— 被叫側 S-CSCF／P-CSCF 送不出 INVITE'
+      - '無人接聽計時器到了（無應答轉接通常接著出現 181 或新的 INVITE）'
+      - '被叫側的勿擾或類似的補充服務'
+
+  481:
+    name: 'Call/Transaction Does Not Exist'
+    plain: 'The server has no dialog or transaction matching this request (unknown Call-ID/tags).'
+    plain_zh: '伺服器沒有與這個請求對應的 dialog 或交易（Call-ID／tag 認不得）。'
+    common_causes:
+      - 'A mid-dialog request (BYE, re-INVITE, PRACK) arrived after the far end had already torn the dialog down'
+      - 'Dialog state lost on one node (restart, failover) while the other side still believes the call is up'
+    common_causes_zh:
+      - 'dialog 中途的請求（BYE、re-INVITE、PRACK）到達時對端已經拆掉 dialog'
+      - '某個節點的 dialog 狀態掉了（重啟、切換），另一端仍以為通話還在'
+
+  482:
+    name: 'Loop Detected'
+    plain: 'The request looped: the server found itself in the Via list already.'
+    plain_zh: '請求繞了圈：伺服器在 Via 清單裡已經看到自己。'
+
+  483:
+    name: 'Too Many Hops'
+    plain: 'Max-Forwards reached zero before the request arrived; too many hops.'
+    plain_zh: 'Max-Forwards 在到達前就減到零；跳數太多。'
+    common_causes:
+      - 'A routing loop between two proxies (each thinks the other serves the number)'
+    common_causes_zh:
+      - '兩個代理之間的路由環（各自以為對方服務這個號碼）'
+
+  484:
+    name: 'Address Incomplete'
+    plain: 'The Request-URI is incomplete (overlap dialling); more digits are needed.'
+    plain_zh: 'Request-URI 不完整（重疊撥號）；還需要更多數字。'
+
+  485:
+    name: 'Ambiguous'
+    plain: 'The Request-URI is ambiguous; several users match.'
+    plain_zh: 'Request-URI 有歧義；有多個使用者符合。'
+
+  486:
+    name: 'Busy Here'
+    outcome: user
+    plain: 'The callee is busy: the device or the user declined because a call is already in progress. A call outcome, not a network fault.'
+    plain_zh: '被叫忙線：裝置或使用者因為已經在通話中而拒絕。這是通話結局，不是網路故障。'
+    common_causes:
+      - 'Second incoming call rejected by the device (no call waiting)'
+      - 'The user pressed reject - many devices send 486 rather than 603'
+    common_causes_zh:
+      - '裝置拒絕第二通來電（沒有來電等待）'
+      - '使用者按了拒接 —— 很多裝置送 486 而不是 603'
+
+  487:
+    name: 'Request Terminated'
+    outcome: user
+    plain: 'The request was terminated before it completed - almost always because the caller sent CANCEL (hung up while ringing). A call outcome, not a network fault.'
+    plain_zh: '請求在完成前被終止 —— 幾乎一定是主叫送了 CANCEL（響鈴時掛斷）。這是通話結局，不是網路故障。'
+    common_causes:
+      - 'The caller hung up while the callee was still ringing (look for the CANCEL that precedes it)'
+      - 'The originating side''s own timer cancelled a call the terminating side had not yet answered'
+      - 'If no CANCEL is visible on any captured leg, the cancellation travelled a leg this capture does not include'
+    common_causes_zh:
+      - '主叫在被叫還在響時掛斷（找前面那則 CANCEL）'
+      - '主叫側自己的計時器取消了一通被叫側還沒接的電話'
+      - '任何一腿都看不到 CANCEL 的話，取消是走了這份擷取沒有涵蓋的那一腿'
+
+  488:
+    name: 'Not Acceptable Here'
+    plain: 'The offer is not acceptable here: no common media, codec or precondition support between the two ends.'
+    plain_zh: '這裡不接受這個 offer：兩端沒有共同的媒體、編解碼器或前置條件支援。'
+    common_causes:
+      - 'Codec mismatch - the terminating side or the interconnect partner offers no AMR/AMR-WB variant the caller listed'
+      - 'Precondition or SRTP required by one side and not offered by the other'
+      - 'The transcoding-free interconnect rejected a media line it cannot route'
+    common_causes_zh:
+      - '編解碼器不符 —— 被叫側或互連對端沒有主叫列出的任何 AMR／AMR-WB 變體'
+      - '一邊要求 precondition 或 SRTP，另一邊沒有提供'
+      - '免轉碼的互連拒絕了一條它無法路由的媒體線'
+
+  489:
+    name: 'Bad Event'
+    plain: 'The event package in a SUBSCRIBE/PUBLISH is not understood.'
+    plain_zh: 'SUBSCRIBE／PUBLISH 的事件套件不被理解。'
+
+  491:
+    name: 'Request Pending'
+    plain: 'A request is already pending on this dialog (glare); retry after the timer.'
+    plain_zh: '這個 dialog 上已有請求在處理中（glare）；計時器過後重試。'
+
+  493:
+    name: 'Undecipherable'
+    plain: 'The S/MIME body could not be decrypted.'
+    plain_zh: 'S/MIME 本文無法解密。'
+
+  494:
+    name: 'Security Agreement Required'
+    plain: 'A security agreement is required first (RFC 3329 Security-Client/Server, used for IMS IPsec setup).'
+    plain_zh: '必須先完成安全協商（RFC 3329 的 Security-Client／Server，IMS 用它建立 IPsec）。'
+
+  499:
+    name: 'Client Error - Others'
+    plain: 'A 4xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 4xx。'
+
+  500:
+    name: 'Server Internal Error'
+    plain: 'The server hit an internal error it could not recover from while handling the request.'
+    plain_zh: '伺服器處理請求時遇到無法恢復的內部錯誤。'
+    common_causes:
+      - 'A node crashed or threw on this request - correlate with that node''s logs at the timestamp'
+      - 'A backend the CSCF needed (HSS via Cx, an application server) failed and the failure was mapped to 500'
+    common_causes_zh:
+      - '某個節點在這個請求上當掉或丟出例外 —— 拿時間戳去對那台的日誌'
+      - 'CSCF 需要的後端（Cx 上的 HSS、應用伺服器）失敗，被對映成 500'
+
+  501:
+    name: 'Not Implemented'
+    plain: 'The server does not implement the request method or feature.'
+    plain_zh: '伺服器沒有實作這個方法或功能。'
+
+  502:
+    name: 'Bad Gateway'
+    plain: 'A gateway or proxy received an invalid response from downstream.'
+    plain_zh: '閘道或代理從下游收到無效的回應。'
+    common_causes:
+      - 'The MGCF could not map an ISUP/BICC release from the PSTN side into a SIP response and sent 502 instead'
+      - 'An interconnect partner returned something the IBCF could not parse'
+    common_causes_zh:
+      - 'MGCF 無法把 PSTN 側的 ISUP／BICC 釋放對映成 SIP 回應，改送 502'
+      - '互連對端回了 IBCF 解不開的東西'
+
+  503:
+    name: 'Service Unavailable'
+    plain: 'The server is temporarily unable to handle the request: overloaded, in maintenance, or a downstream resource is unavailable. Retry-After may say when to try again.'
+    plain_zh: '伺服器暫時無法處理請求：過載、維護中、或下游資源不可用。Retry-After 可能說何時再試。'
+    common_causes:
+      - 'Overload protection on the CSCF or application server (many 503s in a short window from one node)'
+      - 'The Cx/Sh backend was unreachable - a Diameter failure just before this response'
+      - 'The MGCF had no free circuit towards the PSTN, or the media gateway refused the context'
+      - 'A node was being drained for maintenance'
+    common_causes_zh:
+      - 'CSCF 或應用伺服器的過載保護（短時間內同一台送出很多 503）'
+      - 'Cx／Sh 後端連不上 —— 這則回應前不久有一筆 Diameter 失敗'
+      - 'MGCF 往 PSTN 沒有空閒電路，或媒體閘道拒絕了 context'
+      - '某台節點正在為維護排空'
+
+  504:
+    name: 'Server Time-out'
+    plain: 'A downstream server did not respond in time.'
+    plain_zh: '下游伺服器沒有及時回應。'
+    common_causes:
+      - 'The terminating network (roaming partner, PSTN via MGCF) did not answer before the proxy''s timer'
+      - 'A stuck application server in the ISC chain'
+    common_causes_zh:
+      - '被叫網路（漫遊夥伴、經 MGCF 的 PSTN）在代理的計時器到期前沒有回應'
+      - 'ISC 鏈上有一台應用伺服器卡住'
+
+  505:
+    name: 'Version Not Supported'
+    plain: 'The SIP protocol version is not supported.'
+    plain_zh: '不支援這個 SIP 協定版本。'
+
+  513:
+    name: 'Message Too Large'
+    plain: 'The message is too large for the transport (RFC 3261 §18.1.1); switch to TCP.'
+    plain_zh: '訊息對傳輸層來說太大（RFC 3261 §18.1.1）；改用 TCP。'
+
+  599:
+    name: 'Server Error - Others'
+    plain: 'A 5xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 5xx。'
+
+  600:
+    name: 'Busy Everywhere'
+    outcome: user
+    plain: 'The callee is busy everywhere: no contact is willing to take the call. A call outcome, not a network fault.'
+    plain_zh: '被叫到處都忙線：沒有任何 contact 願意接。這是通話結局，不是網路故障。'
+
+  603:
+    name: 'Decline'
+    outcome: user
+    plain: 'The callee explicitly declined the call. A call outcome, not a network fault.'
+    plain_zh: '被叫明確拒接。這是通話結局，不是網路故障。'
+    common_causes:
+      - 'The user pressed reject on the device'
+      - 'A terminating service (call screening, blacklist) declined on the user''s behalf'
+    common_causes_zh:
+      - '使用者在裝置上按了拒接'
+      - '被叫側的服務（來電過濾、黑名單）代替使用者拒絕'
+
+  604:
+    name: 'Does Not Exist Anywhere'
+    plain: 'The server has authoritative knowledge that the user does not exist anywhere.'
+    plain_zh: '伺服器有權威地知道這個使用者哪裡都不存在。'
+
+  606:
+    name: 'Not Acceptable'
+    plain: 'The session description is not acceptable to the callee anywhere (media, bandwidth, addressing).'
+    plain_zh: '被叫在任何地方都不接受這個會談描述（媒體、頻寬、定址）。'
+
+  607:
+    name: 'Unwanted'
+    plain: 'The callee marked the call as unwanted (RFC 8197 spam feedback).'
+    plain_zh: '被叫把這通電話標為不想要（RFC 8197 的垃圾來電回饋）。'
+
+  608:
+    name: 'Rejected'
+    plain: 'An intermediary rejected the call (RFC 8688, call analytics/screening).'
+    plain_zh: '中間節點拒絕了這通電話（RFC 8688，通話分析／過濾）。'
+
+  699:
+    name: 'Global Failure - Others'
+    plain: 'A 6xx code this tshark does not name individually.'
+    plain_zh: '這版 tshark 沒有個別命名的 6xx。'
+
+  999:
+    name: 'Unknown response'
+    plain: 'tshark could not parse the status code; the message carries a Reason header whose SIP cause is not a valid three-digit code.'
+    plain_zh: 'tshark 解不出狀態碼；Reason 標頭裡的 SIP cause 不是有效的三位數。'

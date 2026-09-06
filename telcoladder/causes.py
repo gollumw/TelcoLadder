@@ -52,6 +52,13 @@ class CauseInfo:
     common_causes: tuple[str, ...]
     """現場最常見的根因。同樣以英文為原文。"""
 
+    outcome: str | None = None
+    """這個號碼是**誰的結局**。目前唯一的值是 `"user"`：通話的一方自己決定或
+    缺席（被叫忙線、拒接、主叫取消、無人接聽）—— 網路把電話送到了，只是沒人接。
+    那不是網路故障，不該點紅燈；但它也不是「成功」。**判準住在表裡不住在程式裡**
+    （用戶裁定 2026-09-06）：程式只問 `is_user_outcome()`，哪些號碼算，是內容。
+    留空代表照號碼段的一般規則（4xx／5xx／6xx 是失敗）。"""
+
     plain_zh: str = ""
     common_causes_zh: tuple[str, ...] = ()
     """中文版。**與英文並排放在同一個 YAML 條目裡**，不走 i18n 的翻譯目錄 ——
@@ -174,8 +181,17 @@ def _entries(raw: dict) -> dict[int, CauseInfo]:
     """
     table, spec = raw["table"], raw["spec"]
     clause = raw.get("clause", "")
-    return {
-        int(value): CauseInfo(
+    out: dict[int, CauseInfo] = {}
+    for value, body in (raw.get("causes") or {}).items():
+        outcome = body.get("outcome")
+        if outcome not in _OUTCOMES:
+            # 拼錯的值會讓那條規則靜默失效 —— 一個 `outcome: usr` 的 486 又變回紅燈，
+            # 而畫面上什麼都不會說。載入時就擋。
+            raise PluginError(
+                _('Cause {table} #{value} declares outcome {outcome!r}; the only values this tool understands are {allowed}.').format(
+                    table=table, value=value, outcome=outcome, allowed=sorted(o for o in _OUTCOMES if o))
+            )
+        out[int(value)] = CauseInfo(
             table=table,
             value=int(value),
             name=body["name"],
@@ -183,11 +199,26 @@ def _entries(raw: dict) -> dict[int, CauseInfo]:
             clause=clause,
             plain=body.get("plain", ""),
             common_causes=tuple(body.get("common_causes") or ()),
+            outcome=outcome,
             plain_zh=body.get("plain_zh", ""),
             common_causes_zh=tuple(body.get("common_causes_zh") or ()),
         )
-        for value, body in (raw.get("causes") or {}).items()
-    }
+    return out
+
+
+#: `outcome` 欄位允許的值（`None` 是沒寫）。見 `CauseInfo.outcome`。
+_OUTCOMES = frozenset({None, "user"})
+
+
+def is_user_outcome(ref: CauseRef | None) -> bool:
+    """這個 cause 是不是「一方自己的結局」（表裡標了 `outcome: user`）。
+
+    查不到的號碼回 False —— 不認得的號碼照號碼段的一般規則走，不猜它是誰的結局。
+    """
+    if ref is None:
+        return False
+    info = lookup(ref)
+    return info is not None and info.outcome == "user"
 
 
 def _sequences(raw: dict, entries: dict[int, CauseInfo]) -> tuple[SequenceInfo, ...]:

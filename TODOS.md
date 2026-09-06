@@ -1397,8 +1397,12 @@ Recorded from the 2026-09-05 review so the order is not lost. None started.
 5. `diff good.pcap bad.pcap` (T-E3).
 6. A "whose side" axis on every cause (UE / network / subscription) — content
    work, not code.
-7. A SIP cause table (4xx/5xx/6xx + Reason: Q.850) — the IMS half of
-   "explanations with provenance" is missing it.
+7. ~~A SIP cause table (4xx/5xx/6xx + Reason: Q.850)~~ — **done 2026-09-06**:
+   `sip_status.yaml` (75, oracle `sip.reason_cause_sip`) and `q850.yaml`
+   (128, oracle `sip.reason_cause_q850`), bilingual, no clause. Both carry
+   `outcome: user` on the codes that are a party's decision rather than a
+   network fault (480/486/487/600/603; Q.850 16/17/18/19/21), read by
+   `causes.is_user_outcome()`; the adapter and procedure side lands next.
 8. A CLI analysis cache keyed on file hash + parameters (MCP has one; the CLI
    re-runs tshark on every invocation).
 9. Failed-AVP / Error-Message surfaced on Diameter 5xxx answers.
