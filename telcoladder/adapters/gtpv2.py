@@ -29,8 +29,8 @@ GTP-U 流量搭橋的機會，丟掉可惜。
 ## 這個 adapter 現在做到哪
 
 T6：訊息型別、IMSI、標頭與 F-TEID 的 TEID、cause。
-**cause 查表還沒有**（`data/causes/gtpv2.yaml` 未建，132 個值）——
-`describe()` 會誠實回「尚未收錄」。見 `TODOS.md` 的 T-4G-CAUSE。
+cause 查表在 `data/causes/gtpv2.yaml`（132 個值，名稱釘住 tshark）；條號要人工
+逐條核對過才印，目前一條都沒有。
 """
 
 from __future__ import annotations

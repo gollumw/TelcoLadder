@@ -19,7 +19,7 @@ subscriber, IMPU in the TS 23.003 IMSI-derived shape (MCC 001 test network).
 
 * RFC 6733 §6.1.7: a redirect agent answers 3006 and names the host in
   `Redirect-Host`; the requester re-sends. **Message-level `is_failure` is
-  False only when `Redirect-Host` is present.** User ruling 2026-09-06.
+  False only when `Redirect-Host` is present** (RFC 6733 §6.1.7).
 * The node that answers 3006 + `Redirect-Host` is the **SLF** (TS 29.228 /
   TS 29.328); the node that forwards with `Route-Record` is the **DRA**.
   Two machines, two roles.

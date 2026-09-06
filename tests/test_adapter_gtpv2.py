@@ -131,7 +131,7 @@ def test_the_gtpv2_table_prints_no_clause_number() -> None:
     """條號刻意沒有，理由同 `nas_eps_emm` 與 `diameter_3gpp`（CLAUDE.md §2.3）。"""
     assert "clause" not in _cause_yaml(), (
         "有人補了 clause。條號必須人工逐條核對過才准印 —— "
-        "核對完請同時更新 TODOS 的 T-4G-CAUSE，並把這條改成正面斷言。"
+        "核對完請把這條改成正面斷言。"
     )
 
 

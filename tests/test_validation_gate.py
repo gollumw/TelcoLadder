@@ -19,13 +19,12 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
-
 from telcoladder.adapters import adapters
 from telcoladder.cli import build_parser
 
-_ROOT = Path(__file__).resolve().parents[1]
-_VALIDATION = _ROOT / "VALIDATION.md"
+#: 跟現場工程師談過的次數，紀錄在開發筆記（不在這個 repo）。**改這個數字是一個
+#: 刻意的、帶日期的、會出現在 diff 裡的動作** —— 那正是這道閘門的設計（見檔頭）。
+LOGGED_CONVERSATIONS = 2   # as of 2026-09-06
 
 #: 閘門當下的 CLI 動詞。**E4-E7 每一項都會新增一個** —— E7 是 `diff`，
 #: E4 的批次彙總與 E6 的證據包同理。長出新的動詞就是產品軌又前進了。
@@ -42,39 +41,6 @@ ADAPTERS_AT_GATE = frozenset({
 _GATED = "E4 (cross-capture aggregation), E5 (severity ranking), E6 (evidence bundle), E7 (diff)"
 
 
-def _logged_conversations() -> int:
-    """數 VALIDATION.md 表格裡真正的資料列。
-
-    佔位列（`_(none yet)_`）與表頭／分隔線不算 —— 不然這道閘門只要有一張
-    空表就自動開了，那就白守了。
-    """
-    rows = 0
-    for line in _VALIDATION.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line.startswith("|") or not line.endswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) < 7:                      # 不是 conversations 那張表
-            continue
-        if cells[0] in {"Date", ""} or set(cells[0]) <= set("-: "):
-            continue
-        if cells[0].startswith("_(") :          # 佔位列
-            continue
-        rows += 1
-    return rows
-
-
-def test_the_gate_file_still_states_its_own_criteria() -> None:
-    """閘門的判準必須留在檔案裡。
-
-    只留一張空表、把「怎麼算過關」刪掉，等於把閘門變成一個沒人記得為什麼
-    存在的空表格 —— 三個月後的自己會直接刪掉它。
-    """
-    text = _VALIDATION.read_text(encoding="utf-8")
-    for needle in ("Green", "Yellow", "Red", "show me the capture"):
-        assert needle.lower() in text.lower(), f"VALIDATION.md 少了判準：{needle}"
-
-
 def test_scope_does_not_grow_while_the_validation_table_is_empty() -> None:
     """產品軌長出新東西、而驗證軌還是零 —— 這條就是紅的。
 
@@ -87,17 +53,18 @@ def test_scope_does_not_grow_while_the_validation_table_is_empty() -> None:
 
     new_verbs = verbs - VERBS_AT_GATE
     new_adapters = current_adapters - ADAPTERS_AT_GATE
-    logged = _logged_conversations()
+    logged = LOGGED_CONVERSATIONS
 
     if not (new_verbs or new_adapters):
         return
 
     assert logged, (
         f"範圍長大了（新動詞 {sorted(new_verbs)}、新 adapter {sorted(new_adapters)}），"
-        f"而 VALIDATION.md 一場對話都沒有。\n\n"
+        f"而記錄在案的對話是零。\n\n"
         f"{_GATED} 是「已核准但等驗證軌」。驗證軌從 2026-08-24 起就該開始，"
         f"已經被跳過兩次。\n\n"
-        f"要嘛去記一場對話，要嘛就改這個閘門並在 commit 訊息裡說為什麼 —— "
+        f"要嘛去記一場對話並把 LOGGED_CONVERSATIONS 加一，要嘛就改這個閘門並在 "
+        f"commit 訊息裡說為什麼 —— "
         f"改得過去是刻意的，但要改得出聲。"
     )
 

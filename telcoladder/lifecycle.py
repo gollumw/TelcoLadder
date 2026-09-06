@@ -60,7 +60,7 @@ NGAP ID 與 SUPI；SUPI 是 `globally_unique()`，不會也不該被「釋放」
 原因是所有 fixture 都是單次註冊的短擷取，沒有任何一份包含
 release-then-reattach —— 而 Open5GS 測試床不保證會重用識別碼（它可能單調
 遞增配號）。真實 UPF 的 TEID 空間有限、必然回收，所以這個錯是真的；
-只是我們目前**產不出重現它的擷取檔**。見 `TODOS.md`。
+只是我們目前**產不出重現它的擷取檔** —— 合成測試守著它。
 """
 
 from __future__ import annotations

@@ -185,7 +185,7 @@ def test_the_emm_table_prints_no_clause_number() -> None:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert "clause" not in raw, (
         "有人補了 clause。條號必須人工逐條核對過才准印 —— "
-        "核對完請同時更新 TODOS 的 T-4G-CAUSE，並把這條測試改成正面斷言。"
+        "核對完請把這條測試改成正面斷言。"
     )
     # 出處那一行不該因為缺 clause 而留下尾隨空白（Diameter 踩過的同一件事）
     from telcoladder.model import CauseRef
