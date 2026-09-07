@@ -333,7 +333,7 @@ class SequenceRef:
     為什麼需要它：單一 cause 常常答不出問題。`ki-mismatch` 的終端 cause 是
     #111「協定錯誤，規範未指明」—— 零資訊量；而 #21 緊接 #111 這個**順序**
     幾乎必然是金鑰不符。那句判斷本來就寫在 cause 表裡，只是沒有任何程式讀它，
-    於是工具知道卻講不出來（TODOS 的 T-PAIRRULE）。
+    於是工具知道卻講不出來 —— `sequence` 欄位就是為此而生。
     """
 
     table: str

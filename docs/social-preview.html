@@ -7,11 +7,11 @@
          --force-device-scale-factor=2 --hide-scrollbars docs/social-preview.html
 
      Renders 2560x1280 (2x GitHub's recommended 1280x640), well under its 1 MB cap.
-     Colours are the calibrated semantic palette from docs/WALKTHROUGH.md.
+     Colours are the interface's calibrated semantic palette (OKLCH L≈0.72 across all four hues).
      The cause count here is a claim about the program - tests/test_causes.py pins it. -->
 <!doctype html><meta charset="utf-8">
 <style>
-  /* palette: docs/WALKTHROUGH.md — L≈0.720 across all four semantic hues */
+  /* palette: the interface's semantic colours — L≈0.720 across all four hues */
   :root{ --canvas:#090d16; --ink:#e8edf5; --muted:#8b98ab; --line:#1e2836;
          --fail:#f67a73; --ok:#3ac178; --accent:#39b6d0; }
   *{margin:0;padding:0;box-sizing:border-box}

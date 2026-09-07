@@ -55,7 +55,7 @@ both frames).
 * **AS has no role, MGCF is `MGC` and the gateway `MGW`** — H.248 alone
   cannot tell Iq from Mn from Mp, so no reference point is claimed.
 * **Via relay detection is not exercised** — the multi-leg shape is here,
-  the rule is not written yet (TODOS T-SIP-VIA).
+  the rule is not written yet.
 
 ## Regenerate
 

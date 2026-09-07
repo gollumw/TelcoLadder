@@ -13,7 +13,6 @@ adapter 換了介面歸屬，圖上通通看不出來，而讀圖的人會以為
 |---|---|
 | 模組清單、行數、import 邊 | 分層的**意義**（L0–L6 各是什麼） |
 | 核心指名 import 了哪些 adapter | 每一條為什麼存在、將來會怎樣 |
-| `TODOS.md` 裡還開著哪些條目 | roadmap 的順序與單向門判定 |
 | adapter 清單、`web/src` 檔案 | 每個 adapter 的世代／介面歸屬 |
 
 分層圖的**邊**也是手寫的：那是一份編輯過的摘要（46 個模組的完整 import 圖自動
@@ -284,33 +283,8 @@ def measure(*, count_tests: bool = True) -> dict:
         "modules": modules,
         "named_adapter_imports": named,
         "web": web_files,
-        "todos": _open_todos(),
         "tests": _test_count() if count_tests else None,
     }
-
-
-#: `## T-XXX | 標題 (P1…)` 這一行的形狀。**全形與半形標點都收**：
-#: 這份文件 2026-08-27 全面英文化時把 `｜`／`（）` 換成 ASCII，而原本只認全形的
-#: 正則就此一條都抓不到 —— 架構圖上「TODOS 未關閉」從那天起一直顯示 0，
-#: 而那正是這個產生器存在的理由（手繪的東西會靜默過期）。id 也要收連字號
-#: （`T-4G-CAUSE`），舊的 `[A-Z0-9]+` 在第一個 `-` 就斷。
-#: 由 `test_archmap.py` 的 `test_the_todo_scanner_actually_finds_the_open_items` 釘住。
-_TODO_LINE = re.compile(
-    r"^## (?!~~)(T-[A-Z0-9-]+)\s*[|｜]\s*(.+?)\s*[（(](P\d)[^）)]*[）)]"
-)
-
-
-def _open_todos() -> list[dict]:
-    """`TODOS.md` 裡還開著的條目。劃掉的（`~~`）不算。"""
-    path = REPO / "TODOS.md"
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        m = _TODO_LINE.match(line)
-        if m:
-            out.append({"id": m.group(1), "title": m.group(2), "priority": m.group(3)})
-    return out
 
 
 def _test_count() -> int | None:
@@ -491,7 +465,6 @@ def render(data: dict) -> str:
         (f"{shipped}", "adapter 已交付"), (f"{planned}", "adapter 待做"),
         (f"{tests:,}" if tests else "—", "測試"),
         (f"{len(data['named_adapter_imports'])}", "核心指名 import"),
-        (f"{len(data['todos'])}", "TODOS 未關閉"),
     ]
     stats_html = "".join(f'<div class="stat"><b>{v}</b><span>{_esc(l)}</span></div>' for v, l in stats)
 
@@ -560,13 +533,6 @@ def render(data: dict) -> str:
     web_rows = "".join(
         f'<tr><td class="mono">{_esc(f)}</td><td class="num">{n:,}</td></tr>'
         for f, n in sorted(data["web"].items(), key=lambda kv: -kv[1])
-    )
-
-    # ── TODOS
-    todo_rows = "".join(
-        f'<tr><td class="mono">{t["id"]}</td><td class="wrap-ok">{_esc(t["title"])}</td>'
-        f'<td><span class="tag {"t-fault" if t["priority"]=="P0" else "t-mute"}">{t["priority"]}</span></td></tr>'
-        for t in sorted(data["todos"], key=lambda t: t["priority"])
     )
 
     head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
@@ -684,15 +650,6 @@ def render(data: dict) -> str:
   </table></div>
 </section>
 
-<section>
-  <h2><span class="num">07</span>TODOS 未關閉</h2>
-  <p class="sub">直接讀 <code>TODOS.md</code> 的標題 —— 劃掉的不算，所以關掉一項這裡就少一列。</p>
-  <div class="tbl"><table>
-    <thead><tr><th class="mono">ID</th><th>是什麼</th><th class="mono">優先</th></tr></thead>
-    <tbody>{todo_rows}</tbody>
-  </table></div>
-</section>
-
 <footer>
   <span>tools/archmap.py</span><span>commit {head}</span>
   <span>{len(mods)} 模組 · {total_loc:,} 行</span>
@@ -729,7 +686,7 @@ def main() -> int:
     print(f"寫出 {OUT_JSON.relative_to(REPO)} 與 {OUT_HTML.relative_to(REPO)}")
     print(f"  {len(data['modules'])} 模組 · {sum(m['loc'] for m in data['modules'].values()):,} 行"
           f" · {len(data['named_adapter_imports'])} 處指名 import"
-          f" · {len(data['todos'])} 條 TODO 未關閉")
+)
     return 0
 
 

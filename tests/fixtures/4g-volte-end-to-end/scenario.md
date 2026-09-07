@@ -66,7 +66,7 @@ the connection-scope prefix, subscribers one and three merge into one flow —
 belonging to two people. `test_two_enbs_reusing_the_same_ue_id_stay_apart`
 guards it, mutation-verified (`globally_unique()` drops 3 flows to 2).
 
-The 5G side has always lacked such a capture (`TODOS.md` T-TWOGNB); the 4G
+The 5G side has always lacked such a capture; the 4G
 version lands first.
 
 ## All identifiers are test-network values

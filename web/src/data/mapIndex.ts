@@ -116,7 +116,7 @@ export function subscriberHandle(sub: FlowSubscriber): string | null {
   // `identities.FLOW_HANDLE_PREFIX`）。Diameter 的 CER/CEA 與 DWR 依規範不帶
   // Session-Id 也不帶 User-Name —— 那是節點之間的事，不屬於任何人。在此之前
   // 這一列沒有把手，於是**梯形圖點不進去**，而那正是 DRA 工程師整天在看的
-  // 東西（VALIDATION.md，2026-09-06）。
+  // 東西。
   if (!sub.grouped && sub.sessions.length > 0) {
     return `flows:${sub.sessions.map((session) => session.id).join(",")}`;
   }

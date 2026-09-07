@@ -12,7 +12,7 @@
 #
 # 480, 486, 487, 600 and 603 mean the network delivered the call and a party
 # was busy, absent, declined or cancelled. They are not red; the procedure's
-# outcome becomes "ended-by-user" (user ruling 2026-09-06). The classification
+# outcome becomes "ended-by-user". The classification
 # lives here, not in code - `causes.is_user_outcome()` only reads it.
 #
 # ## No clause numbers

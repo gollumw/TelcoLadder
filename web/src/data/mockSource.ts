@@ -197,7 +197,7 @@ export function mockSource(): DataSource {
         // **空陣列時整條程序列不顯示**（不是顯示「未切段」—— 這行註解
         // 第一版寫錯了，由 /qa 2026-08-22 實測更正）。真實擷取檔也到得了
         // 這個狀態:只抓 SBI 那一腿時訂戶只出現在 URL 裡，沒有 NAS/NGAP
-        // 開段訊息， 就給零段。見 TODOS 的 T-PROCEMPTY。
+        // 開段訊息， 就給零段。
         procedures: [],
       };
     },

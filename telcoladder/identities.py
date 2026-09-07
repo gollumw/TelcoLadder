@@ -270,7 +270,7 @@ def session_frames(analysis: Analysis, kind: IdKind, raw: str) -> set[int]:
 #: **沒有訂戶鍵可用** —— Diameter 的 CER/CEA、DWR 依規範不帶 Session-Id 也不帶
 #: User-Name，那是節點之間的事，不屬於任何人。在此之前那些流程在瀏覽器裡
 #: 拿不到把手，於是**點不進去**：工作階段表看得到那一列，梯形圖打不開它。
-#: 而那正是 DRA 工程師整天在看的東西（VALIDATION.md，2026-09-06）。
+#: 而那正是 DRA 工程師整天在看的東西。
 #:
 #: **這不是一種身分。** 所以它不進 `IdKind`、不進 `parse_identity` ——
 #: 它是「表上的那一列」的位置把手，語意完全不同，混進身分體系會讓

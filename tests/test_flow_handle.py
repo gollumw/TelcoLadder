@@ -1,6 +1,6 @@
 """沒有訂戶鍵的流程也要打得開 —— 梯形圖的第三條入口。
 
-VALIDATION.md（2026-09-06）：一位 DRA 專家要「關聯所有 session 的 GUI，類似
+一位 DRA 專家要「關聯所有 session 的 GUI，類似
 call flow 一樣」。查下去發現引擎早就會畫那個形狀 —— `telcoladder analyze` 對
 DRA fixture 產出的梯形圖上 MME、DRA、I-CSCF、S-CSCF、HSS、PCEF、PCRF 同框 ——
 **是瀏覽器問不到**：它的梯形圖只吃 SUPI，而 `/flows` 對未歸戶那一列回

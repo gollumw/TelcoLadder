@@ -13,7 +13,7 @@
 #
 # 16 (normal clearing), 17 (busy), 18 (no response), 19 (no answer) and
 # 21 (call rejected) describe what the parties did, not what the network
-# failed to do (user ruling 2026-09-06). `causes.is_user_outcome()` reads it.
+# failed to do. `causes.is_user_outcome()` reads it.
 #
 # ## No clause numbers
 #

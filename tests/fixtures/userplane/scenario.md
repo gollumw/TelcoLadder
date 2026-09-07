@@ -64,7 +64,7 @@ The teardown-then-reattach sequence gave the testbed a chance to **reuse**
 identifiers — it did not. SEID, UL/DL TEID and both NGAP UE IDs were all
 allocated incrementally. This is why identifier-reuse protection
 (`telcoladder/lifecycle.py`) is guarded by synthetic tests: the testbed
-cannot produce the reuse scenario. Recorded in TODOS.md (T-REUSE).
+cannot produce the reuse scenario.
 
 ## Regeneration
 
