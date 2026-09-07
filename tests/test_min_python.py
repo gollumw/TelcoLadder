@@ -22,11 +22,24 @@
 
 所以這裡**去找一個真的最低版直譯器**來編。找不到就 skip —— 而 skip 要說得出
 原因：CI 的矩陣本來就跑 3.11，這條在開發機上只是提前告知。
+
+## 改這個檔的人請注意：要在最低版上跑一次
+
+這條測試**自己也會在 3.11 上執行**（CI 就有那一格）。第一版在這裡放了
+`ast.parse(offending)` 想確認片語形狀 —— 而那個片語按設計就是 3.11 解不了的，
+於是這條測試在它要保護的那個版本上自己炸掉。本機 3.13 解得了，所以又是一次
+「本機綠、CI 紅」，同一個形狀連續兩次。
+
+在開發機上這樣跑一次就看得到：
+
+    python3.11 -m venv /tmp/py311 && /tmp/py311/bin/pip install -q pytest
+    /tmp/py311/bin/python -m pytest -q -o addopts="" tests/test_min_python.py
+
+（`-o addopts=""` 是因為專案的 addopts 會拉進整套設定；這裡只要跑這一個檔。）
 """
 
 from __future__ import annotations
 
-import ast
 import shutil
 import subprocess
 import sys
@@ -118,8 +131,11 @@ def test_the_check_can_tell_a_violation_apart() -> None:
     # 反斜線原樣進到被編譯的那份原始碼裡。
     offending = r"""y = f"{'\n'.join(['a', 'b'])}" """
     assert "\\" in offending, "片語裡沒有反斜線 —— 那就不是要測的那個形狀"
-    # 今天的直譯器（3.12+）讀得懂它，這正是版本差異本身。
-    ast.parse(offending)
+    # **不要在這裡 `ast.parse(offending)`。** 這條測試自己也會在 3.11 上跑
+    # （CI 的矩陣就有那一格），而這個片語按設計就是 3.11 解不了的 —— 那行
+    # 會讓測試在它要保護的那個版本上炸掉。本機 3.13 解得了，所以又是一次
+    # 「本機綠、CI 紅」：同一個形狀，我犯了第二次。片語的形狀由上面那條
+    # assert 顧，判定交給底下真正去編它的子行程。
 
     proc = subprocess.run(
         [exe, "-c", "import sys; compile(sys.stdin.read(), 'probe.py', 'exec')"],
