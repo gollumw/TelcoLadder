@@ -22,6 +22,8 @@ import {
   type DecodeAsState,
   type Overview,
   type PacketPage,
+  type DiameterFlows,
+  type DiameterFlowRow,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
 
@@ -58,6 +60,14 @@ export default function App() {
   const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
   /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
   const [flowSupi, setFlowSupi] = useState<string | null>(null);
+  /** Diameter 流程表（全母體，後端算）。null＝還沒取；進 Diameter 視圖才取。 */
+  const [diameterFlows, setDiameterFlows] = useState<DiameterFlows | null>(null);
+  const [diameterFlowsError, setDiameterFlowsError] = useState<string | null>(null);
+  /** 已取到的 Diameter 流程梯形圖，一條一份（鍵是把手 `d:N`）。 */
+  const [diameterFlowByHandle, setDiameterFlowByHandle] = useState<Record<string, CallFlow | null>>({});
+  const [diameterHandle, setDiameterHandle] = useState<string | null>(null);
+  /** 已取到的逐跳明細，一條一份。表格那份不帶明細（規模紀律，見 source.ts）。 */
+  const [diameterDetailByHandle, setDiameterDetailByHandle] = useState<Record<string, DiameterFlowRow | null>>({});
   const [packets, setPackets] = useState<PacketStore | null>(null);
   /** display filter 的語法錯誤。**不是**整頁的錯誤 —— 打錯字不該把畫面清空。 */
   const [filterError, setFilterError] = useState<string | null>(null);
@@ -130,6 +140,12 @@ export default function App() {
       .loadOverview()
       .then(setOverview)
       .catch((err: unknown) => setOverviewError(err instanceof Error ? err.message : String(err)));
+    // Diameter 流程表的 `note` 與梯形圖的 cause 白話也是後端用請求語言寫的 —— 清掉，
+    // 視圖再進來時會重取（懶載入，不在這裡打）。
+    setDiameterFlows(null);
+    setDiameterFlowsError(null);
+    setDiameterFlowByHandle({});
+    setDiameterDetailByHandle({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在語言變時重取；data 只是門檻
   }, [lang]);
 
@@ -242,6 +258,10 @@ export default function App() {
           setBytesByFrame({});
           setTreeByFrame({});
           setFlowBySupi({});
+          setDiameterFlows(null);
+          setDiameterFlowsError(null);
+          setDiameterFlowByHandle({});
+          setDiameterDetailByHandle({});
           setFilterError(null);
           // 總覽也是用舊規則算的 —— 清掉、重取。
           setOverview(null);
@@ -269,6 +289,38 @@ export default function App() {
           .then((flow) => setFlowBySupi((c) => ({ ...c, [supi]: flow })))
           .catch(() => setFlowBySupi((c) => ({ ...c, [supi]: null })));
         return { ...current, [supi]: null };
+      });
+    },
+    [source],
+  );
+
+  const requestDiameterFlows = useCallback(() => {
+    setDiameterFlowsError(null);
+    void source
+      .loadDiameterFlows()
+      .then(setDiameterFlows)
+      .catch((err: unknown) => setDiameterFlowsError(err instanceof Error ? err.message : String(err)));
+  }, [source]);
+
+  const requestDiameterCallFlow = useCallback(
+    (handle: string) => {
+      setDiameterHandle(handle);
+      // 逐跳明細與梯形圖是兩份資料，同一個動作觸發：打開一列。
+      setDiameterDetailByHandle((current) => {
+        if (handle in current) return current;
+        void source
+          .loadDiameterFlow(handle)
+          .then((row) => setDiameterDetailByHandle((c) => ({ ...c, [handle]: row })))
+          .catch(() => setDiameterDetailByHandle((c) => ({ ...c, [handle]: null })));
+        return { ...current, [handle]: null };
+      });
+      setDiameterFlowByHandle((current) => {
+        if (handle in current) return current;
+        void source
+          .loadDiameterCallFlow(handle)
+          .then((flow) => setDiameterFlowByHandle((c) => ({ ...c, [handle]: flow })))
+          .catch(() => setDiameterFlowByHandle((c) => ({ ...c, [handle]: null })));
+        return { ...current, [handle]: null };
       });
     },
     [source],
@@ -401,6 +453,12 @@ export default function App() {
         filterError={filterError}
         callFlow={flowSupi ? (flowBySupi[flowSupi] ?? null) : null}
         onRequestCallFlow={requestCallFlow}
+        diameterFlows={diameterFlows}
+        diameterFlowsError={diameterFlowsError}
+        onRequestDiameterFlows={requestDiameterFlows}
+        diameterCallFlow={diameterHandle ? (diameterFlowByHandle[diameterHandle] ?? null) : null}
+        diameterDetail={diameterHandle ? (diameterDetailByHandle[diameterHandle] ?? null) : null}
+        onRequestDiameterCallFlow={requestDiameterCallFlow}
         decodeAs={decodeAs}
         decodeAsError={decodeAsError}
         decodeAsBusy={rerunning}

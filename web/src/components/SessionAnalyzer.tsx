@@ -2,7 +2,7 @@
 
 import { getLang, setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
-import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Sun } from "lucide-react";
+import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Network, Sun } from "lucide-react";
 import { setTheme, useTheme } from "../theme";
 import { cn } from "@/lib/utils";
 import { currentToken, type Dataset, type PacketPage } from "@/data/source";
@@ -10,11 +10,14 @@ import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 import { ExecutiveOverview } from "./ExecutiveOverview";
+import { DiameterFlowsView } from "./DiameterFlowsView";
 
 //: 三層，由淺入深：總覽（誰失敗、為什麼）→ 梯形圖（一個訂戶的信令時序）
 //: → 封包（Wireshark 視圖）。2026-09-05 之前只有後兩層，而且落地在封包清單 ——
 //: 對第一次打開這份檔的人，那是一面十六進位牆。
-type Mode = "overview" | "flow" | "mining";
+//: 第四個 `diameter`（2026-09-07）與梯形圖同一層、換一個座標系：不以訂戶為主軸，
+//: 以 Session-Id／transaction／跳為單位 —— DRA 維運人員問的是那個問題。
+type Mode = "overview" | "flow" | "diameter" | "mining";
 
 // **這裡是 GUI 與資料之間唯一的接縫（Phase 2 起）。**
 // 移植進來時是 `const { … } = mockData`（靜態 import）。改成 prop 之後這個
@@ -32,6 +35,12 @@ export default function SessionAnalyzer({
   filterError,
   callFlow,
   onRequestCallFlow,
+  diameterFlows,
+  diameterFlowsError,
+  onRequestDiameterFlows,
+  diameterCallFlow,
+  diameterDetail,
+  onRequestDiameterCallFlow,
   decodeAs,
   decodeAsError,
   decodeAsBusy,
@@ -56,6 +65,15 @@ export default function SessionAnalyzer({
   /** 目前聚焦訂戶的梯形圖。null＝還沒取到。 */
   callFlow: import("@/data/source").CallFlow | null;
   onRequestCallFlow: (supi: string) => void;
+  /** Diameter 流程表（`/diameter-flows`，全母體）。null＝還沒取。 */
+  diameterFlows: import("@/data/source").DiameterFlows | null;
+  diameterFlowsError: string | null;
+  onRequestDiameterFlows: () => void;
+  /** 目前打開那條 Diameter 流程的梯形圖。null＝還沒取到。 */
+  diameterCallFlow: import("@/data/source").CallFlow | null;
+  /** 打開那條流程的逐跳明細（表格那份不帶，見 source.ts 的規模說明）。null＝還沒取到。 */
+  diameterDetail: import("@/data/source").DiameterFlowRow | null;
+  onRequestDiameterCallFlow: (handle: string) => void;
   decodeAs: import("@/data/source").DecodeAsState;
   decodeAsError: string | null;
   decodeAsBusy: boolean;
@@ -96,6 +114,15 @@ export default function SessionAnalyzer({
   useEffect(() => {
     if (mode === "flow" && focusedSupi) onRequestCallFlow(focusedSupi);
   }, [mode, focusedSupi, onRequestCallFlow]);
+
+  //: Diameter 視圖：進來才取表；點了一條才取那條的梯形圖。
+  const [diameterHandle, setDiameterHandle] = useState<string | null>(null);
+  useEffect(() => {
+    if (mode === "diameter" && diameterFlows === null && !diameterFlowsError) onRequestDiameterFlows();
+  }, [mode, diameterFlows, diameterFlowsError, onRequestDiameterFlows]);
+  useEffect(() => {
+    if (mode === "diameter" && diameterHandle) onRequestDiameterCallFlow(diameterHandle);
+  }, [mode, diameterHandle, onRequestDiameterCallFlow]);
 
   /**
    * 開另一份擷取檔 —— 回首頁，那裡才有真正的入口（拖放、選檔、貼路徑）。
@@ -207,6 +234,17 @@ export default function SessionAnalyzer({
               </button>
               <button
                 type="button"
+                onClick={() => setMode("diameter")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "diameter" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
+                )}
+              >
+                <Network className="h-3.5 w-3.5" />
+                {t("Diameter Flows")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode("mining")}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
@@ -247,6 +285,23 @@ export default function SessionAnalyzer({
             error={overviewError}
             onOpenLadder={handleOpenLadder}
             onOpenPacket={handleViewInDataMining}
+          />
+        ) : mode === "diameter" ? (
+          <DiameterFlowsView
+            flows={diameterFlows}
+            error={diameterFlowsError}
+            selected={diameterHandle}
+            onSelect={setDiameterHandle}
+            callFlow={diameterCallFlow}
+            detail={diameterDetail}
+            correlationEntries={correlationEntries}
+            rawPackets={rawPackets}
+            identities={sessionIdentities}
+            selectedFrame={selectedFrame}
+            onSelectFrame={setSelectedFrame}
+            treeByFrame={treeByFrame}
+            onRequestTree={onRequestTree}
+            onViewInDataMining={handleViewInDataMining}
           />
         ) : mode === "mining" ? (
           <DataMiningView

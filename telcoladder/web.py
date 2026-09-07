@@ -90,6 +90,7 @@ from telcoladder.viewer import (
     correlation_json,
     decode_as_json,
     decode_json,
+    diameter_flows_json,
     identities_json,
     select_flows,
     select_identity,
@@ -404,9 +405,22 @@ class _Handler(BaseHTTPRequestHandler):
             ))
         elif not post and action == "overview":
             self._send_json(overview_json(session))
+        elif not post and action == "diameter-flows":
+            # `?flow=d:N` 只取那一條、含逐跳明細；不給就是表格（不含明細）。
+            handle = (query.get("flow") or [""])[0]
+            payload = diameter_flows_json(session, flow=handle or None)
+            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+            self._send_json(payload, status)
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             identity_text = (query.get("identity") or [""])[0]
+            diameter_handle = (query.get("diameter") or [""])[0]
+            if diameter_handle:
+                # 第四種把手：`diameter=d:3`，`/diameter-flows` 表上那一列。
+                payload = callflow_json(session, None, diameter=diameter_handle)
+                status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+                self._send_json(payload, status)
+                return
             # 把手有三種：`supi=` 的數字、`identity=kind:raw`、`identity=flows:3,4`。
             # 第三種是「表上那一列」而不是一個人 —— 沒有訂戶鍵的流程只有這條路
             # 開得起來（`identities.FLOW_HANDLE_PREFIX`）。

@@ -115,6 +115,16 @@ export interface CallFlowEvent {
   /** 間隔超過門檻。3GPP 的 timer 逾時是秒級的，所以「隔了兩秒才回應」
    *  多半不是網路慢，是某一端等到 timer 到期。 */
   slow?: boolean;
+  /** Diameter 的逐則路由事實（RFC 6733），只有 Diameter 事件有。
+   *  `fromNode`／`toNode` 是線路上誰對誰；這幾個是訊息**自己宣稱**的邏輯路徑
+   *  與交易身分 —— 有 DRA 時兩者本來就不同，DRA 視圖靠它們講出「這是哪一腿」。 */
+  originHost?: string;
+  destinationHost?: string;
+  hopByHopId?: string;
+  endToEndId?: string;
+  /** 轉送者附上的 Route-Record（RFC 6733 §6.7.1）—— 有它就是中繼送出的那一腿。 */
+  routeRecord?: string;
+  sessionId?: string;
 }
 
 /**

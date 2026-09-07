@@ -338,6 +338,10 @@ CATALOG: dict[str, str] = {
         '{param} 的發起方向（RFC 6733 / TS 29.272）',
     'No frame {frame} in the capture.':
         '擷取檔裡沒有 frame {frame}。',
+    'Not a Diameter flow handle: {handle}':
+        '不是 Diameter 流程把手：{handle}',
+    'This capture has no Diameter flow #{n} - the handle is from an older analysis.':
+        '這份擷取檔沒有第 {n} 條 Diameter 流程 —— 把手來自較舊的分析。',
     'Not a flow handle: {handle}':
         '不是流程把手：{handle}',
     'This capture has no flow #{n} - the handle is from an older analysis.':

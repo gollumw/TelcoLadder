@@ -40,6 +40,10 @@ const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "var(--lane-unknown)", text: "
 interface Lane {
   id: string;
   label: string;
+  /** 副標：主機名（短形）或位址。與 `label` 相同時不畫。 */
+  sub?: string;
+  /** 滑過泳道標題時的完整說明（完整主機名、或「中繼，轉送多個 Origin-Host」）。 */
+  title?: string;
   icon: LucideIcon;
   hex: string;
   text: string;
@@ -56,9 +60,27 @@ function markerId(laneId: string): string {
   return `arrow-${laneId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
-function laneFor(id: string, known: boolean): Lane {
-  const style = LANE_STYLE[id] ?? (known ? KNOWN_FALLBACK : UNKNOWN_FALLBACK);
-  return { id, label: id, ...style };
+/** `mme01.epc.mnc001.mcc001.3gppnetwork.org` → `mme01`；IP 原樣。 */
+function shortHost(value: string): string {
+  return value.includes(".") && !/^\d+\.\d+\.\d+\.\d+$/.test(value) ? value.split(".")[0] : value;
+}
+
+function laneFor(p: CallFlowParticipant): Lane {
+  const style = LANE_STYLE[p.id] ?? (p.known ? KNOWN_FALLBACK : UNKNOWN_FALLBACK);
+  // 副標只在它帶來新資訊時畫：主機名（Diameter 視圖給的、不含糊的那個），
+  // 否則是位址 —— 而位址與標題相同（角色推不出來時標題就是 IP）就不重複。
+  // **中繼刻意不冒用主機名**：它轉送別人的 Origin-Host，用過好幾個；顯示位址，
+  // 並在 title 講明（`diameterflows.py` 檔頭）。
+  let sub: string | undefined;
+  let title: string | undefined;
+  if (p.host) {
+    sub = shortHost(p.host);
+    title = p.address && p.address !== p.host ? `${p.host} (${p.address})` : p.host;
+  } else if (p.address && p.address !== p.id) {
+    sub = p.address;
+    title = p.ambiguous ? `${p.address} - relay: forwards several Origin-Hosts unchanged` : p.address;
+  }
+  return { id: p.id, label: p.id, sub, title, ...style };
 }
 
 const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
@@ -186,10 +208,14 @@ export function SessionAnalysisView({
   onRequestTree,
   onBackToDataMining,
   onViewInDataMining,
+  backLabel,
 }: {
   supi: string | null;
   /** `supi` 給人看的形式（沒有 SUPI 的訂戶是 `5G-S-TMSI …`）。 */
   subscriberLabel?: string;
+  /** 回上一層的按鈕文字。Diameter 視圖把這張圖嵌在流程表底下，回去的地方不是
+   *  Data Mining —— 按鈕寫錯地方，使用者會以為自己迷路了。 */
+  backLabel?: string;
   callFlowEvents: CallFlowEvent[];
   /** 這個訂戶的程序段（`telcoladder/procedures.py`）。空陣列＝未切段
    *  （範例資料就是空的 —— 切段是引擎對真實訊息序列的判讀）。 */
@@ -272,7 +298,7 @@ export function SessionAnalysisView({
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
   const allLanes = useMemo(
-    () => participants.map((p) => laneFor(p.id, p.known)),
+    () => participants.map((p) => laneFor(p)),
     [participants],
   );
   const activeLanes = useMemo(() => {
@@ -326,7 +352,7 @@ export function SessionAnalysisView({
       className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
-      {t("Back to Data Mining (all packets)")}
+      {backLabel ?? t("Back to Data Mining (all packets)")}
     </button>
   );
 
@@ -590,10 +616,17 @@ export function SessionAnalysisView({
                   const x = LANE_MARGIN + i * LANE_GAP;
                   return (
                     <g key={lane.id}>
+                      {lane.title && <title>{lane.title}</title>}
                       <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} style={{ stroke: "var(--ladder-lifeline)" }} strokeWidth={1} />
-                      <text x={x} y={24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
+                      <text x={x} y={lane.sub ? 20 : 24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
                         {lane.label}
                       </text>
+                      {/* 副標：主機名或位址。放在標題與生命線起點（TOP_PAD-20＝40）之間。 */}
+                      {lane.sub && (
+                        <text x={x} y={33} textAnchor="middle" style={{ fill: "rgb(var(--fg-dim))" }} fontSize={9.5} fontFamily="ui-monospace, monospace">
+                          {lane.sub}
+                        </text>
+                      )}
                     </g>
                   );
                 })}
@@ -780,6 +813,29 @@ export function SessionAnalysisView({
                   )}
                   {selectedEvent.causeText && <span className="text-signal-red font-semibold">· {selectedEvent.causeText}</span>}
                 </div>
+                {/* **Diameter 的逐則路由事實。** 線路上誰對誰（箭頭）與訊息自己宣稱的
+                    Origin-Host → Destination-Host 在有 DRA 的網路裡本來就不同；End-to-End
+                    是「這是同一則」的身分、Hop-by-Hop 是這一腿的配對（RFC 6733 §6.2）。
+                    帶 Route-Record 的就是中繼送出的那一腿（§6.7.1）。 */}
+                {selectedEvent.endToEndId && (
+                  <div className="mb-2 rounded border border-border bg-surface-1 p-2 font-mono text-[11px] leading-relaxed text-fg-muted">
+                    <p>
+                      <span className="text-fg-dim">{t("Message says: ")}</span>
+                      <span title={selectedEvent.originHost}>{selectedEvent.originHost ? shortHost(selectedEvent.originHost) : "?"}</span>
+                      {" → "}
+                      <span title={selectedEvent.destinationHost}>{selectedEvent.destinationHost ? shortHost(selectedEvent.destinationHost) : t("(answer: no Destination-Host)")}</span>
+                    </p>
+                    <p>
+                      <span className="text-fg-dim">End-to-End </span>{selectedEvent.endToEndId}
+                      <span className="ml-3 text-fg-dim">Hop-by-Hop </span>{selectedEvent.hopByHopId ?? "—"}
+                    </p>
+                    {selectedEvent.routeRecord && (
+                      <p className="text-signal-cyan" title={selectedEvent.routeRecord}>
+                        Route-Record {shortHost(selectedEvent.routeRecord)} · {t("this leg was forwarded by a relay")}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {/* **失敗的白話與常見根因。**
                     上面那一行是出處（名稱、號碼、規範、條號），這一塊才是
                     「實際發生了什麼」與「現場最常見的原因」—— 而它原本從來

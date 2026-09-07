@@ -84,6 +84,8 @@ _OURS = {
     "src/components/DecodeAsPanel.tsx",
     # 首屏總覽（2026-09-05）—— 設計實驗場沒有這一層；它只排版後端 `/overview` 的事實。
     "src/components/ExecutiveOverview.tsx",
+    # Diameter 流程視圖（2026-09-07）—— 設計實驗場沒有 DRA 這一面；它只排版後端 `/diameter-flows` 的事實。
+    "src/components/DiameterFlowsView.tsx",
 }
 
 

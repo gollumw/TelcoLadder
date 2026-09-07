@@ -175,6 +175,13 @@ export interface CallFlowParticipant {
   /** 網元角色（`AMF`）。**推不出角色時是 IP 位址** —— 那時 `known` 為 false。 */
   id: string;
   known: boolean;
+  /** 線路位址（裸匯出時是主機名本身）。泳道副標用。 */
+  address?: string;
+  /** Diameter 視圖才有：這個位址從頭到尾只用過的那一個 Origin-Host。
+   *  **中繼用過好幾個，那時是 null 而 `ambiguous` 為 true** —— 挑一個就是猜，
+   *  而猜錯的樣子是 DRA 那條泳道與 MME 合併、圖看起來完全合理。 */
+  host?: string | null;
+  ambiguous?: boolean;
 }
 
 /** 一段程序 —— 一次註冊、一次 PDU 建立。xDR 的一列。
@@ -212,6 +219,102 @@ export interface CallFlow {
   wire: boolean;
   /** 這份擷取檔裡有、但接不到這位訂戶身上的領域。 */
   uncorrelatedDomains: TelecomDomain[];
+}
+
+// ── Diameter 流程（2026-09-07）────────────────────────────────────────
+//
+// DRA 維運人員看的那一面：不以訂戶為主軸，以 Session-Id／transaction／跳為單位。
+// **全部由後端算**（`/api/<sid>/diameter-flows`，`telcoladder/diameterflows.py`）：
+// 結局沿用 `procedures` 的判定，這裡只排版。
+
+/** 一則 answer 的結果。`name` 查不到表時是 null —— 「未收錄」要看得出來。 */
+export interface DiameterResult {
+  frame: number;
+  failure: boolean;
+  code?: number;
+  table?: string;
+  name?: string | null;
+}
+
+/** 一跳：同一對 peer、同一個 Hop-by-Hop Id 的 Request／Answer。 */
+export interface DiameterLeg {
+  requestFrame: number | null;
+  answerFrame: number | null;
+  hopByHopId: string | null;
+  from: string;
+  to: string;
+  fromAddress: string;
+  toAddress: string;
+  originHost: string | null;
+  destinationHost: string | null;
+  routeRecord: string | null;
+  result: DiameterResult | null;
+  answered: boolean;
+}
+
+/** 同一個 End-to-End Id 的全部跳 —— 一則請求走過的整條路。 */
+export interface DiameterTransaction {
+  endToEndId: string | null;
+  command: string;
+  relayed: boolean;
+  hops: number;
+  outcome: "success" | "failure" | "incomplete";
+  result: DiameterResult | null;
+  legs: DiameterLeg[];
+}
+
+export interface DiameterFlowRow {
+  /** 把手：`d:3`，`loadDiameterCallFlow` 吃這個。 */
+  id: string;
+  kind: "session" | "peer";
+  sessionId: string | null;
+  interface: string | null;
+  applicationId: number | null;
+  commands: string[];
+  subscriber: string | null;
+  originHost: string | null;
+  destinationHost: string | null;
+  /** 線路上的端點順序（第一筆 transaction 走過的路）。中繼那一格是位址，不冒用名字。 */
+  path: string[];
+  relayed: boolean;
+  hops: number;
+  outcome: "success" | "failure" | "incomplete";
+  /** 結局的白話（引擎的英文原文，與訂戶頁的程序段同一份）。 */
+  cause: string | null;
+  /** 出處：名稱、號碼、規範（`causes.describe`，與語言無關）。表格上放這個。 */
+  causeCitation: string | null;
+  /** 白話，依請求語言。**與 citation 是兩欄，不是 fallback**。 */
+  causeExplanation: string | null;
+  note: string;
+  messages: number;
+  transactions: number;
+  failures: number;
+  unanswered: number;
+  startFrame: number;
+  endFrame: number;
+  startTs: number;
+  durationS: number;
+  /** 逐跳明細。**表格那份沒有這個鍵** —— 它與訊息數等比成長，而 DRA 的擷取檔
+   *  正是訊息最多的那種（實測：帶明細時每則 767 bytes，20 萬則就是一次 153 MB）。
+   *  打開一列時用 `loadDiameterFlow(id)` 單獨取。 */
+  transactionList?: DiameterTransaction[];
+}
+
+export interface DiameterEndpoint {
+  address: string;
+  role: string | null;
+  host: string | null;
+  hosts: string[];
+  ambiguous: boolean;
+}
+
+export interface DiameterFlows {
+  /** false＝這份檔一則 Diameter 都沒有（與「有但分不出來」是兩件事）。 */
+  present: boolean;
+  messages: number;
+  flows: DiameterFlowRow[];
+  endpoints: Record<string, DiameterEndpoint>;
+  totals: { flows: number; sessions: number; peer: number; relayed: number; failures: number; unanswered: number };
 }
 
 // ── 首屏總覽（2026-09-05）─────────────────────────────────────────────
@@ -394,6 +497,26 @@ export interface DataSource {
    * 可能有幾十萬則，一個訂戶通常是幾十到幾百則。
    */
   loadCallFlow(supi: string): Promise<CallFlow>;
+
+  /**
+   * Diameter 流程表：整份檔以 Session-Id／peer 對為單位、逐跳配好。**每個來源
+   * 都要實作** —— mock 沒有 Diameter，就回 `present: false` 的空表，不要丟例外：
+   * 「這份檔沒有 Diameter」是一個正常狀態，畫面要能說出來。
+   */
+  loadDiameterFlows(): Promise<DiameterFlows>;
+
+  /**
+   * 一條 Diameter 流程，**含逐跳明細**。表格那份刻意不帶（見
+   * `DiameterFlowRow.transactionList`）—— 明細限縮在一條流程，與 `loadCallFlow`
+   * 限縮在一個訂戶是同一條紀律。
+   */
+  loadDiameterFlow(handle: string): Promise<DiameterFlowRow>;
+
+  /**
+   * 一條 Diameter 流程的梯形圖（`/callflow?diameter=d:N`）。與 `loadCallFlow`
+   * 同一種 `CallFlow` —— DRA 視圖不另養一份梯形圖，畫面共用 `SessionAnalysisView`。
+   */
+  loadDiameterCallFlow(handle: string): Promise<CallFlow>;
 
   /**
    * 首屏總覽：整份檔的燈號、程序結局、失敗卡。**每個來源都要實作**，

@@ -43,7 +43,8 @@ from telcoladder.chrome import esc
 from telcoladder.model import Flow, IdKind, IdKey
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
-from telcoladder.callflow import SLOW_GAP, events  # noqa: F401 —— SLOW_GAP re-export
+from telcoladder.diameterflows import flows_json as diameter_flows_json_for
+from telcoladder.callflow import SLOW_GAP, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
 from telcoladder.nf import resolve_roles_with_basis, role_contradictions
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -611,6 +612,7 @@ def overview_json(session: Session) -> dict:
 def callflow_json(
     session: Session, supi: str | None = None, *,
     identity: "IdKey | None" = None, flow_ids: "list[int] | None" = None,
+    diameter: str | None = None,
 ) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
@@ -638,10 +640,46 @@ def callflow_json(
     # 事件、參與者、程序段**只有一份**（`telcoladder/callflow.py`）——
     # MCP 的 get_subscriber_callflow 拿的是同一串；兩邊各算各的會漂移，
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
-    result = events(analysis, supi, identity=identity, flow_ids=flow_ids, wire=session.wire)
+    if diameter is not None:
+        # 第四條入口：**一條 Diameter 流程**（`/diameter-flows` 表上那一列）。
+        # 同一段渲染、同一種 JSON —— DRA 視圖不另養一份梯形圖。
+        result = diameter_events(analysis, diameter, wire=session.wire)
+    else:
+        result = events(analysis, supi, identity=identity, flow_ids=flow_ids, wire=session.wire)
     if "error" in result:
         return result
     return {"ready": True, **result}
+
+
+def diameter_flows_json(session: Session, *, flow: str | None = None) -> dict:
+    """`/api/<sid>/diameter-flows`：整份擷取檔的 Diameter 流程，以 Session-Id／
+    peer 對為單位，逐跳配好（`telcoladder/diameterflows.py`）。
+
+    `analysis` 沒好時回 `ready: false` —— 不假裝已有答案。沒有 Diameter 時回
+    `present: false` 與空清單：「這份檔沒有 Diameter」與「有但沒分出來」要分得開。
+
+    `flow="d:3"` 只回那一條、含逐跳明細，**不走快取** —— 它已經限縮在一條流程，
+    而快取整份明細等於把上面那段規模紀律又搬回記憶體裡。
+
+    表格**按語言快取**，理由同 `_table_for`：`cause_explanation` 與 `note` 是用
+    當下語言選出來的字串，只留一份的話第一個請求的語言會綁死整個 session。
+    """
+    with session.lock:
+        analysis = session.analysis
+        cached = session.diameter_flows
+    if analysis is None:
+        return {"ready": False, "present": False, "flows": []}
+    if flow is not None:
+        return {"ready": True, **diameter_flows_json_for(analysis, flow=flow)}
+    lang = i18n.current()
+    if isinstance(cached, dict) and lang in cached:
+        return {"ready": True, **cached[lang]}
+    doc = diameter_flows_json_for(analysis)
+    with session.lock:
+        store = session.diameter_flows if isinstance(session.diameter_flows, dict) else {}
+        store[lang] = doc
+        session.diameter_flows = store
+    return {"ready": True, **doc}
 
 
 def correlation_json(session: Session, supi: str | None = None) -> dict:

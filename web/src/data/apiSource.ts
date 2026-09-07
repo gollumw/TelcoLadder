@@ -56,6 +56,10 @@ import {
   type Dataset,
   type DecodeAsRule,
   type DecodeAsState,
+  type DiameterFlowRow,
+  type DiameterFlows,
+  type DiameterLeg,
+  type DiameterTransaction,
   type Overview,
   type PacketPage,
   type ProtocolFilter,
@@ -315,6 +319,40 @@ export function apiSource(sid: string | null): DataSource {
       };
     },
 
+    async loadDiameterFlows(): Promise<DiameterFlows> {
+      const body = await getJson<DiameterFlowsJson & { ready: boolean }>(`/api/${need()}/diameter-flows`);
+      if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
+      return toDiameterFlows(body);
+    },
+
+    async loadDiameterFlow(handle: string): Promise<DiameterFlowRow> {
+      const body = await getJson<DiameterFlowsJson & { ready: boolean }>(
+        `/api/${need()}/diameter-flows?flow=${encodeURIComponent(handle)}`,
+      );
+      if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
+      const [one] = toDiameterFlows(body).flows;
+      if (!one) throw new Error(t("This capture has no Diameter flow {handle}.", { handle }));
+      return one;
+    },
+
+    async loadDiameterCallFlow(handle: string): Promise<CallFlow> {
+      const body = await getJson<{
+        wire: boolean;
+        domains_uncorrelated: TelecomDomain[];
+        participants: CallFlowParticipant[];
+        events: CallFlowEventJson[];
+        procedures?: CallFlowProcedureJson[];
+      }>(`/api/${need()}/callflow?diameter=${encodeURIComponent(handle)}`);
+      return {
+        wire: body.wire,
+        uncorrelatedDomains: body.domains_uncorrelated ?? [],
+        participants: body.participants ?? [],
+        // 事件的 `supi` 欄位放把手：`SessionAnalysisView` 用它把事件篩到「這一條」。
+        events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
+        procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+      };
+    },
+
     async loadOverview(): Promise<Overview> {
       // 整份檔的首屏事實，後端對全母體算（`telcoladder/overview.py`）。
       // 這裡只翻欄位名，不算任何數字 —— 算了就是第二份會漂移的判斷。
@@ -376,5 +414,147 @@ export function apiSource(sid: string | null): DataSource {
     decodeNote(): string | null {
       return lastDecodeNote;
     },
+  };
+}
+
+// ── Diameter 流程：只翻欄位名，不算任何數字 ─────────────────────────────
+
+interface DiameterResultJson {
+  frame: number;
+  failure: boolean;
+  code?: number;
+  table?: string;
+  name?: string | null;
+}
+
+interface DiameterLegJson {
+  request_frame: number | null;
+  answer_frame: number | null;
+  hop_by_hop_id: string | null;
+  from: string;
+  to: string;
+  from_address: string;
+  to_address: string;
+  origin_host: string | null;
+  destination_host: string | null;
+  route_record: string | null;
+  result: DiameterResultJson | null;
+  answered: boolean;
+}
+
+interface DiameterTransactionJson {
+  end_to_end_id: string | null;
+  command: string;
+  relayed: boolean;
+  hops: number;
+  outcome: DiameterTransaction["outcome"];
+  result: DiameterResultJson | null;
+  legs: DiameterLegJson[];
+}
+
+interface DiameterFlowJson {
+  id: string;
+  kind: DiameterFlowRow["kind"];
+  session_id: string | null;
+  interface: string | null;
+  application_id: number | null;
+  commands: string[];
+  subscriber: string | null;
+  origin_host: string | null;
+  destination_host: string | null;
+  path: string[];
+  relayed: boolean;
+  hops: number;
+  outcome: DiameterFlowRow["outcome"];
+  cause: string | null;
+  cause_citation: string | null;
+  cause_explanation: string | null;
+  note: string;
+  messages: number;
+  transactions: number;
+  failures: number;
+  unanswered: number;
+  start_frame: number;
+  end_frame: number;
+  start_ts: number;
+  duration_s: number;
+  transaction_list?: DiameterTransactionJson[];
+}
+
+interface DiameterFlowsJson {
+  present: boolean;
+  messages: number;
+  flows: DiameterFlowJson[];
+  endpoints: DiameterFlows["endpoints"];
+  totals: DiameterFlows["totals"];
+}
+
+function toDiameterLeg(leg: DiameterLegJson): DiameterLeg {
+  return {
+    requestFrame: leg.request_frame,
+    answerFrame: leg.answer_frame,
+    hopByHopId: leg.hop_by_hop_id,
+    from: leg.from,
+    to: leg.to,
+    fromAddress: leg.from_address,
+    toAddress: leg.to_address,
+    originHost: leg.origin_host,
+    destinationHost: leg.destination_host,
+    routeRecord: leg.route_record,
+    result: leg.result,
+    answered: leg.answered,
+  };
+}
+
+function toDiameterTransaction(tx: DiameterTransactionJson): DiameterTransaction {
+  return {
+    endToEndId: tx.end_to_end_id,
+    command: tx.command,
+    relayed: tx.relayed,
+    hops: tx.hops,
+    outcome: tx.outcome,
+    result: tx.result,
+    legs: (tx.legs ?? []).map(toDiameterLeg),
+  };
+}
+
+function toDiameterFlows(body: DiameterFlowsJson): DiameterFlows {
+  return {
+    present: body.present,
+    messages: body.messages,
+    endpoints: body.endpoints ?? {},
+    totals: body.totals,
+    flows: (body.flows ?? []).map((f) => ({
+      id: f.id,
+      kind: f.kind,
+      sessionId: f.session_id,
+      interface: f.interface,
+      applicationId: f.application_id,
+      commands: f.commands ?? [],
+      subscriber: f.subscriber,
+      originHost: f.origin_host,
+      destinationHost: f.destination_host,
+      path: f.path ?? [],
+      relayed: f.relayed,
+      hops: f.hops,
+      outcome: f.outcome,
+      cause: f.cause,
+      causeCitation: f.cause_citation ?? null,
+      causeExplanation: f.cause_explanation ?? null,
+      note: f.note ?? "",
+      messages: f.messages,
+      transactions: f.transactions,
+      failures: f.failures,
+      unanswered: f.unanswered,
+      startFrame: f.start_frame,
+      endFrame: f.end_frame,
+      startTs: f.start_ts,
+      durationS: f.duration_s,
+      // 表格那份沒有這個鍵 —— **不要補空陣列**：空陣列與「還沒取」在畫面上
+      // 長得一樣，而那正是「一段沒有內容看起來像沒有資料」的靜默失敗。
+      ...(f.transaction_list
+        ? { transactionList: f.transaction_list.map(toDiameterTransaction) }
+        : {}),
+    })),
   };
 }
