@@ -183,7 +183,7 @@ a:focus-visible,summary:focus-visible{outline:2px solid var(--signal); outline-o
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">由 tools/archmap.py 產出 · commit 3e0f1c9</p>
+  <p class="eyebrow">由 tools/archmap.py 產出 · commit 03d986d</p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
@@ -313,16 +313,8 @@ graph LR
   <div class="tbl"><table>
     <thead><tr><th class="mono">域</th><th class="mono">adapter</th><th class="mono">介面</th>
     <th class="mono">行</th><th>狀態</th><th>備註</th></tr></thead>
-    <tbody><tr><td class="mono">5G 核網</td><td class="mono">ngap</td><td class="mono">N2</td><td class="num">283</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">gNB↔AMF 控制面。載送 NAS-5GS。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">nas5gs</td><td class="mono">N1</td><td class="num">347</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 NGAP 與 SBI 兩個載體底下 —— 多態，不是獨立一層。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">sbi</td><td class="mono">SBI</td><td class="num">452</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">HTTP/2 服務化介面。<strong>結構解析只在非 5G 的 HTTP/2 擷取上驗證過。</strong></td></tr><tr><td class="mono">使用者面</td><td class="mono">pfcp</td><td class="mono">N4</td><td class="num">212</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">CUPS 控制面。<strong>協定本身跨世代</strong>，這裡的參考點表只標了 N4。</td></tr><tr><td class="mono">使用者面</td><td class="mono">gtp</td><td class="mono">N3</td><td class="num">103</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">GTP-U 隧道。橋接 N4↔N2 靠 <code>identity.gtp_tunnel(位址, TEID)</code>。</td></tr><tr><td class="mono">4G EPC · IMS</td><td class="mono">diameter</td><td class="mono">S6a/S6d · Gx · Cx/Dx</td><td class="num">463</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok"><strong>唯一橫跨兩個世代的 adapter</strong>：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 Application-Id 但沒有角色推論（T-DIAM-MORE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">s1ap</td><td class="mono">S1-MME</td><td class="num">295</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">ASN.1 PER 載體，載送 NAS-EPS —— <strong>與 NGAP 同構</strong>（三種結果、五個 cause 群組、UE ID 只在一條連線內唯一）。<strong>cause 查表還沒有</strong>（<code>data/causes/s1ap_*.yaml</code> 未建），號碼抽得出來但解釋會誠實回「尚未收錄」。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">naseps</td><td class="mono">S1-MME 內</td><td class="num">282</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 S1AP 底下，走 <code>adapters/carrier.py</code> 的共用機制。<strong>IMSI 進 <code>SUPI</code></strong>（T3 的單向門）。加密計數走 <code>blind_spots()</code> 鉤子 —— <strong>核心一行沒改</strong>。<strong>cause 查表還沒有</strong>（T-4G-CAUSE）。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">gtpv2</td><td class="mono">S11 · S5/S8</td><td class="num">341</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">承載建立。<strong>控制面與使用者面的 TEID 分成兩個號碼空間</strong>（T3 的 <code>GTP_TEID_C</code>）——同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，走通用的 <code>NF_ROLE_HINTS_KEY</code>，<strong><code>nf.py</code> 不認得 GTPv2</strong>。</td></tr><tr><td class="mono">IMS 訊令</td><td class="mono">sip</td><td class="mono">Gm</td><td class="num">346</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">註冊與 INVITE。<strong>只收 <code>From</code> 當關聯鍵</strong> —— 收 <code>To</code> 會把「A 打給 C」與「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用同一份判準），那是 IMS 接上 EPC 的橋。<strong>Mw 刻意不收</strong>（沒有封包驗過）。</td></tr><tr><td class="mono">IMS 媒體控制</td><td class="mono">megaco</td><td class="mono">Iq · Mn · Mp</td><td class="num">168</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">H.248 的 MGC↔MGW。<strong>參考點不填</strong>（三對節點的訊息長得一樣，分不出是哪一對）。接上 SIP 通話靠 <code>identity.media_endpoint(位址, 埠)</code> —— 與 GTP-U 隧道同構的橋。</td></tr><tr><td class="mono">IMS 媒體</td><td class="mono">rtp</td><td class="mono">—</td><td class="num">—</td><td><span class="tag t-mute">延後</span></td><td class="wrap-ok">E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。</td></tr></tbody>
+    <tbody><tr><td class="mono">5G 核網</td><td class="mono">ngap</td><td class="mono">N2</td><td class="num">283</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">gNB↔AMF 控制面。載送 NAS-5GS。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">nas5gs</td><td class="mono">N1</td><td class="num">347</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 NGAP 與 SBI 兩個載體底下 —— 多態，不是獨立一層。</td></tr><tr><td class="mono">5G 核網</td><td class="mono">sbi</td><td class="mono">SBI</td><td class="num">452</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">HTTP/2 服務化介面。<strong>結構解析只在非 5G 的 HTTP/2 擷取上驗證過。</strong></td></tr><tr><td class="mono">使用者面</td><td class="mono">pfcp</td><td class="mono">N4</td><td class="num">212</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">CUPS 控制面。<strong>協定本身跨世代</strong>，這裡的參考點表只標了 N4。</td></tr><tr><td class="mono">使用者面</td><td class="mono">gtp</td><td class="mono">N3</td><td class="num">103</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">GTP-U 隧道。橋接 N4↔N2 靠 <code>identity.gtp_tunnel(位址, TEID)</code>。</td></tr><tr><td class="mono">4G EPC · IMS</td><td class="mono">diameter</td><td class="mono">S6a/S6d · Gx · Cx/Dx</td><td class="num">463</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok"><strong>唯一橫跨兩個世代的 adapter</strong>：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 Application-Id 但沒有角色推論。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">s1ap</td><td class="mono">S1-MME</td><td class="num">295</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">ASN.1 PER 載體，載送 NAS-EPS —— <strong>與 NGAP 同構</strong>（三種結果、五個 cause 群組、UE ID 只在一條連線內唯一）。cause 表在 <code>data/causes/s1ap_*.yaml</code>（五個群組、67 條，名稱釘住 tshark）；條號要人工核對過才印，目前不印。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">naseps</td><td class="mono">S1-MME 內</td><td class="num">282</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">掛在 S1AP 底下，走 <code>adapters/carrier.py</code> 的共用機制。<strong>IMSI 進 <code>SUPI</code></strong>（T3 的單向門）。加密計數走 <code>blind_spots()</code> 鉤子 —— <strong>核心一行沒改</strong>。cause 表在 <code>data/causes/nas_eps_*.yaml</code>（EMM ＋ ESM，87 條）；條號同樣不印。</td></tr><tr><td class="mono">4G 控制面</td><td class="mono">gtpv2</td><td class="mono">S11 · S5/S8</td><td class="num">341</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">承載建立。<strong>控制面與使用者面的 TEID 分成兩個號碼空間</strong>（T3 的 <code>GTP_TEID_C</code>）——同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，走通用的 <code>NF_ROLE_HINTS_KEY</code>，<strong><code>nf.py</code> 不認得 GTPv2</strong>。</td></tr><tr><td class="mono">IMS 訊令</td><td class="mono">sip</td><td class="mono">Gm</td><td class="num">346</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">註冊與 INVITE。<strong>只收 <code>From</code> 當關聯鍵</strong> —— 收 <code>To</code> 會把「A 打給 C」與「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用同一份判準），那是 IMS 接上 EPC 的橋。<strong>Mw 刻意不收</strong>（沒有封包驗過）。</td></tr><tr><td class="mono">IMS 媒體控制</td><td class="mono">megaco</td><td class="mono">Iq · Mn · Mp</td><td class="num">168</td><td><span class="tag t-ok">已交付</span></td><td class="wrap-ok">H.248 的 MGC↔MGW。<strong>參考點不填</strong>（三對節點的訊息長得一樣，分不出是哪一對）。接上 SIP 通話靠 <code>identity.media_endpoint(位址, 埠)</code> —— 與 GTP-U 隧道同構的橋。</td></tr><tr><td class="mono">IMS 媒體</td><td class="mono">rtp</td><td class="mono">—</td><td class="num">—</td><td><span class="tag t-mute">延後</span></td><td class="wrap-ok">E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。</td></tr></tbody>
   </table></div>
-  <div class="note fault">
-    <h4>4G 控制面整片是空的</h4>
-    <p>已交付的 6 個 adapter 裡，<strong>5 個是 5G 或跨世代的使用者面</strong>，
-    只有 <code>diameter</code> 摸到 4G —— 而它摸到的是訂閱（S6a）與政策（Gx），
-    不是控制面。S1AP／NAS-EPS／GTPv2-C 三個一個都沒有。</p>
-    <p>這就是 CEO 複審說的「單一最大缺口」。它同時也是 <strong>E1</strong>，
-    而 E1＋E2 落地當天就要觸發驗證軌（T12）。</p>
-  </div>
 </section>
 
 <section>
@@ -474,8 +466,7 @@ graph LR
     <h4>T3 是單向門，T12 是硬性閘門</h4>
     <p><strong>T3</strong> 動的是 <code>IdKind</code>、<code>ID_CLASSES</code> 與參考點表 ——
     那三樣一旦有 adapter 依賴就很難再改形狀。要在 T4 之前定案，不是邊做邊調。</p>
-    <p><strong>T12</strong> 的規則：<em>E1＋E2 落地當天觸發，不是「有空的時候」</em>。
-    8/18 → 8/23 已經發生過一次 —— 那五天寫了 124 個 commit、跑了 0 個使用者步驟。</p>
+    <p><strong>T12</strong> 的規則：<em>E1＋E2 落地當天觸發，不是「有空的時候」</em>。</p>
   </div>
 </section>
 
@@ -489,7 +480,7 @@ graph LR
 </section>
 
 <footer>
-  <span>tools/archmap.py</span><span>commit 3e0f1c9</span>
+  <span>tools/archmap.py</span><span>commit 03d986d</span>
   <span>55 模組 · 17,915 行</span>
   <span>1,070 測試</span>
 </footer>

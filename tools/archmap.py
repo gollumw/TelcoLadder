@@ -128,15 +128,15 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "GTP-U 隧道。橋接 N4↔N2 靠 `identity.gtp_tunnel(位址, TEID)`。"),
     ("4G EPC · IMS", "adapters.diameter", "S6a/S6d · Gx · Cx/Dx", "shipped",
      "**唯一橫跨兩個世代的 adapter**：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 "
-     "Application-Id 但沒有角色推論（T-DIAM-MORE）。"),
+     "Application-Id 但沒有角色推論。"),
     ("4G 控制面", "adapters.s1ap", "S1-MME", "shipped",
      "ASN.1 PER 載體，載送 NAS-EPS —— **與 NGAP 同構**（三種結果、五個 cause 群組、"
-     "UE ID 只在一條連線內唯一）。**cause 查表還沒有**（`data/causes/s1ap_*.yaml` 未建），"
-     "號碼抽得出來但解釋會誠實回「尚未收錄」。"),
+     "UE ID 只在一條連線內唯一）。cause 表在 `data/causes/s1ap_*.yaml`（五個群組、67 條，"
+     "名稱釘住 tshark）；條號要人工核對過才印，目前不印。"),
     ("4G 控制面", "adapters.naseps", "S1-MME 內", "shipped",
      "掛在 S1AP 底下，走 `adapters/carrier.py` 的共用機制。**IMSI 進 `SUPI`**"
      "（T3 的單向門）。加密計數走 `blind_spots()` 鉤子 —— **核心一行沒改**。"
-     "**cause 查表還沒有**（T-4G-CAUSE）。"),
+     "cause 表在 `data/causes/nas_eps_*.yaml`（EMM ＋ ESM，87 條）；條號同樣不印。"),
     ("4G 控制面", "adapters.gtpv2", "S11 · S5/S8", "shipped",
      "承載建立。**控制面與使用者面的 TEID 分成兩個號碼空間**（T3 的 `GTP_TEID_C`）——"
      "同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，"
@@ -573,14 +573,6 @@ def render(data: dict) -> str:
     <th class="mono">行</th><th>狀態</th><th>備註</th></tr></thead>
     <tbody>{"".join(dom_rows)}</tbody>
   </table></div>
-  <div class="note fault">
-    <h4>4G 控制面整片是空的</h4>
-    <p>已交付的 6 個 adapter 裡，<strong>5 個是 5G 或跨世代的使用者面</strong>，
-    只有 <code>diameter</code> 摸到 4G —— 而它摸到的是訂閱（S6a）與政策（Gx），
-    不是控制面。S1AP／NAS-EPS／GTPv2-C 三個一個都沒有。</p>
-    <p>這就是 CEO 複審說的「單一最大缺口」。它同時也是 <strong>E1</strong>，
-    而 E1＋E2 落地當天就要觸發驗證軌（T12）。</p>
-  </div>
 </section>
 
 <section>
@@ -636,8 +628,7 @@ def render(data: dict) -> str:
     <h4>T3 是單向門，T12 是硬性閘門</h4>
     <p><strong>T3</strong> 動的是 <code>IdKind</code>、<code>ID_CLASSES</code> 與參考點表 ——
     那三樣一旦有 adapter 依賴就很難再改形狀。要在 T4 之前定案，不是邊做邊調。</p>
-    <p><strong>T12</strong> 的規則：<em>E1＋E2 落地當天觸發，不是「有空的時候」</em>。
-    8/18 → 8/23 已經發生過一次 —— 那五天寫了 124 個 commit、跑了 0 個使用者步驟。</p>
+    <p><strong>T12</strong> 的規則：<em>E1＋E2 落地當天觸發，不是「有空的時候」</em>。</p>
   </div>
 </section>
 
