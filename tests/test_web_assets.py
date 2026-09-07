@@ -86,6 +86,8 @@ _OURS = {
     "src/components/ExecutiveOverview.tsx",
     # Diameter 流程視圖（2026-09-07）—— 設計實驗場沒有 DRA 這一面；它只排版後端 `/diameter-flows` 的事實。
     "src/components/DiameterFlowsView.tsx",
+    # 通話視圖（2026-09-08）—— 設計實驗場沒有這一面；它只排版後端 `/calls` 的事實。
+    "src/components/CallsView.tsx",
 }
 
 

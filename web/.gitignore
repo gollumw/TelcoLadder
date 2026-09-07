@@ -1,2 +1,4 @@
-node_modules/
+# 不帶尾斜線：斜線只匹配目錄，而在 worktree 裡把 node_modules 連過來
+# （symlink）是常見做法 —— 帶斜線的話那個連結會被當成待提交的檔案。
+node_modules
 *.tsbuildinfo

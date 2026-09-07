@@ -43,8 +43,9 @@ from telcoladder.chrome import esc
 from telcoladder.model import Flow, IdKind, IdKey
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
+from telcoladder.calls import calls_json as calls_json_for
 from telcoladder.diameterflows import flows_json as diameter_flows_json_for
-from telcoladder.callflow import SLOW_GAP, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
+from telcoladder.callflow import SLOW_GAP, call_events, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
 from telcoladder.nf import resolve_roles_with_basis, role_contradictions
 
 #: 允許提供的靜態檔 → Content-Type。**這就是白名單本身。**
@@ -167,6 +168,12 @@ def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
             "sport": r.src_port,
             "dport": r.dst_port,
             "stack": r.protocols,
+            # **這一格是某則訊息的分片。** tshark 對非最後一片只報 `IPv4`，
+            # 而那些格其實是某則 SIP INVITE 的前半 —— 不說的話，讀的人會以為
+            # 那是無關的 IP 流量。不是分片就整個鍵不存在，不填 null：
+            # 「不是分片」與「是分片但接不回去」是兩件事。
+            **({"frag_in": r.reassembled_in, "frag_of": r.fragment_of}
+               if r.reassembled_in is not None else {}),
         }
         for r in rows
     ]
@@ -612,7 +619,7 @@ def overview_json(session: Session) -> dict:
 def callflow_json(
     session: Session, supi: str | None = None, *,
     identity: "IdKey | None" = None, flow_ids: "list[int] | None" = None,
-    diameter: str | None = None,
+    diameter: str | None = None, call: str | None = None,
 ) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
@@ -640,7 +647,10 @@ def callflow_json(
     # 事件、參與者、程序段**只有一份**（`telcoladder/callflow.py`）——
     # MCP 的 get_subscriber_callflow 拿的是同一串；兩邊各算各的會漂移，
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
-    if diameter is not None:
+    if call is not None:
+        # 第五條入口：**一通電話**（`/calls` 表上那一列）。同一段渲染。
+        result = call_events(analysis, call, wire=session.wire)
+    elif diameter is not None:
         # 第四條入口：**一條 Diameter 流程**（`/diameter-flows` 表上那一列）。
         # 同一段渲染、同一種 JSON —— DRA 視圖不另養一份梯形圖。
         result = diameter_events(analysis, diameter, wire=session.wire)
@@ -649,6 +659,27 @@ def callflow_json(
     if "error" in result:
         return result
     return {"ready": True, **result}
+
+
+def calls_json(session: Session) -> dict:
+    """`/api/<sid>/calls`：整份擷取檔的通話，以「誰打給誰」為軸（`telcoladder/calls.py`）。
+
+    **按語言快取**，理由同 `_table_for`：`note` 與 cause 白話是用當下語言選的。
+    """
+    with session.lock:
+        analysis = session.analysis
+        cached = session.calls
+    if analysis is None:
+        return {"ready": False, "present": False, "calls": []}
+    lang = i18n.current()
+    if isinstance(cached, dict) and lang in cached:
+        return {"ready": True, **cached[lang]}
+    doc = calls_json_for(analysis)
+    with session.lock:
+        store = session.calls if isinstance(session.calls, dict) else {}
+        store[lang] = doc
+        session.calls = store
+    return {"ready": True, **doc}
 
 
 def diameter_flows_json(session: Session, *, flow: str | None = None) -> dict:

@@ -28,6 +28,10 @@ export interface IndexRow {
   dport: number | null;
   /** dissector 短名的堆疊，如 `sll:ethertype:ip:sctp:ngap:nas-5gs`。 */
   stack: string;
+  /** 這一格是 IP 分片，完整的訊息在第幾格。**不是分片時整個鍵不存在。** */
+  frag_in?: number;
+  /** 完整訊息那一格的協定（`SIP/SDP`）。 */
+  frag_of?: string;
 }
 
 /**
@@ -81,6 +85,11 @@ export function rowToPacket(row: IndexRow): RawPacket {
     info: row.info,
     domain: domainFromStack(row.stack),
     status: "INFO",
+    // **分片列其實是某則訊息的前半。** tshark 對非最後一片只報 IPv4，而那些格
+    // 可能佔一份 SIP over UDP 擷取檔的四成 —— 不說的話讀的人會當成無關流量。
+    ...(row.frag_in !== undefined
+      ? { reassembledIn: row.frag_in, fragmentOf: row.frag_of ?? "" }
+      : {}),
     // decodeTree / hexDump 是懶載入的，這裡刻意不填。
   };
 }

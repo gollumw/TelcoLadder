@@ -55,6 +55,8 @@ import {
   type DataSource,
   type Dataset,
   type DecodeAsRule,
+  type CallRow,
+  type Calls,
   type DecodeAsState,
   type DiameterFlowRow,
   type DiameterFlows,
@@ -319,6 +321,29 @@ export function apiSource(sid: string | null): DataSource {
       };
     },
 
+    async loadCalls(): Promise<Calls> {
+      const body = await getJson<CallsJson & { ready: boolean }>(`/api/${need()}/calls`);
+      if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
+      return toCalls(body);
+    },
+
+    async loadCallLadder(handle: string): Promise<CallFlow> {
+      const body = await getJson<{
+        wire: boolean;
+        domains_uncorrelated: TelecomDomain[];
+        participants: CallFlowParticipant[];
+        events: CallFlowEventJson[];
+        procedures?: CallFlowProcedureJson[];
+      }>(`/api/${need()}/callflow?call=${encodeURIComponent(handle)}`);
+      return {
+        wire: body.wire,
+        uncorrelatedDomains: body.domains_uncorrelated ?? [],
+        participants: body.participants ?? [],
+        events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
+        procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+      };
+    },
+
     async loadDiameterFlows(): Promise<DiameterFlows> {
       const body = await getJson<DiameterFlowsJson & { ready: boolean }>(`/api/${need()}/diameter-flows`);
       if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
@@ -555,6 +580,76 @@ function toDiameterFlows(body: DiameterFlowsJson): DiameterFlows {
       ...(f.transaction_list
         ? { transactionList: f.transaction_list.map(toDiameterTransaction) }
         : {}),
+    })),
+  };
+}
+
+// ── 通話：只翻欄位名，不算任何數字 ───────────────────────────────────
+
+interface CallJson {
+  id: string;
+  flow_id: number;
+  caller: string | null;
+  caller_msisdn: string | null;
+  callee: string | null;
+  callee_msisdn: string | null;
+  subscriber: string | null;
+  outcome: CallRow["outcome"];
+  cause: string | null;
+  final_status: number | null;
+  ring_s: number | null;
+  answer_s: number | null;
+  talk_s: number | null;
+  released_by: string | null;
+  messages: number;
+  failures: number;
+  start_frame: number;
+  end_frame: number;
+  start_ts: number;
+  duration_s: number;
+  note: string;
+}
+
+interface CallsJson {
+  present: boolean;
+  sip_messages: number;
+  calls: CallJson[];
+  totals: { calls: number; answered: number; failed: number; ended_by_user: number; incomplete: number };
+}
+
+function toCalls(body: CallsJson): Calls {
+  return {
+    present: body.present,
+    sipMessages: body.sip_messages,
+    totals: {
+      calls: body.totals.calls,
+      answered: body.totals.answered,
+      failed: body.totals.failed,
+      endedByUser: body.totals.ended_by_user,
+      incomplete: body.totals.incomplete,
+    },
+    calls: (body.calls ?? []).map((c) => ({
+      id: c.id,
+      flowId: c.flow_id,
+      caller: c.caller,
+      callerMsisdn: c.caller_msisdn,
+      callee: c.callee,
+      calleeMsisdn: c.callee_msisdn,
+      subscriber: c.subscriber,
+      outcome: c.outcome,
+      cause: c.cause,
+      finalStatus: c.final_status,
+      ringS: c.ring_s,
+      answerS: c.answer_s,
+      talkS: c.talk_s,
+      releasedBy: c.released_by,
+      messages: c.messages,
+      failures: c.failures,
+      startFrame: c.start_frame,
+      endFrame: c.end_frame,
+      startTs: c.start_ts,
+      durationS: c.duration_s,
+      note: c.note ?? "",
     })),
   };
 }

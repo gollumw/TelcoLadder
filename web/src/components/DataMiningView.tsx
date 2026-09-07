@@ -474,7 +474,20 @@ export function DataMiningView({
                     <td className="px-2 py-1 text-fg-muted">
                       <EndpointCell ip={p.dstIp} port={p.dstPort} nf={nfMap[`${p.dstIp}:${p.dstPort}`] ?? nfMap[p.dstIp]} />
                     </td>
-                    <td className="px-2 py-1 text-signal-cyan-fg font-medium">{p.protocol}</td>
+                    <td className="px-2 py-1 text-signal-cyan-fg font-medium">
+                      {p.protocol}
+                      {/* **這一格是某則訊息的前半。** tshark 對非最後一片只報 IPv4 ——
+                          那是它的實話，但讀的人會把它當成無關的 IP 流量，而一份
+                          SIP over UDP 的擷取檔可能有四成長這樣。標出它屬於誰。 */}
+                      {p.reassembledIn !== undefined && (
+                        <span
+                          className="ml-1 text-fg-dim font-normal"
+                          title={t("An IP fragment: the complete message is decoded on frame #{n}", { n: p.reassembledIn })}
+                        >
+                          {t("· {proto} fragment → #{n}", { proto: p.fragmentOf || "?", n: p.reassembledIn })}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-1 text-fg-dim">{p.length}</td>
                     <td className="max-w-[240px] truncate px-2 py-1 text-fg-muted">
                       <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", STATUS_DOT[p.status])} />

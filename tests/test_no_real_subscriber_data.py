@@ -667,6 +667,11 @@ _INVENTED_NUMBERS: dict[str, str] = {
     # `tests/fixtures/ims-volte-call/make.py` 的被叫號碼：NANP 保留給文件與虛構
     # 用途的 555-01xx 段（+1 555 0100）—— 不是任何人的號碼，形狀上就看得出來。
     "15550100": "NANP documentation range 555-01xx, the fixture's callee",
+    # `telcoladder/calls.py` 與 `tests/test_calls.py` 的示範位址：同一個
+    # 555-01xx 段，只是寫成本地格式（`sip:5550100;phone-context=…`）以示範
+    # RFC 3966 的 phone-context 那條路。**刻意不用真實國碼的行動號碼形狀** ——
+    # 那正是這道網存在的理由。
+    "5550100": "NANP documentation range 555-01xx in local format, doc example",
 }
 
 
