@@ -239,6 +239,11 @@ class Session:
     """首屏總覽（`overview.build_overview`）的快取，**按語言分**（dict）——
     與 `flowtable` 同一個理由：裡面的白話與依據句是用當下語言算出來的字串。"""
 
+    diameter_flows: object | None = field(default=None, repr=False)
+    """Diameter 流程表（`diameterflows.flows_json`）的快取，**按語言分**（dict）——
+    與 `overview` 同一個理由：cause 白話與但書是用當下語言選出來的字串。
+    只快取表格；單條流程的逐跳明細不快取（它已限縮在一條流程）。"""
+
     tshark: object | None = field(default=None, repr=False)
     """已定位好的 tshark，在建立工作階段時解析一次。
 

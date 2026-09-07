@@ -9,11 +9,12 @@ agent 講的不一樣」，而那種不一致沒有任何測試會自然抓到�
 
 from __future__ import annotations
 
+from telcoladder import diameterflows
 from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
-from telcoladder.model import IDENTITY_SOURCE_KEY, Endpoint, IdKind, IdKey
+from telcoladder.model import IDENTITY_SOURCE_KEY, Endpoint, IdKind, IdKey, Message
 from telcoladder.nf import participant_rank
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
@@ -102,6 +103,45 @@ def events(
     # 兩份會漂移，而症狀是同一段在 CLI 與畫面上一個有但書、一個沒有。
     end = capture_end(analysis)
     messages = [m for f in flows for m in f.messages]
+    procedures = [
+        p for flow in flows for p in segment_flow(flow, capture_end=end)[0]
+    ]
+    return _render(analysis, messages, procedures, supi=supi, wire=wire)
+
+
+def diameter_events(analysis: Analysis, handle: str, *, wire: bool = True) -> dict:
+    """一條 **Diameter 流程**（`diameterflows.build` 的一條）的梯形圖資料。
+
+    與 `events()` 同一段渲染、同一種 JSON —— 前端拿到的是同一個 `CallFlow`，
+    不必為 DRA 視圖再養一份梯形圖。差別只有三處，都是資料不是判定：
+
+    * 訊息集合是那一條 Diameter 流程（一個 Session-Id、或一對 peer 的連線維護），
+      不是一個訂戶的全部；
+    * 程序段就是它的結局（session 類恰好一段；peer 類沒有，`procedures` 刻意不
+      把 CER／DWR 當程序）；
+    * 參與者附上主機名解析（`diameterflows.host_table`）—— 泳道仍以線路端點為
+      鍵，主機名只在不含糊時當名字，理由見 `diameterflows` 檔頭。
+
+    壞把手回 `{"error": …}`，與 `events()` 查無訂戶時同一種形狀。
+    """
+    flows = diameterflows.build(analysis)
+    try:
+        flow = diameterflows.parse_handle(handle, flows)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    everything = [m for f in analysis.flows for m in f.messages if m.protocol == diameterflows.DIAMETER]
+    hosts = diameterflows.host_table(everything)
+    procedures = [flow.procedure] if flow.procedure is not None else []
+    result = _render(analysis, list(flow.messages), procedures, supi=None, wire=wire, hosts=hosts)
+    result["diameter"] = handle
+    return result
+
+
+def _render(
+    analysis: Analysis, messages: list[Message], procedures: list, *,
+    supi: str | None, wire: bool, hosts: dict[str, dict] | None = None,
+) -> dict:
+    """事件、參與者、程序段 —— `events()` 與 `diameter_events()` 共用的那一段。"""
     # abs_ts 優先（跨 flow 的絕對順序）；沒有絕對時間的檔退回相對秒數 ——
     # 單檔內兩者排序一致。frame 當決勝鍵讓順序穩定可重現。
     #
@@ -114,16 +154,25 @@ def events(
     for msg in messages:
         for endpoint in (msg.src, msg.dst):
             seen.setdefault(endpoint.label(), endpoint)
-    participants = [
-        {
+    participants = []
+    for label, endpoint in sorted(seen.items(), key=lambda kv: participant_rank(kv[1])):
+        participant = {
             "id": label,
             # 角色推不出來時 `label()` 回的是 IP。**要讓前端知道差別** ——
             # 「這是 UPF」與「這是 10.0.0.7，我們不知道它是什麼」在圖上
             # 該長得不一樣。
             "known": endpoint.role is not None,
+            # 線路位址（裸匯出時是主機名本身）。泳道標題只有一行，位址放副標。
+            "address": endpoint.key,
         }
-        for label, endpoint in sorted(seen.items(), key=lambda kv: participant_rank(kv[1]))
-    ]
+        if hosts is not None:
+            # **主機名只在不含糊時給。** 中繼用過好幾個 Origin-Host（它替別人轉送），
+            # 挑一個就是猜；那時 `host` 是 None、`ambiguous` 是 True，泳道顯示角色或位址。
+            info = hosts.get(endpoint.key)
+            if info is not None:
+                participant["host"] = info["host"]
+                participant["ambiguous"] = info["ambiguous"]
+        participants.append(participant)
 
     events = []
     for index, msg in enumerate(messages):
@@ -189,6 +238,18 @@ def events(
         stack = msg.detail.get("protocols")
         if stack and stack != msg.protocol:
             event["protocols"] = stack
+        # **Diameter 的逐則路由事實**（RFC 6733）：這則訊息自己說它從哪來、要去哪、
+        # 屬於哪一筆交易。線路上誰對誰（`from`／`to`）與訊息宣稱的邏輯路徑
+        # （Origin-Host → Destination-Host）在有 DRA 的網路裡**本來就不同**，
+        # 兩個都要看得到，DRA 視圖的檢視面板靠這幾個欄位講出「這是轉送的哪一腿」。
+        for source_key, target_key in (
+            ("origin-host", "origin_host"), ("destination-host", "destination_host"),
+            ("hop-by-hop-id", "hop_by_hop_id"), ("end-to-end-id", "end_to_end_id"),
+            ("relay-record", "route_record"), ("session-id", "session_id"),
+        ):
+            value = msg.detail.get(source_key)
+            if value:
+                event[target_key] = value
         # 與**前一則**的間隔。第一則沒有前一則，留 None 而不是填 0 ——
         # 0 的意思是「零秒」，那是一個我們沒有觀測到的值。
         if index > 0:
@@ -222,7 +283,7 @@ def events(
     #
     # 只回**邊界與結局**，不回訊息 —— 事件已經在 `events` 裡了，前端依
     # frame 範圍過濾即可。兩邊各存一份訊息會漂移，而且白白多送一份。
-    procedures = [
+    procedure_rows = [
         {
             "kind": p.kind,
             "outcome": p.outcome,
@@ -236,15 +297,14 @@ def events(
             "duration_s": round(p.duration, 6),
             "note": p.note,
         }
-        for flow in flows
-        for p in segment_flow(flow, capture_end=end)[0]
+        for p in procedures
     ]
-    procedures.sort(key=lambda p: p["start_frame"])
+    procedure_rows.sort(key=lambda p: p["start_frame"])
 
     return {
         "supi": supi,
         "domains_uncorrelated": uncorrelated,
-        "procedures": procedures,
+        "procedures": procedure_rows,
         # **這張圖是照封包路徑畫的還是照協定語意畫的。**
         # wire=True（預設）時 NAS 畫在它實際走的那一段 —— SBI 夾帶的 NAS
         # 會顯示成 AMF→SCP→SMF，而不是 UE→AMF。那是事實，但看到的人若
@@ -255,4 +315,4 @@ def events(
     }
 
 
-__all__ = ["SLOW_GAP", "events"]
+__all__ = ["SLOW_GAP", "diameter_events", "events"]

@@ -318,6 +318,13 @@ export interface CallFlowEventJson {
   delta?: number;
   /** 間隔超過 `viewer.SLOW_GAP`。 */
   slow?: boolean;
+  /** Diameter 的逐則路由事實（`callflow._render`）。只有 Diameter 事件有。 */
+  origin_host?: string;
+  destination_host?: string;
+  hop_by_hop_id?: string;
+  end_to_end_id?: string;
+  route_record?: string;
+  session_id?: string;
 }
 
 /**
@@ -359,6 +366,12 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     ...(event.protocols ? { protocolStack: event.protocols } : {}),
     ...(event.delta !== undefined ? { deltaSeconds: event.delta } : {}),
     ...(event.slow !== undefined ? { slow: event.slow } : {}),
+    ...(event.origin_host ? { originHost: event.origin_host } : {}),
+    ...(event.destination_host ? { destinationHost: event.destination_host } : {}),
+    ...(event.hop_by_hop_id ? { hopByHopId: event.hop_by_hop_id } : {}),
+    ...(event.end_to_end_id ? { endToEndId: event.end_to_end_id } : {}),
+    ...(event.route_record ? { routeRecord: event.route_record } : {}),
+    ...(event.session_id ? { sessionId: event.session_id } : {}),
   };
 }
 

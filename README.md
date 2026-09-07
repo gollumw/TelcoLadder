@@ -167,6 +167,17 @@ the subscriber list, the ladder, and a per-PDU-session correlation matrix where
   routing instruction, not a rejection (RFC 6733 §6.1.7) — the node that answers
   it is named **SLF** — so a multi-HSS core does not light up red on every
   successful lookup.
+- **Follows Diameter through the DRA.** The *Diameter Flows* page in the
+  browser drops the subscriber as the axis and groups the same messages the
+  way a routing engineer reads them: one row per `Session-Id` (RFC 6733 §8),
+  connection maintenance (`CER`/`DWR`) grouped by peer pair, and a request
+  seen on both sides of a relay shown as **one transaction with two hops** —
+  same `End-to-End Id`, different `Hop-by-Hop Id` (§6.2) — with the relay's
+  leg marked by its `Route-Record`. A relayed failure counts once. Lanes stay
+  keyed on the wire address and are named after the one `Origin-Host` that
+  address ever sent; a relay forwards other nodes' `Origin-Host` unchanged, so
+  it keeps its role rather than borrowing a name that would make it vanish
+  from the diagram.
 - **Treats a SIP call as a procedure.** Segmented by Call-ID, with the KPIs the
   question actually needs — time to ring, to answer, and talk time — plus who
   released the call and why, read from the `Reason` header back to its Q.850 or

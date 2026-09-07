@@ -25,7 +25,7 @@ import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { DataSource, Dataset, Overview, OverviewCause, PacketPage } from "./source";
+import type { DataSource, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
 
 export function mockSource(): DataSource {
   // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
@@ -170,6 +170,26 @@ export function mockSource(): DataSource {
 
     async applyDecodeAs() {
       throw new Error(t("Sample data cannot change decoding - there is no capture to re-run."));
+    },
+
+    async loadDiameterFlows(): Promise<DiameterFlows> {
+      // 範例資料是 5G 的，沒有 Diameter。**回誠實的空表，不丟例外** ——
+      // 「這份檔沒有 Diameter」是正常狀態，畫面要能說出來，不該長得像壞掉。
+      return {
+        present: false,
+        messages: 0,
+        flows: [],
+        endpoints: {},
+        totals: { flows: 0, sessions: 0, peer: 0, relayed: 0, failures: 0, unanswered: 0 },
+      };
+    },
+
+    async loadDiameterFlow(handle: string) {
+      throw new Error(t("Sample data has no Diameter flow {handle}.", { handle }));
+    },
+
+    async loadDiameterCallFlow(handle: string) {
+      throw new Error(t("Sample data has no Diameter flow {handle}.", { handle }));
     },
 
     async loadCallFlow(supi: string) {

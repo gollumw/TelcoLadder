@@ -770,3 +770,72 @@ The Sessions table waits for correlation (measured ~two minutes on 2.5 M
 packets; the packet table stays usable meanwhile). **The faster path is
 narrowing first**: back on the home page, slice a time range (§9a) —
 editcap slices first, and every later step works on the small file.
+
+---
+
+## 11. The Diameter flow view (DRA routing)
+
+The ladder is organised around a subscriber. A DRA operator's capture is
+mostly traffic that has no subscriber (`CER`/`DWR` keep-alives) or belongs
+to someone else (requests the DRA forwards), and the question is not
+"what happened to this person" but "where did this request come in, where
+was it forwarded, and did the same answer come back". **Diameter Flows**
+in the top bar regroups the same messages along that axis. Nothing is
+re-judged: a session's outcome is the same one the subscriber ladder shows
+for that `Session-Id`.
+
+### Three levels, all from RFC 6733
+
+| Level | Key | What it means |
+|---|---|---|
+| Session | `Session-Id` (§8) | one business flow — Gx's `CCR-I … CCR-U … CCR-T` is one row |
+| Transaction | `End-to-End Id` (§6.2) | one request on its whole path — a relay allocates a **new** `Hop-by-Hop Id` but **keeps** the `End-to-End Id`, so the two copies of an AIR seen before and after the DRA are one transaction with two hops |
+| Hop (leg) | `Hop-by-Hop Id` per peer pair | one request/answer pair on one connection |
+
+Messages without a `Session-Id` (`CER`/`CEA`, `DWR`/`DWA`, `DPR`/`DPA`)
+are connection maintenance by specification. They are listed as **peer
+maintenance** rows keyed by the peer pair — not dropped, and not dressed
+up as a procedure.
+
+### Reading a row
+
+- **Wire path** is the sequence of wire endpoints the first transaction
+  travelled (`mme01 › 198.51.100.61 › hss01`); a `2 hops` badge marks a
+  relayed flow.
+- **Outcome** is the session's verdict with the cause citation (name,
+  number, specification — never a clause number the table does not carry).
+  The plain-language explanation is in the tooltip and on the opened row.
+- **Msgs / Tx** are two different counts on purpose: four frames on the
+  wire for a relayed exchange is four messages and **one** transaction, and
+  a failure answer seen on both sides of the DRA is **one** failure.
+
+Open a row to see every transaction and every hop — which side sent the
+request, what the message itself claims (`Origin-Host → Destination-Host`),
+the `Route-Record` a relay must append when forwarding (§6.7.1), and the
+frames — then the same ladder as the subscriber view, restricted to that
+flow, with the Decode Inspector driven by the arrow you click.
+
+### Why lanes are not simply named after `Origin-Host`
+
+A real DRA forwards requests **without rewriting** `Origin-Host`. The
+relay's address therefore sends messages that say `mme01` one moment and
+`hss01` the next; naming lanes by `Origin-Host` would merge the DRA into
+its neighbours and the diagram would look perfectly reasonable with the
+relay gone. So lanes stay keyed on the wire endpoint. An address is named
+after the **one** `Origin-Host` it ever sent; an address that sent several
+is a relay — it shows its role (`DRA`, `SLF`) or its address, and the
+endpoint list below the table says how many hosts it forwarded. Each
+message's own `Origin-Host → Destination-Host` is shown per event, because
+"who talked to whom on the wire" and "where the message says it is going"
+are both facts, and in a relayed network they differ by design.
+
+### What it cannot do yet
+
+- Raw exports with no IP layer (§8) identify endpoints by `Origin-Host`, so
+  a relay that preserves the original `Origin-Host` shows two legs between
+  what look like the same two hosts. That is what the export says; the
+  Hop-by-Hop Ids still tell the legs apart.
+- Application-Ids outside the role table decode and display, but their
+  endpoints get no role (§7) — the row still groups correctly.
+- The view is browser-only; `summarize` and MCP do not yet expose the
+  hop-level grouping.
