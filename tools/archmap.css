@@ -52,6 +52,7 @@ h1{
   border-left:3px solid var(--signal); background:var(--signal-bg);
   font-size:13px; line-height:1.65; color:var(--ink-2);
 }
+.dim{color:var(--ink-3)}
 .ai-stamp b{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-size:12.5px}
 
 .stats{

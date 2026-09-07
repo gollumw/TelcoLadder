@@ -622,16 +622,25 @@ def render(data: dict) -> str:
 
     # ── 前端表
     # ── 情境清冊（全自動）
-    scenario_rows = "".join(
-        "<tr>"
-        f'<td class="mono">{_esc(sc["name"])}</td>'
-        f'<td class="wrap-ok">{_md(sc["headline"]) or "<span style=\'color:var(--ink-3)\'>（無 scenario.md 標題）</span>"}</td>'
-        f'<td class="num">{sc["frames"] if sc["frames"] is not None else "—"}</td>'
-        f'<td class="num">{_size(sc["bytes"])}</td>'
-        f'<td class="mono">{sc["origin"]}</td>'
-        "</tr>"
-        for sc in (data.get("scenarios") or [])
-    )
+    #
+    # **先算好再進 f-string。** 3.11 的 f-string 運算式裡不能有反斜線
+    # （PEP 701 到 3.12 才放寬），而這個檔上面那條 `hot` 就是為了同一件事存在的。
+    # 註解擋不住第二次 —— 所以 `tests/test_min_python.py` 現在拿真的語法規則掃。
+    no_headline = '<span class="dim">（無 scenario.md 標題）</span>'
+    scenario_cells = []
+    for sc in (data.get("scenarios") or []):
+        headline = _md(sc["headline"]) if sc["headline"] else no_headline
+        frames = sc["frames"] if sc["frames"] is not None else "—"
+        scenario_cells.append(
+            "<tr>"
+            f'<td class="mono">{_esc(sc["name"])}</td>'
+            f'<td class="wrap-ok">{headline}</td>'
+            f'<td class="num">{frames}</td>'
+            f'<td class="num">{_size(sc["bytes"])}</td>'
+            f'<td class="mono">{_esc(sc["origin"])}</td>'
+            "</tr>"
+        )
+    scenario_rows = "".join(scenario_cells)
     web_rows = "".join(
         f'<tr><td class="mono">{_esc(f)}</td><td class="num">{n:,}</td></tr>'
         for f, n in sorted(data["web"].items(), key=lambda kv: -kv[1])
