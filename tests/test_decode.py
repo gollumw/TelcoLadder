@@ -29,7 +29,7 @@ from telcoladder.decode import (
 )
 from telcoladder.tshark import TsharkNotFound, find_tshark
 
-from conftest import require_capture
+from conftest import HTTP2_DECODE_AS, require_capture
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -92,8 +92,9 @@ def test_reassembly_context_is_preserved() -> None:
     rules = tuple(default_decode_as())
     http2 = [r.number for r in read_packet_rows(pcap, decode_as=rules)
              if "http2" in r.protocols]
-    if not http2:
-        pytest.skip("這份擷取沒有 HTTP/2 封包")
+    # 前提在任何 tshark 版本都成立（7777 在 DECODE_AS 裡），所以它是斷言：
+    # skip 會讓「HPACK 上下文沒被讀進去」在某個版本上靜默變成 "1 skipped"。
+    assert http2, "5gc-e2e 帶著 7777 的 decode-as 卻一格 http2 都沒有 —— 抽取壞了"
     # 取最後一格 —— 它最依賴前面建立起來的 HPACK 狀態。
     target = http2[-1]
     names = _names(decode_frames(pcap, [target], decode_as=rules)[target])
@@ -116,16 +117,30 @@ def test_cross_frame_reassembly_is_annotated() -> None:
     斷言的是 `http2.body.reassembled.in` 這個 filter 名稱，不是 showname
     的英文措辭（檔頭那條規則）。fixture 是 http2-multistream —— 它的長
     JSON 本體真的跨格（tshark -2 整檔實測 108 個標註）。
+
+    **埠要自己講，不能靠 tshark 的啟發式。** 這份 fixture 的 HTTP/2 跑在
+    TCP 3000（`conftest.HTTP2_DECODE_AS` 的由來）。4.6 把 HTTP/2 的啟發式
+    同時掛在 `tcp` 上，不帶 `-d` 也認得出來；Ubuntu LTS 的 4.2.2 只掛在
+    `http` 上（`tshark -G heuristic-decodes`），所以 3000 上的載荷解到 `tcp`
+    就停了 —— 只帶各 adapter 的 `DECODE_AS`（7777）時一格 http2 都沒有。
+    產品線上這不是問題：`probe` 把那個埠列為未認領、`pipeline` 重跑後訊息數
+    增加就採用（`test_overview` 在 4.2.2 上照樣讀出 5 則）；但這條測試繞過
+    管線直接叫 `decode_frames`，所以埠得由測試自己給。
+
+    給了之後，前提在任何版本都成立，因此它是**斷言**而不是 skip。原本寫成
+    `pytest.skip`，結果 CI 唯一跑 4.2 的三個 Ubuntu job 一次都沒執行過這條
+    `-2` 的守衛，摘要只多了一個沒有人看的 "1 skipped"。
     """
     pcap = require_capture("http2-multistream/capture.pcap")
-    from telcoladder.adapters import default_decode_as
     from telcoladder.packets import read_packet_rows
 
-    rules = tuple(default_decode_as())
+    rules = HTTP2_DECODE_AS
     http2 = [r.number for r in read_packet_rows(pcap, decode_as=rules)
              if "http2" in r.protocols]
-    if not http2:
-        pytest.skip("這份擷取沒有 HTTP/2 封包")
+    assert http2, (
+        "帶著 tcp.port==3000,http2 卻一格 http2 都沒有 —— 這在任何 tshark 版本上"
+        "都不該發生，代表 read_packet_rows 沒把 decode-as 傳給 tshark，或 fixture 換了"
+    )
 
     # 找一格「分段本體」—— 從頭掃，第一個帶重組標註的就好。
     # 不寫死格號：fixture 重新產生時格號會變。
