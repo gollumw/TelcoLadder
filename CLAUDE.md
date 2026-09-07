@@ -48,7 +48,7 @@ pcap → extract(tshark -T ek) → adapters → lifecycle → correlate(union-fi
 Regenerate the architecture map after structural changes:
 
 ```bash
-python tools/archmap.py        # writes docs/architecture.{json,html}
+python tools/archmap.py        # writes docs/architecture.json (+ a local HTML view)
 ```
 
 `tests/test_archmap.py` reddens when the committed snapshot drifts.

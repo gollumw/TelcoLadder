@@ -160,7 +160,7 @@ def test_the_published_snapshot_is_not_stale(live: dict) -> None:
 
         python tools/archmap.py
 
-    然後把 `docs/architecture.html` 重新發布到**既有的** artifact 網址
+    然後把 `local/architecture.html` 重新發布到**既有的** artifact 網址
     （不是新開一個），分享出去的連結才會一直是最新的。
     """
     snapshot = REPO / "docs" / "architecture.json"
@@ -185,5 +185,5 @@ def test_the_published_snapshot_is_not_stale(live: dict) -> None:
             "架構圖已經跟程式對不上了。\n  "
             + "\n  ".join(detail or ["結構有變動"])
             + "\n\n修法：python tools/archmap.py"
-            "\n然後把 docs/architecture.html 重新發布到既有的 artifact 網址。"
+            "\n然後把 local/architecture.html 重新發布到既有的 artifact 網址。"
         )

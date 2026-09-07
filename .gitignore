@@ -41,3 +41,6 @@ telcoladder/static/index.html
 
 # Internal working notes (kept out of the public repo)
 CLAUDE.local.md
+
+# 架構圖的 HTML 是內部工作文件（帶 AI 重新產出的戳記），只有 JSON 進版控當漂移守衛
+docs/architecture.html

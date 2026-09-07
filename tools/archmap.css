@@ -46,6 +46,13 @@ h1{
   margin:0 0 12px; text-wrap:balance;
 }
 .lede{font-size:16px; color:var(--ink-2); max-width:62ch; margin:0}
+/* AI 更新戳記 —— 與「這份檔不放公開面」是同一個決定的兩半 */
+.ai-stamp{
+  margin:14px 0 0; padding:10px 14px; max-width:72ch;
+  border-left:3px solid var(--signal); background:var(--signal-bg);
+  font-size:13px; line-height:1.65; color:var(--ink-2);
+}
+.ai-stamp b{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-size:12.5px}
 
 .stats{
   display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr));

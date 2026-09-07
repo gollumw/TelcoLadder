@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""量測這個套件的結構，產出 `docs/architecture.{json,html}`。
+"""量測這個套件的結構，產出 `docs/architecture.json` 與 `local/architecture.html`。
 
 ## 為什麼是產生器，不是一張手畫的圖
 
@@ -24,7 +24,7 @@ adapter 換了介面歸屬，圖上通通看不出來，而讀圖的人會以為
     python tools/archmap.py            # 重新產出 docs/architecture.{json,html}
     python tools/archmap.py --check    # 只檢查有沒有漂移，不寫檔（測試用這條）
 
-改完程式之後跑第一條，讓 `docs/architecture.html` 跟上現況 ——
+改完程式之後跑第一條，讓 `local/architecture.html` 跟上現況 ——
 手繪的架構圖從畫完那一刻開始悄悄過期，這個產生器存在的理由就是這件事。
 """
 
@@ -33,15 +33,24 @@ from __future__ import annotations
 import ast
 import json
 import re
+import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PKG = REPO / "telcoladder"
 WEB = REPO / "web" / "src"
 OUT_JSON = REPO / "docs" / "architecture.json"
-OUT_HTML = REPO / "docs" / "architecture.html"
+#: **HTML 不進版控**（2026-09-08）。它帶著「最後一次由 AI 重新產出」的戳記，
+#: 而這個 repo 的公開面刻意不留 AI 足跡 —— 兩者放在一起是矛盾的。JSON 留在
+#: `docs/` 因為它是漂移守衛（只有模組清單，沒有敘事也沒有戳記）。
+#:
+#: `local/` 已被 .gitignore 收掉。這份 HTML 是**可重生的產物**（跑一次幾秒），
+#: 所以不進備份也沒關係 —— 與 `local/` 裡那些救不回來的擷取檔不同。
+OUT_HTML = REPO / "local" / "architecture.html"
+FIXTURES = REPO / "tests" / "fixtures"
 
 
 # ───────────────────────── 手寫的部分：分層的意義 ─────────────────────────
@@ -127,9 +136,14 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "CUPS 控制面。**協定本身跨世代**，這裡的參考點表只標了 N4。"),
     ("使用者面", "adapters.gtp", "N3", "shipped",
      "GTP-U 隧道。橋接 N4↔N2 靠 `identity.gtp_tunnel(位址, TEID)`。"),
-    ("4G EPC · IMS", "adapters.diameter", "S6a/S6d · Gx · Cx/Dx", "shipped",
-     "**唯一橫跨兩個世代的 adapter**：S6a/Gx 是 4G、Cx/Dx 是 IMS。其餘 20+ 介面認得出 "
-     "Application-Id 但沒有角色推論。"),
+    ("4G EPC · IMS", "adapters.diameter", "S6a/S6d · Gx · Cx/Dx · Rx · Sh · S6b · SWx", "shipped",
+     "**唯一橫跨兩個世代的 adapter**：S6a/Gx 是 4G、Cx/Dx 是 IMS。七個介面加基礎訊息"
+     "（CER/DWR/DPR）有角色推論；其餘 20+ 介面認得出 Application-Id、顯示命令名，"
+     "但推不出誰是誰 —— 那是誠實的「還沒做」，不是靜默的錯。**兩張 cause 表**："
+     "`Result-Code` 與 `Experimental-Result-Code` 是兩個號碼空間，選表看號碼從哪個 "
+     "AVP 讀出來，不看介面名。中繼（DRA／SLF）靠 `Route-Record` 正面認定，不靠 "
+     "`Destination-Host` 不一致推論。**2026-09-08 起另有一條不以訂戶為軸的出口**："
+     "`diameterflows` 以 Session-Id／交易／逐跳分組，供 DRA 排障。"),
     ("4G 控制面", "adapters.s1ap", "S1-MME", "shipped",
      "ASN.1 PER 載體，載送 NAS-EPS —— **與 NGAP 同構**（三種結果、五個 cause 群組、"
      "UE ID 只在一條連線內唯一）。cause 表在 `data/causes/s1ap_*.yaml`（五個群組、67 條，"
@@ -284,8 +298,66 @@ def measure(*, count_tests: bool = True) -> dict:
         "modules": modules,
         "named_adapter_imports": named,
         "web": web_files,
+        "scenarios": scenarios(),
         "tests": _test_count() if count_tests else None,
     }
+
+
+def scenarios() -> list[dict]:
+    """`tests/fixtures/` 的情境清冊。**量出來的，不是手寫的。**
+
+    每個情境回：目錄名、`scenario.md` 的標題句、擷取檔大小、格數、來源分類。
+
+    **格數用 `capinfos`，拿不到就留 None** —— 不推估，也不讓「量不到」看起來像
+    「零格」（§9 第 2 條的同一條紀律）。archmap 本身不該因為沒裝 Wireshark 就跑不動。
+    """
+    caps = shutil.which("capinfos")
+    out: list[dict] = []
+    for d in sorted(FIXTURES.iterdir()) if FIXTURES.exists() else []:
+        if not d.is_dir():
+            continue
+        capture = next((c for c in sorted(d.glob("capture.*"))), None)
+        doc = d / "scenario.md"
+        headline = ""
+        if doc.exists():
+            first = doc.read_text(encoding="utf-8").splitlines()[0]
+            headline = first.lstrip("# ").strip()
+            # 標題常寫成 `名稱 — 說明`；名稱與目錄重複，只留說明那半。
+            for dash in (" — ", " - "):
+                if headline.lower().startswith(d.name.lower()) and dash in headline:
+                    headline = headline.split(dash, 1)[1]
+                    break
+        # **三種來源，不是兩種。** 把自架 testbed 側錄的檔標成「外部」是一句
+        # 看起來合理的錯話（`5gc-e2e` 是使用者自己的 Open5GS+UERANSIM 跑出來的）。
+        #
+        # 標籤只講**證據本身**，不替它下結論：有 `make.py` 就寫「make.py」，
+        # 而不是「手寫」—— `ne-trace` 的 make.py 是把 `5gc-e2e` 的側錄檔重新包裝成
+        # 網元匯出格式，說它是逐位元組手寫的協定內容並不成立。真正的差別寫在
+        # 各自的 `scenario.md` 裡，這一欄只負責指路。
+        text = doc.read_text(encoding="utf-8") if doc.exists() else ""
+        if (d / "make.py").exists():
+            origin = "make.py"
+        elif re.search(r"^Copyright (?!.*this repo)", text, re.M | re.I):
+            origin = "外部授權"
+        else:
+            origin = "自架側錄"
+        frames = None
+        if caps and capture is not None:
+            try:
+                r = subprocess.run([caps, "-c", "-M", str(capture)],
+                                   capture_output=True, text=True, timeout=60)
+                m = re.search(r"Number of packets:\s+(\d+)", r.stdout)
+                frames = int(m.group(1)) if m else None
+            except Exception:
+                frames = None
+        out.append({
+            "name": d.name,
+            "headline": headline,
+            "bytes": capture.stat().st_size if capture is not None else None,
+            "frames": frames,
+            "origin": origin,
+        })
+    return out
 
 
 def _test_count() -> int | None:
@@ -435,6 +507,13 @@ def diagram_roadmap() -> str:
 _CSS = (Path(__file__).parent / "archmap.css").read_text(encoding="utf-8")
 
 
+def _size(n: "int | None") -> str:
+    """給人看的檔案大小。量不到就是破折號 —— 不填 0（那是一個我們沒觀測到的值）。"""
+    if n is None:
+        return "—"
+    return f"{n / 1024:.0f} KB" if n >= 1024 else f"{n} B"
+
+
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -454,6 +533,16 @@ def _panel(title: str, meta: str, mermaid: str) -> str:
 
 
 def render(data: dict) -> str:
+    # **這一頁是 AI 重新產出的，而且要看得出來是什麼時候。**
+    #
+    # 這個 repo 的公開面刻意不留 AI 足跡（commit 與 PR 內文都不署名），所以
+    # 反過來說：**帶著 AI 更新戳記的產物就不該待在公開面**。這個戳記與
+    # 「這份檔要放哪裡」是同一個決定的兩半，不要只做一半。
+    #
+    # 用本地時間並附 UTC 位移 —— 讀的人要拿它跟自己的行事曆對，純 UTC 得心算；
+    # 純本地時間又在別台機器上失去意義。
+    stamped = datetime.now(timezone.utc).astimezone()
+    stamp = stamped.strftime("%Y-%m-%d %H:%M %Z (UTC%z)")
     mods = data["modules"]
     total_loc = sum(m["loc"] for m in mods.values())
     shipped = sum(1 for r in DOMAINS if r[3] == "shipped")
@@ -464,6 +553,7 @@ def render(data: dict) -> str:
     stats = [
         (f"{len(mods)}", "Python 模組"), (f"{total_loc:,}", "行"),
         (f"{shipped}", "adapter 已交付"), (f"{planned}", "adapter 待做"),
+        (f"{len(data.get('scenarios') or [])}", "擷取情境"),
         (f"{tests:,}" if tests else "—", "測試"),
         (f"{len(data['named_adapter_imports'])}", "核心指名 import"),
     ]
@@ -531,6 +621,17 @@ def render(data: dict) -> str:
         )
 
     # ── 前端表
+    # ── 情境清冊（全自動）
+    scenario_rows = "".join(
+        "<tr>"
+        f'<td class="mono">{_esc(sc["name"])}</td>'
+        f'<td class="wrap-ok">{_md(sc["headline"]) or "<span style=\'color:var(--ink-3)\'>（無 scenario.md 標題）</span>"}</td>'
+        f'<td class="num">{sc["frames"] if sc["frames"] is not None else "—"}</td>'
+        f'<td class="num">{_size(sc["bytes"])}</td>'
+        f'<td class="mono">{sc["origin"]}</td>'
+        "</tr>"
+        for sc in (data.get("scenarios") or [])
+    )
     web_rows = "".join(
         f'<tr><td class="mono">{_esc(f)}</td><td class="num">{n:,}</td></tr>'
         for f, n in sorted(data["web"].items(), key=lambda kv: -kv[1])
@@ -548,6 +649,10 @@ def render(data: dict) -> str:
 <div class="wrap">
 <header>
   <p class="eyebrow">由 tools/archmap.py 產出 · commit {head}</p>
+  <p class="ai-stamp"><b>本頁最後一次由 AI 重新產出：{stamp}</b><br>
+  結構全部是量出來的；敘事（分層意義、adapter 註記、roadmap）是
+  <code>tools/archmap.py</code> 裡的手寫常數，由 AI 起草、由人裁定。
+  <strong>這份檔帶著 AI 更新戳記，因此是內部工作文件，不放公開面。</strong></p>
   <h1>TelcoLadder 分層圖</h1>
   <p class="lede">模組相依、4G／5G／IMS 分域、核心對 adapter 的指名耦合，以及 T1–T12 的先後順序。
   <strong>結構全部由 AST 量出來</strong>；分層的意義與 roadmap 的判斷是手寫的常數。改完程式重跑
@@ -634,7 +739,22 @@ def render(data: dict) -> str:
 </section>
 
 <section>
-  <h2><span class="num">06</span>前端</h2>
+  <h2><span class="num">06</span>擷取情境涵蓋</h2>
+  <p class="sub">每個情境一份擷取檔加一份 <code>scenario.md</code>，全部進版控，所以
+  <code>pytest</code> 在任何機器上都跑得完、<strong>不該有 skip</strong>。
+  <strong>「自製」代表那份檔是逐位元組寫出來的</strong>（`make.py`，可重現、可 diff），
+  不是側錄的 —— 真實的 S6a／Cx 擷取檔一定含真實訂戶，進不了版控。
+  每份檔<strong>證不了什麼</strong>寫在它自己的 <code>scenario.md</code> 裡：
+  測試通過不等於涵蓋了那些。</p>
+  <div class="tbl"><table>
+    <thead><tr><th class="mono">情境</th><th>它守的是什麼</th>
+    <th class="mono">格</th><th class="mono">大小</th><th class="mono">來源</th></tr></thead>
+    <tbody>{scenario_rows}</tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="num">07</span>前端</h2>
   <p class="sub">Vite ＋ React ＋ Tailwind v3，建置產物進版控（<code>pip install</code> 的人不需要 Node）。</p>
   <div class="tbl"><table>
     <thead><tr><th class="mono">檔案</th><th class="mono">行</th></tr></thead>
@@ -646,12 +766,14 @@ def render(data: dict) -> str:
   <span>tools/archmap.py</span><span>commit {head}</span>
   <span>{len(mods)} 模組 · {total_loc:,} 行</span>
   <span>{f"{tests:,} 測試" if tests else "測試數未量到"}</span>
+  <span>AI 最後產出 {stamp}</span>
 </footer>
 </div>
 """
 
 
 def main() -> int:
+    OUT_HTML.parent.mkdir(parents=True, exist_ok=True)
     data = measure()
     st = structure(data)
 
