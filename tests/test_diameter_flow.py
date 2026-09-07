@@ -90,11 +90,25 @@ def _oracle_rows(pcap: Path) -> list[dict]:
         frame, session, hop, end, request = (line.split("\t") + [""] * 5)[:5]
         rows.append({
             "frame": int(frame), "session": session,
-            "hop": str(int(hop, 16)) if hop else None,
-            "end": str(int(end, 16)) if end else None,
+            "hop": _number(hop), "end": _number(end),
+            # 4.2 印 `1`／`0`，4.6 印 `True`／`False` —— 兩種都收，
+            # 不把某一版的措辭當契約（CLAUDE.md §4 記的那個坑）。
             "request": request.lower() in ("true", "1"),
         })
     return rows
+
+
+def _number(value: str) -> str | None:
+    """tshark 的 Hop-by-Hop／End-to-End 是 FT_UINT32 BASE_HEX。
+
+    **不假設它一定印 `0x` 前綴。** 本機 4.6 印 `0x00001001`，而 CI 跑的是 4.2 ——
+    把某一版的輸出格式當契約正是 §4 那張表上的一列，而症狀是「本機綠、CI 紅」。
+    有前綴就當十六進位，沒有就當十進位；兩者都不是的話讓它大聲炸開，不要
+    默默算出一個看起來合理的錯號碼（`int("4097", 16)` 是 16535）。
+    """
+    if not value:
+        return None
+    return str(int(value, 16) if value.lower().startswith("0x") else int(value))
 
 
 # ── Session 層 ─────────────────────────────────────────────────────────
