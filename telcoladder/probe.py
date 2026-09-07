@@ -45,8 +45,8 @@ trace 功能是把應用層訊息各自包一層假的 IP/TCP 標頭吐出來，
 
 from __future__ import annotations
 
-from collections import defaultdict
-from collections.abc import Sequence
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,6 +73,11 @@ MIN_FRAMES_FOR_UNCLAIMED_PORT = 2
 #: 最多建議幾個埠。純粹是給 tshark 的 `-d` 參數數量設個上限，避免病態擷取檔
 #: 產生上百條規則。按載荷格數由多到少取。
 MAX_SUGGESTED_PORTS = 8
+
+#: `tcp.flags` 的位元。用數值而不用 `tcp.flags.syn` 的文字輸出：布林欄位在
+#: `-T fields` 底下印 `True`/`1` 隨版本不同，十六進位的 flags 各版一致。
+_TCP_SYN = 0x02
+_TCP_ACK = 0x10
 
 #: 協定鏈走到 `tcp` 之後出現這些，仍然算「沒有人認領」。
 #: `data` 是 tshark 表達「有載荷但我不知道是什麼」的方式。
@@ -175,13 +180,49 @@ def _protocol_tail(protocols: str) -> str:
     return tail[0] if tail else ""
 
 
+def server_port_of(
+    handshake_server: str | None,
+    first_payload_dst: str | None,
+    ports: Iterable[str],
+    streams_per_port: dict[str, int],
+) -> str | None:
+    """一條 TCP 流的伺服端埠，三層證據由強到弱。
+
+    1. **握手**：SYN 的目的埠（或 SYN/ACK 的來源埠）。這是線路上的事實，
+       不是猜測。
+    2. **跨流重複**：同一個埠出現在**嚴格較多**條流裡。客戶端的臨時埠每條
+       連線都不同，伺服端埠則每條都在 —— 實測 `5gc-e2e` 的 7777 出現在
+       全部 16 條流，每個臨時埠只在 1 條。單一連線兩邊各出現 1 次，平手，
+       不下判斷。
+    3. **檔案順序**：第一格帶載荷的封包是 client→server，目的埠即伺服端埠。
+       這是原本唯一的規則，而它會猜反 —— `http2-multistream` 的第一格載荷
+       是伺服端先送的 15 位元組 SETTINGS（3000 → 56508），於是工具把客戶端
+       的臨時埠 56508 當成伺服端：`describe()` 對使用者講錯埠，
+       `tcp.port==56508,http2` 只蓋得到那一條連線，出貨規則的埠過濾也跟著
+       錯。
+
+    猜錯的代價說明見模組說明：`pipeline` 只在訊息數增加時採用，所以
+    這裡錯了不會產生錯的圖，但會讓使用者看到錯的埠、讓多連線的擷取檔
+    白白用掉 `MAX_SUGGESTED_PORTS` 的名額。
+    """
+    if handshake_server is not None:
+        return handshake_server
+    ranked = sorted(set(ports), key=lambda port: -streams_per_port.get(port, 0))
+    if len(ranked) >= 2 and streams_per_port.get(ranked[0], 0) > streams_per_port.get(
+        ranked[1], 0
+    ):
+        return ranked[0]
+    return first_payload_dst
+
+
 def inspect(
     pcap: Path, *, prefs: Sequence[str] = (), tshark: Tshark | None = None
 ) -> CaptureShape:
     """掃一趟，回報擷取檔形狀。
 
     只看帶載荷的 TCP 封包 —— SCTP/UDP 上的訊令沒有這個問題（沒有序號
-    重組，tshark 每格獨立解碼），純 ACK 也不帶資訊。
+    重組，tshark 每格獨立解碼），純 ACK 也不帶資訊。**SYN 是唯一的例外**：
+    它不帶載荷，但它說出誰是伺服端（`server_port_of`），而且不用多跑一趟。
 
     `prefs` 是使用者明講的 tshark 偏好（`--tshark-pref`）。這一趟要吃同一組，
     否則「盤點形狀」與「真正分析」看的是兩份不同的檔。
@@ -197,7 +238,7 @@ def inspect(
     proc = tshark.run(
         [
             "-r", str(pcap), *pref_args(prefs),
-            "-Y", "tcp.len>0",
+            "-Y", "tcp.len>0 || tcp.flags.syn==1",
             "-T", "fields",
             # occurrence=f：隧道封包會有多層 TCP，只取最外層即可。
             "-E", "occurrence=f",
@@ -206,6 +247,8 @@ def inspect(
             "-e", "tcp.dstport",
             "-e", "tcp.seq_raw",
             "-e", "frame.protocols",
+            "-e", "tcp.flags",
+            "-e", "tcp.len",
         ],
         timeout=300,
     )
@@ -215,25 +258,51 @@ def inspect(
     seqs: dict[tuple[str, str], set[str]] = defaultdict(set)
     #: 同一個 key 的格數。set 只留相異值，數量要另外記。
     frames: dict[tuple[str, str], int] = defaultdict(int)
-    # stream → 檔案順序中第一格的目的埠。第一格是 client→server，所以
-    # 目的埠就是伺服端埠。比「取比較小的那個」可靠 —— 服務不一定跑在低號埠。
-    server_port: dict[str, str] = {}
-    # 伺服端埠 → 未認領的載荷格數。**按埠聚合而非按連線**，理由見上方常數說明。
-    unclaimed: dict[str, int] = defaultdict(int)
+    # 伺服端埠的三層證據，每條流各一份；判斷在迴圈結束後由 `server_port_of`
+    # 統一下，因為第二層（跨流重複）要看完整份檔才知道。
+    handshake_server: dict[str, str] = {}
+    first_payload_dst: dict[str, str] = {}
+    stream_ports: dict[str, set[str]] = defaultdict(set)
+    # stream → 未認領的載荷格數。伺服端埠定案後再按埠聚合
+    # （**按埠而非按連線**，理由見上方常數說明）。
+    unclaimed_by_stream: dict[str, int] = defaultdict(int)
 
     for line in proc.stdout.splitlines():
         fields = line.split("\t")
-        if len(fields) != 5:
+        if len(fields) != 7:
             continue
-        stream, srcport, dstport, seq, protocols = fields
+        stream, srcport, dstport, seq, protocols, flags_hex, length = fields
         if not stream:
             continue
+        stream_ports[stream].update((srcport, dstport))
+        flags = int(flags_hex, 16) if flags_hex.startswith("0x") else 0
+        if flags & _TCP_SYN:
+            # 純 SYN 是 client→server；SYN/ACK 是 server→client。
+            handshake_server.setdefault(stream, srcport if flags & _TCP_ACK else dstport)
+        if not (length.isdigit() and int(length) > 0):
+            continue  # 不帶載荷的 SYN 只提供握手證據，不進序號與認領統計。
         direction = (stream, srcport)
         seqs[direction].add(seq)
         frames[direction] += 1
-        server_port.setdefault(stream, dstport)
+        first_payload_dst.setdefault(stream, dstport)
         if _protocol_tail(protocols) in _UNCLAIMED_TAILS:
-            unclaimed[server_port[stream]] += 1
+            unclaimed_by_stream[stream] += 1
+
+    streams_per_port = Counter(port for ports in stream_ports.values() for port in ports)
+    server_port: dict[str, str] = {}
+    for stream, ports in stream_ports.items():
+        if stream not in first_payload_dst:
+            continue  # 只有握手、沒有載荷的連線：有投票權，但不算「檔裡有這個埠」。
+        port = server_port_of(
+            handshake_server.get(stream), first_payload_dst.get(stream), ports, streams_per_port
+        )
+        if port is not None:
+            server_port[stream] = port
+    # 伺服端埠 → 未認領的載荷格數。
+    unclaimed: dict[str, int] = defaultdict(int)
+    for stream, count in unclaimed_by_stream.items():
+        if stream in server_port:
+            unclaimed[server_port[stream]] += count
 
     synthetic = sum(
         1

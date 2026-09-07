@@ -24,7 +24,7 @@ import pytest
 
 from telcoladder.adapters.sbi import _sm_context_ref
 from telcoladder.pipeline import analyse
-from telcoladder.probe import MIN_FRAMES_FOR_SYNTHETIC_SEQ, inspect
+from telcoladder.probe import MIN_FRAMES_FOR_SYNTHETIC_SEQ, inspect, server_port_of
 from telcoladder.tshark import TsharkNotFound, find_tshark
 
 
@@ -64,6 +64,48 @@ def test_unclaimed_port_is_reported(ne_trace_pcap: Path):
 def test_a_short_burst_is_not_enough_evidence():
     """門檻存在的理由：一兩格序號相同可能只是重傳，不足以推翻「這是真連線」。"""
     assert MIN_FRAMES_FOR_SYNTHETIC_SEQ >= 3
+
+
+# ── 誰是伺服端 ──────────────────────────────────────────────────────────
+
+
+def test_the_server_port_comes_from_the_handshake_not_the_first_payload_frame(
+    multistream_http2_pcap: Path,
+):
+    """這份檔的第一格載荷是伺服端先送的（3000 → 56508）。
+
+    原本的規則「第一格帶載荷的封包是 client→server」在這裡猜反，把客戶端的
+    臨時埠 56508 當成伺服端。後果有三：`describe()` 對使用者講錯埠；
+    `tcp.port==56508,http2` 只蓋得到那一條連線，多連線的擷取檔會在臨時埠上
+    用光 `MAX_SUGGESTED_PORTS` 的名額；出貨規則的埠過濾也跟著錯。
+
+    SYN 的目的埠是線路上的事實。**不釘 `suggested_decode_as()` 的內容**：
+    有 HTTP/2 啟發式的 tshark 版本會認領 3000（沒東西可建議），沒有的會建議
+    它 —— 兩種版本下這條都要綠，所以只斷言「若有建議，建議的是伺服端埠」。
+    """
+    shape = inspect(multistream_http2_pcap)
+    assert shape.server_ports == (3000,), shape.server_ports
+    for rule in shape.suggested_decode_as():
+        assert rule == "tcp.port==3000,http2", rule
+
+
+def test_a_port_shared_across_streams_is_the_server_when_there_is_no_handshake():
+    """網元 trace 與截尾的線路擷取都沒有握手。客戶端的臨時埠每條連線不同，
+    伺服端埠每條都在 —— 這比檔案順序可靠，所以排在它前面。"""
+    streams_per_port = {"7777": 16, "59476": 1}
+    assert server_port_of(None, "59476", {"59476", "7777"}, streams_per_port) == "7777"
+
+
+def test_a_single_stream_without_a_handshake_falls_back_to_file_order():
+    """兩個埠各出現一次是平手，不下判斷 —— 這時只剩原本的規則可用。"""
+    streams_per_port = {"3000": 1, "56508": 1}
+    assert server_port_of(None, "56508", {"56508", "3000"}, streams_per_port) == "56508"
+
+
+def test_the_handshake_outranks_every_other_clue():
+    """握手是事實，其餘是推論；就算檔案順序與跨流統計都指向另一邊也不讓。"""
+    streams_per_port = {"56508": 3, "3000": 1}
+    assert server_port_of("3000", "56508", {"56508", "3000"}, streams_per_port) == "3000"
 
 
 # ── 自動修正 ────────────────────────────────────────────────────────────
