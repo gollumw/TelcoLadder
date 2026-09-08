@@ -188,6 +188,24 @@ export function CallsView({
             <p title={current.caller ?? undefined}>
               <span className="text-fg-muted">{t("Caller ")}</span>{current.caller ?? "—"}
               {current.callerMsisdn && <span className="ml-1 text-signal-cyan">{current.callerMsisdn}</span>}
+              {/* **號碼旁邊一定要說出處。** `From` 是主叫自己填的，
+                  `P-Asserted-Identity` 是網路認證後斷言的 —— 兩者可信度不同，
+                  只給號碼等於把兩種斷言講成同一句話。 */}
+              {current.callerMsisdnSource && (
+                <span
+                  className="ml-1 text-fg-muted"
+                  title={current.callerAsserted ?? undefined}
+                >
+                  {current.callerMsisdnSource === "p-asserted-identity"
+                    ? t("asserted by the network")
+                    : t("stated by the caller")}
+                  {current.callerMsisdnFrame !== null && ` #${current.callerMsisdnFrame}`}
+                </span>
+              )}
+              {/* **「網路不知道」與「知道但要求別顯示」是兩件事。** */}
+              {current.callerPrivacy && (
+                <span className="ml-1 text-signal-amber">{t("withheld from the callee")}</span>
+              )}
             </p>
             <p title={current.callee ?? undefined}>
               <span className="text-fg-muted">{t("Callee ")}</span>{current.callee ?? "—"}
@@ -259,7 +277,7 @@ export function CallsView({
         </span>
       </div>
       <p className="mt-1 text-[11px] text-fg-dim">
-        {t("One row per INVITE dialog (Call-ID, RFC 3261 §8.1.1.4). A number is shown only when the address says it is one - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed.")}
+        {t("One row per INVITE dialog (Call-ID, RFC 3261 §8.1.1.4). The caller's number comes from the network's P-Asserted-Identity where there is one, otherwise from an address that says it carries a number - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed. Each number says which of the two it came from.")}
       </p>
 
       <button

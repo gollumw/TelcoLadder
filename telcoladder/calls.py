@@ -26,11 +26,25 @@
 
 ## 門號怎麼來的
 
-SIP 的位址有好幾種寫法（`sip:+15550100@domain`、`tel:+15550100`、
-`sip:5550100;phone-context=…`）。`msisdn_of()` 只在**位址自己宣告是電話號碼**時
-給號碼，其餘留 None —— 一個 IMPU 可以完全不含號碼（企業用戶的
-`sip:alice@example.com`，或 IMSI 推導的 `sip:<IMSI>@ims.…`），那時說
-「號碼不明」比硬湊一個好，因為湊出來的號碼會被拿去撥。
+**主叫的號碼多半不在 `From` 裡。** 真實 VoLTE 的 `From` 是 IMSI 推導的 IMPU
+（`sip:<IMSI>@ims.…`），user part 是一串數字卻不是任何人撥得通的號碼。使用者
+問的「這通電話是幾號打的」寫在 P-CSCF 認證過後插入的 `P-Asserted-Identity`
+（RFC 3325）。所以號碼優先取那裡，沒有才退回 `From`。
+
+**而號碼旁邊一定要說出處。** `From` 是主叫自己填的，`P-Asserted-Identity` 是
+網路認證後斷言的 —— 兩者可信度不同、出錯的方式也不同，只給號碼等於把兩種
+斷言講成同一句話（與封包清單的網元角色同一條紀律：沒有依據的角色只是斷言）。
+
+**`P-Preferred-Identity` 不算數。** 那是終端「想」用哪個公開身分的請求，未經
+網路認證；照著讀等於讓終端自己宣告它是幾號，而那個號碼會被拿去撥。
+
+**「網路不知道號碼」與「知道但要求別顯示」是兩件事**（`Privacy`，RFC 3323）。
+混為一談的話，「被叫沒看到號碼」這種工單就分不出是哪一種 —— 而一種要查用戶
+設定、一種要查網路。
+
+號碼本身仍由 `msisdn_of()` 判：只在**位址自己宣告是電話號碼**時給號碼，其餘
+留 None —— 一個 IMPU 可以完全不含號碼（企業用戶的 `sip:alice@example.com`），
+那時說「號碼不明」比硬湊一個好。
 """
 
 from __future__ import annotations
@@ -141,6 +155,32 @@ def _uri_of(msg: Message | None, *keys: str) -> str | None:
     return None
 
 
+def asserted_of(call: "Call") -> tuple[str | None, int | None]:
+    """網路斷言的主叫身分，以及它出現在哪一格。沒有就 (None, None)。
+
+    **要掃過每一腿，不能只看第一則 INVITE。** `P-Asserted-Identity` 是
+    P-CSCF 認證過之後才插進去的（RFC 3325 §5），所以 UE→P-CSCF 那一腿上
+    沒有它 —— 而那正好是 `call.invite` 回的那一則。只看第一腿會得到
+    「這份檔沒有斷言」，而檔案裡明明有，且畫面上完全看不出漏了什麼。
+    （與 `ipsec.py` 的逐跳標頭同一個形狀：標頭屬於某一跳，不屬於整通電話。）
+    """
+    for msg in call.messages:
+        if msg.label != "INVITE":
+            continue
+        value = msg.detail.get("P-Asserted-Identity")
+        if value:
+            return str(value), msg.frame
+    return None, None
+
+
+def privacy_of(call: "Call") -> str | None:
+    """主叫要求的隱私（RFC 3323 的 `Privacy`），沒有就 None。"""
+    for msg in call.messages:
+        if msg.label == "INVITE" and msg.detail.get("Privacy"):
+            return str(msg.detail["Privacy"])
+    return None
+
+
 def build(analysis: Analysis) -> list[Call]:
     """整份擷取檔的通話，依開始的 frame 排序。沒有 SIP 通話就是空清單。
 
@@ -189,6 +229,21 @@ def call_json(call: Call) -> dict:
     invite = call.invite
     caller_uri = _uri_of(invite, "From")
     callee_uri = _uri_of(invite, "Request-URI", "To")
+    # **號碼優先取網路斷言的那一個，並且說出是哪一個。**
+    # `From` 是主叫自己填的，在 IMS 裡通常是 IMSI 推導的 IMPU（沒有號碼）；
+    # `P-Asserted-Identity` 是網路認證過後插入的。兩者可信度不同，出錯的
+    # 方式也不同 —— 只給號碼不給出處，等於把兩種斷言講成同一句話
+    #（與封包清單的網元角色一樣：沒有依據的角色只是斷言）。
+    asserted_uri, asserted_frame = asserted_of(call)
+    asserted_msisdn = msisdn_of(asserted_uri)
+    from_msisdn = msisdn_of(caller_uri)
+    caller_msisdn = asserted_msisdn or from_msisdn
+    if asserted_msisdn:
+        number_source, number_frame = "p-asserted-identity", asserted_frame
+    elif from_msisdn:
+        number_source, number_frame = "from", (invite.frame if invite else None)
+    else:
+        number_source, number_frame = None, None
     first, last = call.messages[0], call.messages[-1]
     return {
         "id": call.handle,
@@ -196,7 +251,14 @@ def call_json(call: Call) -> dict:
         # **主叫是關聯鍵那一端。** `subscriber` 是引擎判給這條流程的訂戶標籤，
         # 與 `caller` 指的是同一個人，但前者可能是 IMPU、後者是 From 的原文。
         "caller": caller_uri,
-        "caller_msisdn": msisdn_of(caller_uri),
+        "caller_msisdn": caller_msisdn,
+        # 出處：`p-asserted-identity`（網路斷言）或 `from`（主叫自填）。
+        # 判不出號碼時是 null —— 不填一個看起來合理的來源。
+        "caller_msisdn_source": number_source,
+        "caller_msisdn_frame": number_frame,
+        "caller_asserted": asserted_uri,
+        # 主叫要求不顯示號碼。**「網路不知道」與「知道但要求別顯示」是兩件事。**
+        "caller_privacy": privacy_of(call),
         "callee": callee_uri,
         "callee_msisdn": msisdn_of(callee_uri),
         "subscriber": proc.subscriber or proc.supi,
