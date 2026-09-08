@@ -55,6 +55,9 @@ export interface RawPacket {
   reassembledIn?: number;
   /** 完整訊息那一格的協定（`SIP/SDP`）。 */
   fragmentOf?: string;
+  /** 這格 ESP 的 SPI。**不是 ESP 時 undefined。** 封包清單靠它把加密的那幾列
+   *  對回註冊裡談成的 SA，進而對回訂戶。 */
+  espSpi?: number;
   length: number;
   info: string;
   /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——

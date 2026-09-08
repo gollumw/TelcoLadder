@@ -59,6 +59,7 @@ import {
   type Calls,
   type DecodeAsState,
   type DiameterFlowRow,
+  type Ipsec,
   type DiameterFlows,
   type DiameterLeg,
   type DiameterTransaction,
@@ -325,6 +326,30 @@ export function apiSource(sid: string | null): DataSource {
       const body = await getJson<CallsJson & { ready: boolean }>(`/api/${need()}/calls`);
       if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
       return toCalls(body);
+    },
+
+    async loadIpsec(): Promise<Ipsec> {
+      const body = await getJson<IpsecJson & { ready: boolean }>(`/api/${need()}/ipsec`);
+      if (!body.ready) throw new NotConnectedError(t("Analysis has not finished yet."));
+      return {
+        present: body.present,
+        espTotal: body.esp_total,
+        unmatchedSpis: body.unmatched_spis ?? [],
+        unmatchedFrames: body.unmatched_frames,
+        associations: (body.associations ?? []).map((a) => ({
+          spi: a.spi,
+          spiHex: a.spi_hex,
+          sender: a.sender,
+          receiver: a.receiver,
+          port: a.port,
+          ealg: a.ealg,
+          alg: a.alg,
+          frame: a.frame,
+          subscriber: a.subscriber,
+          readable: a.readable,
+          espFrames: a.esp_frames,
+        })),
+      };
     },
 
     async loadCallLadder(handle: string): Promise<CallFlow> {
@@ -652,4 +677,16 @@ function toCalls(body: CallsJson): Calls {
       note: c.note ?? "",
     })),
   };
+}
+
+interface IpsecJson {
+  present: boolean;
+  esp_total: number;
+  unmatched_spis: number[];
+  unmatched_frames: number;
+  associations: Array<{
+    spi: number; spi_hex: string; sender: string; receiver: string;
+    port: number | null; ealg: string | null; alg: string | null;
+    frame: number; subscriber: string | null; readable: boolean; esp_frames: number;
+  }>;
 }

@@ -4,6 +4,26 @@ Ethernet/IPv4, 179 frames, written byte-by-byte by `make.py` (self-produced,
 this repository's licence; byte-reproducible: fixed timestamps, no
 randomness).
 
+## Gm 上的 IPsec（2026-09-08 加）
+
+註冊的兩輪帶著 RFC 3329 的 SA 協商：第一個 REGISTER 的 `Security-Client` 提出
+UE 這側的 SPI 與埠，401 的 `Security-Server` 回 P-CSCF 這側的，第二個 REGISTER
+用 `Security-Verify` 原樣回述。**這三個標頭是逐跳的**（TS 33.203：不得越過
+P-CSCF），所以只出現在 UE↔P-CSCF 那一腿 —— 蓋在每一腿上會讓「這條 SA 的兩端
+是誰」多出幾組互相矛盾而各自合理的答案。
+
+**宣告的 SPI 與線路上那六格 ESP 是同一組**（`make.py` 取自同一份常數），那正是
+這份檔要讓程式踩的東西：對不上的話，「這條 ESP 屬於誰」就只是猜的。
+
+### 它證不了什麼
+
+* **證不了 ESP 解得開。** IK/CK 是 USIM 拿 K 與 RAND 算的，從來不上線；這份檔
+  裡沒有、也不可能有。唯一能從擷取檔取得金鑰的位置是 Cx 的 Multimedia-Auth
+  Answer（AVP 625／626），那是另一支介面，這份檔沒有。
+* **四條 SA 只有兩條有流量。** 真實的 IMS 會在四個埠對上各建一條；這裡只讓
+  client 那一對載送 ESP，另一對只有宣告。
+* **沒有換金鑰、沒有重新註冊。** ESP 的內容是填充位元組，不是真的加密流量。
+
 ## Why it exists
 
 `4g-volte-end-to-end/` shows SIP on one leg (UE↔P-CSCF). A real core capture

@@ -221,6 +221,41 @@ export interface CallFlow {
   uncorrelatedDomains: TelecomDomain[];
 }
 
+// ── Gm 的 IPsec（2026-09-08）──────────────────────────────────────────
+//
+// **這一層回答「這條 ESP 是誰的」，不回答「內容是什麼」。** IK/CK 是 USIM 從 K
+// 與 RAND 算出來的，從來不上線；唯一能從擷取檔拿到金鑰的位置是 Cx 的
+// Multimedia-Auth Answer（AVP 625／626），那是另一支介面。畫面要把這個界線
+// 講清楚 —— 一個說「解不開」的工具，與一個默默給不出東西的工具，是兩件事。
+
+export interface SecurityAssociation {
+  spi: number;
+  spiHex: string;
+  /** 送往這條 SA 的端點。 */
+  sender: string;
+  /** 配發這個 SPI 的端點（流量的收方）。 */
+  receiver: string;
+  port: number | null;
+  /** 加密演算法。`null` 代表宣告裡沒講。 */
+  ealg: string | null;
+  alg: string | null;
+  /** 宣告它的那一格。 */
+  frame: number;
+  subscriber: string | null;
+  /** **只有明講 `ealg=null` 時才是 true。** 沒宣告演算法不算可讀。 */
+  readable: boolean;
+  espFrames: number;
+}
+
+export interface Ipsec {
+  present: boolean;
+  associations: SecurityAssociation[];
+  espTotal: number;
+  /** 線路上有、但沒有任何註冊宣告過的 SPI。常見原因是註冊在擷取開始前就完成了。 */
+  unmatchedSpis: number[];
+  unmatchedFrames: number;
+}
+
 // ── 通話（2026-09-08）─────────────────────────────────────────────────
 //
 // 看 VoLTE 的人問的是「誰打給誰、通了沒、講多久、誰掛的」，而梯形圖與工作
@@ -557,6 +592,12 @@ export interface DataSource {
    * `present: false` 的空表，不要丟例外：那是一個正常狀態，畫面要說得出來。
    */
   loadCalls(): Promise<Calls>;
+
+  /**
+   * Gm 上談成的 IPsec SA。**每個來源都要實作** —— 沒有就回 `present: false`
+   * 的空表，不丟例外。
+   */
+  loadIpsec(): Promise<Ipsec>;
 
   /** 一通電話的梯形圖（`/callflow?call=c:N`）。與 `loadCallFlow` 同一種 `CallFlow`。 */
   loadCallLadder(handle: string): Promise<CallFlow>;

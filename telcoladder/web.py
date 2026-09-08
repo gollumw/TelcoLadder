@@ -93,6 +93,7 @@ from telcoladder.viewer import (
     calls_json,
     diameter_flows_json,
     identities_json,
+    ipsec_json,
     select_flows,
     select_identity,
     effective_matched,
@@ -406,6 +407,8 @@ class _Handler(BaseHTTPRequestHandler):
             ))
         elif not post and action == "overview":
             self._send_json(overview_json(session))
+        elif not post and action == "ipsec":
+            self._send_json(ipsec_json(session))
         elif not post and action == "calls":
             self._send_json(calls_json(session))
         elif not post and action == "diameter-flows":

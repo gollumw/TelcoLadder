@@ -77,7 +77,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     )),
     ("L4", "語意", "把關聯結果變成人看得懂的單位", (
         "procedures", "pdusession", "identities", "flowtable", "callflow",
-        "diameterflows", "calls",
+        "diameterflows", "calls", "ipsec",
     )),
     ("L5", "出口", "三條交集為零的呈現路徑", (
         "render_mermaid", "summary", "xdr", "viewer", "overview",
@@ -94,7 +94,7 @@ _DIAGRAM_NODES: list[tuple[str, str, str, str]] = [
     ("L6", "cli", "cli", "n"), ("L6", "web", "web · session", "n"), ("L6", "mcpx", "mcp", "n"),
     ("L5", "view", "viewer", "n"), ("L5", "summ", "summary", "n"),
     ("L5", "mmd", "render_mermaid · xdr", "n"),
-    ("L4", "cflow", "callflow · diameterflows · calls", "n"), ("L4", "proc", "procedures", "n"),
+    ("L4", "cflow", "callflow · diameterflows · calls · ipsec", "n"), ("L4", "proc", "procedures", "n"),
     ("L4", "ftab", "flowtable", "n"), ("L4", "ids", "identities · pdusession", "n"),
     ("L3", "pipe", "pipeline", "hub"), ("L3", "nfm", "nf", "n"),
     ("L3", "cause", "causes", "n"), ("L3", "misc", "correlate · lifecycle · coverage", "n"),

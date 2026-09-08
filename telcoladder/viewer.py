@@ -44,6 +44,7 @@ from telcoladder.model import Flow, IdKind, IdKey
 from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.calls import calls_json as calls_json_for
+from telcoladder import ipsec as ipsecmod
 from telcoladder.diameterflows import flows_json as diameter_flows_json_for
 from telcoladder.callflow import SLOW_GAP, call_events, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
 from telcoladder.nf import resolve_roles_with_basis, role_contradictions
@@ -174,6 +175,8 @@ def index_json(session: Session, *, offset: int, limit: int, q: str) -> dict:
             # 「不是分片」與「是分片但接不回去」是兩件事。
             **({"frag_in": r.reassembled_in, "frag_of": r.fragment_of}
                if r.reassembled_in is not None else {}),
+            # **這格 ESP 屬於哪條 SA。** 不是 ESP 就整個鍵不存在。
+            **({"spi": r.esp_spi} if r.esp_spi is not None else {}),
         }
         for r in rows
     ]
@@ -659,6 +662,39 @@ def callflow_json(
     if "error" in result:
         return result
     return {"ready": True, **result}
+
+
+def _ipsec_for(session: Session) -> "ipsecmod.IpsecView | None":
+    """這份擷取檔的 SA 視圖，首次要求時算、之後用快取。
+
+    **ESP 的 frame→SPI 從封包索引取**，不從 analysis —— ESP 不歸任何 adapter 管，
+    所以它只存在於索引那一側（`packets.PacketRow.esp_spi`）。
+    """
+    with session.lock:
+        analysis = session.analysis
+        index = session.index
+        cached = session.ipsec
+    if analysis is None:
+        return None
+    if cached is not None:
+        return cached
+    rows = getattr(index, "rows", []) or []
+    esp = {r.number: r.esp_spi for r in rows if r.esp_spi is not None}
+    view = ipsecmod.build(analysis, esp)
+    with session.lock:
+        session.ipsec = view
+    return view
+
+
+def ipsec_json(session: Session) -> dict:
+    """`/api/<sid>/ipsec`：Gm 上談成的 IPsec SA，以及線路上哪些 ESP 屬於誰。
+
+    **語言無關**（欄位全是線路事實與號碼），所以不按語言分快取。
+    """
+    view = _ipsec_for(session)
+    if view is None:
+        return {"ready": False, "present": False, "associations": []}
+    return {"ready": True, **ipsecmod.to_json(view)}
 
 
 def calls_json(session: Session) -> dict:
