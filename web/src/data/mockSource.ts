@@ -25,7 +25,7 @@ import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { Calls, DataSource, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
+import type { Calls, DataSource, Ipsec, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
 
 export function mockSource(): DataSource {
   // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
@@ -180,6 +180,11 @@ export function mockSource(): DataSource {
         calls: [],
         totals: { calls: 0, answered: 0, failed: 0, endedByUser: 0, incomplete: 0 },
       };
+    },
+
+    async loadIpsec(): Promise<Ipsec> {
+      // 範例資料沒有 IPsec。回誠實的空表，不丟例外。
+      return { present: false, associations: [], espTotal: 0, unmatchedSpis: [], unmatchedFrames: 0 };
     },
 
     async loadCallLadder(handle: string) {

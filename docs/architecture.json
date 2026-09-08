@@ -33,6 +33,7 @@
   "identities",
   "identity",
   "interfaces",
+  "ipsec",
   "lifecycle",
   "mcp",
   "model",

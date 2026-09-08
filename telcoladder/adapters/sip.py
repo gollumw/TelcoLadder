@@ -308,6 +308,29 @@ def parse(frame: Frame) -> list[Message]:
         caller = first(block.get("sip_sip_from_addr"))
         if caller:
             detail["From"] = str(caller)
+        # **Gm 上的 IPsec SA**（RFC 3329 的 Security-Client／Server／Verify，
+        # 3GPP TS 33.203 的 `ipsec-3gpp`）。這裡只交線路事實：原始標頭字串。
+        #
+        # **存原始標頭，不存 tshark 攤平的 `sip.sec_mechanism.*`。** 那組欄位把
+        # 一則訊息裡所有 security 標頭的參數混成一串清單，分不出哪個 SPI 來自
+        # Client、哪個來自 Verify —— 而那個差別就是語意本身：`Security-Verify`
+        # 是 UE 回述 P-CSCF 的宣告，裡面的 SPI 屬於 P-CSCF，不屬於送出它的人。
+        # 照攤平的欄位解，第二個 REGISTER 會讓同一個 SPI 多出一組反方向的擁有者，
+        # 而兩組看起來都合理（§3.1 那條「攤平的欄位不告訴你結構」的同一個形狀）。
+        #
+        # **金鑰不在這些標頭裡，而且不可能在。** IK/CK 是 USIM 拿 K 與 RAND 在卡裡
+        # 算出來的，從來不上線；能從擷取檔拿到它們的唯一位置是 Cx 的
+        # Multimedia-Auth Answer（AVP 625／626），那是另一支介面。所以這份資料
+        # 回答得了「這條 ESP 是誰的、用什麼演算法」，回答不了「內容是什麼」。
+        for header in ("Security-Client", "Security-Server", "Security-Verify"):
+            raw = block.get(f"sip_sip_{header}")
+            values = ([str(v) for v in raw if str(v).strip()]
+                      if isinstance(raw, list) else ([str(raw)] if raw else []))
+            if values:
+                # 同一個標頭可以出現多次（多個機制），用換行分隔 —— 逗號在
+                # 參數裡本來就會出現，拿它當分隔會切錯。
+                detail[f"ipsec-{header.lower()}"] = "\n".join(values)
+
         ports = _media_ports(block)
         if ports:
             # E3 的接點。**現在只是記下來** —— 沒有 RTP adapter 讀它，

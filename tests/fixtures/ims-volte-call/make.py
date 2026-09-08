@@ -108,8 +108,15 @@ class Dialog:
     def request(self, method: str, cseq: int, *, by_caller: bool = True,
                 extra: list[tuple[str, str]] | None = None, body: str = "",
                 content_type: str = "application/sdp", with_to_tag: bool = True,
-                path: list[str] | None = None, t0: float = 0.0, step: float = 0.002) -> list[Packet]:
-        """同一則請求在每一腿上各一格：Via 多一個、Record-Route 多一個。"""
+                path: list[str] | None = None, t0: float = 0.0, step: float = 0.002,
+                hop_extra: list[tuple[str, str]] | None = None) -> list[Packet]:
+        """同一則請求在每一腿上各一格：Via 多一個、Record-Route 多一個。
+
+        `hop_extra` **只放在第一腿**。RFC 3329 的 `Security-Client` /
+        `Security-Verify` 是 UE 與 P-CSCF 之間的逐跳標頭，規範上不得再往前送 ——
+        把它蓋在每一腿上，會讓「這條 SA 的兩端是誰」多出兩組互相矛盾的答案，
+        而每一組看起來都合理。`extra` 仍然是每一腿都有的那種。
+        """
         path = path or PATH
         legs = _legs(path) if by_caller else _legs(list(reversed(path)))
         out: list[Packet] = []
@@ -134,6 +141,8 @@ class Dialog:
                 headers.append(("Contact", f"<sip:{IMSI}@{UE}:{SIP_PORT}>"))
             headers += [("Record-Route", r) for r in reversed(record_route)]
             headers += extra or []
+            if i == 0:
+                headers += hop_extra or []
             if body:
                 headers.append(("Content-Type", content_type))
             raw = _g.sip_message(f"{method} {request_uri} SIP/2.0", headers, body)
@@ -143,11 +152,19 @@ class Dialog:
     def response(self, code: int, reason: str, cseq: int, method: str, *,
                  to_caller: bool = True, extra: list[tuple[str, str]] | None = None,
                  body: str = "", with_to_tag: bool = True,
-                 path: list[str] | None = None, t0: float = 0.0, step: float = 0.002) -> list[Packet]:
-        """回應沿請求的反向路徑回去；每一腿的 Via 堆疊是請求到那一跳時的樣子。"""
+                 path: list[str] | None = None, t0: float = 0.0, step: float = 0.002,
+                 hop_extra: list[tuple[str, str]] | None = None) -> list[Packet]:
+        """回應沿請求的反向路徑回去；每一腿的 Via 堆疊是請求到那一跳時的樣子。
+
+        `hop_extra` **只放在最後一腿**，也就是回到請求發起端的那一跳 ——
+        401 的 `Security-Server` 是 P-CSCF 插進去給 UE 的，S-CSCF 那一段沒有它。
+        """
         path = path or PATH
         fwd = path if to_caller else list(reversed(path))
-        legs = list(reversed(_legs(fwd)))
+        # **回應是往回走的：每一腿的方向要翻過來，不只是順序。**
+        # `_legs(fwd)` 給的是正向的 (src, dst)；只把清單 reverse 會讓 200 OK
+        # 從 UE 送往 P-CSCF —— 梯形圖上每一個回應的箭頭都反了，而圖照樣畫得出來。
+        legs = [(dst, src) for src, dst in reversed(_legs(fwd))]
         out: list[Packet] = []
         from_uri, to_uri = (self.from_uri, self.to_uri) if to_caller else (self.to_uri, self.from_uri)
         from_tag, to_tag = (self.from_tag, self.to_tag) if to_caller else (self.to_tag, self.from_tag)
@@ -163,6 +180,8 @@ class Dialog:
                 ("CSeq", f"{cseq} {method}"),
             ]
             headers += extra or []
+            if i == n - 1:
+                headers += hop_extra or []
             if body:
                 headers.append(("Content-Type", "application/sdp"))
             raw = _g.sip_message(f"SIP/2.0 {code} {reason}", headers, body)
@@ -322,18 +341,55 @@ def h248_call(t_add: float, t_modify: float, t_subtract: float, ue_port: int) ->
 # ── 通話 ──────────────────────────────────────────────────────────────────
 
 
+#: Gm 上那兩條 IPsec SA 的參數（RFC 3329 的 Security-Client／Server／Verify，
+#: 3GPP TS 33.203 的 `ipsec-3gpp` 機制）。**這些數字與底下 `_esp()` 送出的 SPI
+#: 是同一組** —— 那正是這份 fixture 要讓程式踩的東西：宣告在註冊裡的 SA，
+#: 對得上線路上那幾格 ESP。對不上的話，「這條 ESP 屬於誰」就只是猜的。
+#:
+#: **收方配發 SPI**：UE→P-CSCF 的那格用 0x1001，所以 0x1001 是 P-CSCF 配的，
+#: 出現在它的 `Security-Server`；P-CSCF→UE 的 0x2001 是 UE 配的，在
+#: `Security-Client` 裡。
+SA_UE_SPI_C = 0x2001          # UE 配給自己 client port 的（P-CSCF 送過來時用）
+SA_UE_SPI_S = 0x2002          # UE 的 server port —— 本檔沒有流量走它
+SA_PCSCF_SPI_C = 0x1002       # P-CSCF 的 client port —— 本檔沒有流量走它
+SA_PCSCF_SPI_S = 0x1001       # P-CSCF 配的，UE 送過去時用
+SA_UE_PORT_C, SA_UE_PORT_S = 5100, 5101
+SA_PCSCF_PORT_C, SA_PCSCF_PORT_S = 5102, 5103
+
+_SEC_CLIENT = (
+    f"ipsec-3gpp; alg=hmac-sha-1-96; ealg=aes-cbc; prot=esp; mod=trans; "
+    f"spi-c={SA_UE_SPI_C}; spi-s={SA_UE_SPI_S}; "
+    f"port-c={SA_UE_PORT_C}; port-s={SA_UE_PORT_S}"
+)
+_SEC_SERVER = (
+    f"ipsec-3gpp; q=0.1; alg=hmac-sha-1-96; ealg=aes-cbc; prot=esp; mod=trans; "
+    f"spi-c={SA_PCSCF_SPI_C}; spi-s={SA_PCSCF_SPI_S}; "
+    f"port-c={SA_PCSCF_PORT_C}; port-s={SA_PCSCF_PORT_S}"
+)
+
+
 def registration(t0: float) -> list[Packet]:
-    """REGISTER → 401 → REGISTER（帶 Authorization）→ 200。只走 UE↔P-CSCF↔S-CSCF 兩腿。"""
+    """REGISTER → 401 → REGISTER（帶 Authorization）→ 200。只走 UE↔P-CSCF↔S-CSCF 兩腿。
+
+    **第二輪帶著 IPsec SA 的協商**（RFC 3329）：第一個 REGISTER 的
+    `Security-Client` 提出 UE 這側的 SPI 與埠，401 的 `Security-Server` 回
+    P-CSCF 這側的，第二個 REGISTER 用 `Security-Verify` 原樣回述以防被竄改。
+    **金鑰不在這些標頭裡**（IK/CK 是 USIM 從 K 與 RAND 算的），所以這份檔
+    證得了「SA 認得出來」，證不了「ESP 解得開」—— 見 scenario.md。
+    """
     d = Dialog("reg-1@192.0.2.10", "reg1", "", to_uri=IMPU, request_uri=f"sip:{DOMAIN}")
     path = [UE, PCSCF, SCSCF]
     out: list[Packet] = []
     common = [("Expires", "600000"), ("Supported", "path")]
-    out += d.request("REGISTER", 1, extra=common, with_to_tag=False, path=path, t0=t0)
+    out += d.request("REGISTER", 1, extra=common, with_to_tag=False, path=path, t0=t0,
+                     hop_extra=[("Security-Client", _SEC_CLIENT)])
     out += d.response(401, "Unauthorized", 1, "REGISTER", with_to_tag=False, path=path, t0=t0 + 0.010,
-                      extra=[("WWW-Authenticate", f'Digest realm="{DOMAIN}",nonce="0001",algorithm=AKAv1-MD5')])
+                      extra=[("WWW-Authenticate", f'Digest realm="{DOMAIN}",nonce="0001",algorithm=AKAv1-MD5')],
+                      hop_extra=[("Security-Server", _SEC_SERVER)])
     out += d.request("REGISTER", 2, extra=common + [
-        ("Authorization", f'Digest username="{IMPI}",realm="{DOMAIN}",nonce="0001",uri="sip:{DOMAIN}",response="0002"')
-    ], with_to_tag=False, path=path, t0=t0 + 0.020)
+        ("Authorization", f'Digest username="{IMPI}",realm="{DOMAIN}",nonce="0001",uri="sip:{DOMAIN}",response="0002"'),
+    ], with_to_tag=False, path=path, t0=t0 + 0.020,
+        hop_extra=[("Security-Client", _SEC_CLIENT), ("Security-Verify", _SEC_SERVER)])
     out += d.response(200, "OK", 2, "REGISTER", with_to_tag=False, path=path, t0=t0 + 0.060,
                       extra=[("P-Associated-URI", f"<{IMPU}>")])
     return out
@@ -401,9 +457,11 @@ def build() -> list[Packet]:
     packets += registration(0.000)
     packets += cx(0.005)
     # Gm 上的 ESP：兩對 SPI，各三格。**不是 SIP**，是看不見內容的 IPsec。
+    # **SPI 取自上面宣告的那組常數**，不是另外寫死的兩個數字 —— 兩處各寫一次
+    # 的話，改了其中一邊，「SA 對得上 ESP」這件事就靜默不成立，而測試會綠。
     for i in range(3):
-        packets.append((0.200 + i * 0.010, _esp(UE, PCSCF, 0x1001, i + 1)))
-        packets.append((0.205 + i * 0.010, _esp(PCSCF, UE, 0x2001, i + 1)))
+        packets.append((0.200 + i * 0.010, _esp(UE, PCSCF, SA_PCSCF_SPI_S, i + 1)))
+        packets.append((0.205 + i * 0.010, _esp(PCSCF, UE, SA_UE_SPI_C, i + 1)))
     packets += call_answered(1.000)
     # 通話 1 的 H.248：INVITE 到 MGCF 之後 Add；收到 UE 的 SDP（INVITE 帶的）後 Modify；BYE 之後 Subtract。
     packets += h248_call(1.150, 1.300, 18.050, 49152)

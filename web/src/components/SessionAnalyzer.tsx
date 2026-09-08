@@ -38,6 +38,8 @@ export default function SessionAnalyzer({
   filterError,
   callFlow,
   onRequestCallFlow,
+  ipsec,
+  onRequestIpsec,
   calls,
   callsError,
   onRequestCalls,
@@ -73,6 +75,9 @@ export default function SessionAnalyzer({
   /** 目前聚焦訂戶的梯形圖。null＝還沒取到。 */
   callFlow: import("@/data/source").CallFlow | null;
   onRequestCallFlow: (supi: string) => void;
+  /** Gm 的 IPsec SA（`/ipsec`，全母體）。null＝還沒取。 */
+  ipsec: import("@/data/source").Ipsec | null;
+  onRequestIpsec: () => void;
   /** 通話清單（`/calls`，全母體）。null＝還沒取。 */
   calls: import("@/data/source").Calls | null;
   callsError: string | null;
@@ -129,6 +134,11 @@ export default function SessionAnalyzer({
   useEffect(() => {
     if (mode === "flow" && focusedSupi) onRequestCallFlow(focusedSupi);
   }, [mode, focusedSupi, onRequestCallFlow]);
+
+  //: 封包清單要標出 ESP 屬於誰，所以進 Data Mining 時取一次 SA。
+  useEffect(() => {
+    if (mode === "mining" && ipsec === null) onRequestIpsec();
+  }, [mode, ipsec, onRequestIpsec]);
 
   //: 通話視圖：進來才取清單；點了一通才取那通的梯形圖。
   const [callHandle, setCallHandle] = useState<string | null>(null);
@@ -386,6 +396,7 @@ export default function SessionAnalyzer({
             decodeNote={decodeNote}
             onRequestTree={onRequestTree}
             onCorrelateSession={handleCorrelateSession}
+            ipsec={ipsec}
           />
         ) : (
           <SessionAnalysisView

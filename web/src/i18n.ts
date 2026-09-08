@@ -342,6 +342,11 @@ const zh_TW: Record<string, string> = {
   "Field": "欄位",
   "Value": "值",
   "Source interface": "來源介面",
+  // ── Gm 的 IPsec（2026-09-08）──
+  "· SPI {spi} (no registration declared it)": "· SPI {spi}（沒有註冊宣告過）",
+  "· {from}→{to} SA, {alg}": "· {from}→{to} 的 SA，{alg}",
+  "This ESP carries SPI {spi}, which no registration in this capture declared - the security association was most likely set up before the capture started.": "這格 ESP 的 SPI 是 {spi}，而這份擷取檔裡沒有任何註冊宣告過它 —— 那條安全關聯多半在擷取開始之前就建立了。",
+  "IPsec SA negotiated in frame #{frame} for {who}. Encryption {alg}, integrity {ialg}. The keys (IK/CK) are never on the wire, so the payload cannot be read from this capture alone.": "第 {frame} 格為 {who} 談成的 IPsec SA。加密 {alg}、完整性 {ialg}。金鑰（IK/CK）從來不上線，所以光靠這份擷取檔讀不出內容。",
   // ── 通話視圖（2026-09-08）──
   "Could not load the calls": "載入通話清單失敗",
   "Segmenting calls…": "正在切出通話…",

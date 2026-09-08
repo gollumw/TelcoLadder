@@ -254,6 +254,10 @@ class Session:
     """通話清單（`calls.calls_json`）的快取，**按語言分**（dict）——
     與 `diameter_flows` 同一個理由：cause 白話與但書是用當下語言選出來的。"""
 
+    ipsec: object | None = field(default=None, repr=False)
+    """Gm 的 IPsec SA 視圖（`ipsec.build`）的快取。**不按語言分** ——
+    裡面全是線路事實與號碼，沒有翻譯過的句子。"""
+
     tshark: object | None = field(default=None, repr=False)
     """已定位好的 tshark，在建立工作階段時解析一次。
 

@@ -54,6 +54,24 @@ function findNodeById(nodes: ProtocolNode[], id: string): ProtocolNode | undefin
 // Discovered Sessions drawer surfacing every user found in it, a precise
 // identity search (left) separate from protocol-syntax filtering (right),
 // and a per-row "Correlate Session" action that drills into Session Analysis.
+/** 這條 SPI 屬於誰。**查不到就照實說「沒有註冊宣告過」** —— 那通常代表
+ *  註冊發生在擷取開始之前，是關於這份檔的事實，不是解析失敗。 */
+function ipsecLabel(spi: number, ipsec: import("@/data/source").Ipsec | null): string {
+  const sa = ipsec?.associations.find((a) => a.spi === spi);
+  if (!sa) return t("· SPI {spi} (no registration declared it)", { spi: `0x${spi.toString(16).padStart(8, "0")}` });
+  return t("· {from}→{to} SA, {alg}", { from: sa.sender, to: sa.receiver, alg: sa.ealg ?? "?" });
+}
+
+function ipsecTitle(spi: number, ipsec: import("@/data/source").Ipsec | null): string {
+  const sa = ipsec?.associations.find((a) => a.spi === spi);
+  if (!sa) {
+    return t("This ESP carries SPI {spi}, which no registration in this capture declared - the security association was most likely set up before the capture started.", { spi: `0x${spi.toString(16).padStart(8, "0")}` });
+  }
+  return t("IPsec SA negotiated in frame #{frame} for {who}. Encryption {alg}, integrity {ialg}. The keys (IK/CK) are never on the wire, so the payload cannot be read from this capture alone.", {
+    frame: sa.frame, who: sa.subscriber ?? "?", alg: sa.ealg ?? "?", ialg: sa.alg ?? "?",
+  });
+}
+
 export function DataMiningView({
   discoveredSessions,
   firstFrameBySupi,
@@ -85,7 +103,10 @@ export function DataMiningView({
   decodeNote,
   onRequestTree,
   onCorrelateSession,
+  ipsec,
 }: {
+  /** Gm 上談成的 SA。null＝還沒取到；ESP 那幾列會退回只顯示 SPI。 */
+  ipsec: import("@/data/source").Ipsec | null;
   /** 全母體的訂戶清單。**不是**由封包視窗聚合來的 —— 見 `source.ts`。 */
   discoveredSessions: DiscoveredSession[];
   firstFrameBySupi: Record<string, number>;
@@ -479,6 +500,14 @@ export function DataMiningView({
                       {/* **這一格是某則訊息的前半。** tshark 對非最後一片只報 IPv4 ——
                           那是它的實話，但讀的人會把它當成無關的 IP 流量，而一份
                           SIP over UDP 的擷取檔可能有四成長這樣。標出它屬於誰。 */}
+                      {/* **這格 ESP 屬於哪條 SA、誰談的。** 不說的話，一份 VoLTE
+                          擷取檔裡整片 `ESP` 就是看不懂的東西 —— 而工具其實
+                          從註冊裡知道它是誰的。 */}
+                      {p.espSpi !== undefined && (
+                        <span className="ml-1 font-normal text-fg-dim" title={ipsecTitle(p.espSpi, ipsec)}>
+                          {ipsecLabel(p.espSpi, ipsec)}
+                        </span>
+                      )}
                       {p.reassembledIn !== undefined && (
                         <span
                           className="ml-1 text-fg-dim font-normal"

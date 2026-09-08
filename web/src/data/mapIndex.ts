@@ -32,6 +32,8 @@ export interface IndexRow {
   frag_in?: number;
   /** 完整訊息那一格的協定（`SIP/SDP`）。 */
   frag_of?: string;
+  /** 這格 ESP 的 SPI。**不是 ESP 時整個鍵不存在。** */
+  spi?: number;
 }
 
 /**
@@ -90,6 +92,7 @@ export function rowToPacket(row: IndexRow): RawPacket {
     ...(row.frag_in !== undefined
       ? { reassembledIn: row.frag_in, fragmentOf: row.frag_of ?? "" }
       : {}),
+    ...(row.spi !== undefined ? { espSpi: row.spi } : {}),
     // decodeTree / hexDump 是懶載入的，這裡刻意不填。
   };
 }

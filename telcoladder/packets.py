@@ -74,6 +74,10 @@ COLUMN_FIELDS: tuple[str, ...] = (
     # **單趟就有** —— 不必為了它加 `-2`（實測那要多花約 15%，而往前看的
     # `ip.reassembled_in` 才需要兩趟）。封包清單靠它把分片列標成它其實屬於哪則訊息。
     "ip.fragment",
+    # **ESP 的 SPI。** ESP 不歸任何 adapter 管（沒有 ESP adapter），所以這是
+    # 封包清單唯一能認出「這格屬於哪條 SA」的線索 —— `ipsec.py` 靠它把線路上
+    # 的 ESP 對回註冊裡談成的那條 SA，進而對回訂戶。
+    "esp.spi",
 )
 
 #: 給人看的欄位標題，對應 Wireshark 的預設欄位。
@@ -152,6 +156,9 @@ class PacketRow:
     fragment_of: str = ""
     """完整訊息那一格的協定（`SIP/SDP`）。分片列顯示它，讀的人才知道那是什麼。"""
 
+    esp_spi: int | None = None
+    """這格 ESP 的 SPI。**不是 ESP 就是 None。**"""
+
     fragments: tuple[int, ...] = ()
     """**這一格**是由哪幾格重組出來的（只有重組完成的那一格有）。
 
@@ -225,7 +232,20 @@ def _row_from_layers(layers: dict[str, Any]) -> PacketRow | None:
         dst_port=_port(layers, "dstport"),
         protocols=_first(layers.get("frame_protocols")),
         fragments=tuple(_to_int(x) for x in (layers.get("ip_fragment") or []) if x),
+        esp_spi=_esp_spi(layers),
     )
+
+
+def _esp_spi(layers: dict) -> int | None:
+    """`esp.spi` 是 16 進位字串（`0x00001001`）。讀不出來就 None，**不填 0** ——
+    0 是一個合法的 SPI 值，拿它當「不知道」會讓下游分不出兩者。"""
+    raw = _first(layers.get("esp_spi"))
+    if not raw:
+        return None
+    try:
+        return int(raw, 16) if str(raw).lower().startswith("0x") else int(raw)
+    except ValueError:
+        return None
 
 
 def _port(layers: dict, side: str) -> int | None:

@@ -25,6 +25,7 @@ import {
   type DiameterFlows,
   type DiameterFlowRow,
   type Calls,
+  type Ipsec,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
 
@@ -61,6 +62,8 @@ export default function App() {
   const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
   /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
   const [flowSupi, setFlowSupi] = useState<string | null>(null);
+  /** Gm 的 IPsec SA（全母體）。null＝還沒取；進 Data Mining 才取。 */
+  const [ipsec, setIpsec] = useState<Ipsec | null>(null);
   /** 通話清單（全母體，後端算）。null＝還沒取；進通話視圖才取。 */
   const [calls, setCalls] = useState<Calls | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
@@ -148,6 +151,7 @@ export default function App() {
       .catch((err: unknown) => setOverviewError(err instanceof Error ? err.message : String(err)));
     // Diameter 流程表的 `note` 與梯形圖的 cause 白話也是後端用請求語言寫的 —— 清掉，
     // 視圖再進來時會重取（懶載入，不在這裡打）。
+    setIpsec(null);
     setCalls(null);
     setCallsError(null);
     setCallLadderByHandle({});
@@ -267,6 +271,7 @@ export default function App() {
           setBytesByFrame({});
           setTreeByFrame({});
           setFlowBySupi({});
+          setIpsec(null);
           setCalls(null);
           setCallsError(null);
           setCallLadderByHandle({});
@@ -305,6 +310,11 @@ export default function App() {
     },
     [source],
   );
+
+  const requestIpsec = useCallback(() => {
+    // 取不到就留 null —— 封包清單那幾列會退回只顯示 SPI，而不是假裝沒有 SA。
+    void source.loadIpsec().then(setIpsec).catch(() => setIpsec(null));
+  }, [source]);
 
   const requestCalls = useCallback(() => {
     setCallsError(null);
@@ -488,6 +498,8 @@ export default function App() {
         filterError={filterError}
         callFlow={flowSupi ? (flowBySupi[flowSupi] ?? null) : null}
         onRequestCallFlow={requestCallFlow}
+        ipsec={ipsec}
+        onRequestIpsec={requestIpsec}
         calls={calls}
         callsError={callsError}
         onRequestCalls={requestCalls}
