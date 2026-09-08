@@ -63,9 +63,13 @@ def session() -> Session:
 
 
 def _oracle_esp() -> dict[int, int]:
+    return _oracle_esp_of(FIXTURE)
+
+
+def _oracle_esp_of(pcap: Path) -> dict[int, int]:
     """tshark 自己說哪幾格是 ESP、SPI 是多少。"""
     proc = subprocess.run(
-        [str(find_tshark().path), "-r", str(FIXTURE), "-Y", "esp",
+        [str(find_tshark().path), "-r", str(pcap), "-Y", "esp",
          "-T", "fields", "-e", "frame.number", "-e", "esp.spi"],
         capture_output=True, text=True, encoding="utf-8", check=True,
     )
@@ -133,6 +137,45 @@ def test_encrypted_is_not_reported_as_readable(analysis) -> None:
     assert SecurityAssociation(spi=1, receiver="a", sender="b", ealg="NULL").readable
     assert not SecurityAssociation(spi=1, receiver="a", sender="b", ealg=None).readable
     assert not SecurityAssociation(spi=1, receiver="a", sender="b", ealg="aes-cbc").readable
+
+
+def test_a_null_encryption_association_is_reported_as_readable() -> None:
+    """**`readable` 的另一半，由真實資料走過。**
+
+    上面那條驗的是「宣告 aes-cbc 就不可讀」。反過來那一半 —— 明講 `ealg=null`
+    時內容確實看得到 —— 在 `ims-volte-call` 上沒有任何擷取檔走過，只有直接
+    建物件的單元斷言在驗。一條沒有真實資料走過的分支等於沒寫，所以
+    `ims-ipsec-null` 專門為它存在（TS 33.203 允許只做完整性保護）。
+    """
+    pcap = FIXTURES / "ims-ipsec-null" / "capture.pcap"
+    view = build(analyse(pcap, with_coverage=False), _oracle_esp_of(pcap))
+    assert view.associations, "一條 SA 都沒解出來"
+    assert all(sa.ealg == "null" for sa in view.associations)
+    assert all(sa.readable for sa in view.associations), (
+        "宣告 ealg=null 卻說看不進去 —— readable 的正向那半沒被走到"
+    )
+    # 兩端要判得出角色（`nf.py` 認 UE 靠 Contact），而不是裸 IP ——
+    # 借別份 fixture 的 Dialog 會讓 Contact 帶著別人的位址，實測踩過。
+    assert {sa.receiver for sa in view.associations} == {"UE", "P-CSCF"}
+    assert all(sa.subscriber for sa in view.associations)
+
+    doc = to_json(view)
+    assert doc["unmatched_frames"] == 0
+    assert sum(a["esp_frames"] for a in doc["associations"]) == doc["esp_total"]
+
+
+def test_the_null_fixture_really_carries_plaintext() -> None:
+    """**說「可讀」就要真的讀得到。**
+
+    宣告 `ealg=null` 卻塞填充位元組，是一句看起來合理的假話：工具說可讀、
+    使用者什麼也看不到。這條直接在位元組層面確認 ESP 裡就是明文 SIP。
+    """
+    raw = (FIXTURES / "ims-ipsec-null" / "capture.pcap").read_bytes()
+    assert b"OPTIONS sip:" in raw and b"SIP/2.0 200 OK" in raw
+
+    # 正面對照：加密的那份**不該**有明文的 ESP 酬載，否則上面那條分不出差別。
+    other = (FIXTURES / "ims-volte-call" / "capture.pcap").read_bytes()
+    assert b"OPTIONS sip:" not in other
 
 
 def test_an_esp_spi_nobody_declared_is_reported(analysis) -> None:
