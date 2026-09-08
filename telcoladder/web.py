@@ -90,6 +90,7 @@ from telcoladder.viewer import (
     correlation_json,
     decode_as_json,
     decode_json,
+    calls_json,
     diameter_flows_json,
     identities_json,
     select_flows,
@@ -405,6 +406,8 @@ class _Handler(BaseHTTPRequestHandler):
             ))
         elif not post and action == "overview":
             self._send_json(overview_json(session))
+        elif not post and action == "calls":
+            self._send_json(calls_json(session))
         elif not post and action == "diameter-flows":
             # `?flow=d:N` 只取那一條、含逐跳明細；不給就是表格（不含明細）。
             handle = (query.get("flow") or [""])[0]
@@ -414,6 +417,12 @@ class _Handler(BaseHTTPRequestHandler):
         elif not post and action == "callflow":
             supi = (query.get("supi") or [""])[0]
             identity_text = (query.get("identity") or [""])[0]
+            call_handle = (query.get("call") or [""])[0]
+            if call_handle:
+                payload = callflow_json(session, None, call=call_handle)
+                status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+                self._send_json(payload, status)
+                return
             diameter_handle = (query.get("diameter") or [""])[0]
             if diameter_handle:
                 # 第四種把手：`diameter=d:3`，`/diameter-flows` 表上那一列。

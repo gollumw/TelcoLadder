@@ -301,6 +301,13 @@ def parse(frame: Frame) -> list[Message]:
         callee = first(block.get("sip_sip_to_addr"))
         if callee:
             detail["To"] = str(callee)
+        # 主叫方**同時**是關聯鍵（`_identity_keys` 拿它當 IMPU）與顯示事實。
+        # 兩者用途不同：鍵用來歸戶，這一份用來在通話清單上寫「誰打給誰」。
+        # 不存的話，呈現層得自己去翻 `identity_keys` 找那把 IMPU —— 那是把
+        # 關聯機制當顯示欄位用，而兩者的形狀不保證一直一樣。
+        caller = first(block.get("sip_sip_from_addr"))
+        if caller:
+            detail["From"] = str(caller)
         ports = _media_ports(block)
         if ports:
             # E3 的接點。**現在只是記下來** —— 沒有 RTP adapter 讀它，

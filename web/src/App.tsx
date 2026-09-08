@@ -24,6 +24,7 @@ import {
   type PacketPage,
   type DiameterFlows,
   type DiameterFlowRow,
+  type Calls,
 } from "@/data/source";
 import type { ProtocolNode, RawPacket } from "@/lib/types";
 
@@ -60,6 +61,11 @@ export default function App() {
   const [flowBySupi, setFlowBySupi] = useState<Record<string, CallFlow | null>>({});
   /** 目前顯示的是誰的梯形圖 —— 決定要把哪一份交下去。 */
   const [flowSupi, setFlowSupi] = useState<string | null>(null);
+  /** 通話清單（全母體，後端算）。null＝還沒取；進通話視圖才取。 */
+  const [calls, setCalls] = useState<Calls | null>(null);
+  const [callsError, setCallsError] = useState<string | null>(null);
+  const [callLadderByHandle, setCallLadderByHandle] = useState<Record<string, CallFlow | null>>({});
+  const [callHandle, setCallHandle] = useState<string | null>(null);
   /** Diameter 流程表（全母體，後端算）。null＝還沒取；進 Diameter 視圖才取。 */
   const [diameterFlows, setDiameterFlows] = useState<DiameterFlows | null>(null);
   const [diameterFlowsError, setDiameterFlowsError] = useState<string | null>(null);
@@ -142,6 +148,9 @@ export default function App() {
       .catch((err: unknown) => setOverviewError(err instanceof Error ? err.message : String(err)));
     // Diameter 流程表的 `note` 與梯形圖的 cause 白話也是後端用請求語言寫的 —— 清掉，
     // 視圖再進來時會重取（懶載入，不在這裡打）。
+    setCalls(null);
+    setCallsError(null);
+    setCallLadderByHandle({});
     setDiameterFlows(null);
     setDiameterFlowsError(null);
     setDiameterFlowByHandle({});
@@ -258,6 +267,9 @@ export default function App() {
           setBytesByFrame({});
           setTreeByFrame({});
           setFlowBySupi({});
+          setCalls(null);
+          setCallsError(null);
+          setCallLadderByHandle({});
           setDiameterFlows(null);
           setDiameterFlowsError(null);
           setDiameterFlowByHandle({});
@@ -289,6 +301,29 @@ export default function App() {
           .then((flow) => setFlowBySupi((c) => ({ ...c, [supi]: flow })))
           .catch(() => setFlowBySupi((c) => ({ ...c, [supi]: null })));
         return { ...current, [supi]: null };
+      });
+    },
+    [source],
+  );
+
+  const requestCalls = useCallback(() => {
+    setCallsError(null);
+    void source
+      .loadCalls()
+      .then(setCalls)
+      .catch((err: unknown) => setCallsError(err instanceof Error ? err.message : String(err)));
+  }, [source]);
+
+  const requestCallLadder = useCallback(
+    (handle: string) => {
+      setCallHandle(handle);
+      setCallLadderByHandle((current) => {
+        if (handle in current) return current;
+        void source
+          .loadCallLadder(handle)
+          .then((flow) => setCallLadderByHandle((c) => ({ ...c, [handle]: flow })))
+          .catch(() => setCallLadderByHandle((c) => ({ ...c, [handle]: null })));
+        return { ...current, [handle]: null };
       });
     },
     [source],
@@ -453,6 +488,11 @@ export default function App() {
         filterError={filterError}
         callFlow={flowSupi ? (flowBySupi[flowSupi] ?? null) : null}
         onRequestCallFlow={requestCallFlow}
+        calls={calls}
+        callsError={callsError}
+        onRequestCalls={requestCalls}
+        callLadder={callHandle ? (callLadderByHandle[callHandle] ?? null) : null}
+        onRequestCallLadder={requestCallLadder}
         diameterFlows={diameterFlows}
         diameterFlowsError={diameterFlowsError}
         onRequestDiameterFlows={requestDiameterFlows}

@@ -37,7 +37,13 @@ from telcoladder.adapters import default_decode_as
 from telcoladder.decode import DecodeCache
 from telcoladder.decodeas import load_user_rules
 from telcoladder.framebytes import FrameBytesCache
-from telcoladder.packets import MAX_INDEX_ROWS, PacketRow, read_packet_rows, total_packets
+from telcoladder.packets import (
+    MAX_INDEX_ROWS,
+    PacketRow,
+    link_fragments,
+    read_packet_rows,
+    total_packets,
+)
 
 #: 閒置多久就釋放。15 分鐘是「泡杯咖啡回來還在」與「不要把客戶封包留一整天」
 #: 之間的取捨。`serve --idle-ttl` 可以改。
@@ -243,6 +249,10 @@ class Session:
     """Diameter 流程表（`diameterflows.flows_json`）的快取，**按語言分**（dict）——
     與 `overview` 同一個理由：cause 白話與但書是用當下語言選出來的字串。
     只快取表格；單條流程的逐跳明細不快取（它已限縮在一條流程）。"""
+
+    calls: object | None = field(default=None, repr=False)
+    """通話清單（`calls.calls_json`）的快取，**按語言分**（dict）——
+    與 `diameter_flows` 同一個理由：cause 白話與但書是用當下語言選出來的。"""
 
     tshark: object | None = field(default=None, repr=False)
     """已定位好的 tshark，在建立工作階段時解析一次。
@@ -505,6 +515,10 @@ def _index_into_as(session: Session, generation: int) -> None:
         if len(rows) % _PUBLISH_EVERY == 0:
             _publish(session, generation, rows)
 
+    # 分片指回它重組成的那一格。**要等整份索引在記憶體裡** —— 重組那一格排在
+    # 分片後面，串流讀到分片時答案還在未來（`packets.link_fragments` 的說明）。
+    # 索引期間的中途發佈看到的是未連結的列，那與今天的行為一樣；收尾這一次才有。
+    link_fragments(rows)
     _publish(session, generation, rows, truncated=truncated)
     with session.lock:
         session.progress.stage = "analyse"

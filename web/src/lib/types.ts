@@ -49,6 +49,12 @@ export interface RawPacket {
    *  實際值是 `NGAP/NAS-5GS`、`SCTP`、`TCP` 這類任意字串，由 tshark 的
    *  呈現決定且會隨版本改寫。原本的 8 值 union 是 mock 階段的產物。 */
   protocol: string;
+  /** 這一格是 IP 分片，完整的訊息在第幾格。**不是分片時 undefined。**
+   *  tshark 對非最後一片只報 `IPv4`；那是它的實話，但讀的人會以為那是無關的
+   *  IP 流量，而它其實是某則 SIP INVITE 的前半。 */
+  reassembledIn?: number;
+  /** 完整訊息那一格的協定（`SIP/SDP`）。 */
+  fragmentOf?: string;
   length: number;
   info: string;
   /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——

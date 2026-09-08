@@ -9,6 +9,7 @@ agent 講的不一樣」，而那種不一致沒有任何測試會自然抓到�
 
 from __future__ import annotations
 
+from telcoladder import calls as callsmod
 from telcoladder import diameterflows
 from telcoladder.causes import lookup
 from telcoladder.i18n import _
@@ -137,6 +138,27 @@ def diameter_events(analysis: Analysis, handle: str, *, wire: bool = True) -> di
     return result
 
 
+def call_events(analysis: Analysis, handle: str, *, wire: bool = True) -> dict:
+    """**一通電話**的梯形圖資料（`/calls` 表上那一列）。
+
+    與 `events()` 同一段渲染、同一種 JSON —— 通話視圖不另養一份梯形圖。
+    訊息集合是那一通的 SIP 訊息，程序段就是它自己那一段。
+
+    **刻意不含這通電話的 H.248／RTP**：那些接得上是靠 `identity.media_endpoint`
+    的橋，屬於訂戶那條流程；在這裡混進來會讓「這通電話有幾則訊息」與
+    `/calls` 表上的數字對不起來，而兩個數字不一致沒有任何一層會說。
+    """
+    calls = callsmod.build(analysis)
+    try:
+        call = callsmod.parse_handle(handle, calls)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    result = _render(analysis, list(call.messages), [call.procedure],
+                     supi=None, wire=wire)
+    result["call"] = handle
+    return result
+
+
 def _render(
     analysis: Analysis, messages: list[Message], procedures: list, *,
     supi: str | None, wire: bool, hosts: dict[str, dict] | None = None,
@@ -242,14 +264,21 @@ def _render(
         # 屬於哪一筆交易。線路上誰對誰（`from`／`to`）與訊息宣稱的邏輯路徑
         # （Origin-Host → Destination-Host）在有 DRA 的網路裡**本來就不同**，
         # 兩個都要看得到，DRA 視圖的檢視面板靠這幾個欄位講出「這是轉送的哪一腿」。
-        for source_key, target_key in (
-            ("origin-host", "origin_host"), ("destination-host", "destination_host"),
-            ("hop-by-hop-id", "hop_by_hop_id"), ("end-to-end-id", "end_to_end_id"),
-            ("relay-record", "route_record"), ("session-id", "session_id"),
-        ):
-            value = msg.detail.get(source_key)
-            if value:
-                event[target_key] = value
+        #
+        # **只給 Diameter。** 這幾個鍵不是 Diameter 專屬的名字 —— `sip.py` 也用
+        # `end-to-end-id`（它存的是 `Call-ID/CSeq`）、`session-id` 在別的協定上
+        # 也可能有。只看鍵在不在，SIP 的事件也會被塞進 Diameter 的路由面板，
+        # 而畫面上會出現「Message says: ? →（answer: no Destination-Host）」
+        # 這種對 SIP 毫無意義的句子（實測 VoLTE 通話的 INVITE 就是這樣）。
+        if msg.protocol == diameterflows.DIAMETER:
+            for source_key, target_key in (
+                ("origin-host", "origin_host"), ("destination-host", "destination_host"),
+                ("hop-by-hop-id", "hop_by_hop_id"), ("end-to-end-id", "end_to_end_id"),
+                ("relay-record", "route_record"), ("session-id", "session_id"),
+            ):
+                value = msg.detail.get(source_key)
+                if value:
+                    event[target_key] = value
         # 與**前一則**的間隔。第一則沒有前一則，留 None 而不是填 0 ——
         # 0 的意思是「零秒」，那是一個我們沒有觀測到的值。
         if index > 0:
@@ -315,4 +344,4 @@ def _render(
     }
 
 
-__all__ = ["SLOW_GAP", "diameter_events", "events"]
+__all__ = ["SLOW_GAP", "call_events", "diameter_events", "events"]

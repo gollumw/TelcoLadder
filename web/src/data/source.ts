@@ -221,6 +221,55 @@ export interface CallFlow {
   uncorrelatedDomains: TelecomDomain[];
 }
 
+// ── 通話（2026-09-08）─────────────────────────────────────────────────
+//
+// 看 VoLTE 的人問的是「誰打給誰、通了沒、講多久、誰掛的」，而梯形圖與工作
+// 階段表都以訂戶為軸。**全部由後端算**（`/api/<sid>/calls`，`telcoladder/calls.py`）：
+// 結局與 KPI 沿用 `procedures` 的判定，這裡只排版。
+
+export interface CallRow {
+  /** 把手：`c:3`，`loadCallLadder` 吃這個。 */
+  id: string;
+  flowId: number;
+  /** 主叫的原始位址（INVITE 的 `From`）。**這一端才是關聯鍵。** */
+  caller: string | null;
+  /** 主叫門號。**位址沒宣告是電話號碼時是 null** —— IMSI 推導的 IMPU
+   *  user part 是一串數字卻不是號碼，硬給會被拿去撥。 */
+  callerMsisdn: string | null;
+  /** 被叫的原始位址（`Request-URI` 或 `To`）。**只是事實，不是關聯鍵。** */
+  callee: string | null;
+  calleeMsisdn: string | null;
+  subscriber: string | null;
+  outcome: "success" | "failure" | "incomplete" | "ended-by-user";
+  cause: string | null;
+  /** INVITE 的最終回應碼（200／486／487／503…）。沒等到就是 null。 */
+  finalStatus: number | null;
+  /** 撥出到第一個 180／183。沒量到是 null，**不是 0**。 */
+  ringS: number | null;
+  /** 撥出到 200 OK。 */
+  answerS: number | null;
+  /** 200 OK 到 BYE。沒接通就是 null。 */
+  talkS: number | null;
+  /** `caller` | `callee` —— 誰掛的（BYE 的 From tag 比對；CANCEL 永遠是主叫）。 */
+  releasedBy: string | null;
+  messages: number;
+  failures: number;
+  startFrame: number;
+  endFrame: number;
+  startTs: number;
+  durationS: number;
+  note: string;
+}
+
+export interface Calls {
+  /** false＝這份檔一則 SIP 都沒有。**與「有 SIP 但零通電話」是兩件事** ——
+   *  後者是真實情況（只抓到註冊、或通話在擷取開始前就建立了）。 */
+  present: boolean;
+  sipMessages: number;
+  calls: CallRow[];
+  totals: { calls: number; answered: number; failed: number; endedByUser: number; incomplete: number };
+}
+
 // ── Diameter 流程（2026-09-07）────────────────────────────────────────
 //
 // DRA 維運人員看的那一面：不以訂戶為主軸，以 Session-Id／transaction／跳為單位。
@@ -503,6 +552,15 @@ export interface DataSource {
    * 都要實作** —— mock 沒有 Diameter，就回 `present: false` 的空表，不要丟例外：
    * 「這份檔沒有 Diameter」是一個正常狀態，畫面要能說出來。
    */
+  /**
+   * 通話清單：整份檔以「誰打給誰」為軸。**每個來源都要實作** —— 沒有 SIP 就回
+   * `present: false` 的空表，不要丟例外：那是一個正常狀態，畫面要說得出來。
+   */
+  loadCalls(): Promise<Calls>;
+
+  /** 一通電話的梯形圖（`/callflow?call=c:N`）。與 `loadCallFlow` 同一種 `CallFlow`。 */
+  loadCallLadder(handle: string): Promise<CallFlow>;
+
   loadDiameterFlows(): Promise<DiameterFlows>;
 
   /**

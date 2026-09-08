@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Iterator, Sequence, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +70,10 @@ COLUMN_FIELDS: tuple[str, ...] = (
     "frame.len",
     "_ws.col.info",
     "frame.protocols",
+    # **重組那一格會列出組成它的分片**（`[19, 20]`）。這是往回看的事實，所以
+    # **單趟就有** —— 不必為了它加 `-2`（實測那要多花約 15%，而往前看的
+    # `ip.reassembled_in` 才需要兩趟）。封包清單靠它把分片列標成它其實屬於哪則訊息。
+    "ip.fragment",
 )
 
 #: 給人看的欄位標題，對應 Wireshark 的預設欄位。
@@ -136,6 +140,25 @@ class PacketRow:
     拿它當「不知道」會讓下游分不出「真的是 0」與「我們沒看到」。
     ICMP、ARP 這類本來就沒有埠。"""
 
+    reassembled_in: int | None = None
+    """這一格是 IP 分片，而完整的訊息在第幾格。**不是分片就是 None。**
+
+    tshark 對非最後一片只報 `IPv4 / Fragmented IP protocol` —— 那是它的實話
+    （在那一格上還讀不出協定），但對讀的人是誤導：一份 SIP over UDP 的擷取檔
+    可能有四成的格長這樣，而它們其實是某則 INVITE 的前半。`coverage.py` 早就
+    懂這個形狀（它刻意不把分片算成「沒解碼」），只是封包清單沒說。
+    """
+
+    fragment_of: str = ""
+    """完整訊息那一格的協定（`SIP/SDP`）。分片列顯示它，讀的人才知道那是什麼。"""
+
+    fragments: tuple[int, ...] = ()
+    """**這一格**是由哪幾格重組出來的（只有重組完成的那一格有）。
+
+    與 `reassembled_in` 是同一件事的兩個方向：這個往回看、單趟就有；那個往前看，
+    要 `-2` 才有。所以連結由這一欄反轉出來，而不是多跑一趟（見 `link_fragments`）。
+    """
+
     protocols: str = ""
     """真實的協定堆疊，如 `sll:ethertype:ip:sctp:ngap:ngap:nas-5gs`。
 
@@ -201,6 +224,7 @@ def _row_from_layers(layers: dict[str, Any]) -> PacketRow | None:
         src_port=_port(layers, "srcport"),
         dst_port=_port(layers, "dstport"),
         protocols=_first(layers.get("frame_protocols")),
+        fragments=tuple(_to_int(x) for x in (layers.get("ip_fragment") or []) if x),
     )
 
 
@@ -296,6 +320,42 @@ def _ek_lines(
             raise PacketColumnsUnavailable(
                 _('tshark failed to read {name} (exit {code}):\n{stderr}').format(name=pcap.name, code=proc.returncode, stderr=stderr.strip())
             )
+
+
+def link_fragments(rows: "list[PacketRow]") -> int:
+    """把分片列指回它重組成的那一格。**就地改寫 `rows`**，回傳連起來的分片數。
+
+    ## 為什麼不在串流的時候做
+
+    重組完成的那一格**排在分片後面**（重組要等最後一片到）。串流讀到分片時，
+    答案還在未來 —— 那正是 `ip.reassembled_in` 需要 `-2` 的原因。這裡改用
+    重組那一格自己列出的 `ip.fragment`（往回看，單趟就有），等整份索引在
+    記憶體裡了再反轉一次，成本是 O(格數)、零額外 tshark。
+
+    ## 為什麼這件事值得做
+
+    tshark 對非最後一片只報 `IPv4 / Fragmented IP protocol`。那是它的實話，
+    但對讀的人是誤導：那些格其實是某則 SIP INVITE 的前半，而一份 SIP over UDP
+    的擷取檔可能有四成長這樣。`coverage.py` 早就懂這個形狀（刻意不把它們算成
+    「沒解碼」），封包清單卻沒說 —— 引擎知道、畫面不說，是本專案 §4 那一類。
+
+    **重組那一格自己也在它的 `ip.fragment` 裡**（`[19, 20]`），那一格不是分片，
+    跳過它 —— 不跳的話它會指向自己，畫面上會多一列「重組於本格」的廢話。
+    """
+    position = {row.number: i for i, row in enumerate(rows)}
+    linked = 0
+    for row in rows:
+        if not row.fragments:
+            continue
+        for number in row.fragments:
+            if number == row.number:
+                continue  # 重組那一格自己也在清單裡
+            at = position.get(number)
+            if at is None:
+                continue  # 被 display filter 濾掉、或超過索引上限 —— 不猜
+            rows[at] = replace(rows[at], reassembled_in=row.number, fragment_of=row.protocol)
+            linked += 1
+    return linked
 
 
 def read_packet_rows(
@@ -423,6 +483,7 @@ def capture_duration(pcap: Path, *, tshark: Tshark | None = None) -> float | Non
 
 __all__ = [
     "COLUMN_FIELDS",
+    "link_fragments",
     "COLUMN_TITLES",
     "capture_duration",
     "MAX_INDEX_ROWS",

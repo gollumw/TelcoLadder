@@ -334,10 +334,30 @@ def test_ek_field_keys_this_version_of_tshark_emits() -> None:
         )
 
     # **一定會出現的欄位**：frame 層與 _ws.col.*，每一格都有。
-    always = [f for f in COLUMN_FIELDS if not f.split(".")[0] in ("tcp", "udp", "sctp")]
+    #
+    # `ip.*` 與傳輸層一樣是**條件欄位** —— `ip.fragment` 只在「重組完成的那一格」
+    # 出現，一般封包沒有。放進這一組會讓它在一格 NGAP 上必然缺席而誤報。
+    # 但**不放寬成「有出現就好」**（那會讓 key 名的漂移躲過去），改成下面
+    # 找一格真的有分片的來問 —— 與傳輸層那三個同一個做法。
+    conditional = ("tcp", "udp", "sctp", "ip")
+    always = [f for f in COLUMN_FIELDS if f.split(".")[0] not in conditional]
     out = keys_for("frame.number==7")
     for field in always:
         require(field, out, "frame 7")
+
+    # **IP 分片**：`ims-volte-call` 有一則被切成兩片的 SIP INVITE，重組完成的
+    # 那一格才帶 `ip.fragment`。少了這一段，封包清單的分片標示會在某個版本
+    # 靜默失效（`link_fragments` 拿不到清單就一個都連不起來）。
+    fragmented = require_capture("ims-volte-call/capture.pcap")
+    frag_args = ["-r", str(fragmented), "-T", "ek", "-Y", "ip.fragment", "-c", "200"]
+    for field in COLUMN_FIELDS:
+        frag_args += ["-e", field]
+    frag_out = subprocess.run(
+        [str(tshark.path), *frag_args], capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=True,
+    ).stdout
+    assert frag_out.strip(), "這份 fixture 沒有重組完成的分片 —— 這一段會退化成沒在驗東西"
+    require("ip.fragment", frag_out, "重組完成的那一格")
 
     # **看傳輸層的欄位**：一格封包只會有一種傳輸層，所以要各自找一格真的
     # 用到它的來問。這裡刻意不放寬成「有出現就好」—— 那會讓「埠的 key 名

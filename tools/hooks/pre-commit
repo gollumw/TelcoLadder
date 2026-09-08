@@ -32,8 +32,20 @@ set -u
 
 # A repo-local venv is the documented setup; fall back to whatever python3 is
 # on PATH so the hook still works for people who use pipx, uv, or a global env.
+# **git worktree 也要找得到 venv。** worktree 是原 repo 的另一份工作目錄，
+# 裡面沒有自己的 `.venv`（那是被 ignore 的），於是這裡會退回系統 python3 ——
+# 而系統 python3 通常沒有 pytest，下面那段就印一句警告然後 exit 0。
+# **結果是在 worktree 裡開發時，資料紅線的提交層整個失效而且看起來正常**
+# （警告只在 stderr，而 git 的鉤子輸出很容易被滑過去）。2026-09-08 實測踩到。
+#
+# `--git-common-dir` 在 worktree 裡指向主 repo 的 `.git`，它的上一層就是主
+# checkout —— 從那裡借 venv。
+_main=$(git rev-parse --git-common-dir 2>/dev/null)
+_main=${_main%/.git}
 if [ -x .venv/bin/python ]; then
     PY=.venv/bin/python
+elif [ -n "$_main" ] && [ -x "$_main/.venv/bin/python" ]; then
+    PY="$_main/.venv/bin/python"
 elif command -v python3 >/dev/null 2>&1; then
     PY=python3
 else

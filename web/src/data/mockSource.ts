@@ -25,7 +25,7 @@ import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { DataSource, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
+import type { Calls, DataSource, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
 
 export function mockSource(): DataSource {
   // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
@@ -170,6 +170,20 @@ export function mockSource(): DataSource {
 
     async applyDecodeAs() {
       throw new Error(t("Sample data cannot change decoding - there is no capture to re-run."));
+    },
+
+    async loadCalls(): Promise<Calls> {
+      // 範例資料是 5G 的，沒有 SIP。**回誠實的空表，不丟例外。**
+      return {
+        present: false,
+        sipMessages: 0,
+        calls: [],
+        totals: { calls: 0, answered: 0, failed: 0, endedByUser: 0, incomplete: 0 },
+      };
+    },
+
+    async loadCallLadder(handle: string) {
+      throw new Error(t("Sample data has no call {handle}.", { handle }));
     },
 
     async loadDiameterFlows(): Promise<DiameterFlows> {

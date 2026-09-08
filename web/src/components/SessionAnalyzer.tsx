@@ -2,7 +2,7 @@
 
 import { getLang, setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
-import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Network, Sun } from "lucide-react";
+import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Network, PhoneCall, Sun } from "lucide-react";
 import { setTheme, useTheme } from "../theme";
 import { cn } from "@/lib/utils";
 import { currentToken, type Dataset, type PacketPage } from "@/data/source";
@@ -11,13 +11,16 @@ import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { DiameterFlowsView } from "./DiameterFlowsView";
+import { CallsView } from "./CallsView";
 
 //: 三層，由淺入深：總覽（誰失敗、為什麼）→ 梯形圖（一個訂戶的信令時序）
 //: → 封包（Wireshark 視圖）。2026-09-05 之前只有後兩層，而且落地在封包清單 ——
 //: 對第一次打開這份檔的人，那是一面十六進位牆。
 //: 第四個 `diameter`（2026-09-07）與梯形圖同一層、換一個座標系：不以訂戶為主軸，
 //: 以 Session-Id／transaction／跳為單位 —— DRA 維運人員問的是那個問題。
-type Mode = "overview" | "flow" | "diameter" | "mining";
+//: 第五個 `calls`（2026-09-08）：與梯形圖同一層、換一個座標系 —— 不以訂戶為軸，
+//: 以「誰打給誰」為軸。看 VoLTE 的人問的是那個問題。
+type Mode = "overview" | "flow" | "calls" | "diameter" | "mining";
 
 // **這裡是 GUI 與資料之間唯一的接縫（Phase 2 起）。**
 // 移植進來時是 `const { … } = mockData`（靜態 import）。改成 prop 之後這個
@@ -35,6 +38,11 @@ export default function SessionAnalyzer({
   filterError,
   callFlow,
   onRequestCallFlow,
+  calls,
+  callsError,
+  onRequestCalls,
+  callLadder,
+  onRequestCallLadder,
   diameterFlows,
   diameterFlowsError,
   onRequestDiameterFlows,
@@ -65,6 +73,13 @@ export default function SessionAnalyzer({
   /** 目前聚焦訂戶的梯形圖。null＝還沒取到。 */
   callFlow: import("@/data/source").CallFlow | null;
   onRequestCallFlow: (supi: string) => void;
+  /** 通話清單（`/calls`，全母體）。null＝還沒取。 */
+  calls: import("@/data/source").Calls | null;
+  callsError: string | null;
+  onRequestCalls: () => void;
+  /** 目前打開那一通的梯形圖。null＝還沒取到。 */
+  callLadder: import("@/data/source").CallFlow | null;
+  onRequestCallLadder: (handle: string) => void;
   /** Diameter 流程表（`/diameter-flows`，全母體）。null＝還沒取。 */
   diameterFlows: import("@/data/source").DiameterFlows | null;
   diameterFlowsError: string | null;
@@ -114,6 +129,15 @@ export default function SessionAnalyzer({
   useEffect(() => {
     if (mode === "flow" && focusedSupi) onRequestCallFlow(focusedSupi);
   }, [mode, focusedSupi, onRequestCallFlow]);
+
+  //: 通話視圖：進來才取清單；點了一通才取那通的梯形圖。
+  const [callHandle, setCallHandle] = useState<string | null>(null);
+  useEffect(() => {
+    if (mode === "calls" && calls === null && !callsError) onRequestCalls();
+  }, [mode, calls, callsError, onRequestCalls]);
+  useEffect(() => {
+    if (mode === "calls" && callHandle) onRequestCallLadder(callHandle);
+  }, [mode, callHandle, onRequestCallLadder]);
 
   //: Diameter 視圖：進來才取表；點了一條才取那條的梯形圖。
   const [diameterHandle, setDiameterHandle] = useState<string | null>(null);
@@ -234,6 +258,17 @@ export default function SessionAnalyzer({
               </button>
               <button
                 type="button"
+                onClick={() => setMode("calls")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "calls" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
+                )}
+              >
+                <PhoneCall className="h-3.5 w-3.5" />
+                {t("Calls")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode("diameter")}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
@@ -285,6 +320,22 @@ export default function SessionAnalyzer({
             error={overviewError}
             onOpenLadder={handleOpenLadder}
             onOpenPacket={handleViewInDataMining}
+          />
+        ) : mode === "calls" ? (
+          <CallsView
+            calls={calls}
+            error={callsError}
+            selected={callHandle}
+            onSelect={setCallHandle}
+            callFlow={callLadder}
+            correlationEntries={correlationEntries}
+            rawPackets={rawPackets}
+            identities={sessionIdentities}
+            selectedFrame={selectedFrame}
+            onSelectFrame={setSelectedFrame}
+            treeByFrame={treeByFrame}
+            onRequestTree={onRequestTree}
+            onViewInDataMining={handleViewInDataMining}
           />
         ) : mode === "diameter" ? (
           <DiameterFlowsView
