@@ -61,6 +61,26 @@ IMPI = f"{IMSI}@{DOMAIN}"
 IMPU = f"sip:{IMSI}@{DOMAIN}"
 CALLEE = "tel:+15550100"   # NANP 保留給文件用的 555-01xx（不是任何人的號碼）
 
+#: **網路斷言的主叫號碼**（RFC 3325 的 `P-Asserted-Identity`）。
+#:
+#: 主叫的 `From` 是 IMSI 推導的 IMPU（`sip:<IMSI>@ims.…`），**裡面沒有任何
+#: 撥得通的號碼** —— 真實的 VoLTE 網路正是這個樣子，而使用者要看的「這通
+#: 電話是幾號打的」只寫在 P-CSCF 插進來的這個標頭裡。同一個 NANP 555-01xx
+#: 文件段，與被叫差一號。
+CALLER_TEL = "tel:+15550101"
+
+#: **UE 自己要求的身分**（RFC 3325 的 `P-Preferred-Identity`），**故意與網路
+#: 斷言的那個不同號**。
+#:
+#: 這一號存在只為了一件事：讓「不可以拿 `P-Preferred-Identity` 當號碼」這條
+#: 規則**有資料可以踩**。兩個標頭若都寫同一號，那條規則的測試就永遠通過，
+#: 而下一個人順手把它接成號碼來源時沒有任何東西會紅 —— 那正是 `archmap` 的
+#: f-string 註解攔不住第二次的同一個形狀（註解不會紅，測試才會）。
+#:
+#: 終端要求某個身分是合法的（一個訂戶可以有多個 IMPU），但那是**請求不是事實**：
+#: P-CSCF 認證過後會把它拿掉，換成自己斷言的那個。
+CALLER_PREFERRED_TEL = "tel:+15550102"
+
 UE = "192.0.2.10"
 PCSCF = "198.51.100.6"
 SCSCF = "198.51.100.7"
@@ -109,13 +129,21 @@ class Dialog:
                 extra: list[tuple[str, str]] | None = None, body: str = "",
                 content_type: str = "application/sdp", with_to_tag: bool = True,
                 path: list[str] | None = None, t0: float = 0.0, step: float = 0.002,
-                hop_extra: list[tuple[str, str]] | None = None) -> list[Packet]:
+                hop_extra: list[tuple[str, str]] | None = None,
+                downstream_extra: list[tuple[str, str]] | None = None) -> list[Packet]:
         """同一則請求在每一腿上各一格：Via 多一個、Record-Route 多一個。
 
         `hop_extra` **只放在第一腿**。RFC 3329 的 `Security-Client` /
         `Security-Verify` 是 UE 與 P-CSCF 之間的逐跳標頭，規範上不得再往前送 ——
         把它蓋在每一腿上，會讓「這條 SA 的兩端是誰」多出兩組互相矛盾的答案，
         而每一組看起來都合理。`extra` 仍然是每一腿都有的那種。
+
+        `downstream_extra` 是**反過來的那一半：只放在第一腿之後**，也就是
+        P-CSCF 往網內轉送時自己加上去的東西。RFC 3325 的
+        `P-Asserted-Identity` 就是這種 —— UE 送的是 `P-Preferred-Identity`
+        （它「想」用哪個身分，不可信），P-CSCF 認證過之後把它換成自己斷言的
+        `P-Asserted-Identity`。**兩者蓋在同一腿上就分不出「使用者說的」與
+        「網路說的」**，而號碼這種東西正是這個差別最要緊的地方。
         """
         path = path or PATH
         legs = _legs(path) if by_caller else _legs(list(reversed(path)))
@@ -143,6 +171,8 @@ class Dialog:
             headers += extra or []
             if i == 0:
                 headers += hop_extra or []
+            else:
+                headers += downstream_extra or []
             if body:
                 headers.append(("Content-Type", content_type))
             raw = _g.sip_message(f"{method} {request_uri} SIP/2.0", headers, body)
@@ -397,9 +427,15 @@ def registration(t0: float) -> list[Packet]:
 
 def call_answered(t0: float) -> list[Packet]:
     d = Dialog("call-1@192.0.2.10", "c1caller", "c1callee")
-    pre = [("Supported", "100rel, precondition"), ("P-Preferred-Identity", f"<{IMPU}>")]
+    # **使用者說的與網路說的分屬不同腿。** UE 在第一腿送 `P-Preferred-Identity`
+    # （它想用哪個公開身分，不可信）；P-CSCF 認證過後把它換成自己斷言的
+    # `P-Asserted-Identity`，往網內轉送（RFC 3325 §5）。主叫的 `From` 是 IMSI
+    # 推導的 IMPU，**號碼只寫在斷言那個標頭裡** —— 真實 VoLTE 就是這個樣子。
+    pre = [("Supported", "100rel, precondition")]
     out: list[Packet] = []
-    out += d.request("INVITE", 1, extra=pre, body=sdp(49152), with_to_tag=False, t0=t0)
+    out += d.request("INVITE", 1, extra=pre, body=sdp(49152), with_to_tag=False, t0=t0,
+                     hop_extra=[("P-Preferred-Identity", f"<{CALLER_PREFERRED_TEL}>")],
+                     downstream_extra=[("P-Asserted-Identity", f"<{CALLER_TEL}>")])
     out += d.response(100, "Trying", 1, "INVITE", with_to_tag=False, t0=t0 + 0.012)
     out += d.response(183, "Session Progress", 1, "INVITE", body=sdp(60000, MGW), t0=t0 + 0.180,
                       extra=[("Require", "100rel"), ("RSeq", "1")])
@@ -421,7 +457,13 @@ def call_answered(t0: float) -> list[Packet]:
 def call_busy(t0: float) -> list[Packet]:
     d = Dialog("call-2@192.0.2.10", "c2caller", "c2callee")
     out: list[Packet] = []
-    out += d.request("INVITE", 1, body=sdp(49154), with_to_tag=False, t0=t0)
+    # **號碼被斷言了，但主叫要求不顯示**（RFC 3323 的 `Privacy: id`，也就是
+    # 一般說的來電號碼隱藏）。網路知道是幾號，被叫看不到 —— 這兩件事同時
+    # 成立，而「被叫說沒看到號碼」正是這類工單的原話。`Privacy` 是主叫的
+    # 要求，端到端；`P-Asserted-Identity` 是 P-CSCF 加的，所以只在第一腿之後。
+    out += d.request("INVITE", 1, body=sdp(49154), with_to_tag=False, t0=t0,
+                     extra=[("Privacy", "id")],
+                     downstream_extra=[("P-Asserted-Identity", f"<{CALLER_TEL}>")])
     out += d.response(100, "Trying", 1, "INVITE", with_to_tag=False, t0=t0 + 0.010)
     out += d.response(180, "Ringing", 1, "INVITE", t0=t0 + 0.900)
     out += d.response(486, "Busy Here", 1, "INVITE", t0=t0 + 3.100)

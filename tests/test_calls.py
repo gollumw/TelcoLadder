@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -80,10 +81,111 @@ def test_every_call_names_both_ends(doc) -> None:
     for call in doc["calls"]:
         assert call["caller"], "主叫是 INVITE 的 From，一定有"
         assert call["callee"], "被叫是 Request-URI／To，一定有"
-        # 這份 fixture 的主叫是 IMSI 推導的 IMPU（沒有門號），被叫是 tel: 號碼。
-        # 兩者都照實 —— 一邊給得出號碼、一邊給不出，正是這個欄位該有的樣子。
-        assert call["caller_msisdn"] is None
+        # 這份 fixture 的主叫 `From` 是 IMSI 推導的 IMPU（**沒有門號**），被叫是
+        # tel: 號碼。所以主叫的號碼只可能來自網路斷言 —— 這條原本斷言「主叫
+        # 一律 None」，在擷取檔還沒有 `P-Asserted-Identity` 之前那是對的；
+        # 現在**翻面而不是刪掉**：號碼有沒有，與它說不說得出出處，必須同進退。
+        assert msisdn_of(call["caller"]) is None, (
+            "主叫的 From 解得出號碼的話，底下幾條就分不出號碼是從 From 來的"
+            "還是從網路斷言來的 —— 那時它們會退化成沒在驗東西"
+        )
+        assert (call["caller_msisdn"] is None) == (call["caller_msisdn_source"] is None), (
+            "有號碼卻說不出出處，或有出處卻沒有號碼"
+        )
         assert call["callee_msisdn"], "被叫是 tel: 位址，號碼給得出來"
+
+
+# ── 號碼的出處：網路斷言 vs 終端自稱 ──────────────────────────────────
+
+
+def test_the_caller_number_comes_from_the_network_not_the_handset(doc) -> None:
+    """**主叫的號碼只寫在 P-CSCF 斷言的標頭裡，`From` 裡沒有。**
+
+    真實 VoLTE 的主叫 `From` 是 IMSI 推導的 IMPU（`sip:<IMSI>@ims.…`），
+    裡面沒有任何撥得通的號碼；使用者問的「這通電話是幾號打的」只寫在
+    `P-Asserted-Identity`（RFC 3325）。少了它，通話清單能寫出被叫的號碼、
+    主叫永遠是一片空白 —— **而畫面上看起來只像「這通沒有號碼」**。
+    """
+    asserted = [c for c in doc["calls"] if c["caller_msisdn_source"] == "p-asserted-identity"]
+    assert asserted, "沒有一通的號碼來自網路斷言 —— 這條會退化成沒在驗東西"
+    for call in asserted:
+        assert call["caller_msisdn"], "說了出處卻沒有號碼"
+        # 正面對照：這通的 From 確實給不出號碼，所以號碼只可能來自斷言。
+        assert msisdn_of(call["caller"]) is None
+        assert call["caller_asserted"], "說號碼來自斷言，卻沒有斷言的原文"
+
+
+def test_the_assertion_is_read_from_a_later_hop_not_the_first_leg(analysis, doc) -> None:
+    """**`P-Asserted-Identity` 是 P-CSCF 插的，第一腿上沒有。**
+
+    只看 `call.invite`（訊息串裡第一則 INVITE，也就是 UE→P-CSCF 那一腿）
+    會得到「這份檔沒有斷言」，而檔案裡明明有。與 `ipsec.py` 的逐跳標頭
+    同一個形狀：標頭屬於某一跳，不屬於整通電話。
+
+    這裡拿 tshark 當 oracle，**不寫死哪一格** —— 寫死的話換一份 fixture
+    就退化成沒在驗東西。
+    """
+    calls = build(analysis)
+    asserted = [c for c in doc["calls"] if c["caller_msisdn_source"] == "p-asserted-identity"]
+    assert asserted, "沒有一通帶斷言"
+
+    by_id = {c.handle: c for c in calls}
+    for doc_call in asserted:
+        call = by_id[doc_call["id"]]
+        invites = [m for m in call.messages if m.label == "INVITE"]
+        assert len(invites) > 1, (
+            "這通只有一腿 INVITE —— 那樣「掃過每一腿」與「只看第一則」分不出差別"
+        )
+        first_leg = invites[0]
+        assert "P-Asserted-Identity" not in first_leg.detail, (
+            "第一腿就帶著斷言 —— 那樣只看第一則也會過，這條驗不到東西"
+        )
+        assert doc_call["caller_msisdn_frame"] != first_leg.frame
+
+
+def test_a_withheld_number_is_still_known_to_the_network(doc) -> None:
+    """**「網路不知道號碼」與「知道但主叫要求別顯示」是兩件事。**
+
+    來電號碼隱藏（RFC 3323 的 `Privacy: id`）之下，網路仍然斷言了號碼，
+    只是被叫看不到。兩者講成同一句話，「被叫說沒看到號碼」這種工單就分不出
+    是哪一種 —— 而兩種的處理方式完全不同（一邊查用戶設定，一邊查網路）。
+    """
+    withheld = [c for c in doc["calls"] if c["caller_privacy"]]
+    assert withheld, "這份 fixture 沒有要求隱藏的通話 —— 這條會退化成沒在驗東西"
+    for call in withheld:
+        assert call["caller_privacy"] == "id"
+        assert call["caller_msisdn"], "要求隱藏不代表網路不知道 —— 號碼仍然斷言過"
+    # 正面對照：**不是每一通都要求隱藏**，否則這個欄位分不出兩種狀態。
+    assert [c for c in doc["calls"] if not c["caller_privacy"]]
+
+
+def test_the_handsets_own_claim_is_never_used_as_the_number(doc) -> None:
+    """**`P-Preferred-Identity` 是終端「想」用哪個身分的請求，不是事實。**
+
+    P-CSCF 認證過後會把它拿掉，換成自己斷言的那個。照著讀等於讓終端自己
+    宣告它是幾號 —— 而那個號碼會被拿去撥。
+
+    fixture 裡這兩個標頭**故意不同號**，所以這條分得出差別；同號的話它
+    永遠通過，下一個人把它接成號碼來源時不會有任何東西紅。
+    """
+    # **拿 tshark 當 oracle，不讀我們自己的 detail。** adapter 刻意不存這個
+    # 標頭，所以從 detail 找會一無所獲而測試「通過」—— 那證明的是我們沒存，
+    # 不是我們沒用。要證的是：**號碼確實在擷取檔裡，而它沒有被報出來。**
+    proc = subprocess.run(
+        [str(find_tshark().path), "-r", str(FIXTURES / "ims-volte-call" / "capture.pcap"),
+         "-Y", "sip.P-Preferred-Identity", "-T", "fields", "-e", "sip.P-Preferred-Identity"],
+        capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    preferred = {n for n in (msisdn_of(line.strip())
+                             for line in proc.stdout.splitlines() if line.strip()) if n}
+    assert preferred, (
+        "擷取檔裡沒有帶號碼的 P-Preferred-Identity —— 這條會退化成沒在驗東西"
+    )
+    reported = {c["caller_msisdn"] for c in doc["calls"] if c["caller_msisdn"]}
+    assert reported, "一通都沒有號碼"
+    assert not (reported & preferred), (
+        f"終端自稱的號碼被當成主叫號碼報出來了：{sorted(reported & preferred)}"
+    )
 
 
 def test_the_outcomes_match_the_subscriber_view(analysis, doc) -> None:

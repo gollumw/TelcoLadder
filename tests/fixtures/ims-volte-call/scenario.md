@@ -24,6 +24,29 @@ P-CSCF），所以只出現在 UE↔P-CSCF 那一腿 —— 蓋在每一腿上�
   client 那一對載送 ESP，另一對只有宣告。
 * **沒有換金鑰、沒有重新註冊。** ESP 的內容是填充位元組，不是真的加密流量。
 
+## 主叫號碼：網路斷言的那一個（2026-09-08 加）
+
+主叫的 `From` 是 IMSI 推導的 IMPU（`sip:<IMSI>@ims.…`），**裡面沒有任何撥得通
+的號碼** —— 真實的 VoLTE 就是這個樣子。使用者問的「這通電話是幾號打的」只寫在
+P-CSCF 認證過後插入的 `P-Asserted-Identity`（RFC 3325）。
+
+三個標頭分屬不同的腿與不同的可信度，這份檔把三者都放進去：
+
+| 標頭 | 誰放的 | 哪幾腿 | 算不算數 |
+|---|---|---|---|
+| `P-Preferred-Identity` | UE | 只有第一腿（UE→P-CSCF） | **不算** —— 終端「想」用哪個身分的請求，未經認證 |
+| `P-Asserted-Identity` | P-CSCF | 第一腿之後 | 算 —— 網路認證過後自己的斷言 |
+| `Privacy` | UE | 每一腿（端到端） | 是另一件事：要求別顯示給被叫 |
+
+**兩個號碼故意不同號。** 若 `P-Preferred-Identity` 與 `P-Asserted-Identity` 寫同
+一號，「不可以拿終端自稱的當號碼」那條規則就永遠通過，下一個人把它接成號碼
+來源時不會有任何東西紅 —— 註解攔不住，測試才攔得住。
+
+**四通刻意分成三種狀態**，讓每條路都有真實資料走過：接通的那通有斷言、沒有
+隱私要求；忙線那通有斷言、**且主叫要求不顯示**（網路知道號碼、被叫看不到 ——
+「被叫說沒看到號碼」這種工單就是要分出這兩種）；另外兩通完全沒有斷言，號碼
+照實留白。
+
 ## Why it exists
 
 `4g-volte-end-to-end/` shows SIP on one leg (UE↔P-CSCF). A real core capture
@@ -76,6 +99,12 @@ both frames).
   cannot tell Iq from Mn from Mp, so no reference point is claimed.
 * **Via relay detection is not exercised** — the multi-leg shape is here,
   the rule is not written yet.
+* **號碼的可信度只驗到「來源分得開」。** 這份檔證得了工具會拿網路斷言的那個
+  號碼、不會拿終端自稱的；證不了斷言本身是對的 —— `P-Asserted-Identity` 只在
+  信任網域內有效（RFC 3325 §5），跨網域被剝除或偽造這件事，一份自己寫出來的
+  擷取檔沒有辦法驗。
+* **終止端沒有號碼問題。** 被叫一律是 `tel:` 位址，所以「被叫的號碼從哪裡來」
+  在這份檔上只有一條路走過。
 
 ## Regenerate
 

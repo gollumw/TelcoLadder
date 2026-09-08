@@ -308,6 +308,22 @@ def parse(frame: Frame) -> list[Message]:
         caller = first(block.get("sip_sip_from_addr"))
         if caller:
             detail["From"] = str(caller)
+        # **網路斷言的主叫身分**（RFC 3325）。`From` 是主叫自己填的，而在 IMS
+        # 裡它通常是 IMSI 推導的 IMPU —— **裡面沒有任何撥得通的號碼**。使用者
+        # 問的「這通電話是幾號打的」只寫在這個標頭裡，由 P-CSCF 認證過之後插入。
+        #
+        # **`P-Preferred-Identity` 刻意不讀。** 那是 UE「想」用哪個身分的請求，
+        # 未經網路認證；P-CSCF 收到後會把它拿掉再換成自己的斷言。把兩者當成
+        # 同一件事，等於讓終端自己宣告它是幾號 —— 而那個號碼會被拿去撥。
+        asserted = first(block.get("sip_sip_P-Asserted-Identity"))
+        if asserted:
+            detail["P-Asserted-Identity"] = str(asserted)
+        # 主叫要求不顯示號碼（RFC 3323）。**與「網路不知道號碼」是兩件事**：
+        # 網路斷言了、但要求被叫看不到。混為一談的話，「被叫沒看到號碼」這種
+        # 工單就查不出是哪一種，而兩種的處理方式完全不同。
+        privacy = first(block.get("sip_sip_Privacy"))
+        if privacy:
+            detail["Privacy"] = str(privacy)
         # **Gm 上的 IPsec SA**（RFC 3329 的 Security-Client／Server／Verify，
         # 3GPP TS 33.203 的 `ipsec-3gpp`）。這裡只交線路事實：原始標頭字串。
         #

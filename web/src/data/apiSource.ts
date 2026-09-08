@@ -616,6 +616,10 @@ interface CallJson {
   flow_id: number;
   caller: string | null;
   caller_msisdn: string | null;
+  caller_msisdn_source: CallRow["callerMsisdnSource"];
+  caller_msisdn_frame: number | null;
+  caller_asserted: string | null;
+  caller_privacy: string | null;
   callee: string | null;
   callee_msisdn: string | null;
   subscriber: string | null;
@@ -658,6 +662,10 @@ function toCalls(body: CallsJson): Calls {
       flowId: c.flow_id,
       caller: c.caller,
       callerMsisdn: c.caller_msisdn,
+      callerMsisdnSource: c.caller_msisdn_source,
+      callerMsisdnFrame: c.caller_msisdn_frame,
+      callerAsserted: c.caller_asserted,
+      callerPrivacy: c.caller_privacy,
       callee: c.callee,
       calleeMsisdn: c.callee_msisdn,
       subscriber: c.subscriber,

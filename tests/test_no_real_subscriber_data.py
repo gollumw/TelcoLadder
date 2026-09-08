@@ -672,6 +672,14 @@ _INVENTED_NUMBERS: dict[str, str] = {
     # RFC 3966 的 phone-context 那條路。**刻意不用真實國碼的行動號碼形狀** ——
     # 那正是這道網存在的理由。
     "5550100": "NANP documentation range 555-01xx in local format, doc example",
+    # 同一份 fixture 的主叫號碼，由 P-CSCF 以 `P-Asserted-Identity` 斷言
+    # （主叫的 `From` 是 IMSI 推導的 IMPU，裡面沒有號碼 —— 真實 VoLTE 的樣子）。
+    # 同一個 555-01xx 段，與被叫差一號。
+    "15550101": "NANP documentation range 555-01xx, the fixture's asserted caller",
+    # 同一份 fixture 裡 UE 自己要求的身分（`P-Preferred-Identity`），**故意與
+    # 上面那個不同號** —— 「終端說的不算數」那條規則要有資料可以踩，兩者同號
+    # 的話那條測試永遠通過。
+    "15550102": "NANP documentation range 555-01xx, the handset's unverified claim",
 }
 
 

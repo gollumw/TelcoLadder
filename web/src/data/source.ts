@@ -271,6 +271,17 @@ export interface CallRow {
   /** 主叫門號。**位址沒宣告是電話號碼時是 null** —— IMSI 推導的 IMPU
    *  user part 是一串數字卻不是號碼，硬給會被拿去撥。 */
   callerMsisdn: string | null;
+  /** 這個號碼是從哪裡來的：`p-asserted-identity`（網路認證後斷言，RFC 3325）
+   *  或 `from`（主叫自己填的）。**兩者可信度不同**，所以號碼旁邊要說得出
+   *  是哪一種；判不出號碼時是 null。 */
+  callerMsisdnSource: "p-asserted-identity" | "from" | null;
+  /** 斷言出現在哪一格 —— 使用者要回去看原文時靠這個。 */
+  callerMsisdnFrame: number | null;
+  /** 網路斷言的主叫身分原文（`P-Asserted-Identity`）。 */
+  callerAsserted: string | null;
+  /** 主叫要求的隱私（`Privacy: id`＝來電號碼隱藏）。**與「網路不知道號碼」
+   *  是兩件事**：網路斷言了，只是被叫看不到。 */
+  callerPrivacy: string | null;
   /** 被叫的原始位址（`Request-URI` 或 `To`）。**只是事實，不是關聯鍵。** */
   callee: string | null;
   calleeMsisdn: string | null;
