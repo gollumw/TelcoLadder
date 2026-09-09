@@ -66,6 +66,12 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
     ("gtpv2", frozenset({"MME", "SGW"})): "S11",
     ("gtpv2", frozenset({"SGW", "PGW"})): "S5/S8",
     ("gtp", frozenset({"SGW", "PGW"})): "S5/S8",
+    # ── 4G ↔ 5G 互通（TS 23.501 §4.3）：MME 與 AMF 之間的 GTPv2-C ──
+    #
+    # 兩端角色都來自線路：F-TEID 的介面型別 40 是 `N26 AMF GTP-C interface`、
+    # 12 是 `S10 MME GTP-C interface`（`adapters/gtpv2.py` 的 `CONTROL_PLANE_ROLES`）。
+    # 沒有推論 —— 一份 N26 擷取檔上，AMF 自己在 F-TEID 裡說了它是 AMF。
+    ("gtpv2", frozenset({"MME", "AMF"})): "N26",
 
     # ── IMS（TS 23.228）。T7 只收 Gm ──
     #

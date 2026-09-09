@@ -22,7 +22,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import connection_scope, scoped
+from telcoladder.identity import connection_scope, gtp_tunnels, scoped
 from telcoladder.model import (
     RELEASE_BY_CORE, RELEASE_BY_RAN, RELEASE_INITIATOR_KEY,
     CauseRef, Endpoint, IdKey, IdKind, Message,
@@ -190,6 +190,19 @@ _UE_CONTEXT_RELEASE = 23
 #: eNB 請求釋放。**不切段、不釋放識別碼**，只記「是無線側先開口的」。
 _UE_CONTEXT_RELEASE_REQUEST = 18
 
+#: `HandoverType` 的名稱（TS 36.413）。**由 `tshark -G values` 產生**：
+#:
+#:   tshark -G values | awk -F'\t' '$2=="s1ap.HandoverType"'
+HANDOVER_TYPES: dict[int, str] = {
+    0: "intralte",
+    1: "ltetoutran",
+    2: "ltetogeran",
+    3: "utrantolte",
+    4: "gerantolte",
+    5: "eps-to-5gs",
+    6: "fivegs-to-eps",
+}
+
 #: `RRC-Establishment-Cause` 的名稱（TS 36.413）。**由 `tshark -G values` 產生**：
 #:
 #:   tshark -G values | awk -F'\t' '$2=="s1ap.RRC_Establishment_Cause"'
@@ -250,6 +263,15 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
         value = _to_int(block.get(field))
         if value is not None:
             keys.add(scoped(kind, scope, value))
+    # E-RAB 的 S1-U 隧道端點（HandoverRequest 帶 SGW 的、Acknowledge 帶 eNB 的、
+    # InitialContextSetup 同理）。**這是 S1AP 接到 GTPv2 的橋**：換手時目標側的
+    # S1AP 訊息不帶 IMSI，只有 MME 從 Create Session Response 拿到、再放進
+    # HandoverRequest 的那個 F-TEID 同時出現在兩邊 —— 與 5G 的 N4↔N2 靠 GTP-U
+    # 端點搭橋是同一件事（`identity.gtp_tunnel`），一份定義。
+    keys |= gtp_tunnels(
+        block.get("s1ap_s1ap_gTP_TEID"),
+        block.get("s1ap_s1ap_transportLayerAddressIPv4"),
+    )
     return frozenset(keys)
 
 
@@ -289,6 +311,14 @@ def parse(frame: Frame) -> list[Message]:
             name = RRC_ESTABLISHMENT_CAUSES.get(_to_int(establishment) or -1)
             if name:
                 detail["rrc-establishment-cause"] = name
+
+        # 換手的方向（HandoverRequired／HandoverRequest 的 HandoverType IE）。
+        # 與 `ngap.py` 同一個鍵名；`procedures` 靠它把 5GS→EPS 與 EPS→5GS 分成兩種段。
+        handover_type = _to_int(block.get("s1ap_s1ap_HandoverType"))
+        if handover_type is not None:
+            name = HANDOVER_TYPES.get(handover_type)
+            if name:
+                detail["handover-type"] = name
 
         # UE 在哪裡：TAI 的 TAC 與 E-UTRAN CGI 的 cell。與 `ngap.py` 同一對鍵名，
         # `summary` 分組時不分世代。

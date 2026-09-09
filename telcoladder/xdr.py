@@ -75,6 +75,9 @@ def procedure_record(p: Procedure) -> dict:
         "timer": p.timer,
         "timer_gap_s": p.timer_gap_s,
         "timer_frames": list(p.timer_frames) if p.timer_frames else None,
+        # 換手的兩段時延（準備、執行）；非換手段全 null。加欄不升版。
+        "ho_prep_s": p.ho_prep_s,
+        "ho_exec_s": p.ho_exec_s,
     }
 
 

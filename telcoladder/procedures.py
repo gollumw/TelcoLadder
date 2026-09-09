@@ -148,6 +148,14 @@ KINDS: tuple[_Kind, ...] = (
     # Attach 從來沒被切過段**：4G fixture 的 xDR 只有 SIP 那幾列。
     _Kind("attach", "Attach request",
           ("Attach accept", "Attach complete", "InitialContextSetupResponse")),
+    # 換手：來源側的 HandoverRequired 開段（NGAP 與 S1AP 的 initiating label 都是
+    # `HandoverPreparation`，**要逐字相等** —— `HandoverPreparationResponse` 是
+    # 它的前綴），目標側的 HandoverNotify 收段（兩個世代的 label 都是
+    # `HandoverNotification`）；N26 上的 Forward Relocation Complete Acknowledge
+    # 也算收段。方向（5GS→EPS／EPS→5GS）由開段訊息的 `handover-type` 決定，
+    # 名字在 `_finish` 裡改寫（`_HANDOVER_KIND_BY_TYPE`）。
+    _Kind("handover", "HandoverPreparation",
+          ("HandoverNotification", "Forward Relocation Complete Acknowledge"), exact=True),
     # **釋放段可以由三種訊息開**，同一個 kind：gNB／eNB 的請求（誰先開口的，
     # 在 `Message.detail[RELEASE_INITIATOR_KEY]`）、AMF 的 Command（NGAP 的
     # label 沒有後綴）、MME 的 Command（S1AP 有 `MESSAGE_NAMES` 的正名）。
@@ -229,6 +237,12 @@ class Procedure:
     """量到的間隔（秒）。"""
     timer_frames: tuple[int, int] | None = None
     """(啟動定時器的那一格, 到期後收場的那一格)。使用者要回去看原文時靠這個。"""
+
+    # ── 換手的 KPI（2026-09-09）。非換手段一律 None：沒量到的不填。
+    ho_prep_s: float | None = None
+    """準備時延：HandoverRequired 到 HandoverCommand（來源側等目標側準備好資源）。"""
+    ho_exec_s: float | None = None
+    """執行時延：HandoverCommand 到 HandoverNotify（UE 真的切過去了）。"""
 
 
 def _opens(msg: Message) -> _Kind | None:
@@ -338,8 +352,20 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
 
     ps_ids = {m.detail[PDU_SESSION_ID] for m in window if PDU_SESSION_ID in m.detail}
 
+    # 換手：方向來自開段訊息的 HandoverType（線路事實），KPI 是三個里程碑的間隔。
+    kind_name = kind.name
+    ho_prep = ho_exec = None
+    if kind.name == "handover":
+        kind_name = _HANDOVER_KIND_BY_TYPE.get(window[0].detail.get("handover-type", ""), "handover")
+        command = next((m for m in window if m.label == "HandoverPreparationResponse"), None)
+        notify = next((m for m in window if "HandoverNotification" in m.label), None)
+        if command is not None:
+            ho_prep = round(command.ts - window[0].ts, 6)
+            if notify is not None:
+                ho_exec = round(notify.ts - command.ts, 6)
+
     return Procedure(
-        kind=kind.name,
+        kind=kind_name,
         supi=supi,
         subscriber=subscriber,
         outcome=outcome,
@@ -364,8 +390,18 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         timer_frames=(
             (timer_hint.started_by.frame, timer_hint.ended_by.frame) if timer_hint else None
         ),
+        ho_prep_s=ho_prep,
+        ho_exec_s=ho_exec,
     )
 
+
+#: 換手段的名字，依開段訊息的 `handover-type`（adapter 從 HandoverType IE 讀的名稱）。
+#: 兩個世代的 IE 值不同（NGAP 的 `fivegs-to-eps` 是 1，S1AP 的是 6），名稱一樣 ——
+#: 所以鍵是名稱。查不到的（intra5gs、intralte…）就是一般的 `handover`。
+_HANDOVER_KIND_BY_TYPE = {
+    "fivegs-to-eps": "handover-5gs-to-eps",
+    "eps-to-5gs": "handover-eps-to-5gs",
+}
 
 #: Diameter 的訊息在 `Message.detail` 上帶的兩把鑰匙。字串各寫一次就是等著漂移，
 #: 所以從 adapter import。

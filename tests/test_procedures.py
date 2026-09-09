@@ -299,6 +299,8 @@ PROCEDURE_FIELDS = {
     # 2026-09-09：收場的間隔吻合哪個 NAS 定時器（名稱、秒數、兩格）；沒吻合全 null。
     # 加欄不升版。
     "timer", "timer_gap_s", "timer_frames",
+    # 2026-09-09：換手的準備與執行時延；非換手段全 null。加欄不升版。
+    "ho_prep_s", "ho_exec_s",
 }
 
 

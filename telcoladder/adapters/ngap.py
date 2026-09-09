@@ -127,6 +127,16 @@ _UE_CONTEXT_RELEASE = 41
 #: gNB 請求釋放（TS 38.413）。**不切段、不釋放識別碼**，只記「是無線側先開口的」。
 _UE_CONTEXT_RELEASE_REQUEST = 42
 
+#: `HandoverType` 的名稱（TS 38.413）。**由 `tshark -G values` 產生**：
+#:
+#:   tshark -G values | awk -F'\t' '$2=="ngap.HandoverType"'
+HANDOVER_TYPES: dict[int, str] = {
+    0: "intra5gs",
+    1: "fivegs-to-eps",
+    2: "eps-to-5gs",
+    3: "fivegs-to-utran",
+}
+
 #: `RRCEstablishmentCause` 的名稱（TS 38.413 §9.3.1.111）。
 #:
 #: **由 `tshark -G values` 產生，不手抄**；改版時重跑核對，`tests/test_release_attribution.py`
@@ -261,6 +271,14 @@ def parse(frame: Frame) -> list[Message]:
             name = RRC_ESTABLISHMENT_CAUSES.get(establishment)
             if name:
                 detail["rrc-establishment-cause"] = name
+
+        # 換手的方向（HandoverRequired／HandoverCommand 的 HandoverType IE）——
+        # 5GS→EPS 與 EPS→5GS 在 `procedures` 是兩種不同的段，名字從這裡來。
+        handover_type = _to_int(block.get("ngap_ngap_HandoverType"))
+        if handover_type is not None:
+            name = HANDOVER_TYPES.get(handover_type)
+            if name:
+                detail["handover-type"] = name
 
         # UE 在哪裡：UserLocationInformation 的 TAC 與 NR cell（InitialUEMessage、
         # UplinkNASTransport…）。只照抄，供 `summary` 的「失敗集中在哪裡」分組。
