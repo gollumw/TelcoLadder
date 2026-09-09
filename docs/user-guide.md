@@ -74,9 +74,11 @@ full path):
 
 ## 2. Installation and environment check
 
-**Windows and macOS/Linux are both CI-verified platforms** (700+ tests).
-Every push runs Ubuntu on three Python versions plus macOS and
-Windows on 3.13 — regressions on any platform surface immediately.
+**Windows and macOS/Linux are both CI-verified platforms.** Every push runs
+the full suite on Ubuntu with three Python versions plus macOS and Windows on
+3.13 — regressions on any platform surface immediately. The suite's size is
+not quoted here because a number in prose goes stale the week after it is
+written; the CI badge on the README is live.
 
 ### Windows (first install)
 
