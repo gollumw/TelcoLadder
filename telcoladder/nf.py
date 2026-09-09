@@ -110,6 +110,12 @@ S1AP_PORT = 36412
 #: **回話不必另外列** —— 回應走的是相反方向，所以查到之後對調即可。
 #: 只收方向沒有疑義的那幾個；不在表上的一律不投票。
 _S1AP_ROLES: dict[int, tuple[str, str]] = {
+    # 換手（TS 36.413 §8.4）：準備由來源 eNB 發起，資源配置是 MME 對目標 eNB 下的，
+    # 完成通知與取消都是 eNB 送的。回應方向相反，查到後對調。
+    0: ("eNB", "MME"),    # HandoverPreparation（HandoverRequired）
+    1: ("MME", "eNB"),    # HandoverResourceAllocation（HandoverRequest）
+    2: ("eNB", "MME"),    # HandoverNotification（HandoverNotify）
+    4: ("eNB", "MME"),    # HandoverCancel
     9: ("MME", "eNB"),    # InitialContextSetup
     10: ("MME", "eNB"),   # Paging
     11: ("MME", "eNB"),   # downlinkNASTransport
@@ -121,9 +127,17 @@ _S1AP_ROLES: dict[int, tuple[str, str]] = {
 }
 
 #: 只有 gNB 會主動發起的 NGAP 程序。收到方必為 AMF。
-_GNB_INITIATED = {"NGSetup", "InitialUEMessage", "RANConfigurationUpdate", "UERadioCapabilityInfoIndication"}
+_GNB_INITIATED = {
+    "NGSetup", "InitialUEMessage", "RANConfigurationUpdate", "UERadioCapabilityInfoIndication",
+    # 換手（TS 38.413 §8.4）：準備、完成通知、取消、路徑切換都是 gNB 開口的。
+    "HandoverPreparation", "HandoverNotification", "HandoverCancel", "PathSwitchRequest",
+}
 #: 只有 AMF 會主動發起的 NGAP 程序。
-_AMF_INITIATED = {"AMFConfigurationUpdate", "AMFStatusIndication", "Paging", "InitialContextSetup", "DownlinkNASTransport"}
+_AMF_INITIATED = {
+    "AMFConfigurationUpdate", "AMFStatusIndication", "Paging", "InitialContextSetup", "DownlinkNASTransport",
+    # 資源配置（HandoverRequest）是 AMF 對目標 gNB 下的。
+    "HandoverResourceAllocation",
+}
 
 #: NAS 在時序圖上要畫成 UE ↔ AMF。gNB 只是透明轉送者，
 #: 把 NAS 畫在 gNB↔AMF 那一段是照封包畫，而不是照協定語意畫。

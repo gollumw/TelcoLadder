@@ -106,6 +106,9 @@ const PROCEDURE_LABEL: Record<string, string> = {
   deregistration: "Deregistration",
   "ue-context-release": "Context release",
   attach: "Attach (4G)",
+  handover: "Handover",
+  "handover-5gs-to-eps": "Handover 5GS→EPS",
+  "handover-eps-to-5gs": "Handover EPS→5GS",
   "sip-register": "IMS registration",
   "sip-call": "Call (SIP)",
 };

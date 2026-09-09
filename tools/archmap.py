@@ -152,7 +152,7 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "掛在 S1AP 底下，走 `adapters/carrier.py` 的共用機制。**IMSI 進 `SUPI`**"
      "（T3 的單向門）。加密計數走 `blind_spots()` 鉤子 —— **核心一行沒改**。"
      "cause 表在 `data/causes/nas_eps_*.yaml`（EMM ＋ ESM，87 條）；條號同樣不印。"),
-    ("4G 控制面", "adapters.gtpv2", "S11 · S5/S8", "shipped",
+    ("4G 控制面", "adapters.gtpv2", "S11 · S5/S8 · N26", "shipped",
      "承載建立。**控制面與使用者面的 TEID 分成兩個號碼空間**（T3 的 `GTP_TEID_C`）——"
      "同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，"
      "走通用的 `NF_ROLE_HINTS_KEY`，**`nf.py` 不認得 GTPv2**。"),
