@@ -645,12 +645,12 @@ def render_markdown(doc: dict) -> str:
     # `null` 那一列要印出來 —— 讀的人要知道有幾則失敗是位置不明的。
     # 只在**兩個以上的訂戶**有失敗時印 —— 一個人的失敗談不上「集中」，印了只是
     # 吃 token（這份 Markdown 有字數預算，`test_markdown_stays_within_budget`）。
+    # 標題底下直接是表 —— 沒有引言句。第一版有一句「N 則失敗、M 個訂戶」，而那兩個
+    # 數字表裡每一列都有；它讓 multi-imsi 在 tshark 4.2 的措辭下多出 12 個字元、
+    # 超過預算（CI 紅、本機 4.6 綠）。
     blast = doc.get("blast_radius")
     if blast and blast["subscribers"] >= 2:
         out += ["", f'## {_("Where the failures are")}', ""]
-        out.append(_("{failures} failure(s), {subscribers} subscriber(s). Counts by location and core element; no score.").format(
-            failures=blast["failures"], subscribers=blast["subscribers"]))
-        out.append("")
         labels = {"by_tac": "TAC", "by_cell": _("Cell"), "by_dnn": "DNN", "by_nf": _("Element")}
         out += _table(
             [_("Dimension"), _("Value"), _("Failures"), _("Subscribers")],

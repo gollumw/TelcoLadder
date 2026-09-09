@@ -440,8 +440,6 @@ CATALOG: dict[str, str] = {
         '{message} 之後 {gap} 秒沒有回應：吻合 {timer} 的預設值（{seconds} 秒，{spec}）—— 與該定時器到期一致',
     'Where the failures are':
         '失敗集中在哪裡',
-    '{failures} failure(s), {subscribers} subscriber(s). Counts by location and core element; no score.':
-        '{subscribers} 個訂戶共 {failures} 則失敗。依位置與核網元件計數，沒有評分。',
     'Cell':
         '細胞',
     'Element':
