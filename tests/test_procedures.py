@@ -293,6 +293,9 @@ PROCEDURE_FIELDS = {
     # 2026-09-06：SIP 通話的 KPI 與釋放原因。非通話段全 null（沒量到的不填）。
     # 加欄不升版。
     "ring_s", "answer_s", "talk_s", "released_by", "release_cause", "final_status",
+    # 2026-09-09：`ue-context-release` 段是誰先開口的（`ran`／`core`），線路事實；
+    # 其他段 null。加欄不升版。
+    "release_initiator",
 }
 
 

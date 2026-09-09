@@ -811,6 +811,20 @@ export function SessionAnalysisView({
                       {t("· identity from {carrier} carrier", { carrier: selectedEvent.identitySource })}
                     </span>
                   )}
+                  {/* **這次釋放是誰先開口的。** 空口掉線與核網踢人是兩條完全不同的
+                      排查路徑，而 label 裡看不出方向 —— 這是線路事實，adapter 讀的。 */}
+                  {selectedEvent.releaseInitiator && (
+                    <span className="text-signal-amber">
+                      {selectedEvent.releaseInitiator === "ran"
+                        ? t("· release requested by the RAN")
+                        : t("· release ordered by the core")}
+                    </span>
+                  )}
+                  {selectedEvent.rrcEstablishmentCause && (
+                    <span className="text-fg-dim">
+                      {t("· RRC cause {cause}", { cause: selectedEvent.rrcEstablishmentCause })}
+                    </span>
+                  )}
                   {selectedEvent.causeText && <span className="text-signal-red font-semibold">· {selectedEvent.causeText}</span>}
                 </div>
                 {/* **Diameter 的逐則路由事實。** 線路上誰對誰（箭頭）與訊息自己宣稱的

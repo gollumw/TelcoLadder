@@ -326,6 +326,10 @@ export interface CallFlowEventJson {
   identity_source?: string;
   /** 這一格實際疊了哪些協定（`ngap,nas-5gs`）。只在線路視圖有。 */
   protocols?: string;
+  /** 這次釋放是誰先開口的（`ran`／`core`）。只在釋放的請求與命令那兩則上有。 */
+  release_initiator?: "ran" | "core";
+  /** 這次 RRC 連線是為了什麼（`mo-Signalling`…）。只在 InitialUEMessage 上有。 */
+  rrc_establishment_cause?: string;
   /** 與前一則的間隔（秒）。**第一則沒有這個鍵**，不是 0。 */
   delta?: number;
   /** 間隔超過 `viewer.SLOW_GAP`。 */
@@ -376,6 +380,8 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     // 合法的間隔值，用 `??` 以外的寫法會把它當成「沒有」。
     ...(event.identity_source ? { identitySource: event.identity_source } : {}),
     ...(event.protocols ? { protocolStack: event.protocols } : {}),
+    ...(event.release_initiator ? { releaseInitiator: event.release_initiator } : {}),
+    ...(event.rrc_establishment_cause ? { rrcEstablishmentCause: event.rrc_establishment_cause } : {}),
     ...(event.delta !== undefined ? { deltaSeconds: event.delta } : {}),
     ...(event.slow !== undefined ? { slow: event.slow } : {}),
     ...(event.origin_host ? { originHost: event.origin_host } : {}),

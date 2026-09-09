@@ -98,7 +98,9 @@ from dataclasses import dataclass, field
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
 from telcoladder.causes import is_user_outcome
-from telcoladder.model import CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef
+from telcoladder.model import (
+    RELEASE_INITIATOR_KEY, CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef,
+)
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
 
@@ -140,7 +142,17 @@ KINDS: tuple[_Kind, ...] = (
           ("Service accept", "InitialContextSetupResponse")),
     _Kind("deregistration", "Deregistration request",
           ("Deregistration accept",)),
+    # **釋放段可以由三種訊息開**，同一個 kind：gNB／eNB 的請求（誰先開口的，
+    # 在 `Message.detail[RELEASE_INITIATOR_KEY]`）、AMF 的 Command（NGAP 的
+    # label 沒有後綴）、MME 的 Command（S1AP 有 `MESSAGE_NAMES` 的正名）。
+    # 請求之後的 Command 是同 kind 的 opener，照規則 ③ 併進同一段 —— 所以
+    # 「請求 → 命令 → 完成」是一段，`release_initiator` 看第一則。
+    # **S1AP 的 Command 原本不在這裡**：4G 的釋放從來沒被切成段過。
+    _Kind("ue-context-release", "UEContextReleaseRequest",
+          ("UEContextReleaseResponse", "UEContextReleaseComplete"), exact=True),
     _Kind("ue-context-release", "UEContextRelease",
+          ("UEContextReleaseResponse", "UEContextReleaseComplete"), exact=True),
+    _Kind("ue-context-release", "UEContextReleaseCommand",
           ("UEContextReleaseResponse", "UEContextReleaseComplete"), exact=True),
 )
 
@@ -196,6 +208,12 @@ class Procedure:
     是結束這通電話的最終回應碼。文字由呈現層查表。"""
     final_status: int | None = None
     """INVITE 的最終回應碼（200、486、487、503…）。沒等到就是 None。"""
+
+    release_initiator: str | None = None
+    """`ue-context-release` 段：`"ran"`（gNB／eNB 先送了 ReleaseRequest）或
+    `"core"`（AMF／MME 直接下 Command，前面沒有無線側的請求）。**線路事實**：
+    取自段的第一則訊息是哪一種（adapter 填 `RELEASE_INITIATOR_KEY`）。
+    其他 kind 一律 None。"""
 
 
 def _opens(msg: Message) -> _Kind | None:
@@ -307,6 +325,11 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         protocols=tuple(sorted({m.protocol for m in window})),
         note=note,
         sequence=_match_sequence(failures),
+        # 誰先開口的，看**第一則**：請求開的段是無線側，Command 開的段是核網。
+        release_initiator=(
+            window[0].detail.get(RELEASE_INITIATOR_KEY)
+            if kind.name == "ue-context-release" else None
+        ),
     )
 
 

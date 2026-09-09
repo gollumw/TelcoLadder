@@ -118,6 +118,13 @@ export interface CallFlowEvent {
   /** 這一格裡實際疊了哪些協定（`ngap,nas-5gs`）。線路視圖把同一格的多則
    *  訊息收攏成一列時，「裡面還有什麼」只有這裡講得出來。 */
   protocolStack?: string;
+  /** 這次放掉 UE context 是誰先開口的：`ran`（gNB／eNB 送了 ReleaseRequest）
+   *  或 `core`（AMF／MME 直接下 Command）。**線路事實，不是推論** —— 只在
+   *  釋放的請求與命令那兩則事件上有。 */
+  releaseInitiator?: "ran" | "core";
+  /** 這次 RRC 連線是為了什麼（`mo-Signalling`／`mo-Data`／`emergency`…）。
+   *  只在 InitialUEMessage 上有；名稱來自靜態表，不是 tshark 的字串。 */
+  rrcEstablishmentCause?: string;
   /** 與前一則訊息的間隔（秒）。第一則沒有前一則，所以整個鍵不存在 ——
    *  **不填 0**，那會宣稱一個我們沒有觀測到的值。 */
   deltaSeconds?: number;

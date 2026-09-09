@@ -23,7 +23,10 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import connection_scope, scoped
-from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
+from telcoladder.model import (
+    RELEASE_BY_CORE, RELEASE_BY_RAN, RELEASE_INITIATOR_KEY,
+    CauseRef, Endpoint, IdKey, IdKind, Message,
+)
 
 NAME = "s1ap"
 
@@ -184,6 +187,22 @@ _CAUSE_GROUPS = {
 #:
 #: 18（`UEContextReleaseRequest`，eNB→MME）刻意不列 —— 它只是請求。
 _UE_CONTEXT_RELEASE = 23
+#: eNB 請求釋放。**不切段、不釋放識別碼**，只記「是無線側先開口的」。
+_UE_CONTEXT_RELEASE_REQUEST = 18
+
+#: `RRC-Establishment-Cause` 的名稱（TS 36.413）。**由 `tshark -G values` 產生**：
+#:
+#:   tshark -G values | awk -F'\t' '$2=="s1ap.RRC_Establishment_Cause"'
+RRC_ESTABLISHMENT_CAUSES: dict[int, str] = {
+    0: "emergency",
+    1: "highPriorityAccess",
+    2: "mt-Access",
+    3: "mo-Signalling",
+    4: "mo-Data",
+    5: "delay-TolerantAccess",
+    6: "mo-VoiceCall",
+    7: "mo-ExceptionData",
+}
 
 #: 隨 UE context 一起被放掉的識別碼。eNB 與 MME 都會把放掉的號碼配給下一個 UE；
 #: 少了這個宣告，同一對號碼的前後兩位訂戶會被 `correlate` 併成一條流程，
@@ -267,6 +286,17 @@ def parse(frame: Frame) -> list[Message]:
         establishment = first(block.get("s1ap_s1ap_RRC_Establishment_Cause"))
         if establishment is not None:
             detail["RRCEstablishmentCause"] = str(establishment)
+            name = RRC_ESTABLISHMENT_CAUSES.get(_to_int(establishment) or -1)
+            if name:
+                detail["rrc-establishment-cause"] = name
+
+        # **這次釋放是誰先開口的 —— 線路上的事實。** 18（`UEContextReleaseRequest`）
+        # 只有 eNB 會送；23 的 initiatingMessage（Command）只有 MME 會送。
+        # 與 `ngap.py` 同一條判準；原因照舊走 cause 表，這裡不另外編白話。
+        if code == _UE_CONTEXT_RELEASE_REQUEST and outcome == "initiating":
+            detail[RELEASE_INITIATOR_KEY] = RELEASE_BY_RAN
+        elif code == _UE_CONTEXT_RELEASE and outcome == "initiating":
+            detail[RELEASE_INITIATOR_KEY] = RELEASE_BY_CORE
 
         releases = (
             frozenset(k for k in keys if k[0] in _RELEASABLE)
