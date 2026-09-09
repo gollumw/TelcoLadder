@@ -1,6 +1,6 @@
 # Userplane — the first capture with real N3 GTP-U
 
-Self-generated on a local Open5GS + UERANSIM testbed (2026-08-21). Apache-2.0,
+Self-generated on a local Open5GS + UERANSIM testbed (2026-08-21). PolyForm Noncommercial 1.0.0,
 same as the rest of this repo. No third-party licensing constraints, no
 customer data.
 

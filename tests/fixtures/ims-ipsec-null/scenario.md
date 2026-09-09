@@ -1,6 +1,6 @@
 # ims-ipsec-null — 完整性保護但不加密的 Gm SA
 
-以 `make.py` 逐位元組寫出，自產，隨本 repo 的授權（Apache-2.0）。
+以 `make.py` 逐位元組寫出，自產，隨本 repo 的授權（PolyForm Noncommercial 1.0.0）。
 重現：`python3 make.py`。輸出可重現（固定時間戳、無隨機），任何人都可以重跑並
 `diff` 驗證這個檔沒有被動過手腳。
 

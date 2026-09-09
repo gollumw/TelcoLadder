@@ -2,7 +2,7 @@
 
 Derived from `../5gc-e2e/capture.pcap` by `make.py`. Same provenance and
 licence as its source — self-generated on a local Open5GS + UERANSIM testbed,
-Apache-2.0, no third-party constraints, no customer data.
+PolyForm Noncommercial 1.0.0, no third-party constraints, no customer data.
 
 ## Why it exists
 

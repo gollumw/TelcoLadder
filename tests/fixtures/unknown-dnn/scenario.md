@@ -1,6 +1,6 @@
 # The failure you cannot see — ciphered NAS
 
-Self-generated on a local Open5GS + UERANSIM testbed. Apache-2.0.
+Self-generated on a local Open5GS + UERANSIM testbed. PolyForm Noncommercial 1.0.0.
 
 ## Injection
 

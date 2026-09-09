@@ -1,6 +1,6 @@
 # 5G Service requests with 5G-S-TMSI, hand-encoded NGAP
 
-**Written byte-by-byte by `make.py`** (Apache-2.0, this repository) — NGAP
+**Written byte-by-byte by `make.py`** (PolyForm Noncommercial 1.0.0, this repository) — NGAP
 APER for `InitialUEMessage` / `DownlinkNASTransport` over SCTP, NAS-5GS
 plaintext. Addresses are RFC 5737, PLMN is E.212 test network 001/01,
 TMSIs are invented. Regenerate with `python3 make.py`; the output is

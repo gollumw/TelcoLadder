@@ -1,6 +1,6 @@
 # Diameter exported raw: link type USER 0, no IP, no transport
 
-**This capture is written byte-by-byte by `make.py`** (Apache-2.0, this
+**This capture is written byte-by-byte by `make.py`** (PolyForm Noncommercial 1.0.0, this
 repository). It reproduces the *shape* of a network-element Diameter export
 seen in the field on 2026-09-05: the pcap's link type is `USER 0` (147) and
 every frame starts at the Diameter header — no Ethernet, no IP, no TCP or
