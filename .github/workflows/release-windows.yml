@@ -1,0 +1,98 @@
+# Windows x64 standalone executable — the no-install portable zip.
+#
+# Built on windows-latest with PyInstaller from the tagged source, smoke-tested
+# in the same job against a fixture with a real tshark, and only then attached
+# to the GitHub release as TelcoLadder-Windows-x64.zip. `workflow_dispatch`
+# builds and keeps the zip as a workflow artifact without touching any release,
+# so the recipe can be exercised without cutting a version.
+#
+# What the zip needs on the target machine: Wireshark 4.0 or newer (tshark.exe).
+# It is deliberately not bundled — Wireshark is GPL-2.0 and ships its own
+# dissector set — and TelcoLadder locates it in Program Files or through
+# TELCOLADDER_TSHARK, exactly as the pip install does.
+#
+# Why the recipe looks the way it does:
+#   --collect-data telcoladder      the cause tables, decode-as list and the
+#                                   browser bundle are package data, not code
+#   --collect-submodules telcoladder adapters are loaded through entry points,
+#                                   so static analysis never sees them
+#   --copy-metadata telcoladder     importlib.metadata.entry_points() needs the
+#                                   dist-info to find the adapter group
+# Drop any one of the three and the build succeeds while the executable
+# silently parses nothing — the smoke test below is what turns that into red.
+
+name: Windows portable build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write     # gh release upload, on release events only
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install tshark (for the smoke test only)
+        # Same location the CI matrix uses; TelcoLadder's fallback paths find it.
+        run: choco install wireshark --no-progress -y
+
+      - name: Install the package and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+
+      - name: Build the executable
+        run: >
+          pyinstaller --noconfirm --clean --name telcoladder
+          --collect-data telcoladder --collect-submodules telcoladder
+          --copy-metadata telcoladder telcoladder/__main__.py
+
+      - name: Assemble the portable folder
+        shell: pwsh
+        run: |
+          $out = "TelcoLadder-Windows-x64"
+          New-Item -ItemType Directory -Path $out | Out-Null
+          Copy-Item -Recurse dist/telcoladder/* $out/
+          Copy-Item LICENSE, NOTICE, README.md $out/
+          Copy-Item packaging/check-environment.cmd $out/
+          Copy-Item packaging/PORTABLE-README.txt $out/README-PORTABLE.txt
+
+      - name: Smoke test the bundle
+        # Three commands, three things proven: tshark is found and the dissectors
+        # are present; a fixture renders (adapters loaded through entry points);
+        # a known cause is explained (the YAML tables travelled with the exe).
+        shell: pwsh
+        run: |
+          $exe = "TelcoLadder-Windows-x64/telcoladder.exe"
+          & $exe check
+          if ($LASTEXITCODE -ne 0) { throw "telcoladder check failed inside the bundle" }
+          $diagram = & $exe analyze tests/fixtures/5gc-registration/capture.pcap
+          if ($LASTEXITCODE -ne 0 -or -not ($diagram -match "sequenceDiagram")) { throw "analyze produced no diagram" }
+          $summary = & $exe summarize tests/fixtures/ki-mismatch/capture.pcap
+          if ($LASTEXITCODE -ne 0 -or -not ($summary -match "Synch failure")) { throw "cause tables not bundled" }
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path TelcoLadder-Windows-x64 -DestinationPath TelcoLadder-Windows-x64.zip
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: TelcoLadder-Windows-x64
+          path: TelcoLadder-Windows-x64.zip
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" TelcoLadder-Windows-x64.zip --clobber
