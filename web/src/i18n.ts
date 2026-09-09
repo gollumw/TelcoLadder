@@ -243,6 +243,7 @@ const zh_TW: Record<string, string> = {
   "Service request": "服務請求",
   "Deregistration": "去註冊",
   "Context release": "Context 釋放",
+  "Attach (4G)": "Attach（4G）",
   "Back to Data Mining (all packets)": "返回 Data Mining（全域封包）",
   "No subscriber selected yet.": "尚未選擇要分析的用戶。",
   "Click \"Correlate\" on a row in the Data Mining packet list, or pick one of the discovered sessions.": "請從 Data Mining 的 Packet List 點擊「關聯信令」，或從偵測到的會話中選擇一個用戶。",

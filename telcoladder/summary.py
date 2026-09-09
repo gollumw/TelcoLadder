@@ -351,6 +351,75 @@ def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]
     return procedures, failures
 
 
+#: 失敗集中在哪裡的四個維度：訂戶所在的 TAC 與 cell、要的 DNN、發出失敗的網元。
+#: 鍵名就是輸出的鍵名。
+_BLAST_DIMENSIONS = ("by_tac", "by_cell", "by_dnn", "by_nf")
+
+#: 接取側的角色：這一側送出的失敗，算在對面那台核網元件頭上（`_blast_radius`）。
+_ACCESS_SIDE = frozenset({"UE", "gNB", "eNB"})
+
+
+def _first_detail(flow: Flow, key: str) -> str | None:
+    """這條流程裡第一個帶某個 detail 鍵的值。位置與 DNN 都是流程級的事實。"""
+    for msg in flow.messages:
+        value = msg.detail.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _blast_radius(analysis: Analysis) -> dict:
+    """**失敗集中在哪裡** —— 多個訂戶時，失敗是不是都落在同一個 cell、同一個
+    DNN、同一台網元上。
+
+    四個維度全是**計數**，沒有任何評分：每個值底下有幾則失敗、幾個訂戶。
+    值判不出來（沒抓到 InitialUEMessage 的位置、PDU session 沒宣告 DNN、角色
+    推不出來）的那一格記成 `null`，**不略過** —— 略過會讓「全部集中在 cell 1」
+    這句話在只有一半失敗有位置時看起來一樣真。
+
+    `by_nf` 記的是失敗訊息兩端裡**核網那一側**：核網送的拒絕算在送出它的網元
+    頭上；UE 經 gNB／eNB 報上來的失敗（Authentication failure 走 UplinkNASTransport，
+    線路上的發送端是 gNB）算在收到它的那台核網元件頭上。兩者問的是同一件事 ——
+    「這個失敗打在哪台核網元件上」—— 而不是「線路上是誰送的」。
+    """
+    counts: dict[str, dict[str | None, dict[str, object]]] = {d: {} for d in _BLAST_DIMENSIONS}
+    failures_total = 0
+    subscribers: set[str] = set()
+
+    for index, flow in enumerate(analysis.flows):
+        failed = [m for m in flow.messages if m.is_failure]
+        if not failed:
+            continue
+        who = _flow_supi(flow) or f"flow:{index}"
+        subscribers.add(who)
+        where = {
+            "by_tac": _first_detail(flow, "tac"),
+            "by_cell": _first_detail(flow, "cell-id"),
+            "by_dnn": _first_detail(flow, "dnn"),
+        }
+        for msg in failed:
+            failures_total += 1
+            core_side = msg.dst.role if msg.src.role in _ACCESS_SIDE else msg.src.role
+            for dimension, value in (*where.items(), ("by_nf", core_side)):
+                bucket = counts[dimension].setdefault(value, {"failures": 0, "_who": set()})
+                bucket["failures"] += 1
+                bucket["_who"].add(who)  # type: ignore[union-attr]
+
+    def rows(dimension: str) -> list[dict]:
+        out = [
+            {"value": value, "failures": b["failures"], "subscribers": len(b["_who"])}  # type: ignore[arg-type]
+            for value, b in counts[dimension].items()
+        ]
+        # 多的在前；同數時已知的值在前、`null` 在後，再依值排 —— 輸出要可重現。
+        return sorted(out, key=lambda r: (-r["failures"], r["value"] is None, str(r["value"])))
+
+    return {
+        "failures": failures_total,
+        "subscribers": len(subscribers),
+        **{dimension: rows(dimension) for dimension in _BLAST_DIMENSIONS},
+    }
+
+
 def build(analysis: Analysis, *, source_name: str) -> dict:
     """整份擷取檔的摘要。純函式：同一份 Analysis 永遠產出同一個 dict。"""
     subscribers, unlinked = _subscribers(analysis)
@@ -367,6 +436,8 @@ def build(analysis: Analysis, *, source_name: str) -> dict:
         "procedures": procedures,
         "failures": failures,
         "cause_rollup": xdr.cause_rollup(analysis),
+        # 加鍵不升版：既有消費端一個都不會壞。
+        "blast_radius": _blast_radius(analysis),
     }
 
 
@@ -567,6 +638,26 @@ def render_markdown(doc: dict) -> str:
         out += _table([_("Cause"), _("Count"), _("Frames"), _("SUPIs")],
                       [[c["cause"], c["count"], ", ".join(map(str, c["frames"])), ", ".join(c["supis"]) or "—"]
                        for c in doc["cause_rollup"]])
+
+    # ── 失敗集中在哪裡 ──
+    #
+    # 只在有失敗時印，而且**只排版**：每一格的數字都在 JSON 的 `blast_radius`。
+    # `null` 那一列要印出來 —— 讀的人要知道有幾則失敗是位置不明的。
+    # 只在**兩個以上的訂戶**有失敗時印 —— 一個人的失敗談不上「集中」，印了只是
+    # 吃 token（這份 Markdown 有字數預算，`test_markdown_stays_within_budget`）。
+    # 標題底下直接是表 —— 沒有引言句。第一版有一句「N 則失敗、M 個訂戶」，而那兩個
+    # 數字表裡每一列都有；它讓 multi-imsi 在 tshark 4.2 的措辭下多出 12 個字元、
+    # 超過預算（CI 紅、本機 4.6 綠）。
+    blast = doc.get("blast_radius")
+    if blast and blast["subscribers"] >= 2:
+        out += ["", f'## {_("Where the failures are")}', ""]
+        labels = {"by_tac": "TAC", "by_cell": _("Cell"), "by_dnn": "DNN", "by_nf": _("Element")}
+        out += _table(
+            [_("Dimension"), _("Value"), _("Failures"), _("Subscribers")],
+            [[labels[dimension], r["value"] if r["value"] is not None else _("(unknown)"),
+              r["failures"], r["subscribers"]]
+             for dimension in _BLAST_DIMENSIONS for r in blast[dimension]],
+        )
 
     return "\n".join(out) + "\n"
 

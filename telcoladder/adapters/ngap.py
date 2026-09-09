@@ -262,6 +262,13 @@ def parse(frame: Frame) -> list[Message]:
             if name:
                 detail["rrc-establishment-cause"] = name
 
+        # UE 在哪裡：UserLocationInformation 的 TAC 與 NR cell（InitialUEMessage、
+        # UplinkNASTransport…）。只照抄，供 `summary` 的「失敗集中在哪裡」分組。
+        for key, field in (("tac", "ngap_ngap_tAC"), ("cell-id", "ngap_ngap_NRCellIdentity")):
+            value = first(block.get(field))
+            if value is not None:
+                detail[key] = str(value)
+
         # **這次釋放是誰先開口的 —— 線路上的事實，不是推論。**
         # 42（`UEContextReleaseRequest`）只有 gNB 會送：無線側請求核網放掉這個
         # context（空口掉線、閒置…）。41 的 initiatingMessage（Command）只有 AMF

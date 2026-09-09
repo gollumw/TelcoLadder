@@ -296,6 +296,9 @@ PROCEDURE_FIELDS = {
     # 2026-09-09：`ue-context-release` 段是誰先開口的（`ran`／`core`），線路事實；
     # 其他段 null。加欄不升版。
     "release_initiator",
+    # 2026-09-09：收場的間隔吻合哪個 NAS 定時器（名稱、秒數、兩格）；沒吻合全 null。
+    # 加欄不升版。
+    "timer", "timer_gap_s", "timer_frames",
 }
 
 

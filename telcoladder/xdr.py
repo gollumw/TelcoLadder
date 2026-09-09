@@ -70,6 +70,11 @@ def procedure_record(p: Procedure) -> dict:
         # `ue-context-release` 段是誰先開口的（`"ran"`／`"core"`）；其他段 null。
         # 加欄不升版（檔頭規則 ②）。
         "release_initiator": p.release_initiator,
+        # 收場的間隔吻合哪個 NAS 定時器的預設值（`timers.py`）；沒吻合全 null。
+        # **吻合不是證實** —— 欄名刻意不叫 timeout。加欄不升版。
+        "timer": p.timer,
+        "timer_gap_s": p.timer_gap_s,
+        "timer_frames": list(p.timer_frames) if p.timer_frames else None,
     }
 
 
