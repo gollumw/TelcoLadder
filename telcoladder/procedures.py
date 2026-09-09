@@ -95,6 +95,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from telcoladder import timers
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
 from telcoladder.causes import is_user_outcome
@@ -142,6 +143,11 @@ KINDS: tuple[_Kind, ...] = (
           ("Service accept", "InitialContextSetupResponse")),
     _Kind("deregistration", "Deregistration request",
           ("Deregistration accept",)),
+    # 4G 的 Attach —— 與 5G 的 registration 同一個形狀（NAS 的 accept 可能加密，
+    # S1AP 側的 InitialContextSetupResponse 是可靠的完成點）。**在這之前 4G 的
+    # Attach 從來沒被切過段**：4G fixture 的 xDR 只有 SIP 那幾列。
+    _Kind("attach", "Attach request",
+          ("Attach accept", "Attach complete", "InitialContextSetupResponse")),
     # **釋放段可以由三種訊息開**，同一個 kind：gNB／eNB 的請求（誰先開口的，
     # 在 `Message.detail[RELEASE_INITIATOR_KEY]`）、AMF 的 Command（NGAP 的
     # label 沒有後綴）、MME 的 Command（S1AP 有 `MESSAGE_NAMES` 的正名）。
@@ -215,6 +221,15 @@ class Procedure:
     取自段的第一則訊息是哪一種（adapter 填 `RELEASE_INITIATOR_KEY`）。
     其他 kind 一律 None。"""
 
+    timer: str | None = None
+    """這段的收場（釋放／拒絕／失敗）距離網路上一則等回應的請求，**吻合**哪個
+    NAS 定時器的預設值（`timers.TIMERS`，±15%）。例如 `T3560`。**吻合不是證實**：
+    擷取檔看得到時序，看不到 AMF 的內部狀態。沒有吻合就是 None。"""
+    timer_gap_s: float | None = None
+    """量到的間隔（秒）。"""
+    timer_frames: tuple[int, int] | None = None
+    """(啟動定時器的那一格, 到期後收場的那一格)。使用者要回去看原文時靠這個。"""
+
 
 def _opens(msg: Message) -> _Kind | None:
     for kind in KINDS:
@@ -282,7 +297,8 @@ def _flow_subscriber(flow: Flow) -> str | None:
 
 
 def _finish(kind: _Kind, window: list[Message], supi: str | None,
-            capture_end: float, subscriber: str | None = None) -> Procedure:
+            capture_end: float, subscriber: str | None = None,
+            previous: Message | None = None) -> Procedure:
     failures = [m for m in window if m.is_failure]
     last_success = max(
         (i for i, m in enumerate(window)
@@ -307,6 +323,19 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     if outcome == "incomplete" and capture_end - window[-1].ts <= TAIL_SLACK:
         note = _('Near the end of the capture - may simply be cut off')
 
+    # 「等了一個定時器的長度才收場」—— 吻合就講，講明是吻合（`timers` 檔頭）。
+    timer_hint = timers.hint(window, previous)
+    if timer_hint is not None:
+        sentence = _(
+            "{gap} s after {message} with no reply: matches the default of {timer} "
+            "({seconds} s, {spec}) - consistent with that timer expiring"
+        ).format(
+            gap=f"{timer_hint.gap_s:.2f}", message=timer_hint.started_by.label,
+            timer=timer_hint.timer.name, seconds=f"{timer_hint.timer.seconds:g}",
+            spec=timer_hint.timer.spec,
+        )
+        note = f"{note}; {sentence}" if note else sentence
+
     ps_ids = {m.detail[PDU_SESSION_ID] for m in window if PDU_SESSION_ID in m.detail}
 
     return Procedure(
@@ -329,6 +358,11 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         release_initiator=(
             window[0].detail.get(RELEASE_INITIATOR_KEY)
             if kind.name == "ue-context-release" else None
+        ),
+        timer=timer_hint.timer.name if timer_hint else None,
+        timer_gap_s=round(timer_hint.gap_s, 6) if timer_hint else None,
+        timer_frames=(
+            (timer_hint.started_by.frame, timer_hint.ended_by.frame) if timer_hint else None
         ),
     )
 
@@ -633,11 +667,16 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
 
     active_kind: _Kind | None = None
     window: list[Message] = []
+    # 開段訊息之前的那一則，與這條流程裡的上一則。定時器判讀要看「上一段最後
+    # 一則之後隔了多久才開這一段」—— 釋放段常是這個形狀（`timers.hint`）。
+    before_window: Message | None = None
+    last: Message | None = None
 
     def close() -> None:
         nonlocal active_kind, window
         if active_kind is not None and window:
-            procedures.append(_finish(active_kind, window, supi, capture_end, subscriber))
+            procedures.append(_finish(active_kind, window, supi, capture_end, subscriber,
+                                      previous=before_window))
         active_kind, window = None, []
 
     def _outcome_seen() -> bool:
@@ -660,15 +699,19 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             if (active_kind is not None and opened.name == active_kind.name
                     and not any(m.is_failure for m in window)):
                 window.append(msg)
+                last = msg
                 continue
             close()
+            before_window = last
             active_kind = opened
             window = [msg]
+            last = msg
             continue
         if active_kind is not None:
             window.append(msg)
         else:
             unassigned.append(msg)
+        last = msg
     close()
     procedures.sort(key=lambda p: p.start_frame)
     return procedures, unassigned

@@ -105,6 +105,7 @@ const PROCEDURE_LABEL: Record<string, string> = {
   "service-request": "Service request",
   deregistration: "Deregistration",
   "ue-context-release": "Context release",
+  attach: "Attach (4G)",
   "sip-register": "IMS registration",
   "sip-call": "Call (SIP)",
 };

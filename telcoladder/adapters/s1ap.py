@@ -290,6 +290,13 @@ def parse(frame: Frame) -> list[Message]:
             if name:
                 detail["rrc-establishment-cause"] = name
 
+        # UE 在哪裡：TAI 的 TAC 與 E-UTRAN CGI 的 cell。與 `ngap.py` 同一對鍵名，
+        # `summary` 分組時不分世代。
+        for key, field in (("tac", "s1ap_s1ap_tAC"), ("cell-id", "s1ap_s1ap_CellIdentity")):
+            value = first(block.get(field))
+            if value is not None:
+                detail[key] = str(value)
+
         # **這次釋放是誰先開口的 —— 線路上的事實。** 18（`UEContextReleaseRequest`）
         # 只有 eNB 會送；23 的 initiatingMessage（Command）只有 MME 會送。
         # 與 `ngap.py` 同一條判準；原因照舊走 cause 表，這裡不另外編白話。

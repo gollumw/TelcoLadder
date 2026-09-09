@@ -82,6 +82,8 @@ TOP_LEVEL = {
     "summary_version", "source", "capture", "not_visible", "network_elements",
     "subscribers", "subscribers_without_supi", "unlinked_identities", "procedures",
     "failures", "cause_rollup",
+    # 2026-09-09：失敗集中在哪裡（TAC／cell／DNN／網元，純計數）。加鍵不升版。
+    "blast_radius",
 }
 CAPTURE_FIELDS = {
     "frames_total", "frames_decoded", "messages", "flows",

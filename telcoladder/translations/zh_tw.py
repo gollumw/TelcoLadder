@@ -436,6 +436,20 @@ CATALOG: dict[str, str] = {
         '⚠ 已截斷：另有 {dropped} 則訊息未顯示（共 {total} 則）',
     'Near the end of the capture - may simply be cut off':
         '落在擷取結尾附近，可能只是截到一半',
+    '{gap} s after {message} with no reply: matches the default of {timer} ({seconds} s, {spec}) - consistent with that timer expiring':
+        '{message} 之後 {gap} 秒沒有回應：吻合 {timer} 的預設值（{seconds} 秒，{spec}）—— 與該定時器到期一致',
+    'Where the failures are':
+        '失敗集中在哪裡',
+    '{failures} failure(s), {subscribers} subscriber(s). Counts by location and core element; no score.':
+        '{subscribers} 個訂戶共 {failures} 則失敗。依位置與核網元件計數，沒有評分。',
+    'Cell':
+        '細胞',
+    'Element':
+        '網元',
+    'Dimension':
+        '維度',
+    'Value':
+        '值',
     "tshark's PDML could not be parsed: {error}":
         'tshark 的 PDML 解析失敗：{error}',
     'tshark failed to decode {name} (exit {code}):\n{stderr}':
