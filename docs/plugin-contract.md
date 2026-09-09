@@ -1,8 +1,8 @@
 # Plugin Contract
 
 TelcoLadder's protocol support is pluggable. **Adding a protocol means
-installing a package**, not patching the core — so IMS (the commercial
-module) and 5GC (Apache-2.0) can evolve independently without forking.
+installing a package**, not patching the core — so protocol modules under
+different licences can evolve independently without forking.
 
 Implementation: [`telcoladder/plugins.py`](../telcoladder/plugins.py),
 [`telcoladder/adapters/__init__.py`](../telcoladder/adapters/__init__.py),

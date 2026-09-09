@@ -171,14 +171,16 @@ with their reasons. Issues and pull requests in either language are fine.
 
 ## Licensing of contributions
 
-**There is no CLA to sign.** Apache-2.0 §5 already covers this: a contribution
-you intentionally submit for inclusion is under the same Apache-2.0 terms as the
-rest of the project, without any additional agreement. Nothing here asks you for
-more than that.
+**There is no CLA to sign.** A contribution you intentionally submit for
+inclusion is accepted under the same PolyForm Noncommercial 1.0.0 terms as the
+rest of the project. Because that licence is noncommercial, the maintainer may
+offer the project under separate commercial terms; contributions are accepted
+on the understanding that they may be included in such an offering. If that is
+not acceptable to you, say so in the PR before it is merged.
 
-What we do ask, because §5 does not cover it: **only submit work you have the
-right to submit.** Your own work, or work under a licence that permits
-redistribution under Apache-2.0 — not code from an employer's internal
+What we do ask: **only submit work you have the right to submit.** Your own
+work, or work under a licence that permits redistribution under these
+terms — not code from an employer's internal
 repository, not a vendor's proprietary parser, not something an NDA covers.
 If you are contributing in the course of employment, that is between you and
 your employer; say so in the PR if a name other than yours should appear in the

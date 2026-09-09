@@ -1,7 +1,7 @@
 # Diameter: EPC attach + IMS registration + Gx policy, with three failures
 
 **This capture is not sniffed off a wire — it is written byte-by-byte in
-RFC 6733's wire format** (`make.py`, Apache-2.0, this repository). The
+RFC 6733's wire format** (`make.py`, PolyForm Noncommercial 1.0.0, this repository). The
 reasoning matches `ne-trace/`: real S6a/Cx/Gx captures always contain real
 subscriber data and cannot enter version control (CLAUDE.md §2.1), and this
 project has no 4G/IMS testbed.

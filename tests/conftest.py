@@ -2,7 +2,7 @@
 
 **fixture 都在版控裡**，每個場景一個子目錄，含擷取檔、核網日誌與 `scenario.md`
 （來源、內容、重現步驟）。授權乾淨：`5gc-registration/` 是自建 Open5GS testbed
-產生的（Apache-2.0，同本 repo），`http2-multistream/` 來自 telekom/5g-trace-visualizer
+產生的（PolyForm Noncommercial 1.0.0，同本 repo），`http2-multistream/` 來自 telekom/5g-trace-visualizer
 （Apache-2.0，已於其 scenario.md 保留著作權聲明）。
 
 歷史備註：早期用過 `DLTeamTUC/5GDatasets` 的樣本，但該 repo 無 LICENSE 檔，

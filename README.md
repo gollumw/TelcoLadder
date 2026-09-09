@@ -5,7 +5,7 @@
 [![CI](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml/badge.svg)](https://github.com/gollumw/TelcoLadder/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/telcoladder)](https://pypi.org/project/telcoladder/)
 [![Python](https://img.shields.io/pypi/pyversions/telcoladder)](https://pypi.org/project/telcoladder/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-red)](LICENSE)
 
 Point it at a signalling capture and get the call flow **per subscriber, with
 every failure explained**. It reads **5G core**, **4G/EPC** and **IMS**, and
@@ -615,4 +615,13 @@ Found a vulnerability? [`SECURITY.md`](SECURITY.md) — not a public issue.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+PolyForm Noncommercial License 1.0.0. See [LICENSE](LICENSE).
+
+Free for personal, non-commercial, and educational research use. Commercial
+deployment, commercial distribution, or embedding into for-profit offerings is
+strictly prohibited without a separate commercial license.
+
+Release 0.1.0 was published under Apache-2.0 and remains available under those
+terms. Third-party material keeps its own licence: the browser bundle's
+dependencies (MIT/ISC, listed in [NOTICE](NOTICE)) and the `http2-multistream`
+fixture (Apache-2.0, Deutsche Telekom).

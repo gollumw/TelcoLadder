@@ -1,6 +1,6 @@
 # 5GC end-to-end — N2 + SBI + N4 in one capture
 
-Self-generated on a local Open5GS + UERANSIM testbed. Apache-2.0, same as the
+Self-generated on a local Open5GS + UERANSIM testbed. PolyForm Noncommercial 1.0.0, same as the
 rest of this repo. No third-party licensing constraints, no customer data.
 
 This is the fixture that proves the parts `5gc-registration/` cannot: that

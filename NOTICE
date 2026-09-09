@@ -1,7 +1,9 @@
 TelcoLadder
 Copyright (c) 2026 gollumw
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+This product is licensed under the PolyForm Noncommercial License 1.0.0 (see
+LICENSE). Release 0.1.0 was published under the Apache License, Version 2.0 and
+remains available under those terms.
 
 ================================================================================
 Third-party software redistributed with this product
@@ -72,8 +74,9 @@ telekom/5g-trace-visualizer (Apache License 2.0, Copyright Deutsche Telekom AG).
 See tests/fixtures/http2-multistream/scenario.md for provenance.
 
 All other captures under tests/fixtures/ were generated on a local
-Open5GS + UERANSIM testbed by the TelcoLadder authors and are covered by this
-product's Apache License 2.0.
+Open5GS + UERANSIM testbed, or written byte-by-byte by their make.py, by the
+TelcoLadder authors and are covered by this product's PolyForm Noncommercial
+License 1.0.0.
 
 ================================================================================
 Standards
