@@ -12,7 +12,10 @@ from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder import pdusession as ps
 from telcoladder.identity import connection_scope, gtp_tunnels, scoped, fiveg_s_tmsi
-from telcoladder.model import CauseRef, Endpoint, IdKey, IdKind, Message
+from telcoladder.model import (
+    RELEASE_BY_CORE, RELEASE_BY_RAN, RELEASE_INITIATOR_KEY,
+    CauseRef, Endpoint, IdKey, IdKind, Message,
+)
 
 NAME = "ngap"
 
@@ -121,6 +124,29 @@ _OUTCOME_SUFFIX = {
 #: 42（`UEContextReleaseRequest`,gNB→AMF 的請求）刻意不列 —— 它只是請求,
 #: AMF 可以不理。
 _UE_CONTEXT_RELEASE = 41
+#: gNB 請求釋放（TS 38.413）。**不切段、不釋放識別碼**，只記「是無線側先開口的」。
+_UE_CONTEXT_RELEASE_REQUEST = 42
+
+#: `RRCEstablishmentCause` 的名稱（TS 38.413 §9.3.1.111）。
+#:
+#: **由 `tshark -G values` 產生，不手抄**；改版時重跑核對，`tests/test_release_attribution.py`
+#: 會實際重跑比對：
+#:
+#:   tshark -G values | awk -F'\t' '$2=="ngap.RRCEstablishmentCause"'
+RRC_ESTABLISHMENT_CAUSES: dict[int, str] = {
+    0: "emergency",
+    1: "highPriorityAccess",
+    2: "mt-Access",
+    3: "mo-Signalling",
+    4: "mo-Data",
+    5: "mo-VoiceCall",
+    6: "mo-VideoCall",
+    7: "mo-SMS",
+    8: "mps-PriorityAccess",
+    9: "mcs-PriorityAccess",
+    10: "notAvailable",
+    11: "mo-ExceptionData",
+}
 
 #: 隨 UE context 一起被放掉的識別碼。**SUPI 不在裡面** —— 那是 SIM 卡上的
 #: 東西,不會因為一次 context 釋放就換人。
@@ -230,6 +256,22 @@ def parse(frame: Frame) -> list[Message]:
         establishment = _to_int(block.get("ngap_ngap_RRCEstablishmentCause"))
         if establishment is not None:
             detail["RRCEstablishmentCause"] = str(establishment)
+            # 名稱從靜態表查，**不從 tshark 的 Info 字串抄** —— 那句話的措辭
+            # 跨版本會變（4.2.2 的 Info 欄根本不印它）。查不到就不填，不猜。
+            name = RRC_ESTABLISHMENT_CAUSES.get(establishment)
+            if name:
+                detail["rrc-establishment-cause"] = name
+
+        # **這次釋放是誰先開口的 —— 線路上的事實，不是推論。**
+        # 42（`UEContextReleaseRequest`）只有 gNB 會送：無線側請求核網放掉這個
+        # context（空口掉線、閒置…）。41 的 initiatingMessage（Command）只有 AMF
+        # 會送：核網下令。兩者在真實排障裡是第一個要分的問題 —— 一邊查無線，
+        # 一邊查核網 —— 而 `label` 裡看不出方向。原因本身照舊走 cause 表
+        # （`cause_note`／`cause_plain`），這裡不另外編一句白話。
+        if code == _UE_CONTEXT_RELEASE_REQUEST and outcome == "":
+            detail[RELEASE_INITIATOR_KEY] = RELEASE_BY_RAN
+        elif code == _UE_CONTEXT_RELEASE and outcome == "":
+            detail[RELEASE_INITIATOR_KEY] = RELEASE_BY_CORE
 
         # PDU Session 級的欄位（見 `telcoladder/pdusession.py`）。
         # **`gTP_TEID` 在 Request 與 Response 裡是同一個欄位** —— 前者帶的是

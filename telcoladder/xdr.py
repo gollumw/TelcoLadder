@@ -67,6 +67,9 @@ def procedure_record(p: Procedure) -> dict:
             if p.release_cause is not None else None
         ),
         "final_status": p.final_status,
+        # `ue-context-release` 段是誰先開口的（`"ran"`／`"core"`）；其他段 null。
+        # 加欄不升版（檔頭規則 ②）。
+        "release_initiator": p.release_initiator,
     }
 
 

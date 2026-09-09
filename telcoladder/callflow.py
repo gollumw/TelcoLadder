@@ -15,7 +15,9 @@ from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
-from telcoladder.model import IDENTITY_SOURCE_KEY, Endpoint, IdKind, IdKey, Message
+from telcoladder.model import (
+    IDENTITY_SOURCE_KEY, RELEASE_INITIATOR_KEY, Endpoint, IdKind, IdKey, Message,
+)
 from telcoladder.nf import participant_rank
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import capture_end, segment_flow
@@ -251,6 +253,15 @@ def _render(
         source = msg.detail.get(IDENTITY_SOURCE_KEY)
         if source:
             event["identity_source"] = source
+        # **這次釋放是誰先開口的**（`"ran"`／`"core"`）—— 線路事實，adapter 填的。
+        # 只在釋放請求與命令那兩則上有；其他事件沒有這個鍵（不是 null，是整個不存在）。
+        initiator = msg.detail.get(RELEASE_INITIATOR_KEY)
+        if initiator:
+            event["release_initiator"] = initiator
+        # 這次 RRC 連線是為了什麼（mo-Signalling／mo-Data／emergency…）。
+        rrc_cause = msg.detail.get("rrc-establishment-cause")
+        if rrc_cause:
+            event["rrc_establishment_cause"] = rrc_cause
         # **這一格裡實際疊了哪些協定**（如 `NGAP,NAS-5GS`）。
         #
         # `event["protocol"]` 是 adapter 名，只講最外層；wire 視圖把同一格的

@@ -249,6 +249,17 @@ IdKey = tuple[IdKind, str]
 #: 鍵名是共用詞彙，`nf` 一律通用處理，**不認得任何一個 adapter**。
 NF_ROLE_HINTS_KEY = "nf_role_hints"
 
+#: `Message.detail` 裡記載「這次放掉 UE context 是誰先開口的」的鍵，值是下面兩個之一。
+#:
+#: 這是**線路事實**，不是推論：`UEContextReleaseRequest`（NGAP 42／S1AP 18）
+#: 只有 gNB／eNB 會送，`UEContextRelease` 的 Command（NGAP 41／S1AP 23 的
+#: initiatingMessage）只有 AMF／MME 會送。真實排障的第一個分岔就是它 ——
+#: 空口掉線去查無線，核網踢人去查核網 —— 而 `label` 裡看不出方向。
+#: 原因本身照舊走 cause 表，這個鍵不帶任何白話。
+RELEASE_INITIATOR_KEY = "release-initiator"
+RELEASE_BY_RAN = "ran"
+RELEASE_BY_CORE = "core"
+
 #: `Message.detail` 裡記載「這則訊息的訂戶身分是跟誰借來的」的鍵。
 #:
 #: 有些訊息自己認不出是誰 —— 例如 SBI 夾帶的下行 NAS，內容裡沒有任何識別碼，
