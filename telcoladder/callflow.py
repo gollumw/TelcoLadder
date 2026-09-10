@@ -336,6 +336,10 @@ def _render(
             "failures": p.failures,
             "duration_s": round(p.duration, 6),
             "note": p.note,
+            # 2026-09-11：世代／類別／註冊型別 —— 畫面把晶片收成組靠的就是這三個。
+            "family": p.family,
+            "category": p.category,
+            "registration_type": p.registration_type,
         }
         for p in procedures
     ]

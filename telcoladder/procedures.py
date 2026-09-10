@@ -99,7 +99,7 @@ from telcoladder import timers
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
 from telcoladder.causes import is_user_outcome
-from telcoladder.model import (
+from telcoladder.model import ( NF_ROLE_HINTS_KEY,
     RELEASE_INITIATOR_KEY, CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef,
 )
 from telcoladder.pipeline import Analysis
@@ -168,7 +168,83 @@ KINDS: tuple[_Kind, ...] = (
           ("UEContextReleaseResponse", "UEContextReleaseComplete"), exact=True),
     _Kind("ue-context-release", "UEContextReleaseCommand",
           ("UEContextReleaseResponse", "UEContextReleaseComplete"), exact=True),
+    # PDU session 修改：NGAP 的 Modify 開段（exact，Response 是它的前綴）。**EPS fallback**
+    # 就藏在這裡 —— gNB 在 Response 的 unsuccessful transfer 裡回 radioNetwork #36
+    # （`ims-voice-eps-fallback-or-rat-fallback-triggered`），那不是失敗，是「改去 EPS」；
+    # `_finish` 看到那個 cause 就把段改名為 `eps-fallback`。實測一份 AMF trace：40 則
+    # Modify 回應全帶 #36，在這之前一段都沒切出來。
+    _Kind("pdu-session-modification", "PDUSessionResourceModify",
+          ("PDUSessionResourceModifyResponse", "PDU session modification complete"), exact=True),
+    # 換手的**目標側**：MME 打來的 Forward Relocation Request（EPS→5GS）或 AMF 給 gNB 的
+    # HandoverRequest（`HandoverResourceAllocation`）也開段 —— kind 名稱同樣是 `handover`，
+    # 所以與來源側的 HandoverRequired 併同一段（規則 ③），方向由視窗裡任何一則的
+    # `handover-type` 決定（`_finish`）。實測一份 AMF trace：20 次 EPS→5GS 換手在這之前
+    # 一段都沒有，因為只認來源側的 HandoverRequired。
+    _Kind("handover", "Forward Relocation Request",
+          ("HandoverNotification", "Forward Relocation Complete Acknowledge"), exact=True),
+    _Kind("handover", "HandoverResourceAllocation",
+          ("HandoverNotification", "Forward Relocation Complete Acknowledge"), exact=True),
+    # 閒置模式的跨系統移動（N26 的 Context Request／Response／Acknowledge，TS 23.502）：
+    # UE 在另一個系統做了 TAU 或註冊，新節點向舊節點要 context。方向看誰發的
+    # （`_finish`：MME 發＝UE 去了 EPS，AMF 發＝UE 來了 5GS）。
+    _Kind("mobility-context-transfer", "Context Request", ("Context Acknowledge",), exact=True),
+    # 4G 的 TAU 與 Detach —— 與 5G 的 registration／deregistration 同形。
+    _Kind("tau", "Tracking area update request",
+          ("Tracking area update accept", "Tracking area update complete")),
+    _Kind("detach", "Detach request", ("Detach accept",)),
 )
+
+#: EPS fallback 的訊號：NGAP radioNetwork #36（名稱釘在 `data/causes/ngap_radioNetwork.yaml`，
+#: `tests/test_procedure_taxonomy.py` 對過 —— 這裡只放號碼，名稱永遠從表來）。
+EPS_FALLBACK_CAUSE = ("ngap_radioNetwork", 36)
+
+#: kind → (family, category)。family 是世代（5g／4g／interworking／ims／diameter），
+#: category 是工程師問問題的單位（註冊、服務請求、會話、釋放、換手、fallback、
+#: 移動、通話）。`ue-context-release` 兩個世代同名，family 看視窗裡的協定
+#: （`_family_of`）。**查不到的 kind 是 ("other", "other")**，畫面上照樣列出來 ——
+#: 引擎加了新 kind 而這張表忘了，症狀是多一組「其他」，不是少一段。
+TAXONOMY: dict[str, tuple[str, str]] = {
+    "registration": ("5g", "registration"),
+    "deregistration": ("5g", "registration"),
+    "service-request": ("5g", "service-request"),
+    "pdu-session-establishment": ("5g", "session"),
+    "pdu-session-modification": ("5g", "session"),
+    "pdu-session-release": ("5g", "session"),
+    "attach": ("4g", "registration"),
+    "detach": ("4g", "registration"),
+    "tau": ("4g", "mobility"),
+    "handover": ("5g", "handover"),
+    "handover-5gs-to-eps": ("interworking", "handover"),
+    "handover-eps-to-5gs": ("interworking", "handover"),
+    "eps-fallback": ("interworking", "fallback"),
+    "mobility-5gs-to-eps": ("interworking", "mobility"),
+    "mobility-eps-to-5gs": ("interworking", "mobility"),
+    "mobility-context-transfer": ("interworking", "mobility"),
+    "sip-register": ("ims", "registration"),
+    "sip-call": ("ims", "call"),
+}
+
+
+def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = False) -> tuple[str, str]:
+    """`TAXONOMY` 的查表，加上兩條看協定的規則：`ue-context-release` 與一般 `handover`
+    在 4G 上是 S1AP 的，`diameter-*` 是動態命名的。"""
+    if kind.startswith("diameter-"):
+        return ("diameter", "other")
+    if kind.startswith("sip-"):
+        return ("ims", TAXONOMY.get(kind, ("ims", "other"))[1])
+    family, category = TAXONOMY.get(kind, ("other", "other"))
+    if kind in ("ue-context-release", "handover") or family == "other":
+        if kind == "ue-context-release":
+            category = "release"
+        if "s1ap" in protocols or "nas-eps" in protocols:
+            family = "4g"
+        elif "ngap" in protocols or "nas-5gs" in protocols:
+            family = "5g"
+        elif kind == "handover" and protocols == ("gtpv2",):
+            # 只看到 Forward Relocation 那幾則：N26（對端是 AMF）還是 S10（MME 池內），
+            # 線路提示裡有沒有 AMF 就分得出來 —— `gtpv2.py` 從 F-TEID 介面型別讀的。
+            family = "interworking" if hints_name_an_amf else "4g"
+    return family, category
 
 
 @dataclass(slots=True)
@@ -240,6 +316,13 @@ class Procedure:
 
     # ── 換手的 KPI（2026-09-09）。非換手段一律 None：沒量到的不填。
     ho_prep_s: float | None = None
+    #: 世代與類別（`TAXONOMY`／`_family_of`）：畫面把 97 顆晶片收成十來組靠的就是它。
+    family: str | None = None
+    category: str | None = None
+    #: 5G 註冊的型別（TS 24.501 的 5GS registration type，名稱來自 tshark 的值表）：
+    #: `initial-registration`／`mobility-registration-updating`／…；非註冊段 null。
+    #: 「回 5G 之後的行動更新註冊 20 次全失敗」與「初始註冊失敗」是兩種不同的故障。
+    registration_type: str | None = None
     """準備時延：HandoverRequired 到 HandoverCommand（來源側等目標側準備好資源）。"""
     ho_exec_s: float | None = None
     """執行時延：HandoverCommand 到 HandoverNotify（UE 真的切過去了）。"""
@@ -356,13 +439,38 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     kind_name = kind.name
     ho_prep = ho_exec = None
     if kind.name == "handover":
-        kind_name = _HANDOVER_KIND_BY_TYPE.get(window[0].detail.get("handover-type", ""), "handover")
-        command = next((m for m in window if m.label == "HandoverPreparationResponse"), None)
+        # 方向：視窗裡**任何一則**帶 HandoverType 的（來源側的 HandoverRequired、目標側的
+        # HandoverRequest 都帶）；一則都沒有就是一般換手。
+        ho_type = next((m.detail["handover-type"] for m in window if "handover-type" in m.detail), "")
+        kind_name = _HANDOVER_KIND_BY_TYPE.get(ho_type, "handover")
+        # 準備完成的里程碑：來源側是 HandoverCommand（`HandoverPreparationResponse`），
+        # 目標側是 HandoverRequestAcknowledge（`HandoverResourceAllocationResponse`）。
+        # 兩側都擷取到時（n26-handover），目標側的 Ack 會早於來源側的 Command —— 先找
+        # Command，找不到才用 Ack（純目標側的 trace 只有 Ack）。
+        command = (next((m for m in window if m.label == "HandoverPreparationResponse"), None)
+                   or next((m for m in window if m.label == "HandoverResourceAllocationResponse"), None))
         notify = next((m for m in window if "HandoverNotification" in m.label), None)
         if command is not None:
             ho_prep = round(command.ts - window[0].ts, 6)
             if notify is not None:
                 ho_exec = round(notify.ts - command.ts, 6)
+    elif kind.name == "pdu-session-modification" and any(
+            m.cause is not None and (m.cause.table, m.cause.value) == EPS_FALLBACK_CAUSE for m in window):
+        # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的裁定），是 gNB 說
+        # 「語音去 EPS」—— 這一段的身分就是 EPS fallback。
+        kind_name = "eps-fallback"
+    elif kind.name == "tau" and any(m.label == "Context Request" for m in window):
+        # 兩側都擷取到：eNB↔MME 的 TAU 與 MME↔AMF 的 context 交換是同一次移動。
+        kind_name = "mobility-5gs-to-eps"
+    elif kind.name == "mobility-context-transfer":
+        # 誰來要 context，UE 就是去了對方那邊。角色是 `nf.apply_roles` 判的線路事實；
+        # 判不出來就留通用名，不猜方向。
+        kind_name = {"MME": "mobility-5gs-to-eps", "AMF": "mobility-eps-to-5gs"}.get(
+            window[0].src.role or "", kind.name)
+    family, category = _family_of(
+        kind_name, tuple(sorted({m.protocol for m in window})),
+        hints_name_an_amf=any("=AMF" in m.detail.get(NF_ROLE_HINTS_KEY, "") for m in window),
+    )
 
     return Procedure(
         kind=kind_name,
@@ -392,6 +500,11 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         ),
         ho_prep_s=ho_prep,
         ho_exec_s=ho_exec,
+        family=family,
+        category=category,
+        registration_type=(
+            window[0].detail.get("registration-type") if kind.name == "registration" else None
+        ),
     )
 
 
@@ -533,6 +646,8 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             protocols=tuple(sorted({m.protocol for m in window})),
             sequence=_match_sequence(failed),
             note=note,
+            family="diameter",
+            category="other",
         ))
     return procedures, unassigned
 
@@ -656,6 +771,8 @@ def _sip_segments(messages: list[Message], supi: str | None,
 
         procedures.append(Procedure(
             kind=kind,
+            family="ims",
+            category=TAXONOMY.get(kind, ("ims", "other"))[1],
             supi=supi,
             subscriber=subscriber,
             outcome=outcome,
@@ -734,6 +851,16 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             # （檔頭規則 ③），併進去會把 reject 洗成 success。
             if (active_kind is not None and opened.name == active_kind.name
                     and not any(m.is_failure for m in window)):
+                window.append(msg)
+                last = msg
+                continue
+            # **N26 的 context 交換是正在進行的那個移動程序的一部分。** 4G 側的 TAU
+            # （或 5G 側的行動更新註冊）開了窗、還沒收到 accept 時，MME／AMF 向對方要
+            # context —— 那三則不是另一段，是這一段的中間；另開會把 TAU 切成
+            # 「request 一段（incomplete）、accept 掉進別段」。純 AMF 側的 trace 沒有 NAS，
+            # Context Request 才自己開段（`mobility-context-transfer`）。
+            elif (active_kind is not None and opened.name == "mobility-context-transfer"
+                    and active_kind.name in ("tau", "attach", "registration") and not _outcome_seen()):
                 window.append(msg)
                 last = msg
                 continue

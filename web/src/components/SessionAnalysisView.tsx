@@ -111,6 +111,40 @@ const PROCEDURE_LABEL: Record<string, string> = {
   "handover-eps-to-5gs": "Handover EPS→5GS",
   "sip-register": "IMS registration",
   "sip-call": "Call (SIP)",
+  "pdu-session-modification": "PDU modification",
+  "eps-fallback": "EPS fallback",
+  "mobility-5gs-to-eps": "5GS→EPS idle mobility",
+  "mobility-eps-to-5gs": "EPS→5GS idle mobility",
+  "mobility-context-transfer": "Context transfer (N26)",
+  tau: "TAU (4G)",
+  detach: "Detach (4G)",
+};
+
+//: 世代標籤（`procedures.TAXONOMY` 的 family）。5G／4G／IMS／Diameter 是專有名詞，不翻；
+//: 只有 interworking 與 other 走 `t()`。順序就是畫面上組的順序。
+const FAMILY_LABEL: Record<string, string> = { "5g": "5G", "4g": "4G", ims: "IMS", diameter: "Diameter" };
+const FAMILY_ORDER = ["5g", "4g", "interworking", "ims", "diameter", "other"];
+
+//: 5G 註冊型別（`nas5gs.REGISTRATION_TYPES` 的 slug）→ 短標籤。查無此值原樣顯示。
+const REGISTRATION_TYPE_LABEL: Record<string, string> = {
+  "initial-registration": "initial",
+  "mobility-registration-updating": "mobility update",
+  "periodic-registration-updating": "periodic",
+  "emergency-registration": "emergency",
+  "snpn-onboarding-registration": "SNPN onboarding",
+  "disaster-roaming-mobility-registration-updating": "disaster roaming mobility update",
+  "disaster-roaming-initial-registration": "disaster roaming initial",
+};
+
+//: 同世代、同種類、同註冊型別、同結局的段是一組 —— 一份真實 AMF trace 的 163 段收成
+//: 7 組靠的就是它。**組是視圖，段是事實**：組只是把同形的段收在一起，點開仍是逐段晶片。
+type ProcedureGroup = {
+  key: string;
+  family: string;
+  kind: string;
+  registrationType: string | null;
+  outcome: string;
+  members: CallFlowProcedure[];
 };
 
 //: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
@@ -247,6 +281,10 @@ export function SessionAnalysisView({
   const [domain, setDomain] = useState<TelecomDomain | "ALL">("ALL");
   //: 選中的程序（`startFrame`，唯一）。null ＝ 全部，也就是切段前的行為。
   const [activeProcedure, setActiveProcedure] = useState<number | null>(null);
+  //: 選中的**組**（`ProcedureGroup.key`）。與 `activeProcedure` 互斥：點段清組、點組清段。
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  //: 展開成逐段晶片的組。預設全部收合 —— 97 顆晶片就是這樣來的。
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [hover, setHover] = useState<{ frame: number; x: number; y: number } | null>(null);
   //: 梯形圖縮放。放大（>1）同時切換版面 —— 見 ZOOM_LEVELS 的說明。
   const [zoom, setZoom] = useState<number>(1);
@@ -278,6 +316,65 @@ export function SessionAnalysisView({
     [procedures, activeProcedure],
   );
 
+  const groups = useMemo<ProcedureGroup[]>(() => {
+    const byKey = new Map<string, ProcedureGroup>();
+    for (const p of procedures) {
+      const key = `${p.family}|${p.kind}|${p.registrationType ?? ""}|${p.outcome}`;
+      const found = byKey.get(key);
+      if (found) found.members.push(p);
+      else byKey.set(key, { key, family: p.family, kind: p.kind, registrationType: p.registrationType, outcome: p.outcome, members: [p] });
+    }
+    const rank = (family: string) => {
+      const i = FAMILY_ORDER.indexOf(family);
+      return i < 0 ? FAMILY_ORDER.length : i;
+    };
+    // 世代 → 失敗優先 → 段數多的在前 → 先發生的在前。
+    return [...byKey.values()].sort(
+      (a, b) =>
+        rank(a.family) - rank(b.family)
+        || Number(b.outcome === "failure") - Number(a.outcome === "failure")
+        || b.members.length - a.members.length
+        || a.members[0].startFrame - b.members[0].startFrame,
+    );
+  }, [procedures]);
+  //: 看推導出來的 `currentGroup`（與 `current` 同一個理由：換訂戶時 key 可能不在新的組裡）。
+  const currentGroup = useMemo(() => groups.find((g) => g.key === activeGroup) ?? null, [groups, activeGroup]);
+  const durationText = (s: number) => (s < 1 ? `${Math.round(s * 1000)}ms` : `${s.toFixed(2)}s`);
+  const segmentChip = (p: CallFlowProcedure) => (
+    <button
+      key={p.startFrame}
+      type="button"
+      onClick={() => {
+        setActiveProcedure(p.startFrame);
+        setActiveGroup(null);
+      }}
+      title={
+        // 完整資訊放 title —— 按鈕上只留一眼看得懂的部分。
+        [
+          `frame ${p.startFrame}–${p.endFrame}`,
+          t("{n} messages", { n: p.messages }),
+          p.failures ? t("{n} failed", { n: p.failures }) : null,
+          p.cause ? `cause：${p.cause}` : null,
+          p.firstFailure ? t("first failure: {cause}", { cause: p.firstFailure }) : null,
+          p.note || null,
+        ].filter(Boolean).join("\n")
+      }
+      className={cn(
+        "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
+        current?.startFrame === p.startFrame
+          ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
+          : OUTCOME_STYLE[p.outcome],
+      )}
+    >
+      <span>{t(PROCEDURE_LABEL[p.kind] ?? p.kind)}</span>
+      {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
+      <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
+      <span className="ml-1 tabular-nums opacity-60">{durationText(p.durationS)}</span>
+    </button>
+  );
+  const familyLabel = (family: string) =>
+    FAMILY_LABEL[family] ?? (family === "interworking" ? t("4G/5G interworking") : family === "other" ? t("Other") : family);
+
   const filteredEvents = useMemo(() => {
     // **程序先於 Domain。** 選了程序就是「只看這一段」，Domain 是那一段
     // 之內的再過濾 —— 反過來（Domain 先）在畫面上是同一個結果，但語意
@@ -287,19 +384,24 @@ export function SessionAnalysisView({
       events = events.filter(
         (e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame,
       );
+    } else if (currentGroup) {
+      // 一組＝那些段的 frame 範圍的聯集。
+      const ranges = currentGroup.members;
+      events = events.filter((e) => ranges.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
     }
     events = domain === "ALL" ? events : events.filter((e) => e.domain === domain);
     return onlyAnomalies ? events.filter((e) => e.status === "ERROR" || e.slow) : events;
-  }, [supiEvents, domain, current, onlyAnomalies]);
+  }, [supiEvents, domain, current, currentGroup, onlyAnomalies]);
 
   //: 開關藏掉了幾則 —— 要講，不然圖上的空白像「這段沒有訊息」。
   const hiddenByAnomalyFilter = useMemo(() => {
     if (!onlyAnomalies) return 0;
     let events = supiEvents;
     if (current) events = events.filter((e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame);
+    else if (currentGroup) events = events.filter((e) => currentGroup.members.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
     if (domain !== "ALL") events = events.filter((e) => e.domain === domain);
     return events.length - filteredEvents.length;
-  }, [onlyAnomalies, supiEvents, current, domain, filteredEvents]);
+  }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents]);
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
@@ -479,7 +581,7 @@ export function SessionAnalysisView({
               <div className="flex flex-wrap gap-1">
                 <button
                   type="button"
-                  onClick={() => setActiveProcedure(null)}
+                  onClick={() => { setActiveProcedure(null); setActiveGroup(null); }}
                   className={cn(
                     "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
                     // **看 `current` 不看 `activeProcedure`** —— 兩者在換訂戶時會分家:
@@ -492,45 +594,89 @@ export function SessionAnalysisView({
                     // state 跟著沒了（實測換人後正確亮「全部」）。但那是**副作用**，
                     // 不是保證:哪天在這個畫面裡加一個訂戶切換器（NSA 有），
                     // 它就會靜默壞掉。看推導出來的 `current` 則與 unmount 無關。
-                    current === null
+                    current === null && currentGroup === null
                       ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
                       : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                   )}
                 >
                   {t("All ({n} events)", { n: supiEvents.length })}
                 </button>
-                {procedures.map((p) => (
-                  <button
-                    key={p.startFrame}
-                    type="button"
-                    onClick={() => setActiveProcedure(p.startFrame)}
-                    title={
-                      // 完整資訊放 title —— 按鈕上只留一眼看得懂的部分。
-                      [
-                        `frame ${p.startFrame}–${p.endFrame}`,
-                        t("{n} messages", { n: p.messages }),
-                        p.failures ? t("{n} failed", { n: p.failures }) : null,
-                        p.cause ? `cause：${p.cause}` : null,
-                        p.firstFailure ? t("first failure: {cause}", { cause: p.firstFailure }) : null,
-                        p.note || null,
-                      ].filter(Boolean).join("\n")
-                    }
-                    className={cn(
-                      "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
-                      current?.startFrame === p.startFrame
-                        ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
-                        : OUTCOME_STYLE[p.outcome],
-                    )}
-                  >
-                    <span>{t(PROCEDURE_LABEL[p.kind] ?? p.kind)}</span>
-                    {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
-                    <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
-                    <span className="ml-1 tabular-nums opacity-60">
-                      {p.durationS < 1 ? `${Math.round(p.durationS * 1000)}ms` : `${p.durationS.toFixed(2)}s`}
+                {groups.map((g) => {
+                  const single = g.members.length === 1;
+                  const expanded = expandedGroups.has(g.key);
+                  const active = single ? current?.startFrame === g.members[0].startFrame : currentGroup?.key === g.key;
+                  const failed = g.members.reduce((n, p) => n + p.failures, 0);
+                  const causes = g.members.map((p) => p.cause).filter((c): c is string => Boolean(c));
+                  const commonCause = causes.length > 0 && causes.every((c) => c === causes[0]) ? causes[0] : null;
+                  const regType = g.registrationType ? t(REGISTRATION_TYPE_LABEL[g.registrationType] ?? g.registrationType) : null;
+                  return (
+                    <span key={g.key} className="inline-flex items-stretch">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // 一段的組就是那一段：直接選段，cause 那一行才會出來。
+                          if (single) {
+                            setActiveProcedure(g.members[0].startFrame);
+                            setActiveGroup(null);
+                          } else {
+                            setActiveGroup(g.key);
+                            setActiveProcedure(null);
+                          }
+                        }}
+                        title={[
+                          t("{n} segment(s) in this group", { n: g.members.length }),
+                          failed ? t("{n} failed", { n: failed }) : null,
+                          commonCause ? t("common cause: {cause}", { cause: commonCause }) : null,
+                        ].filter(Boolean).join("\n")}
+                        className={cn(
+                          "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
+                          !single && "rounded-r-none",
+                          active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm" : OUTCOME_STYLE[g.outcome],
+                        )}
+                      >
+                        <span className="opacity-60">{familyLabel(g.family)}</span>
+                        <span className="mx-1 opacity-40">·</span>
+                        <span>{t(PROCEDURE_LABEL[g.kind] ?? g.kind)}</span>
+                        {regType && <span className="ml-1 opacity-70">({regType})</span>}
+                        <span className="ml-1.5 opacity-70">{OUTCOME_MARK[g.outcome]}</span>
+                        {single ? (
+                          <span className="ml-1 tabular-nums opacity-60">{durationText(g.members[0].durationS)}</span>
+                        ) : (
+                          <span className="ml-1 tabular-nums opacity-80">×{g.members.length}</span>
+                        )}
+                      </button>
+                      {!single && (
+                        <button
+                          type="button"
+                          title={expanded ? t("Hide the segments") : t("Show the segments")}
+                          aria-label={expanded ? t("Hide the segments") : t("Show the segments")}
+                          onClick={() =>
+                            setExpandedGroups((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(g.key)) next.delete(g.key);
+                              else next.add(g.key);
+                              return next;
+                            })
+                          }
+                          className={cn(
+                            "rounded-r border border-l-0 px-1.5 text-[11px] transition-colors",
+                            active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan" : OUTCOME_STYLE[g.outcome],
+                          )}
+                        >
+                          {expanded ? "▾" : "▸"}
+                        </button>
+                      )}
                     </span>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
+              {/* 展開的組：原本的逐段晶片，一組一列。 */}
+              {groups.filter((g) => g.members.length > 1 && expandedGroups.has(g.key)).map((g) => (
+                <div key={g.key} className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
+                  <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">{t(PROCEDURE_LABEL[g.kind] ?? g.kind)}</span>
+                  {g.members.map(segmentChip)}
+                </div>
+              ))}
               {current?.cause && (
                 // **失敗要在段的層級講一次。** 箭頭上的 cause 只在那一列;
                 // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。
@@ -543,6 +689,21 @@ export function SessionAnalysisView({
               )}
               {current?.note && (
                 <p className="mt-1 text-[11px] text-fg-dim">{current.note}</p>
+              )}
+              {currentGroup && !current && (
+                // 選了一組：講這組有幾段、幾段失敗、共同的 cause（全部相同才講）。
+                <p className="mt-2 text-[11px] text-fg-dim">
+                  {t("{n} segments · {f} failed", {
+                    n: currentGroup.members.length,
+                    f: currentGroup.members.filter((p) => p.outcome === "failure").length,
+                  })}
+                  {(() => {
+                    const causes = currentGroup.members.map((p) => p.cause).filter((c): c is string => Boolean(c));
+                    return causes.length > 0 && causes.every((c) => c === causes[0])
+                      ? <span className="ml-2 text-signal-red">⚠ {causes[0]}</span>
+                      : null;
+                  })()}
+                </p>
               )}
             </div>
           )}

@@ -286,6 +286,10 @@ export interface CallFlowProcedureJson {
   failures: number;
   duration_s: number;
   note: string;
+  // 2026-09-11：世代／類別（`procedures.TAXONOMY`）與 5G 註冊型別 —— 分組靠它們。
+  family: string | null;
+  category: string | null;
+  registration_type: string | null;
 }
 
 export function toCallFlowProcedure(p: CallFlowProcedureJson) {
@@ -301,6 +305,10 @@ export function toCallFlowProcedure(p: CallFlowProcedureJson) {
     failures: p.failures,
     durationS: p.duration_s,
     note: p.note,
+    // 舊後端沒有這三欄時歸「other」—— 分組照常，只是組名是「其他」，不是消失。
+    family: p.family ?? "other",
+    category: p.category ?? "other",
+    registrationType: p.registration_type ?? null,
   };
 }
 

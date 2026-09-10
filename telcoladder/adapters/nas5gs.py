@@ -254,6 +254,19 @@ def count_protected_suci(frame: Frame) -> int:
     return protected
 
 
+#: `nas-5gs.mm.5gs_reg_type` 的值 → 名稱（tshark 的值表逐字轉成 slug，
+#: `tests/test_procedure_taxonomy.py` 拿 `tshark -G values` 對）。
+REGISTRATION_TYPES: dict[int, str] = {
+    1: "initial-registration",
+    2: "mobility-registration-updating",
+    3: "periodic-registration-updating",
+    4: "emergency-registration",
+    5: "snpn-onboarding-registration",
+    6: "disaster-roaming-mobility-registration-updating",
+    7: "disaster-roaming-initial-registration",
+}
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
 
@@ -288,6 +301,12 @@ def parse(frame: Frame) -> list[Message]:
         keys = _identity_keys(block, carrier, carrier_adapter, frame)
 
         detail: dict[str, str] = {}
+        # 5GS registration type（TS 24.501）：初始、行動更新、週期性、緊急…。名稱從靜態表查
+        # （`REGISTRATION_TYPES`，值表以 tshark 為 oracle），查不到就不填。「回 5G 之後的
+        # 行動更新註冊失敗」與「初始註冊失敗」是兩種故障，`procedures` 靠這個分。
+        reg_type = _to_int(block.get("nas-5gs_nas-5gs_mm_5gs_reg_type"))
+        if reg_type is not None and reg_type in REGISTRATION_TYPES:
+            detail["registration-type"] = REGISTRATION_TYPES[reg_type]
         supi = _supi_from_suci(block)
         if supi:
             detail["SUPI"] = supi
