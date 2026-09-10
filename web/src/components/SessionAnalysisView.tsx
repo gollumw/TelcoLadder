@@ -1,7 +1,7 @@
 "use client";
 
 import { t, useLang } from "../i18n";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
@@ -175,10 +175,8 @@ const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {
 const ERROR_HEX = "var(--ladder-error)";
 const ERROR_BG = "var(--ladder-error-bg)";
 
-//: 縮放級距。**1 是分界**：>1（放大）時解碼面板讓位到頁面最下方（梯形圖
-//: 需要整個寬度）；≤1 時面板在側欄 sticky 跟著捲動（NF 多、圖很長時，
-//: 點一支箭不用捲回頂端看解碼）。級距是離散的 —— 連續縮放做得到，
-//: 但「目前在哪一級」講不出來，重設也沒有明確的家。
+//: 梯形圖的放大倍率。**只是倍率** —— 2026-09-11 之前 >1 同時把解碼面板擠到下方，
+//: 使用者想看清楚箭頭就得失去左圖右表；現在版面由 `wide` 決定（Domain 列右側那顆鈕）。
 const ZOOM_LEVELS = [0.6, 0.75, 0.9, 1, 1.15, 1.35, 1.6] as const;
 
 const LANE_GAP = 150;
@@ -286,14 +284,56 @@ export function SessionAnalysisView({
   //: 展開成逐段晶片的組。預設全部收合 —— 97 顆晶片就是這樣來的。
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [hover, setHover] = useState<{ frame: number; x: number; y: number } | null>(null);
-  //: 梯形圖縮放。放大（>1）同時切換版面 —— 見 ZOOM_LEVELS 的說明。
+  //: 梯形圖的放大倍率（見 ZOOM_LEVELS）。
   const [zoom, setZoom] = useState<number>(1);
+  //: 版面：全寬（梯形圖吃滿外殼、解碼面板停到下方 —— 多看幾條泳道）或左圖右表
+  //: （逐則對照）。與 zoom 脫鉤。
+  const [wide, setWide] = useState(false);
   const [activePduSessionId, setActivePduSessionId] = useState<number | null>(null);
   //: 只看失敗與停滯（`slow`＝間隔超過引擎的 SLOW_GAP，1 秒）。這是**視角**不是範圍：
   //: 疊在程序與 Domain 之後。幾百則訊息裡找那兩支紅箭，靠的就是這個。
   const [onlyAnomalies, setOnlyAnomalies] = useState(false);
   //: 梯形圖的可捲面板（下面的 max-h）。跳到選中的事件時捲的是它，不是整頁。
   const ladderBoxRef = useRef<HTMLDivElement>(null);
+  //: 按住拖曳平移面板。手勢記在 ref 裡（不重繪）；移動超過 4 px 才算拖曳，而拖曳
+  //: 結束的那一下點擊要吃掉（`onClickCapture`），不然放開時會誤選手指下的事件。
+  const drag = useRef({ active: false, moved: false, x: 0, y: 0, left: 0, top: 0 });
+  const [dragging, setDragging] = useState(false);
+  const onLadderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const box = ladderBoxRef.current;
+    if (e.button !== 0 || !box) return;
+    drag.current = { active: true, moved: false, x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    try {
+      box.setPointerCapture(e.pointerId);
+    } catch {
+      // 合成的指標事件沒有真的指標可抓 —— 拖曳照樣做，只是離開面板就停。
+    }
+    setDragging(true);
+  };
+  const onLadderPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    const box = ladderBoxRef.current;
+    if (!d.active || !box) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    d.moved = true;
+    box.scrollLeft = d.left - dx;
+    box.scrollTop = d.top - dy;
+  };
+  const onLadderPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const box = ladderBoxRef.current;
+    if (box?.hasPointerCapture(e.pointerId)) box.releasePointerCapture(e.pointerId);
+    drag.current.active = false;
+    setDragging(false);
+  };
+  const onLadderClickCapture = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (drag.current.moved) {
+      e.stopPropagation();
+      e.preventDefault();
+      drag.current.moved = false;
+    }
+  };
 
   const identity = supi ? identities.find((i) => i.supi === supi) : undefined;
   const isMidStream = identity?.captureStatus === "mid-stream";
@@ -457,8 +497,8 @@ export function SessionAnalysisView({
   );
   const height = TOP_PAD + Math.max(filteredEvents.length + rowOffset, 1) * ROW_HEIGHT + 20;
 
-  //: >1 = 放大 = 解碼面板讓位到最下方。用推導不另設狀態 —— 兩個狀態會分家。
-  const expanded = zoom > 1;
+  //: 全寬時解碼面板讓位到最下方。以前由 `zoom > 1` 推導，現在是使用者的選擇。
+  const expanded = wide;
 
   const sessionEntries = supi ? correlationEntries.filter((e) => e.supi === supi) : [];
   const activeSession = sessionEntries.find((e) => e.pduSessionId === activePduSessionId) ?? sessionEntries[0];
@@ -732,12 +772,27 @@ export function SessionAnalysisView({
                 {tab.label}
               </button>
             ))}
+            {/* 兩種看法：全寬（多看幾條泳道，解碼面板停到下方）與左圖右表（逐則對照）。
+                與 zoom 脫鉤 —— zoom 只是倍率。 */}
+            <button
+              type="button"
+              onClick={() => setWide((v) => !v)}
+              title={wide ? t("Ladder on the left, inspector on the right") : t("Give the ladder the full width; the inspector docks below")}
+              className={cn(
+                "ml-auto rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                wide
+                  ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                  : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
+              )}
+            >
+              {wide ? t("Side by side") : t("Wide ladder")}
+            </button>
             <button
               type="button"
               onClick={() => setOnlyAnomalies((v) => !v)}
               title={t("Show only failed messages and gaps longer than 1 s (the engine's slow-gap threshold)")}
               className={cn(
-                "ml-auto rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
                 onlyAnomalies
                   ? "border-signal-red-border bg-signal-red-bg text-signal-red"
                   : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
@@ -755,7 +810,15 @@ export function SessionAnalysisView({
               1,484 則事件 × 50 px ＝ 74,280 px 高、13 條泳道 ＝ 1,940 px 寬。沒有
               max-h 時水平捲軸在 75,000 px 下面、xl 以下的檢查器排在整張圖之後 ——
               兩個症狀使用者都叫「跑版」。兩軸都在這個 div 裡捲，捲軸永遠在眼前。 */}
-          <div ref={ladderBoxRef} className="relative max-h-[calc(100vh-11rem)] overflow-auto">
+          <div
+            ref={ladderBoxRef}
+            className={cn("relative max-h-[calc(100vh-11rem)] overflow-auto select-none", dragging ? "cursor-grabbing" : "cursor-grab")}
+            onPointerDown={onLadderPointerDown}
+            onPointerMove={onLadderPointerMove}
+            onPointerUp={onLadderPointerUp}
+            onPointerCancel={onLadderPointerUp}
+            onClickCapture={onLadderClickCapture}
+          >
             {filteredEvents.length === 0 ? (
               // 「這裡沒有」與「有，但我們接不上這個人」是兩件完全不同的事。
               // 前者讓人放心，後者是一條該去追的線索。
