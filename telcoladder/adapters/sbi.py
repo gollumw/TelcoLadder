@@ -16,7 +16,15 @@ from typing import Any
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import connection_scope, globally_unique, gtp_tunnels, scoped
-from telcoladder.model import BLIND_UNDECODED_STREAM, BlindSpot, Endpoint, IdKey, IdKind, Message
+from telcoladder.model import (
+    BLIND_UNDECODED_STREAM,
+    NF_ROLE_HINTS_KEY,
+    BlindSpot,
+    Endpoint,
+    IdKey,
+    IdKind,
+    Message,
+)
 
 NAME = "sbi"
 
@@ -68,6 +76,29 @@ _TYPE_HEADERS = 1
 
 #: 4xx/5xx 視為失敗。SBI 的錯誤語意就靠 HTTP 狀態碼（TS 29.500 §5.2.7）。
 _FAILURE_STATUS_FLOOR = 400
+
+#: N1N2MessageTransfer（`POST …/namf-comm/v1/ue-contexts/{supi}/n1-n2-messages`）的
+#: 呼叫端是誰，JSON body 自己說了：`n1MessageContainer.n1MessageClass` 與
+#: `n2InfoContainer.n2InformationClass`（TS 29.518 的列舉）。**只收對應唯一的**：
+#: SM 類的 NAS 只有 SMF 產得出來、SMS 只有 SMSF、UPDP 只有 PCF、LPP／NRPPa 只有
+#: LMF。`5GMM`／`RAN`／`PWS` 這些不收 —— 不是誰都可能，就是我們沒有把握。
+#:
+#: 為什麼要這一條：`nf.SBI_CONSUMER_OF` 刻意不收 namf-comm（SMF／PCF／NEF 都會打，
+#: 不唯一），於是打 AMF namf-comm 的每一個位址都沒有票 —— 實測一份 AMF 側的
+#: UE trace，30 個網元裡 12 個沒有角色，其中 8 個全是 N1N2 的呼叫端，而它們的
+#: body 每一則都寫著 `n1MessageClass:SM`。這不是猜：類別是線路上的事實，走
+#: `NF_ROLE_HINTS_KEY`（`nf.py` 的 tier 0），與 GTPv2 的 F-TEID 介面型別同一條路。
+N1N2_SENDER_BY_CLASS: dict[str, str] = {
+    "SM": "SMF",
+    "SMS": "SMSF",
+    "UPDP": "PCF",
+    "LPP": "LMF",
+    "NRPPa": "LMF",
+}
+
+#: tshark 把 JSON 成員攤成 `名稱:值` 字串（`json.member.with_value`），巢狀的
+#: 會帶路徑前綴（`/n1MessageContainer/n1MessageClass:SM`）—— 只認最後一段。
+_N1N2_CLASS_MEMBERS = ("n1MessageClass:", "n2InformationClass:")
 
 
 def _supi_from_identifier(token: str) -> str | None:
@@ -359,6 +390,43 @@ def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     return frozenset(keys)
 
 
+def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | None:
+    """N1N2MessageTransfer 請求的呼叫端角色，寫成 `nf.py` 認的 `位址=角色`。
+
+    body 通常在同一格的 DATA frame 裡（HEADERS 之後的另一個 http2 區塊），所以掃
+    整格裡**同一條 stream** 的區塊；JSON 可能直接掛在 http2 底下（`application/json`）
+    或在 multipart 的某一段裡，兩種都走 `carrier.dig`。body 在別格時得不到提示 ——
+    老實回 None，不從路徑猜；兩個類別指向不同的 NF 也回 None。
+
+    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格，來自 5 個
+    位址；Open5GS 的測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成
+    前後兩格，那裡拿不到提示 —— `tests/test_sbi_n1n2_sender.py` 把這個缺口釘成
+    可見的。跨格接回去要走 `SBI_STREAM` 的鍵，另開一票。
+    """
+    if "/n1-n2-messages" not in path:
+        return None
+    from telcoladder.adapters.carrier import dig
+
+    roles: set[str] = set()
+    for block in frame.layer("http2"):
+        if stream_id is not None and _to_int(block.get("http2_http2_streamid")) != stream_id:
+            continue
+        for js in dig(block, "json"):
+            members = js.get("json_json_member_with_value")
+            for member in (members if isinstance(members, list) else [members]):
+                if not isinstance(member, str):
+                    continue
+                leaf = member.rsplit("/", 1)[-1]
+                for prefix in _N1N2_CLASS_MEMBERS:
+                    if leaf.startswith(prefix):
+                        role = N1N2_SENDER_BY_CLASS.get(leaf[len(prefix):])
+                        if role:
+                            roles.add(role)
+    if len(roles) != 1:
+        return None
+    return f"{frame.src_ip}={roles.pop()}"
+
+
 def parse(frame: Frame) -> list[Message]:
     messages: list[Message] = []
     scope = connection_scope(frame)
@@ -410,6 +478,12 @@ def parse(frame: Frame) -> list[Message]:
             service = _service_from_path(str(path))
             if service:
                 detail["service"] = service
+            # 打 AMF 的 namf-comm 是誰：`nf.py` 對這個服務刻意不投消費者票，
+            # body 裡的類別才是證據（見 `N1N2_SENDER_BY_CLASS`）。只看請求。
+            if method and service == "namf-comm":
+                hint = _n1n2_sender_hint(frame, stream_id, str(path))
+                if hint:
+                    detail[NF_ROLE_HINTS_KEY] = hint
         user_agent = first(block.get("http2_http2_headers_user_agent"))
         if user_agent:
             # TS 29.500 要求 SBI 的 User-Agent 帶發送端的 NF type，
