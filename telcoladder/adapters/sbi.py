@@ -11,7 +11,9 @@ nghttp2 網頁伺服器樣本，不是 SBI）。多訊息拆解、method/path/st
 
 from __future__ import annotations
 
+import json
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
@@ -98,7 +100,30 @@ N1N2_SENDER_BY_CLASS: dict[str, str] = {
 
 #: tshark 把 JSON 成員攤成 `名稱:值` 字串（`json.member.with_value`），巢狀的
 #: 會帶路徑前綴（`/n1MessageContainer/n1MessageClass:SM`）—— 只認最後一段。
-_N1N2_CLASS_MEMBERS = ("n1MessageClass:", "n2InformationClass:")
+_N1N2_CLASS_MEMBERS = ("n1MessageClass", "n2InformationClass")
+
+#: 訂閱／登記請求的 body 裡「之後請通知這個 URI」的欄位：TS 29.503 的
+#: `SdmSubscription.callbackReference`、`Amf3GppAccessRegistration`／`SmfRegistration`
+#: 的 `deregCallbackUri`、`pcscfRestorationCallbackUri`；TS 29.502 `SmContextCreateData.
+#: smContextStatusUri`；TS 29.518 `N1N2MessageTransferReqData.n1NotifyCallbackUri`／
+#: `n2NotifyCallbackUri`、`AmfEventSubscription.eventNotifyUri`；TS 29.510
+#: `SubscriptionData.nfStatusNotificationUri`；TS 29.512／29.507 的 `notificationUri`；
+#: TS 29.508 的 `notifUri`。之後打到那個 URI 的請求，發送者就是被訂閱那個服務的
+#: **提供者** —— `nf.py` 拿它跨訊息投 `notify:` 票。**只認 URI 欄位，不猜路徑尾巴**：
+#: `/callbacks/…` 那種是廠商命名，不是規範。
+CALLBACK_URI_MEMBERS = frozenset({
+    "callbackReference", "deregCallbackUri", "pcscfRestorationCallbackUri",
+    "smContextStatusUri", "n1NotifyCallbackUri", "n2NotifyCallbackUri", "eventNotifyUri",
+    "nfStatusNotificationUri", "notificationUri", "notifUri",
+})
+
+#: 請求裡**自報**的 NF 型別：`nnrf-disc` 的 `requester-nf-type=`（TS 29.510）、
+#: `nnssf-nsselection` 的 `nf-type=`（TS 29.531）是查詢參數；`nnrf-nfm` 登記 body 的
+#: `nfType`（TS 29.510 NFProfile）與 `nchf-convergedcharging` body 的
+#: `nodeFunctionality`（TS 32.291）是成員。`nf.py` 只在值是它認得的 NF 型別時才投票；
+#: 兩個不同的值就不寫（不猜）。
+_DECLARED_TYPE_QUERY = ("requester-nf-type", "nf-type")
+_DECLARED_TYPE_MEMBERS = {"nnrf-nfm": "nfType", "nchf-convergedcharging": "nodeFunctionality"}
 
 
 def _supi_from_identifier(token: str) -> str | None:
@@ -390,24 +415,16 @@ def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     return frozenset(keys)
 
 
-def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | None:
-    """N1N2MessageTransfer 請求的呼叫端角色，寫成 `nf.py` 認的 `位址=角色`。
+def _json_members(frame: Frame, stream_id: int | None):
+    """同一格裡、同一條 stream 的每個 JSON 成員，拆成 (名稱最後一段, 值)。
 
     body 通常在同一格的 DATA frame 裡（HEADERS 之後的另一個 http2 區塊），所以掃
     整格裡**同一條 stream** 的區塊；JSON 可能直接掛在 http2 底下（`application/json`）
-    或在 multipart 的某一段裡，兩種都走 `carrier.dig`。body 在別格時得不到提示 ——
-    老實回 None，不從路徑猜；兩個類別指向不同的 NF 也回 None。
-
-    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格，來自 5 個
-    位址；Open5GS 的測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成
-    前後兩格，那裡拿不到提示 —— `tests/test_sbi_n1n2_sender.py` 把這個缺口釘成
-    可見的。跨格接回去要走 `SBI_STREAM` 的鍵，另開一票。
+    或在 multipart 的某一段裡，兩種都走 `carrier.dig`。成員字串是 `名稱:值`，巢狀的
+    名稱帶路徑前綴 —— 先在第一個冒號切開（值裡的 URL 也有冒號），再取名稱最後一段。
     """
-    if "/n1-n2-messages" not in path:
-        return None
     from telcoladder.adapters.carrier import dig
 
-    roles: set[str] = set()
     for block in frame.layer("http2"):
         if stream_id is not None and _to_int(block.get("http2_http2_streamid")) != stream_id:
             continue
@@ -416,15 +433,80 @@ def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | N
             for member in (members if isinstance(members, list) else [members]):
                 if not isinstance(member, str):
                     continue
-                leaf = member.rsplit("/", 1)[-1]
-                for prefix in _N1N2_CLASS_MEMBERS:
-                    if leaf.startswith(prefix):
-                        role = N1N2_SENDER_BY_CLASS.get(leaf[len(prefix):])
-                        if role:
-                            roles.add(role)
+                key, _sep, value = member.partition(":")
+                yield key.rsplit("/", 1)[-1], _unescape_json_string(value)
+
+
+def _unescape_json_string(value: str) -> str:
+    """tshark 給的成員值還帶著 JSON 的跳脫（`http:\\/\\/host\\/cb`）—— 還原成原字串。
+
+    實測一份 AMF trace：120 個 `callbackReference` 一個都對不上通知的路徑，因為值裡
+    的每個斜線都是 `\\/`；`SM` 那種值沒有跳脫字元所以 N1N2 那條沒踩到。解不開的原樣回。
+    """
+    if "\\" not in value:
+        return value
+    try:
+        return json.loads(f'"{value}"')
+    except ValueError:
+        return value.replace("\\/", "/")
+
+
+def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | None:
+    """N1N2MessageTransfer 請求的呼叫端角色，寫成 `nf.py` 認的 `位址=角色`。
+
+    body 在別格時得不到提示 —— 老實回 None，不從路徑猜；兩個類別指向不同的 NF
+    也回 None。
+
+    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格，來自 5 個
+    位址；Open5GS 的測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成
+    前後兩格，那裡拿不到提示 —— `tests/test_sbi_n1n2_sender.py` 把這個缺口釘成
+    可見的。跨格接回去要走 `SBI_STREAM` 的鍵，另開一票。
+    """
+    if "/n1-n2-messages" not in path:
+        return None
+    roles: set[str] = set()
+    for name, value in _json_members(frame, stream_id):
+        if name in _N1N2_CLASS_MEMBERS:
+            role = N1N2_SENDER_BY_CLASS.get(value)
+            if role:
+                roles.add(role)
     if len(roles) != 1:
         return None
     return f"{frame.src_ip}={roles.pop()}"
+
+
+def _callback_paths(frame: Frame, stream_id: int | None) -> str:
+    """請求 body 裡登記的回呼 URI 的**路徑**（`;` 相連、排序），沒有就空字串。
+
+    只留路徑：之後的通知是用 `:path` 打過來的，主機在 `:authority`。
+    """
+    paths: set[str] = set()
+    for name, value in _json_members(frame, stream_id):
+        if name not in CALLBACK_URI_MEMBERS or not value:
+            continue
+        path = urlsplit(value).path if "://" in value else value
+        if path.startswith("/"):
+            paths.add(path.partition("?")[0])
+    return ";".join(sorted(paths))
+
+
+def _declared_nf_type(frame: Frame, stream_id: int | None, path: str, service: str | None, method: str) -> str | None:
+    """請求裡自報的 NF 型別（見 `_DECLARED_TYPE_QUERY`／`_DECLARED_TYPE_MEMBERS`），
+    大寫；查詢參數與 body 說了兩個不同的值就回 None。"""
+    values: set[str] = set()
+    query = path.partition("?")[2]
+    if query:
+        params = parse_qs(query)
+        for key in _DECLARED_TYPE_QUERY:
+            for raw in params.get(key, []):
+                if raw.strip():
+                    values.add(raw.strip().upper())
+    marker = _DECLARED_TYPE_MEMBERS.get(service or "")
+    if marker and method in ("PUT", "POST", "PATCH"):
+        for name, value in _json_members(frame, stream_id):
+            if name == marker and value.strip():
+                values.add(value.strip().upper())
+    return values.pop() if len(values) == 1 else None
 
 
 def parse(frame: Frame) -> list[Message]:
@@ -484,6 +566,15 @@ def parse(frame: Frame) -> list[Message]:
                 hint = _n1n2_sender_hint(frame, stream_id, str(path))
                 if hint:
                     detail[NF_ROLE_HINTS_KEY] = hint
+            if method:
+                # 兩個跨訊息的線路事實，`nf.py` 讀：登記了哪些回呼 URI（之後打到
+                # 那裡的就是提供者），與請求自己報的 NF 型別。只看請求。
+                callbacks = _callback_paths(frame, stream_id)
+                if callbacks:
+                    detail["callback-uris"] = callbacks
+                declared = _declared_nf_type(frame, stream_id, str(path), service, str(method))
+                if declared:
+                    detail["declared-nf-type"] = declared
         user_agent = first(block.get("http2_http2_headers_user_agent"))
         if user_agent:
             # TS 29.500 要求 SBI 的 User-Agent 帶發送端的 NF type，
