@@ -168,6 +168,18 @@ and checked frame by frame against tshark; its `scenario.md` records the three
 encoding traps that produced plausible wrong values before they were fixed,
 including one that silently merged the two subscribers.
 
+Segmentation sees the interworking from either side. The target side of an
+EPS→5GS handover (Forward Relocation Request arriving, HandoverRequest going
+out) is one segment with the same preparation/execution timings as the source
+side; the idle-mode move in the other direction (Context Request carrying the
+UE's TAU Request) is one segment, folded into the TAU when the S1 side is in
+the same capture; and a PDU session modification answered with radioNetwork
+cause 36 is named `eps-fallback` rather than a modification, because that is
+what the gNB said. Every segment carries a family (5G, 4G, interworking, IMS,
+Diameter) and a category, and a 5G registration carries its type - a mobility
+registration update that fails is a different fault from an initial one. On the
+AMF trace that drove this, 97 segments became 163, in seven groups.
+
 ## 5. UE context release: who asked for it
 
 When a UE context is released, the first question is whether the RAN asked or

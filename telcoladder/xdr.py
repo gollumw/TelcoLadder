@@ -78,6 +78,10 @@ def procedure_record(p: Procedure) -> dict:
         # 換手的兩段時延（準備、執行）；非換手段全 null。加欄不升版。
         "ho_prep_s": p.ho_prep_s,
         "ho_exec_s": p.ho_exec_s,
+        # 世代／類別（`procedures.TAXONOMY`）與 5G 註冊型別；加欄不升版。
+        "family": p.family,
+        "category": p.category,
+        "registration_type": p.registration_type,
     }
 
 

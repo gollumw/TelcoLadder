@@ -204,6 +204,11 @@ export interface CallFlowProcedure {
   durationS: number;
   /** 「落在擷取結尾附近，可能只是截到一半」之類的但書。空字串＝沒有。 */
   note: string;
+  /** 世代（5g／4g／interworking／ims／diameter／other）與類別（`procedures.TAXONOMY`）。 */
+  family: string;
+  category: string;
+  /** 5G 註冊的型別（`nas5gs.REGISTRATION_TYPES` 的 slug）；非註冊段 null。 */
+  registrationType: string | null;
 }
 
 /** 一個訂戶的梯形圖資料。 */
