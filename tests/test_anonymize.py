@@ -418,7 +418,8 @@ def test_gtpv2_decoded_from_a_base64_json_member_is_rewritten(tmp_path: Path) ->
     body = json.dumps({"ueEpsPdnConnection": blob, "pgwS8cFteid": {"teid": "00001234", "ipv4Addr": ip}}, separators=(",", ":")).encode()
     pcap, out = tmp_path / "b64.pcap", tmp_path / "anon.pcap"
     _h2c_pcap(pcap, _request_block(huffman=False, extra=_literal(31, b"application/json", False), body_len=len(body)), body)
-    assert ip in _leaves(_ek(pcap), "gtpv2_gtpv2_f_teid_ipv4")          # 陽性對照：tshark 真的解了那段 base64
+    if ip not in _leaves(_ek(pcap), "gtpv2_gtpv2_f_teid_ipv4"):          # 陽性對照：這版 tshark 有沒有解那段 base64
+        pytest.skip("this tshark does not decode 3GPP JSON Bytes members; nothing to map back")
     report = A.anonymize(pcap, out, key=KEY)
     assert report.rewritten.get("json-blobs") == 1
     after = _ek(out)
@@ -441,7 +442,8 @@ def test_escaped_base64_member_keeps_its_length_by_padding_whitespace(tmp_path: 
     body = b'{"ueEpsPdnConnection":"' + original.replace("/", "\\/").encode() + b'","x":1}'
     pcap = tmp_path / "esc.pcap"
     _h2c_pcap(pcap, _request_block(huffman=False, extra=_literal(31, b"application/json", False), body_len=len(body)), body)
-    assert ip in _leaves(_ek(pcap), "gtpv2_gtpv2_f_teid_ipv4")
+    if ip not in _leaves(_ek(pcap), "gtpv2_gtpv2_f_teid_ipv4"):
+        pytest.skip("this tshark does not decode 3GPP JSON Bytes members; nothing to map back")
     real_ipv4 = A.Pseudonymiser.ipv4
     for forced, padded in (("253.0.0.1", False), ("129.0.0.1", True)):     # 0xFD 仍是斜線；0x81 不是
         monkeypatch.setattr(A.Pseudonymiser, "ipv4", lambda self, o, forced=forced: forced if o == ip else real_ipv4(self, o))
@@ -455,3 +457,20 @@ def test_escaped_base64_member_keeps_its_length_by_padding_whitespace(tmp_path: 
         raw = bytes.fromhex(data.replace(":", ""))
         assert len(raw) == len(body) and json.loads(raw)["x"] == 1
         assert (b'" ' in raw) == padded
+
+
+def test_a_suci_msin_left_behind_is_caught_even_though_the_full_imsi_is_gone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SUCI 裡只有 MSIN；工具拿 MCC＋MNC＋MSIN 拼回 SUPI。只改 IMSI 不改 MSIN 時整串比對看不出來，
+    輸出裡一個訂戶會變成兩個 —— 自證要拿 MSIN 尾巴去找（2026-09-11 CI 上另一版 tshark 踩到的）。"""
+    real = A.Planner._identity
+
+    def skip_msin(self, plan, raw, node, kind):
+        if kind == "msin":
+            return None
+        return real(self, plan, raw, node, kind)
+
+    monkeypatch.setattr(A.Planner, "_identity", skip_msin)
+    out = tmp_path / "anon.pcap"
+    with pytest.raises(A.AnonymizeError, match="still carried"):
+        A.anonymize(FIXTURES / "n26-handover" / "capture.pcap", out, key=KEY)
+    assert not out.exists()

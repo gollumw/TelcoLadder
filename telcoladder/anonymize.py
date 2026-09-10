@@ -703,7 +703,7 @@ _OTHER_ID_FIELDS = frozenset({
     "e164.msisdn", "e164.isdn", "e164.called_party_number.digits", "e164.calling_party_number.digits",
     "gtpv2.msisdn", "gtp.msisdn", "gsm_a.msisdn", "diameter.Calling-Station-Id", "diameter.Subscription-Id-Data",
     "gtpv2.mei", "gtp.mei", "gsm_a.imei", "gsm_a.imeisv", "nas-5gs.mm.imei", "nas-5gs.mm.imeisv",
-    "pfcp.user_id.imei", "pfcp.user_id.pei",
+    "pfcp.user_id.imei", "pfcp.user_id.pei", "pfcp.user_id_imei", "pfcp.user_id_pei",   # 後兩個是舊版 tshark 的名字
     "nas_eps.emm.imei", "nas_eps.emm.imeisv", "diameter.3GPP-IMEISV", "diameter.Terminal-Information",
 })
 #: ASCII 的 MCC+MNC 串（Diameter 的 3GPP-*-MCC-MNC）。
@@ -1345,6 +1345,8 @@ class Planner:
             plan.put(node.pos, _tbcd_encode(self.p.identity(shown, kind), len(raw)))
         elif _mobile_identity_decode(raw) == shown:
             plan.put(node.pos, _mobile_identity_encode(self.p.identity(shown, kind), raw))
+        elif self._identity_by_search(plan, shown, kind):
+            pass
         elif _is_ascii(raw):
             self._text_bytes(plan, raw, node.pos)
             return
@@ -1353,6 +1355,34 @@ class Planner:
             return
         self.originals["identity"].add(shown)
         self.counts["identity"] += 1
+
+    def _identity_by_search(self, plan: _FramePlan, shown: str, kind: str) -> bool:
+        """節點的位元組解不出 tshark 顯示的數字（不同版本的 tshark 對同一個欄位報的位置不一樣）：
+        把那串數字的 TBCD 編碼（純 TBCD、與 24.008 Mobile Identity 的八種型別位元組）拿去這一格裡找，
+        **唯一**命中才改。找得到就不必依賴位置；找不到就當沒看見，計入盲點。"""
+        if plan.hex_decoded or plan.mapped or plan.located or not shown.isdigit():
+            return False
+        space = plan.search_space()
+        new = self.p.identity(shown, kind)
+        candidates: list[tuple[bytes, bytes]] = []
+        n = (len(shown) + 1) // 2
+        candidates.append((_tbcd_encode(shown, n), _tbcd_encode(new, n)))
+        for head in range(16):
+            raw = bytes([head]) + _tbcd_encode(shown[1:], n)
+            if _mobile_identity_decode(raw) == shown:
+                candidates.append((raw[:1 + (len(shown) // 2)], _mobile_identity_encode(new, raw)[:1 + (len(shown) // 2)]))
+        for old, replacement in candidates:
+            if len(old) < 4 or len(old) != len(replacement):
+                continue
+            first = space.find(old)
+            if first < 0 or space.find(old, first + 1) >= 0:
+                continue
+            if plan.covers(first + plan.shift_base, len(old)):
+                return False
+            plan.put(first + plan.shift_base, replacement)
+            self.counts["identity-by-search"] += 1
+            return True
+        return False
 
     def _labels(self, plan: _FramePlan, raw: bytes, node: _Node) -> None:
         spans, complete = _labels_decode(raw)
@@ -2047,13 +2077,24 @@ def _collect(tshark: Tshark, pcap: Path, args: list[str]) -> tuple[Counter, set[
     return seen, pairs
 
 
-def _leak_scan(values: Counter, pairs: set[tuple[str, str]], originals: dict[str, set[str]]) -> dict[str, int]:
-    """每一類原值在這批欄位值裡命中幾個（以邊界比對，不是裸子字串）。"""
+def _leak_scan(values: Counter, pairs: set[tuple[str, str]], originals: dict[str, set[str]],
+               mnc_length: dict[str, int] | None = None) -> dict[str, int]:
+    """每一類原值在這批欄位值裡命中幾個（以邊界比對，不是裸子字串）。
+
+    IMSI 另外拿它的 MSIN 尾巴去找：SUCI 裡只有 MSIN，工具靠它拼回 SUPI —— 尾巴留著就等於整個
+    IMSI 留著（2026-09-11：某版 tshark 報的 MSIN 位置改寫不到，輸出裡一個訂戶變成兩個，而
+    整串比對看不出來）。"""
     hits: dict[str, int] = {}
     joined = "\n".join(values)
     lowered = joined.lower()
     for category, items in originals.items():
         n = 0
+        if category == "identity":
+            expanded = set(items)
+            for item in items:
+                if len(item) == 15 and item.isdigit():
+                    expanded.add(item[3 + (mnc_length or {}).get(item[:3], 2):])
+            items = expanded
         for item in items:
             if category == "plmn":
                 mcc, mnc = item.split("/")
@@ -2150,13 +2191,13 @@ def anonymize(
         # ── 自證：輸入要找得到（陽性對照），輸出要找不到 ──
         originals = {k: v for k, v in planner.originals.items() if v}
         in_values, in_pairs = _collect(tshark, work, args)
-        control = _leak_scan(in_values, in_pairs, originals)
+        control = _leak_scan(in_values, in_pairs, originals, pseud.mnc_length)
         blind_categories = [k for k, n in control.items() if n == 0]
         if blind_categories:
             output.unlink(missing_ok=True)
             raise AnonymizeError(_("The verification could not see {cats} in the input - it cannot vouch for the output.").format(cats=", ".join(blind_categories)))
         out_values, out_pairs = _collect(tshark, output, args)
-        hits = _leak_scan(out_values, out_pairs, originals)
+        hits = _leak_scan(out_values, out_pairs, originals, pseud.mnc_length)
         leaked = {k: n for k, n in hits.items() if n}
         if leaked:
             output.unlink(missing_ok=True)
