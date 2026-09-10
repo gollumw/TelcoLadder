@@ -71,7 +71,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence
 
 from telcoladder import hpack_huffman as huffman
 from telcoladder import probe
@@ -147,6 +147,10 @@ class Pseudonymiser:
         self.key = key
         #: MCC → 這份檔裡看到的 MNC 長度（從 PLMN 欄位學來，給 IMSI 切分用）。
         self.mnc_length: dict[str, int] = {}
+        #: 這份檔裡實際看到的 (MCC, MNC) 對。切 IMSI 時先對這張表：同一個 MCC 在同一份檔裡可能
+        #: 有的 IE 解成兩位、有的解成三位（不同版本的 tshark 對填充位的解讀不同），
+        #: 只信「最後看到的長度」會把同一個人切成兩種前綴、對到兩個假名。
+        self.plmn_seen: set[tuple[str, str]] = set()
         self._ip4: dict[str, str] = {}
         self._ip4_used: set[str] = set()
         self._plmn: dict[tuple[str, str], tuple[str, str]] = {}
@@ -210,6 +214,14 @@ class Pseudonymiser:
         self._plmn_used.add((new_mcc, chosen))
         return self._plmn[key]
 
+    def mnc_len(self, digits: str) -> int:
+        """`digits` 以 MCC 開頭；MNC 幾位？先對這份檔裡看到的 PLMN 對，再看長度提示，最後當兩位。"""
+        mcc = digits[:3]
+        for n in (2, 3):
+            if (mcc, digits[3:3 + n]) in self.plmn_seen:
+                return n
+        return self.mnc_length.get(mcc, 2)
+
     def imsi(self, original: str) -> str:
         """MCC 照碼長換測試網、MNC 走 PLMN 對映、MSIN keyed。MSIN 只以它自己當上下文，
         所以 SUCI 裡單獨出現的 MSIN（`nas-5gs.mm.suci.msin`）與完整 IMSI 的尾巴對得起來 ——
@@ -217,7 +229,7 @@ class Pseudonymiser:
         if len(original) < 6 or not original.isdigit():
             return self.digits("identity", original)
         mcc = original[:3]
-        n = self.mnc_length.get(mcc, 2)
+        n = self.mnc_len(original)
         mnc, rest = original[3:3 + n], original[3 + n:]
         new_mcc, new_mnc = self.plmn(mcc, mnc)
         return new_mcc + new_mnc + self.msin(rest)
@@ -407,7 +419,7 @@ class TextRewriter:
         for m in _CELL_ID_PARAM.finditer(text):
             value = m.group(2)
             mcc = value[:3]
-            n = self.p.mnc_length.get(mcc, 2)
+            n = self.p.mnc_len(value)
             mnc, rest = value[3:3 + n], value[3 + n:]
             if mcc.isdigit() and mnc.isdigit():
                 new_mcc, new_mnc = self.p.plmn(mcc, mnc)
@@ -1692,7 +1704,7 @@ class Planner:
                     self._plmn_bytes(plan, node)
                 elif name in _MCCMNC_STRING_FIELDS and raw.isdigit() and len(raw) in (5, 6):
                     text = raw.decode()
-                    n = self.p.mnc_length.get(text[:3], len(text) - 3)
+                    n = self.p.mnc_len(text) if len(text) == 6 else len(text) - 3
                     new_mcc, new_mnc = self.p.plmn(text[:3], text[3:3 + n])
                     plan.put(node.pos, (new_mcc + new_mnc + text[3 + n:]).encode())
                     self.originals["plmn"].add(f"{text[:3]}/{text[3:3 + n]}")
@@ -2078,7 +2090,7 @@ def _collect(tshark: Tshark, pcap: Path, args: list[str]) -> tuple[Counter, set[
 
 
 def _leak_scan(values: Counter, pairs: set[tuple[str, str]], originals: dict[str, set[str]],
-               mnc_length: dict[str, int] | None = None) -> dict[str, int]:
+               msin_of: "Callable[[str], str] | None" = None) -> dict[str, int]:
     """每一類原值在這批欄位值裡命中幾個（以邊界比對，不是裸子字串）。
 
     IMSI 另外拿它的 MSIN 尾巴去找：SUCI 裡只有 MSIN，工具靠它拼回 SUPI —— 尾巴留著就等於整個
@@ -2089,11 +2101,11 @@ def _leak_scan(values: Counter, pairs: set[tuple[str, str]], originals: dict[str
     lowered = joined.lower()
     for category, items in originals.items():
         n = 0
-        if category == "identity":
+        if category == "identity" and msin_of is not None:
             expanded = set(items)
             for item in items:
                 if len(item) == 15 and item.isdigit():
-                    expanded.add(item[3 + (mnc_length or {}).get(item[:3], 2):])
+                    expanded.add(msin_of(item))
             items = expanded
         for item in items:
             if category == "plmn":
@@ -2157,6 +2169,7 @@ def anonymize(
         survey = _survey(_pdml_packets(tshark, work, args), frames_in)
         pseud = Pseudonymiser(key)
         pseud.mnc_length.update(survey.mnc_length)
+        pseud.plmn_seen.update(survey.plmn_pairs)
         planner = Planner(pseud, types, survey, blank_opaque=blank_opaque_bodies, blank_user_plane=blank_user_plane)
         planner.frames_in = frames_in
         # 第二趟（乾跑）：把每個地方改寫到的主機名、APN 標籤學進字典 —— 沒有點的節點名
@@ -2191,13 +2204,14 @@ def anonymize(
         # ── 自證：輸入要找得到（陽性對照），輸出要找不到 ──
         originals = {k: v for k, v in planner.originals.items() if v}
         in_values, in_pairs = _collect(tshark, work, args)
-        control = _leak_scan(in_values, in_pairs, originals, pseud.mnc_length)
+        msin_of = lambda imsi: imsi[3 + pseud.mnc_len(imsi):]
+        control = _leak_scan(in_values, in_pairs, originals, msin_of)
         blind_categories = [k for k, n in control.items() if n == 0]
         if blind_categories:
             output.unlink(missing_ok=True)
             raise AnonymizeError(_("The verification could not see {cats} in the input - it cannot vouch for the output.").format(cats=", ".join(blind_categories)))
         out_values, out_pairs = _collect(tshark, output, args)
-        hits = _leak_scan(out_values, out_pairs, originals, pseud.mnc_length)
+        hits = _leak_scan(out_values, out_pairs, originals, msin_of)
         leaked = {k: n for k, n in hits.items() if n}
         if leaked:
             output.unlink(missing_ok=True)
