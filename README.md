@@ -104,6 +104,16 @@ telcoladder serve                                   # http://127.0.0.1:3005
 claude mcp add telcoladder -- telcoladder mcp
 ```
 
+**5. Hand a capture to someone else.** `telcoladder anonymize in.pcap out.pcap`
+rewrites subscriber identities, addresses, hostnames, PLMN and cell identifiers
+into keyed pseudonyms of the *same length* — TBCD, ASCII, JSON and HPACK-Huffman
+alike — recomputes every checksum, then re-reads its own output and refuses to
+keep it if any original value is still visible. The output walks the same
+pipeline to the same procedures, roles and failures; only the names differ.
+Same key, same pseudonyms across captures; the key is printed once and never
+written down. Compressed HTTP/2 bodies cannot be rewritten in place and are
+refused unless `--blank-opaque-bodies`.
+
 **4. Windows, no install.** Download `TelcoLadder-Windows-x64.zip` from the
 [Releases](https://github.com/gollumw/TelcoLadder/releases) page — a standalone
 executable in a portable zip, built by CI from the tagged source. Unzip,
@@ -259,6 +269,11 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
   ISUP and CAMEL are recognised but not read.
 - **Mermaid gets slow with very large flows.** Use `--max-messages`; truncation
   is always stated inside the diagram.
+- **`anonymize` proves absence only for what tshark can name.** Identities it
+  never decoded stay where they are; TLS payloads are opaque; gzip bodies and
+  bodies reassembled across DATA frames are refused rather than guessed at;
+  IPv6 text and binary forms, and TAC text and binary forms, are pseudonymised
+  independently. The report lists every one of these.
 
 ## How it is verified
 

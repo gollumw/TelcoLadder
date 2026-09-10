@@ -841,3 +841,39 @@ are both facts, and in a relayed network they differ by design.
   endpoints get no role (§7) — the row still groups correctly.
 - The view is browser-only; `summarize` and MCP do not yet expose the
   hop-level grouping.
+
+## 11. Handing a capture to someone else (`anonymize`)
+
+A capture from your network cannot leave it as it is: the packets carry IMSIs,
+addresses, node names and your PLMN. `anonymize` rewrites those into keyed
+pseudonyms **of the same length** and hands you back a file that reads to the
+same procedures, roles and failures.
+
+```bash
+telcoladder anonymize in.pcap out.pcap                      # key generated, printed once
+telcoladder anonymize in.pcap out.pcap --key <hex>          # same key ⇒ same pseudonyms across files
+telcoladder anonymize in.pcap out.pcap --blank-opaque-bodies --report report.json
+```
+
+What changes: subscriber identities (IMSI, SUCI MSIN, MSISDN, IMEI — in NAS,
+GTP, Diameter, SIP, JSON and HTTP/2 headers alike), IPv4/IPv6/MAC addresses,
+hostnames and APN/DNN labels, PLMN (real MCCs become test networks, MNC keyed),
+TAC and cell identifiers, and security keys (zeroed). Frame times start at
+2000-01-01; intervals are kept. What does **not** change: TEIDs, stream ids,
+sequence numbers, ports — they identify sessions, not people, and the tool
+needs them to correlate.
+
+Two things to know before you send the file:
+
+- **The tool re-reads its own output and refuses to keep it** if any original
+  value is still visible to tshark. A refusal names the category; it is not a
+  warning to ignore, it means the file would have leaked.
+- **Compressed HTTP/2 bodies cannot be rewritten in place.** By default the
+  run refuses and lists the frames; `--blank-opaque-bodies` zeroes those
+  bodies instead (the messages stay, their content is gone). Bodies
+  reassembled across several DATA frames, and TLS payloads, are likewise
+  outside what it can promise — the JSON report lists every blind spot.
+
+Keep the key if you expect to send a second capture from the same network;
+without it the two files cannot be lined up. The key is never written to disk
+by the tool.

@@ -242,3 +242,39 @@ half a second without them.
 
 Every gap above is also named at the top of `.github/workflows/ci.yml`, so the
 green badge is read for what it covers.
+
+## 8. Anonymize: same-length rewrites, then prove the originals are gone
+
+A capture from someone else's network cannot travel: the file name carries an
+IMSI, the packets carry addresses and a PLMN. `telcoladder anonymize IN OUT`
+exists so the *owner* can strip it and still hand over something this tool
+reads to the same conclusions.
+
+Three rules. **Equal length, in place**: an IPv4 address becomes another
+address whose octets have the same number of digits, a 15-digit identity
+becomes 15 other digits, a hostname is rewritten label by label; no length
+field anywhere changes, so ASN.1, HPACK and JSON keep their structure.
+tshark's PDML gives every field's byte position; the tool overwrites only
+those bytes, and only after checking that the bytes really are what PDML says
+they are — HTTP/2 header values live in a decoded buffer, PER containers that
+start off a byte boundary are re-copied by tshark, and JSON `Bytes` members
+are decoded from base64, so a naïve write would land on the wrong bytes. Each
+of those has its own mapping (frame search with a bit offset; a shadow buffer
+re-encoded on exit). **Checksums recomputed** for IPv4, TCP, UDP and SCTP,
+GTP-U inner layers included, and for IP-fragmented datagrams over the
+reassembled payload. **Then re-read**: every original value the rewrite saw is
+searched for in tshark's `-T ek` view of the output — a different encoder from
+the one that drove the rewrite — and one hit deletes the output. The same
+search runs on the input first; a category it cannot find there means the
+check is blind, and that also fails.
+
+Pseudonyms are keyed (`HMAC-SHA256(key, category:value)`), so one key maps two
+captures consistently and nothing can be reversed without it. HPACK's static
+Huffman code is why the substitution is per character *within the same code
+length*: `0 1 2` interchange, `3`–`9` interchange, `a c e i o s t` interchange;
+the encoded header keeps its byte count. Real MCCs become test networks of the
+same code length (001, or 009/099/999 when the bits do not fit), the MNC is
+keyed, and the SUCI's bare MSIN maps exactly like the tail of the full IMSI, so
+`summarize` still sees one subscriber. Verified on every fixture by comparing
+the `summarize` shapes before and after (`tests/test_anonymize.py`), and on the
+real AMF trace behind the 2026-09-10 work by counts alone.
