@@ -50,7 +50,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from telcoladder.tshark import LINKTYPE_USER0, Tshark, find_tshark, pref_args, user_dlt_pref
+from telcoladder.tshark import LINKTYPE_USER0, Tshark, disable_protocol_args, find_tshark, pref_args, user_dlt_pref
 
 #: 一個方向要送出這麼多格帶載荷的封包，序號不動才算得上證據。
 #:
@@ -237,7 +237,7 @@ def inspect(
 
     proc = tshark.run(
         [
-            "-r", str(pcap), *pref_args(prefs),
+            "-r", str(pcap), *pref_args(prefs), *disable_protocol_args(),
             "-Y", "tcp.len>0 || tcp.flags.syn==1",
             "-T", "fields",
             # occurrence=f：隧道封包會有多層 TCP，只取最外層即可。

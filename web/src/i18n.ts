@@ -136,6 +136,8 @@ const zh_TW: Record<string, string> = {
   "Reset zoom": "重設縮放",
   "Inspector docked below": "解碼面板停靠在下方",
   "Inspector follows at the side": "解碼面板在側欄跟著捲動",
+  "Inspector is below the ladder (window narrower than 1280 px)": "解碼面板在梯形圖下方（視窗窄於 1280 px）",
+  "{n} lanes · {m} events": "{n} 條泳道 · {m} 則事件",
   "Switch to light theme": "切換到淺色",
   "Switch to dark theme": "切換到深色",
 

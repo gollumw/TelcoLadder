@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark, pref_args, shutdown
+from telcoladder.tshark import Tshark, disable_protocol_args, find_tshark, pref_args, shutdown
 
 # display filter 不再寫死在這裡 —— 它由各 adapter 宣告的片段聯集而來
 # （`telcoladder.adapters.display_filter()`），所以裝一個 IMS 外掛就會自動
@@ -290,6 +290,8 @@ def read_frames(
     # `prefs` 是任意 tshark 偏好（例如 USER DLT 對映）；`relax_seq` 只是其中
     # 一條的糖。展開的實作只有 `tshark.pref_args` 一份。
     args += pref_args(prefs, relax_seq=relax_seq)
+    # 沒有讀者的樹不建 —— 見 `tshark.UNREAD_HEAVY_PROTOCOLS`（實測 80 秒 → 0.5 秒）。
+    args += disable_protocol_args()
     for rule in decode_as:
         args += ["-d", rule]
 

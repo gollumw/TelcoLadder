@@ -145,3 +145,44 @@ def test_no_call_site_spells_the_relax_pref_itself() -> None:
         if p.name != "tshark.py" and "tcp.analyze_sequence_numbers" in p.read_text(encoding="utf-8")
     ]
     assert offenders == [], f"還有人自己寫 -o：{offenders}"
+
+
+# ── 沒有讀者的 dissector：抽取／索引／probe 停用，檢查器不停 ────────────────
+#
+# `tshark.UNREAD_HEAVY_PROTOCOLS` 的理由寫在那裡；這裡守的是「三條路都吃到、
+# 兩條路都沒吃到」—— 少套一處的症狀是「封包清單 2 秒、分析 3 分鐘」，多套一處
+# 的症狀是「檢查器裡 UE 能力變成一團原始位元組」。兩者都不報錯。
+
+
+def _saw_disabled(log: Path, name: str = "nr-rrc") -> bool:
+    if not log.exists():
+        return False
+    lines = log.read_text(encoding="utf-8").splitlines()
+    if sys.platform == "win32":
+        return any(f"--disable-protocol {name}" in line for line in lines)
+    return any(a == "--disable-protocol" and b == name for a, b in zip(lines, lines[1:]))
+
+
+def test_extraction_index_and_probe_skip_unread_dissectors(fake_tshark, e2e_pcap: Path) -> None:
+    tshark, log = fake_tshark
+    list(extract.read_frames(e2e_pcap, tshark=tshark))
+    assert _saw_disabled(log)
+    log.unlink()
+    list(packets.read_packet_rows(e2e_pcap, tshark=tshark))
+    assert _saw_disabled(log)
+    log.unlink()
+    packets.matching_frames(e2e_pcap, "ngap", tshark=tshark)
+    assert _saw_disabled(log)
+    log.unlink()
+    probe.inspect(e2e_pcap, tshark=tshark)
+    assert _saw_disabled(log)
+
+
+def test_the_inspector_keeps_every_dissector(fake_tshark, e2e_pcap: Path) -> None:
+    tshark, log = fake_tshark
+    with pytest.raises(decode.DecodeError):
+        decode.decode_frames(e2e_pcap, [1], tshark=tshark)
+    assert log.exists() and not _saw_disabled(log)
+    log.unlink()
+    framebytes.frame_bytes(e2e_pcap, [1], tshark=tshark)
+    assert log.exists() and not _saw_disabled(log)

@@ -1,7 +1,7 @@
 "use client";
 
 import { t, useLang } from "../i18n";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProtocolTree } from "./ProtocolTree";
@@ -254,6 +254,8 @@ export function SessionAnalysisView({
   //: 只看失敗與停滯（`slow`＝間隔超過引擎的 SLOW_GAP，1 秒）。這是**視角**不是範圍：
   //: 疊在程序與 Domain 之後。幾百則訊息裡找那兩支紅箭，靠的就是這個。
   const [onlyAnomalies, setOnlyAnomalies] = useState(false);
+  //: 梯形圖的可捲面板（下面的 max-h）。跳到選中的事件時捲的是它，不是整頁。
+  const ladderBoxRef = useRef<HTMLDivElement>(null);
 
   const identity = supi ? identities.find((i) => i.supi === supi) : undefined;
   const isMidStream = identity?.captureStatus === "mid-stream";
@@ -332,6 +334,16 @@ export function SessionAnalysisView({
   useEffect(() => {
     if (selectedPacket && !selectedPacket.decodeTree) onRequestTree?.(selectedPacket.frameNumber);
   }, [selectedPacket, onRequestTree]);
+
+  // **選中的事件要在面板裡看得到。** 梯形圖是視窗大小的可捲面板，而總覽的
+  // 「跳到失敗那一則」與封包清單的點選都只改 `selectedFrame` —— 一份 1,484 則
+  // 事件的真實 trace 是 74,000 px 高，不捲過去等於沒跳。`inline: "nearest"`
+  // 順便把橫向捲到那支箭頭；選中的事件不在目前的篩選裡就沒有列，什麼都不做。
+  useEffect(() => {
+    if (selectedFrame === null) return;
+    const row = ladderBoxRef.current?.querySelector<SVGGElement>(`g[data-frame="${selectedFrame}"]`);
+    row?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [selectedFrame, filteredEvents]);
   const hoveredPacket = hover ? rawPackets.find((p) => p.frameNumber === hover.frame) ?? null : null;
 
   const rowOffset = isMidStream ? 1 : 0;
@@ -385,7 +397,15 @@ export function SessionAnalysisView({
       <div className={expanded ? "space-y-4" : "grid grid-cols-1 gap-4 xl:grid-cols-5"}>
         <section className={cn("rounded-lg border border-border bg-surface-1 p-4", !expanded && "xl:col-span-3")}>
           <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-fg">{t("Call Flow Ladder Diagram")}</h2>
+            <h2 className="text-sm font-semibold text-fg">
+              {t("Call Flow Ladder Diagram")}
+              {/* 寬到要橫向捲的時候，使用者得知道右邊還有東西。 */}
+              {filteredEvents.length > 0 && (
+                <span className="ml-2 font-mono text-[11px] font-normal text-fg-dim">
+                  {t("{n} lanes · {m} events", { n: String(activeLanes.length), m: String(filteredEvents.length) })}
+                </span>
+              )}
+            </h2>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -416,7 +436,16 @@ export function SessionAnalysisView({
                 <ZoomIn className="h-3.5 w-3.5" />
               </button>
               <span className="ml-1 hidden text-[11px] text-fg-dim lg:inline">
-                {expanded ? t("Inspector docked below") : t("Inspector follows at the side")}
+                {expanded ? (
+                  t("Inspector docked below")
+                ) : (
+                  <>
+                    <span className="hidden xl:inline">{t("Inspector follows at the side")}</span>
+                    {/* 格線在 xl（1280 px）以下塌成單欄，檢查器排在整張圖之後 —— 要講。
+                        實測 1200 px 的視窗：檢查器在 75,000 px 下面，畫面上沒有任何一句話。 */}
+                    <span className="xl:hidden">{t("Inspector is below the ladder (window narrower than 1280 px)")}</span>
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -561,7 +590,11 @@ export function SessionAnalysisView({
           </div>
           <p className="mb-2 text-xs text-fg-dim">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
 
-          <div className="relative overflow-x-auto">
+          {/* **面板是視窗大小的，不是頁面長度的。** 一份真實的 AMF UE trace：
+              1,484 則事件 × 50 px ＝ 74,280 px 高、13 條泳道 ＝ 1,940 px 寬。沒有
+              max-h 時水平捲軸在 75,000 px 下面、xl 以下的檢查器排在整張圖之後 ——
+              兩個症狀使用者都叫「跑版」。兩軸都在這個 div 裡捲，捲軸永遠在眼前。 */}
+          <div ref={ladderBoxRef} className="relative max-h-[calc(100vh-11rem)] overflow-auto">
             {filteredEvents.length === 0 ? (
               // 「這裡沒有」與「有，但我們接不上這個人」是兩件完全不同的事。
               // 前者讓人放心，後者是一條該去追的線索。
@@ -676,6 +709,7 @@ export function SessionAnalysisView({
                   return (
                     <g
                       key={event.id}
+                      data-frame={event.frameNumber}
                       className="cursor-pointer"
                       opacity={isSelected || isError ? 1 : 0.85}
                       onClick={() => onSelectFrame(event.frameNumber)}
