@@ -214,6 +214,46 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_anonymize(args: argparse.Namespace) -> int:
+    """`telcoladder anonymize IN OUT`：識別碼換成假的，形狀不變，輸出前自證。"""
+    from telcoladder.anonymize import AnonymizeError, anonymize, new_key
+
+    if args.key:
+        try:
+            key = bytes.fromhex(args.key)
+        except ValueError:
+            print(_("--key must be hexadecimal."), file=sys.stderr)
+            return 2
+        if len(key) < 16:
+            print(_("--key must be at least 16 bytes (32 hex digits)."), file=sys.stderr)
+            return 2
+        generated = False
+    else:
+        key = new_key()
+        generated = True
+    if args.output.resolve() == args.pcap.resolve():
+        print(_("Output must not be the input file."), file=sys.stderr)
+        return 2
+    try:
+        report = anonymize(
+            args.pcap, args.output, key=key,
+            decode_as=args.decode_as or (), prefs=tuple(args.tshark_pref or ()),
+            blank_opaque_bodies=args.blank_opaque_bodies,
+        )
+    except (AnonymizeError, ExtractError, TsharkNotFound) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if generated:
+        # 只印這一次，不落檔：同一把 key 才能把兩份擷取檔對起來。
+        print(_("Key (shown once, keep it to anonymize related captures consistently): {key}").format(key=key.hex()), file=sys.stderr)
+    text = report.to_json()
+    if args.report:
+        args.report.write_text(text + "\n", encoding="utf-8")
+    else:
+        print(text)
+    return 0
+
+
 def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     """`analyze` 與 `summarize` 共用的解碼與收窄選項。一份定義，兩個子指令。"""
     parser.add_argument(
@@ -348,6 +388,32 @@ def build_parser() -> argparse.ArgumentParser:
         help=_("Disable the interactive viewer entirely. The viewer keeps uploaded copies in the temp directory for a while; use this if you do not want that."),
     )
     serve_cmd.set_defaults(func=_cmd_serve)
+
+    anon = sub.add_parser(
+        "anonymize",
+        help=_("Rewrite a capture so it can be shared: subscriber identities, addresses, hostnames, PLMN and cell identifiers become keyed pseudonyms of the same length; checksums are recomputed; the output is re-read and refused if any original value is still visible. Compressed bodies cannot be rewritten in place and are refused unless --blank-opaque-bodies."),
+        parents=[lang_parent],
+    )
+    anon.add_argument("pcap", type=Path, help=_("Capture to anonymize (pcap; pcapng is converted with editcap)"))
+    anon.add_argument("output", type=Path, help=_("Where to write the anonymized capture"))
+    anon.add_argument(
+        "--key", metavar="HEX",
+        help=_("Pseudonym key (hex, 16+ bytes). The same key maps the same values the same way across captures. Generated and printed once when omitted; never written to disk."),
+    )
+    anon.add_argument(
+        "--blank-opaque-bodies", action="store_true",
+        help=_("Zero the bytes of HTTP/2 bodies that are compressed (gzip/deflate) instead of refusing. The messages stay, their bodies become empty."),
+    )
+    anon.add_argument("--report", type=Path, metavar=_("PATH"), help=_("Write the JSON report here instead of stdout"))
+    anon.add_argument(
+        "--decode-as", action="append", metavar=_("RULE"),
+        help=_("Force a port to decode as a protocol, e.g. tcp.port==5062,sip. A payload nobody decodes is a payload nobody rewrites. Repeatable."),
+    )
+    anon.add_argument(
+        "--tshark-pref", action="append", metavar=_("PREF"),
+        help=_("A tshark preference passed as -o, verbatim. Repeatable."),
+    )
+    anon.set_defaults(func=_cmd_anonymize)
 
     mcp_cmd = sub.add_parser(
         "mcp",

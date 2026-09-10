@@ -124,6 +124,8 @@ tickets. Cause-table prose is bilingual in the YAML itself
 ```bash
 pip install -e ".[dev]"
 telcoladder check          # verifies tshark + dissectors
+telcoladder anonymize IN OUT [--key HEX] [--blank-opaque-bodies] [--report PATH]
+                           # keyed same-length pseudonyms; refuses its own output if an original survives
 pytest -q                  # full suite, no skips expected
 cd web && npm run build    # rebuild the browser bundle
 ```

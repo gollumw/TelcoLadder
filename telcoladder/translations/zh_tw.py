@@ -551,4 +551,50 @@ CATALOG: dict[str, str] = {
         "仍在讀取擷取檔 —— 已經 {seconds} 秒。大檔要跑一陣子；太慢的話用 since／until 收窄。",
     "TelcoLadder MCP server ready on stdio ({n} tools). Diagnostics go to stderr.":
         "TelcoLadder MCP 伺服器已在 stdio 上就緒（{n} 個工具）。診斷訊息一律走 stderr。",
+    'Not a pcap file (too short).':
+        '不是 pcap 檔（太短）。',
+    'Not a classic pcap file; convert pcapng with editcap -F pcap first.':
+        '不是傳統 pcap 檔；pcapng 請先用 editcap -F pcap 轉換。',
+    'This is a pcapng file and editcap was not found; convert it to pcap first.':
+        '這是 pcapng 檔而且找不到 editcap；請先轉成 pcap。',
+    'The capture has no frames.':
+        '這份擷取檔沒有任何一格。',
+    '(compressed bodies can be zeroed with --blank-opaque-bodies)':
+        '（壓縮的 body 可用 --blank-opaque-bodies 歸零）',
+    'tshark failed while reading the capture: {error}':
+        'tshark 讀取擷取檔時失敗：{error}',
+    '{n} frame(s) with {what} (first: {frames})':
+        '{n} 格有 {what}（最先的幾格：{frames}）',
+    'The verification could not see {cats} in the input - it cannot vouch for the output.':
+        '自證在輸入裡找不到 {cats} —— 這支檢查看不見它，也就不能為輸出擔保。',
+    'Output still carried original values and was deleted: {detail}':
+        '輸出仍帶著原值，已刪除：{detail}',
+    'Refusing to write an output that still carries identities: ':
+        '拒絕寫出仍帶識別碼的輸出：',
+    'Output must not be the input file.':
+        '輸出不可以是輸入檔本身。',
+    'Rewrite a capture so it can be shared: subscriber identities, addresses, hostnames, PLMN and cell identifiers become keyed pseudonyms of the same length; checksums are recomputed; the output is re-read and refused if any original value is still visible. Compressed bodies cannot be rewritten in place and are refused unless --blank-opaque-bodies.':
+        '把擷取檔改寫成可以交給別人的樣子：訂戶識別碼、位址、主機名、PLMN 與 cell 識別碼換成同長度的 keyed 假名；校驗和重算；輸出會重新解析一次，任何原值仍看得見就拒絕。壓縮的 body 無法原地改寫，除非給 --blank-opaque-bodies 否則拒絕。',
+    'Capture to anonymize (pcap; pcapng is converted with editcap)':
+        '要脫敏的擷取檔（pcap；pcapng 會用 editcap 轉換）',
+    'Where to write the anonymized capture':
+        '脫敏後的擷取檔要寫到哪裡',
+    'Pseudonym key (hex, 16+ bytes). The same key maps the same values the same way across captures. Generated and printed once when omitted; never written to disk.':
+        '假名金鑰（十六進位，至少 16 位元組）。同一把 key 跨檔把同一個值對到同一個假值。省略時自動產生並只印一次；永不落檔。',
+    'Zero the bytes of HTTP/2 bodies that are compressed (gzip/deflate) instead of refusing. The messages stay, their bodies become empty.':
+        '把壓縮（gzip／deflate）的 HTTP/2 body 位元組歸零而不是拒絕。訊息還在，body 變成空的。',
+    'PATH':
+        '路徑',
+    'Write the JSON report here instead of stdout':
+        '把 JSON 報告寫到這裡而不是 stdout',
+    'Force a port to decode as a protocol, e.g. tcp.port==5062,sip. A payload nobody decodes is a payload nobody rewrites. Repeatable.':
+        '強制某個埠解成某個協定，例如 tcp.port==5062,sip。沒有人解的載荷就是沒有人改的載荷。可重複。',
+    'A tshark preference passed as -o, verbatim. Repeatable.':
+        '原樣以 -o 傳給 tshark 的偏好設定。可重複。',
+    '--key must be at least 16 bytes (32 hex digits).':
+        '--key 至少要 16 位元組（32 個十六進位數字）。',
+    '--key must be hexadecimal.':
+        '--key 必須是十六進位。',
+    'Key (shown once, keep it to anonymize related captures consistently): {key}':
+        '金鑰（只顯示這一次；留著它，相關的擷取檔才能脫敏得一致）：{key}',
 }
