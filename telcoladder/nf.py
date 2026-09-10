@@ -13,7 +13,9 @@
 1. **標準埠**：N2 的 AMF 側固定聽 38412（TS 38.412，`n2-port`）。PFCP 的 8805
    **不算** —— 那個埠 N4 兩端都在聽，判不出誰是誰。
 2. **SBI 服務名**：`:path` 的第一段就是服務名，服務名對應提供它的 NF
-   （`service`）；消費者唯一的服務也指名呼叫方（`service-consumer`）。
+   （`service`）；消費者唯一的服務也指名呼叫方（`service-consumer`）；資源唯一的
+   也算（`resource-consumer`）；打到登記過的回呼路徑的是提供者（`notify`）；請求
+   自報的型別（`declared-nf-type`）。
 3. **`User-Agent`**：發送端自己宣稱的 NF 型別（TS 29.500）。最弱 —— 它是一個
    字串，而且經過轉送時描述的是原始發送端。
 
@@ -91,7 +93,33 @@ SBI_CONSUMER_OF: dict[str, tuple[str, str | None]] = {
     "npcf-am-policy-control": ("AMF", None),                        # TS 29.507
     "nausf-auth": ("AMF", None),                                    # TS 29.509
     "nsmsf-sms": ("AMF", None),                                     # TS 29.540
+    "nudm-ueau": ("AUSF", None),                                    # TS 29.503
+    "npcf-ue-policy-control": ("AMF", None),                        # TS 29.525
 }
+
+#: 服務本身消費者不唯一、但**某個資源**的消費者唯一 —— (服務, 路徑裡的資源標記, 消費者)。
+#: `nudm-sdm` 誰都會查，但 `am-data` 只有 AMF 拿、`sm-data` 只有 SMF 拿（TS 29.503）；
+#: `nudm-uecm` 的登記依存取型別分給 AMF／SMF／SMSF（TS 29.503）；`nsmf-pdusession`
+#: 的 `pdu-sessions` 資源是 V-SMF／I-SMF 對 H-SMF 的路，客戶端仍是 SMF（TS 29.502）。
+#: 標記是路徑的子字串，**含前導斜線**，所以 `/sm-data` 不會撞到 `/sms-data`。
+#: 刻意不收 `sms-data`（AMF 與 SMSF 都可能拿）、`sdm-subscriptions`（誰都會訂）。
+SBI_CONSUMER_BY_RESOURCE: tuple[tuple[str, str, str], ...] = (
+    ("nudm-sdm", "/am-data", "AMF"),
+    ("nudm-sdm", "/smf-select-data", "AMF"),
+    ("nudm-sdm", "/ue-context-in-smf-data", "AMF"),
+    ("nudm-sdm", "/nssai", "AMF"),
+    ("nudm-sdm", "/sm-data", "SMF"),
+    ("nudm-sdm", "/sms-mng-data", "SMSF"),
+    ("nudm-uecm", "/registrations/amf-3gpp-access", "AMF"),
+    ("nudm-uecm", "/registrations/amf-non-3gpp-access", "AMF"),
+    ("nudm-uecm", "/registrations/smf-registrations", "SMF"),
+    ("nudm-uecm", "/registrations/smsf-3gpp-access", "SMSF"),
+    ("nudm-uecm", "/registrations/smsf-non-3gpp-access", "SMSF"),
+    ("nsmf-pdusession", "/pdu-sessions", "SMF"),
+)
+
+#: 請求裡自報的型別只認這些名字 —— 自報一個不存在的 NF 型別不投票。
+_KNOWN_NF_TYPES = frozenset(SBI_SERVICE_TO_NF.values()) | frozenset({"SCP", "SEPP", "LMF", "GMLC", "NEF", "NWDAF", "AF"})
 
 #: S1-MME 介面上 MME 固定監聽的 SCTP 埠（TS 36.412）。
 S1AP_PORT = 36412
@@ -353,6 +381,10 @@ EVIDENCE_TIER: dict[str, int] = {
     "ngap-dir": 0, "s1ap-dir": 0, "pfcp-dir": 0, "diameter-dir": 0,
     "n2-port": 1,
     "service": 2, "service-consumer": 2,
+    # 三種同一層的路徑／內容證據（2026-09-11）：資源級唯一消費者、回呼 URI 的
+    # 提供者、請求自報的型別。實測一份 AMF trace：30 個網元 12 個沒角色，其中
+    # 3 個只送 UDM 的通知 —— 訂閱時 body 寫了回呼 URI，規範寫了誰會打它。
+    "resource-consumer": 2, "notify": 2, "declared-nf-type": 2,
     "user-agent": 3,
 }
 _WEAKEST = max(EVIDENCE_TIER.values()) + 1
@@ -409,6 +441,35 @@ def _split_by_port(ip: str, port_votes: dict[tuple[str, int], dict[str, str]]) -
     return out
 
 
+def _callback_producers(messages: list[Message]) -> dict[str, tuple[str, str]]:
+    """回呼路徑 → (提供者角色, 被訂閱的服務)。
+
+    訂閱／登記請求（`detail["callback-uris"]`，adapter 從 body 讀的）說「之後請通知
+    這個 URI」；之後打到那個路徑的請求，發送者就是那個服務的提供者 —— 這是跨訊息
+    的線路事實，與 `find_relays` 同樣要先掃一趟。同一路徑登記給兩個不同服務時丟掉
+    （不猜）。
+    """
+    out: dict[str, tuple[str, str]] = {}
+    clashed: set[str] = set()
+    for msg in messages:
+        if msg.protocol != "sbi":
+            continue
+        service = msg.detail.get("service")
+        producer = SBI_SERVICE_TO_NF.get(service or "")
+        uris = msg.detail.get("callback-uris")
+        if not producer or not uris:
+            continue
+        for path in uris.split(";"):
+            if path in clashed:
+                continue
+            if path in out and out[path][0] != producer:
+                clashed.add(path)
+                del out[path]
+            elif path not in out:
+                out[path] = (producer, service)  # type: ignore[arg-type]
+    return out
+
+
 def _tally(messages: list[Message]) -> tuple[
     dict[str, tuple[str, str]], dict[str, dict[str, str]], dict[tuple[str, int], dict[str, str]]
 ]:
@@ -430,6 +491,7 @@ def _tally(messages: list[Message]) -> tuple[
     而它會因此同時收到五種 NF 的票、全部互相抵銷。
     """
     relays = find_relays(messages)
+    producers = _callback_producers(messages)
     votes: dict[str, dict[str, str]] = defaultdict(dict)
     port_votes: dict[tuple[str, int], dict[str, str]] = defaultdict(dict)
     # 正在處理的那則訊息的兩端 —— `vote()` 靠它把票也記到 (位址, 埠) 上。
@@ -562,6 +624,22 @@ def _tally(messages: list[Message]) -> tuple[
                 # 只看帶 path 的請求；回應沒有 path。轉送者一樣被 `vote()` 擋掉：
                 # SCP 轉出去的請求 src 是 SCP，那一票不能算。
                 vote(src_ip, consumer[0], f"service-consumer:{service}")
+            resource_path = path.partition("?")[0]
+            if path:
+                # 服務不唯一、資源唯一：`nudm-sdm` 的 `am-data` 只有 AMF 拿。
+                for svc, marker, consumer_role in SBI_CONSUMER_BY_RESOURCE:
+                    if service == svc and marker in resource_path:
+                        vote(src_ip, consumer_role, f"resource-consumer:{svc}{marker}")
+                        break
+                # 打到登記過的回呼路徑：發送者是被訂閱那個服務的提供者。
+                for cb_path, (producer_role, cb_service) in producers.items():
+                    if resource_path == cb_path or resource_path.startswith(cb_path.rstrip("/") + "/"):
+                        vote(src_ip, producer_role, f"notify:{cb_service}")
+                        break
+            declared = msg.detail.get("declared-nf-type")
+            if declared and declared in _KNOWN_NF_TYPES:
+                # 請求自己報的型別（NRF 探索的 requester-nf-type、NRF 登記的 nfType…）。
+                vote(src_ip, declared, f"declared-nf-type:{declared}")
             agent = msg.detail.get("user-agent")
             if agent:
                 nf_type = agent.split("-")[0].split("/")[0].strip().upper()

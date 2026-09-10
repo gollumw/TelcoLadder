@@ -447,15 +447,22 @@ def test_a_roaming_pdu_sessions_client_is_not_called_an_amf() -> None:
         _sbi(2, h, v, "201"),
     ]
     roles = resolve_roles(msgs)
-    assert roles.get(h) == "SMF" and v not in roles
+    # 2026-09-11 起 `pdu-sessions` 的客戶端有資源級的票（V-SMF／I-SMF 仍是 SMF，
+    # TS 29.502）—— 這條守的是「不叫它 AMF」，那一點沒變。
+    assert roles.get(h) == "SMF" and roles.get(v) != "AMF"
+    assert roles.get(v) == "SMF"
 
 
 def test_services_with_several_consumers_cast_no_client_vote() -> None:
-    """`nudm-sdm` 的消費者有 AMF、SMF、SMSF —— 用「常見」冒充「唯一」就是錯標。"""
+    """`nudm-sdm` 的消費者有 AMF、SMF、SMSF —— 用「常見」冒充「唯一」就是錯標。
+
+    2026-09-11 起資源級的唯一消費者另有一張表（`SBI_CONSUMER_BY_RESOURCE`）：
+    `sm-data` 只有 SMF 拿（TS 29.503），所以那條資源有票；**服務級**仍然沒有 ——
+    這裡改用誰都會訂的 `sdm-subscriptions` 當對照。"""
     from telcoladder.nf import SBI_CONSUMER_OF, resolve_roles
 
     assert "nudm-sdm" not in SBI_CONSUMER_OF and "namf-comm" not in SBI_CONSUMER_OF
     x, udm = "198.51.100.5", "198.51.100.6"
-    msgs = [_sbi(1, x, udm, "GET /nudm-sdm/v2/x/sm-data", "/nudm-sdm/v2/x/sm-data"), _sbi(2, udm, x, "200")]
+    msgs = [_sbi(1, x, udm, "POST /nudm-sdm/v2/x/sdm-subscriptions", "/nudm-sdm/v2/x/sdm-subscriptions"), _sbi(2, udm, x, "201")]
     roles = resolve_roles(msgs)
     assert roles.get(udm) == "UDM" and x not in roles

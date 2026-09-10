@@ -334,6 +334,12 @@ CATALOG: dict[str, str] = {
         '提供 /{param} 服務（TS 29.5xx 服務命名）',
     'declares itself in User-Agent: {param} (TS 29.500)':
         '自己在 User-Agent 裡聲明：{param}（TS 29.500）',
+    'calls {param}, a resource with exactly one consumer NF type (TS 29.5xx)':
+        '呼叫 {param}，那個資源只有一種 NF 會用（TS 29.5xx）',
+    "sends notifications to a callback URI registered with /{param} - only that service's producer does (TS 29.5xx)":
+        '送通知到向 /{param} 登記的回呼 URI —— 只有那個服務的提供者會這麼做（TS 29.5xx）',
+    'declares its NF type in the request itself: {param} (requester-nf-type / nfType, TS 29.510)':
+        '請求裡自己報了 NF 型別：{param}（requester-nf-type／nfType，TS 29.510）',
     'initiator direction of {param} (RFC 6733 / TS 29.272)':
         '{param} 的發起方向（RFC 6733 / TS 29.272）',
     'No frame {frame} in the capture.':

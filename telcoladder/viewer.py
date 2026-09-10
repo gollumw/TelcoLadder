@@ -289,6 +289,9 @@ def _basis_sentence(basis: str) -> str:
         "service": _("serves /{param} (TS 29.5xx service naming)"),
         "service-consumer": _("calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)"),
         "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),
+        "resource-consumer": _("calls {param}, a resource with exactly one consumer NF type (TS 29.5xx)"),
+        "notify": _("sends notifications to a callback URI registered with /{param} - only that service's producer does (TS 29.5xx)"),
+        "declared-nf-type": _("declares its NF type in the request itself: {param} (requester-nf-type / nfType, TS 29.510)"),
         "diameter-dir": _("initiator direction of {param} (RFC 6733 / TS 29.272)"),
         "contradiction": _("contradictory evidence ({param}) - left unlabelled rather than guessed"),
     }.get(kind)
