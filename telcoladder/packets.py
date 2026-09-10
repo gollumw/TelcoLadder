@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from telcoladder.i18n import _
-from telcoladder.tshark import Tshark, find_tshark, shutdown, pref_args
+from telcoladder.tshark import Tshark, disable_protocol_args, find_tshark, shutdown, pref_args
 
 #: 要向 tshark 索取的欄位，**順序就是清單的欄位順序**。
 #: 加欄位要同時改 `PacketRow` 與 `_row_from_layers`，否則多要的欄位會被丟掉
@@ -290,6 +290,8 @@ def _ek_lines(
     # 必須吃同一組參數**：封包清單說 TCP、分析說 HTTP/2，是同一份檔的兩個
     # 答案（CLAUDE.md §4「盤點時用了跟分析不同的參數」）。
     args += pref_args(prefs, relax_seq=relax_seq)
+    # 同一條紀律的另一半：抽取停用的 dissector，索引也停用（`tshark.UNREAD_HEAVY_PROTOCOLS`）。
+    args += disable_protocol_args()
     if display_filter:
         args += ["-Y", display_filter]
     for field in fields:

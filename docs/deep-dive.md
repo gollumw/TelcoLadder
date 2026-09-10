@@ -221,7 +221,12 @@ tshark preferences pass straight through (`--tshark-pref`), so a key log file
 can be supplied exactly as in Wireshark, but no TLS fixture exists here and
 that path is unverified by this repository's tests. A transparent SCP that
 sends no `3gpp-Sbi-Target-apiRoot` is indistinguishable from the endpoint and
-falls back to an unlabelled IP — the correct failure direction, and a real gap.
+falls back to an unlabelled IP — the correct failure direction, and a real gap. RRC containers inside NGAP and S1AP — UE radio
+capability, handover transparent containers — are read by no adapter and are
+skipped at extraction time (`tshark --disable-protocol`); the Decode Inspector
+still dissects them frame by frame. This is deliberate: on a real AMF trace,
+forty capability frames cost tshark's ek encoder 80 seconds per pass, and
+half a second without them.
 
 Every gap above is also named at the top of `.github/workflows/ci.yml`, so the
 green badge is read for what it covers.

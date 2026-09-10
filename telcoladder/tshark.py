@@ -69,6 +69,29 @@ MIN_RECOMMENDED = (4, 0)
 #: tshark 會把整段 SBI 當成重傳而略過（`probe.py`）。
 RELAX_SEQ_PREF = "tcp.analyze_sequence_numbers:FALSE"
 
+#: 抽取與索引時**停用**的 dissector —— 沒有任何 adapter 讀它們的欄位（grep 為零），
+#: 唯一的讀者是 Decode Inspector，而那條路（`decode.py` 的 PDML、`framebytes.py`）
+#: 刻意不經這裡。
+#:
+#: 為什麼要停：tshark 的 `-T ek` 編碼器在巨大的樹上崩潰，而 UE radio capability 的
+#: NR RRC 容器（InitialContextSetup、UERadioCapabilityInfoIndication／Check 都帶）
+#: 正是那種樹。實測一份 2.4 MB／1,933 格的 AMF 側 UE trace：40 格帶 nr-rrc，一趟
+#: `-T ek` 80.5 秒、吐出 48.7 MB 的 JSON；同 40 格用 `-V` 只要 1.7 秒 —— dissection
+#: 不是問題，編碼器才是。停掉 nr-rrc 之後同一趟 0.47 秒，631 格 NGAP 一格不少。
+#: `analyse()` 跑兩趟（抽取＋NE-trace 重跑）、封包清單再一趟，使用者看到的是
+#: 「載入十分鐘」。
+#:
+#: **為什麼不是 `-e` 挑欄位**：`-T ek -e` 會把巢狀的 layer 攤平成一層，而每個
+#: adapter 讀的是 `frame.layer("ngap")` 那種巢狀 dict —— 載體嵌套（SBI 夾帶的
+#: NAS）就靠那個結構。
+#:
+#: **刻意不套的地方**：`decode.py`（PDML，逐格，檢查器就是要看容器裡有什麼）、
+#: `framebytes.py`（原始位元組）、`coverage.py`（`io,phs` 是誠實的清冊，該看到
+#: RRC 存在）。名稱以 `tshark -G protocols` 為準：NR 是 `nr-rrc`（連字號）、
+#: LTE 是 `lte_rrc`（底線）。寫錯不會靜默 —— tshark 直接以 exit 1 拒絕
+#: （`No such protocol`），每一趟都會炸，`tests/test_rrc_containers.py` 也守著。
+UNREAD_HEAVY_PROTOCOLS: tuple[str, ...] = ("nr-rrc", "lte_rrc")
+
 #: pcap link type 147 = LINKTYPE_USER0；USER n 就是 147 + n（libpcap 保留
 #: 147–162 給使用者自訂）。tshark 對這種擷取檔**一個 dissector 都不掛**，
 #: 每格都是 `user_dlt` 一片 data，除非用下面這條 uat 告訴它載荷是什麼。
@@ -99,6 +122,18 @@ def pref_args(prefs: "Sequence[str]" = (), *, relax_seq: bool = False) -> list[s
     out: list[str] = []
     for pref in seen:
         out += ["-o", pref]
+    return out
+
+
+def disable_protocol_args(protocols: "Sequence[str]" = UNREAD_HEAVY_PROTOCOLS) -> list[str]:
+    """把要停用的 dissector 展開成 `--disable-protocol` 參數（tshark 2.2 起就有）。
+
+    與 `pref_args` 同一個理由只有一份實作：抽取、索引、probe 三條路要吃同一組，
+    少套一處的症狀是「封包清單 2 秒、分析 3 分鐘」，而沒有任何一層會報錯。
+    """
+    out: list[str] = []
+    for name in protocols:
+        out += ["--disable-protocol", name]
     return out
 
 
