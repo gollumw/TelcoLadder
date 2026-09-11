@@ -142,10 +142,17 @@ _N2_PROTOCOLS = frozenset({"ngap", "nas-5gs"})
 
 
 def _inferred_joins(analysis: Analysis) -> list[str]:
-    """轉述鍵做了什麼：接上幾段、拒絕幾段。都是 0 就不講。"""
+    """轉述鍵做了什麼：接上幾段、拒絕幾段。都是 0 就不講。
+
+    兩種接法各講各的 —— 隧道是協定欄位，資源 id 裡的 SUPI 是廠商格式，可信度不同，
+    混成一句等於把後者說成前者。
+    """
     lines: list[str] = []
-    if analysis.quote_joins:
-        lines.append(_("{n} flow segment(s) were joined to their subscriber through an N2 tunnel that an SBI message reported or forwarded - an inference from the wire, not a key the segments share.").format(n=analysis.quote_joins))
+    tunnel = analysis.quote_joins - analysis.quote_joins_embedded
+    if tunnel:
+        lines.append(_("{n} flow segment(s) were joined to their subscriber through an N2 tunnel that an SBI message reported or forwarded - an inference from the wire, not a key the segments share.").format(n=tunnel))
+    if analysis.quote_joins_embedded:
+        lines.append(_("{n} flow segment(s) were joined to their subscriber because an SBI resource id literally contains a SUPI this capture shows elsewhere - the id is assigned by a network function in a format no specification fixes, so this is an inference.").format(n=analysis.quote_joins_embedded))
     if analysis.quote_refusals:
         lines.append(_("{n} such join(s) were refused because they would have merged two different subscribers; those segments stay separate.").format(n=analysis.quote_refusals))
     return lines

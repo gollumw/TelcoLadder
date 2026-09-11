@@ -12,6 +12,7 @@ nghttp2 網頁伺服器樣本，不是 SBI）。多訊息拆解、method/path/st
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -21,6 +22,7 @@ from telcoladder.identity import connection_scope, globally_unique, gtp_tunnels,
 from telcoladder.model import (
     BLIND_UNDECODED_STREAM,
     NF_ROLE_HINTS_KEY,
+    QUOTE_EMBEDDED,
     QUOTE_FORWARDED,
     QUOTE_REPORTED,
     BlindSpot,
@@ -185,6 +187,30 @@ def _supis_in_path(path: str) -> set[str]:
         if supi:
             found.add(supi)
     return found
+
+
+#: 資源 id 裡的 SUPI 候選：前後都不是數字的 10～15 位數字串。IMSI 最長 15 位（TS 23.003）；
+#: 短於 10 位的多半是序號或 context 參照，列成候選只是雜訊。真正的防線不是長度，是
+#: `correlate` 只接這份擷取檔**原生**出現過的 SUPI。
+_EMBEDDED_DIGITS = re.compile(r"(?<!\d)\d{10,15}(?!\d)")
+
+
+def _embedded_supi_quotes(path: str) -> frozenset[Quote]:
+    """資源 id 裡逐字夾著的 SUPI 候選（`model.QUOTE_EMBEDDED`）。
+
+    有些網元把 SUPI 拼進自己配發的 id（實測一份 AMF trace：PCF 的 polAssoId = SUPI
+    數字接 `%` 與一段十六進位）。TS 29.525 只說那個 id 不透明，所以這裡只給**候選**，
+    不給鍵：是不是那個人由 `correlate` 決定 —— 別處原生出現過的 SUPI 才接得上，其他候選
+    自然落空，不會憑空多出一個訂戶。`imsi-`／`suci-` 段已是原生鍵（`_supis_in_path`），
+    不重複給；查詢字串不看（`supi=` 由 `_extra_supis` 處理）。
+    """
+    quotes: set[Quote] = set()
+    for segment in path.split("?", 1)[0].split("/"):
+        if segment.startswith(("imsi-", "suci-")):
+            continue
+        for run in _EMBEDDED_DIGITS.findall(segment):
+            quotes.add(Quote(globally_unique(IdKind.SUPI, run), QUOTE_EMBEDDED))
+    return frozenset(quotes)
 
 
 #: 間接通訊時，發送端用這個標頭指名**真正**的目標；`:authority` 指的則是
@@ -754,7 +780,7 @@ def parse(frame: Frame) -> list[Message]:
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
                 identity_keys=frozenset(identity),
-                quotes=_n2_quotes(frame, stream_id, members),
+                quotes=_n2_quotes(frame, stream_id, members) | _embedded_supi_quotes(str(path) if path else ""),
                 cause=None,  # SBI 的錯誤語意在 HTTP 狀態碼，不走 cause 表
                 is_failure=status is not None and status >= _FAILURE_STATUS_FLOOR,
                 detail=detail,

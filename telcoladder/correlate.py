@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import NamedTuple
 
-from telcoladder.model import Flow, IdKey, IdKind, Message, is_flow_worthy
+from telcoladder.model import QUOTE_EMBEDDED, Flow, IdKey, IdKind, Message, is_flow_worthy
 
 
 class _UnionFind:
@@ -53,6 +53,8 @@ class QuoteStats(NamedTuple):
     """靠轉述鍵接起來的次數。"""
     refused: int
     """會讓一組帶上兩個不同 SUPI、因此拒絕的次數。"""
+    embedded: int = 0
+    """`joined` 裡靠資源 id 夾帶的 SUPI（`model.QUOTE_EMBEDDED`）接起來的次數。"""
 
 
 def correlate(messages: list[Message]) -> list[Flow]:
@@ -87,7 +89,7 @@ def correlate_with_stats(messages: list[Message]) -> tuple[list[Flow], QuoteStat
 
     # 弱邊：轉述鍵（已由 `lifecycle` 綁到某一次原生出現）。**強鍵全部接完才套** ——
     # 這樣否決看得到每一組完整的 SUPI 集合，而不是接到一半的樣子。
-    bridges, refused = _apply_quotes(uf, messages)
+    bridges, refused, embedded = _apply_quotes(uf, messages)
 
     grouped: dict[IdKey | None, list[Message]] = {}
     for msg in messages:
@@ -120,11 +122,12 @@ def correlate_with_stats(messages: list[Message]) -> tuple[list[Flow], QuoteStat
 
     # 依首則訊息的時間排序，讓輸出順序穩定且符合直覺。
     flows.sort(key=lambda f: (f.messages[0].ts, f.messages[0].frame))
-    return flows, QuoteStats(joined=len(bridges), refused=refused)
+    return flows, QuoteStats(joined=len(bridges), refused=refused, embedded=embedded)
 
 
-def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey], int]:
-    """依封包順序把轉述鍵當成弱邊接上；回傳（每次接上後的根，拒絕次數）。
+def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey], int, int]:
+    """依封包順序把轉述鍵當成弱邊接上；回傳（每次接上後的根，拒絕次數，其中靠資源 id
+    夾帶的 SUPI 接上的次數）。
 
     * 轉述鍵必須接到**原生**出現過的鍵 —— 兩則訊息只是轉述了同一條隧道，不足以
       說它們是同一個人（`uf` 裡只有 identity_keys，轉述從不進去）。
@@ -134,7 +137,7 @@ def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey],
     """
     quoted = sorted((m for m in messages if m.quotes and m.identity_keys), key=lambda m: (m.frame, m.ts))
     if not quoted:
-        return [], 0
+        return [], 0, 0
     supis: dict[IdKey, set[str]] = defaultdict(set)
     for msg in messages:
         for kind, value in msg.identity_keys:
@@ -142,6 +145,7 @@ def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey],
                 supis[uf.find((kind, value))].add(value)
     bridges: list[IdKey] = []
     refused = 0
+    embedded = 0
     for msg in quoted:
         mine = min(msg.identity_keys)
         for quote in sorted(msg.quotes):
@@ -158,4 +162,5 @@ def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey],
             root = uf.find(a)
             supis[root] = both
             bridges.append(root)
-    return bridges, refused
+            embedded += quote.looks == QUOTE_EMBEDDED
+    return bridges, refused, embedded
