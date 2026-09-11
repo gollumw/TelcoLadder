@@ -70,7 +70,7 @@ from collections import defaultdict
 from bisect import bisect_left, bisect_right
 
 from telcoladder.identity import episodic
-from telcoladder.model import QUOTE_FORWARDED, IdKey, IdKind, Message, Quote
+from telcoladder.model import QUOTE_EMBEDDED, QUOTE_FORWARDED, IdKey, IdKind, Message, Quote
 
 #: 哪些 `IdKind` 會被回收再配發。
 #:
@@ -215,6 +215,9 @@ def _bind_quotes(
             continue
         bound: set[Quote] = set()
         for quote in msg.quotes:
+            if quote.looks == QUOTE_EMBEDDED:
+                bound.add(quote)  # SUPI 不回收，沒有輪次可綁；接不接得上由 `correlate` 判
+                continue
             generation = _bind(quote, msg, sightings.get(quote.key, []), released_at.get(quote.key, []))
             if generation is None:
                 continue

@@ -265,8 +265,14 @@ class Continuation(NamedTuple):
 #:   UPF 的上行隧道交給 gNB（`PDU_RES_SETUP_REQ`）：SBI 先提，N2 才出現。前一次原生
 #:   出現之後沒有釋放 → 那一輪仍然活著，綁它；有釋放 → 綁**下一次**原生出現，
 #:   而且兩者之間不得再有釋放、相距不得超過 `lifecycle.FORWARD_MAX_LEAD_S`。
+#: * `QUOTE_EMBEDDED`：SBI 資源 id 裡**逐字**夾著一個 SUPI。實測一份 AMF trace：PCF 配發的
+#:   polAssoId 就是 SUPI 數字接 `%` 與一段十六進位。那個 id 是網元自己配的，TS 29.525 只說
+#:   它不透明、沒規定格式 —— 所以它**不是** SUPI 鍵，只是候選：這份擷取檔別處**原生**出現過
+#:   同一個 SUPI 時才接得上（`correlate` 本來就只接 `uf` 裡有的鍵），否則落空，不會憑空多出
+#:   一個訂戶。SUPI 不回收，沒有輪次可綁，`lifecycle` 原樣放行。
 QUOTE_REPORTED = "reported"
 QUOTE_FORWARDED = "forwarded"
+QUOTE_EMBEDDED = "embedded"
 
 
 class Quote(NamedTuple):

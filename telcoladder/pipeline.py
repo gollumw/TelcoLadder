@@ -251,6 +251,10 @@ class Analysis:
     quote_refusals: int = 0
     """有幾次轉述鍵**本來會**接起兩段、卻因為兩段各帶不同的 SUPI 而被拒絕。
     不是 0 代表線路上有指向兩個人的證據；那一段維持分開，並且講出來。"""
+
+    quote_joins_embedded: int = 0
+    """`quote_joins` 裡有幾次是靠資源 id 逐字夾著的 SUPI 接起來的（`model.QUOTE_EMBEDDED`）。
+    與隧道分開講：隧道是協定欄位，資源 id 的格式是廠商自訂的。"""
     """這是 TS 32.423 XML trace 時，從檔案中繼資料撿回來的事實（`nettrace.py`）。
     `None` 代表不是那種檔。**一定要呈現**：角色、主機名、歸戶有一部分不是從
     封包來的，讀的人要知道。"""
@@ -566,4 +570,5 @@ def _analyse_within(
         trace_sidecar=sidecar,
         quote_joins=quote_stats.joined,
         quote_refusals=quote_stats.refused,
+        quote_joins_embedded=quote_stats.embedded,
     )
