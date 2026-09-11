@@ -516,9 +516,12 @@ export function toProtocolNodes(
       //
       // 這裡原本吃 `node.value`（原始 hex），註解還寫著「Wireshark 也這樣」——
       // **那句話是錯的**。Wireshark 的樹只有 showname；位元組在下方的 hex
-      // 面板，選欄位時高亮。我們早就有那個連動（`byteRange` → HexDump 的
-      // `highlightRange`），所以樹上再放一次 hex 只是把這一欄浪費掉，
-      // 還把 JSON 內容擠成一串 `2276616c…`。
+      // 面板，選欄位時高亮。樹上再放一次 hex 只是把這一欄浪費掉，還把 JSON
+      // 內容擠成一串 `2276616c…`。
+      //
+      // `byteRange` 原本餵 Data Mining 的 Bytes 面板做高亮；那個面板已拿掉
+      // （讀信令的人不看 hex，卻讓解碼樹只剩半寬），**目前沒有讀者**。留著是因為
+      // 它由後端的 pos/size 直接換算、幾乎沒有成本，Bytes 視圖回來時不必重寫。
       detail: node.detail || undefined,
       byteRange:
         node.pos !== undefined && node.size !== undefined

@@ -7,7 +7,6 @@ import { cn, findSupiByTarget, formatTimeOffset, type DiscoveredSession } from "
 import type { DecodeAsState, PacketPage } from "@/data/source";
 import { DecodeAsPanel } from "./DecodeAsPanel";
 import { ProtocolTree } from "./ProtocolTree";
-import { HexDump } from "./HexDump";
 import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
 import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
 import type { IdentityKind, ProtocolFilter } from "@/data/source";
@@ -38,17 +37,6 @@ const STATUS_DOT: Record<RawPacket["status"], string> = {
 const ROW_H = 22;
 const OVERSCAN = 10;
 const VIEWPORT_H = 288; // = Tailwind 的 max-h-72
-
-function findNodeById(nodes: ProtocolNode[], id: string): ProtocolNode | undefined {
-  for (const node of nodes) {
-    if (node.id === id) return node;
-    if (node.children) {
-      const found = findNodeById(node.children, id);
-      if (found) return found;
-    }
-  }
-  return undefined;
-}
 
 // Data Mining is the home view: the full packet universe (母體), with a
 // Discovered Sessions drawer surfacing every user found in it, a precise
@@ -97,8 +85,6 @@ export function DataMiningView({
   packetRows,
   packetTotals,
   onNeedRows,
-  bytesByFrame,
-  onRequestBytes,
   treeByFrame,
   decodeNote,
   onRequestTree,
@@ -141,8 +127,6 @@ export function DataMiningView({
   packetRows: Record<number, RawPacket>;
   packetTotals: Omit<PacketPage, "rows" | "offset">;
   onNeedRows: (first: number, count: number) => void;
-  bytesByFrame?: Record<number, string | null>;
-  onRequestBytes?: (frame: number) => void;
   treeByFrame?: Record<number, ProtocolNode[] | null>;
   /** 解碼樹少做了什麼（例如退回單趟、沒有跨格重組標註）。有就顯示在樹下面。 */
   decodeNote?: string | null;
@@ -180,9 +164,18 @@ export function DataMiningView({
 
   // 條件變了就回到頂端。留在原捲動位置沒有意義 —— 那個序位在新條件下
   // 是另一批封包，看起來像「過濾之後跳到不相干的地方」。
+  //
+  // **例外：帶著一格進來。** 總覽的「開啟封包 #N」與梯形圖的「在 Data Mining 看」都會
+  // 先清掉篩選再切過來；清單是虛擬捲動，那一格多半不在已載入的視窗裡，停在頂端就等於
+  // 沒跳。沒有任何篩選時清單就是 frame 1..N 依序排，序位＝frame−1，捲到那裡並置中。
+  // 有篩選時估不出序位，照舊回頂端。只看 `matched`：使用者在清單裡點另一列不會觸發它，
+  // 不會被拉走。
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    setScrollTop(0);
+    const unfiltered = displayFilter === "" && !onlySessionFilter;
+    const offset = selectedFrame !== null && unfiltered && matched > 0 ? Math.min(selectedFrame - 1, matched - 1) : null;
+    const top = offset === null ? 0 : Math.max(0, offset * ROW_H - (VIEWPORT_H - ROW_H) / 2);
+    if (scrollRef.current) scrollRef.current.scrollTop = top;
+    setScrollTop(top);
   }, [matched]);
 
   const loadedRows = Object.values(packetRows);
@@ -199,28 +192,16 @@ export function DataMiningView({
     (selectedFrame === null ? (packetRows[0] ?? null) : null);
   const detailFrame = selectedFrame ?? selectedPacket?.frameNumber ?? null;
 
-  // hex 優先用資料自帶的（mock 是編譯期就有的），沒有才看懶載入的結果。
-  // `bytesByFrame` 裡有這個鍵但值是 null＝問過了、那格真的沒有。
-  // 解碼樹同樣：優先用資料自帶的（mock 有），沒有才看懶載入結果。
+  // 解碼樹優先用資料自帶的（mock 有），沒有才看懶載入結果。
   const treeForSelected =
     selectedPacket?.decodeTree ??
     (detailFrame !== null ? (treeByFrame?.[detailFrame] ?? undefined) : undefined);
 
-  const hexForSelected =
-    selectedPacket?.hexDump ??
-    (detailFrame !== null ? (bytesByFrame?.[detailFrame] ?? undefined) : undefined);
-
-  // 選到一格才去要它的位元組 —— 一份擷取幾十萬格，不可能預先全取。
+  // 選到一格才去要它的解碼樹 —— 一份擷取幾十萬格，不可能預先全取。
   useEffect(() => {
     if (detailFrame === null) return;
-    if (!selectedPacket?.hexDump) onRequestBytes?.(detailFrame);
     if (!selectedPacket?.decodeTree) onRequestTree?.(detailFrame);
-  }, [detailFrame, selectedPacket, onRequestBytes, onRequestTree]);
-
-  const selectedNode =
-    treeForSelected && selectedNodeId
-      ? findNodeById(treeForSelected, selectedNodeId)
-      : null;
+  }, [detailFrame, selectedPacket, onRequestTree]);
 
   function jumpTo(supi: string) {
     const frame = firstFrameBySupi[supi];
@@ -555,41 +536,28 @@ export function DataMiningView({
         </div>
       </div>
 
-      {/* Packet Details Tree + Hex Dump */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-border bg-surface-1 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Packet Details</p>
-          {selectedPacket ? (
-            treeForSelected ? (
-              <>
-                <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
-                {decodeNote && (
-                  // 少了跨格重組標註的樹與完整的樹長得一樣 —— 後端退回單趟時說出來。
-                  <p className="mt-2 border-t border-border pt-2 text-[11px] text-fg-dim">{decodeNote}</p>
-                )}
-              </>
-            ) : (
-              // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
-              <div className="p-3 text-xs text-fg-dim font-mono">{t("Decode tree not loaded yet")}</div>
-            )
+      {/* **Packet Details 全寬。** 原本右半是 Bytes（hex dump）—— 讀信令的人幾乎不看它，
+          卻讓解碼樹只剩半寬、深層的值一路換行。原始位元組仍可從後端 `/bytes` 取得。
+          **把關看 `detailFrame`，不看 `selectedPacket`**：後者來自封包清單的載入視窗，
+          從總覽跳進來的那一格可能還沒載入；解碼樹依 frame 編號懶載入，不必等它。 */}
+      <div className="rounded-lg border border-border bg-surface-1 p-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Packet Details</p>
+        {detailFrame !== null ? (
+          treeForSelected ? (
+            <>
+              <ProtocolTree nodes={treeForSelected} selectedId={selectedNodeId} onSelect={(n) => setSelectedNodeId(n.id)} />
+              {decodeNote && (
+                // 少了跨格重組標註的樹與完整的樹長得一樣 —— 後端退回單趟時說出來。
+                <p className="mt-2 border-t border-border pt-2 text-[11px] text-fg-dim">{decodeNote}</p>
+              )}
+            </>
           ) : (
-            <p className="py-6 text-center text-xs text-fg-dim">{t("Select a packet to view its decode tree")}</p>
-          )}
-        </div>
-        <div className="rounded-lg border border-border bg-surface-1 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-dim font-mono">Bytes</p>
-          {selectedPacket ? (
-            hexForSelected ? (
-              <HexDump hex={hexForSelected} highlightRange={selectedNode?.byteRange ?? null} />
-            ) : (
-              // 後端目前沒有 hex 輸出（GUI Phase 3 的待辦）。空白比假的好，
-              // 但要說出是「還沒做」而不是「這格沒有位元組」。
-              <div className="p-3 text-xs text-fg-dim font-mono">{t("This source does not provide raw bytes")}</div>
-            )
-          ) : (
-            <p className="py-6 text-center text-xs text-fg-dim">{t("Select a packet to view the hex dump")}</p>
-          )}
-        </div>
+            // 解碼樹是懶載入的。畫一棵空樹會讓人以為「這格沒有內容」。
+            <div className="p-3 text-xs text-fg-dim font-mono">{t("Decode tree not loaded yet")}</div>
+          )
+        ) : (
+          <p className="py-6 text-center text-xs text-fg-dim">{t("Select a packet to view its decode tree")}</p>
+        )}
       </div>
     </div>
   );
