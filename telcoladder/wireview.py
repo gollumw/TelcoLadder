@@ -20,6 +20,11 @@ from __future__ import annotations
 
 from telcoladder.model import Flow, Message
 
+#: How a wire-view row joins a carrier message and the messages it carries
+#: (`Context Request ▸ Tracking area update request`). One definition: `procedures`
+#: splits on it to read the carrier's own label.
+CARRIED_JOINER = " ▸ "
+
 
 def collapse(flows: list[Flow]) -> list[Flow]:
     """把每條流程內同一格 frame 的訊息合併成一列。
@@ -86,7 +91,7 @@ def _merge(group: list[Message]) -> Message:
         protocol=head.protocol,
         src=head.src,
         dst=head.dst,
-        label=" ▸ ".join(m.label for m in group),
+        label=CARRIED_JOINER.join(m.label for m in group),
         identity_keys=keys,
         cause=chosen.cause if chosen is not None else None,
         is_failure=any(m.is_failure for m in group),
