@@ -67,8 +67,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from bisect import bisect_left, bisect_right
+
 from telcoladder.identity import episodic
-from telcoladder.model import IdKey, IdKind, Message
+from telcoladder.model import QUOTE_FORWARDED, IdKey, IdKind, Message, Quote
 
 #: 哪些 `IdKind` 會被回收再配發。
 #:
@@ -112,7 +114,7 @@ def apply(messages: list[Message]) -> list[Message]:
 
     沒有任何釋放事件時直接原樣回傳,連走都不走。
     """
-    if not any(msg.releases for msg in messages):
+    if not any(msg.releases for msg in messages) and not any(msg.quotes for msg in messages):
         return messages
 
     #: 每把 key 目前是第幾輪配發。
@@ -123,8 +125,12 @@ def apply(messages: list[Message]) -> list[Message]:
     #: 它能宣告的只有「這通電話結束了」；電話的媒體端點是從 INVITE／183／200
     #: 的 SDP 來的，要靠這張表才找得回來。錨本身不回收，所以不進 `associates`。
     anchored: dict[IdKey, set[IdKey]] = defaultdict(set)
+    #: 每把可回收的鍵**原生**出現在哪些格、當時是第幾輪 —— 轉述要綁到其中一次。
+    sightings: dict[IdKey, list[tuple[int, float, int]]] = defaultdict(list)
+    #: 每把鍵在哪些格被釋放（連坐的也算）。轉述不能跨過它們去綁。
+    released_at: dict[IdKey, list[int]] = defaultdict(list)
 
-    def release(keys: set[IdKey], *, with_associates: bool = True) -> None:
+    def release(keys: set[IdKey], *, frame: int, with_associates: bool = True) -> None:
         """釋放這些 key —— 預設連它們這一輪的關聯一起放掉。
 
         `with_associates=False` 給錨的釋放用：SIP 的 BYE 結束的是**這通電話的媒體**
@@ -142,6 +148,7 @@ def apply(messages: list[Message]) -> list[Message]:
                 pending.extend(associates.get(key, set()) - closure)
         for key in closure:
             episode[key] += 1
+            released_at[key].append(frame)
             # 切斷雙向關聯 —— 留著的話下一輪會繼承上一輪的鄰居。
             for other in associates.pop(key, set()):
                 if other in associates:
@@ -164,20 +171,85 @@ def apply(messages: list[Message]) -> list[Message]:
 
             for key in live:
                 associates[key] |= live - {key}
+                sightings[key].append((msg.frame, msg.ts, episode[key]))
             for anchor in msg.identity_keys - live:
                 anchored[anchor] |= live
 
         released = _reusable(msg.releases)
         if released:
-            release(released)
+            release(released, frame=msg.frame)
         anchored_release: set[IdKey] = set()
         for anchor in msg.releases - released:
             # 錨的釋放 = 它這一輪帶過的可回收鍵（只有它們，不連坐）。
             anchored_release |= anchored.pop(anchor, set())
         if anchored_release:
-            release(anchored_release, with_associates=False)
+            release(anchored_release, frame=msg.frame, with_associates=False)
 
+    _bind_quotes(messages, sightings, released_at)
     return messages
 
 
-__all__ = ["REUSABLE", "apply"]
+#: 回報型轉述離它綁的那次原生出現最多多遠。實測一份 AMF trace：96 次回報全部在
+#: 原生出現之後 10 ms 內（AMF 收到 InitialContextSetupResponse 就轉給 SMF）。
+#: 60 s 留足擷取點時鐘差的餘裕，又不至於讓幾分鐘前的舊隧道被重新認領。
+REPORT_MAX_AGE_S = 60.0
+
+#: 轉送型轉述在跨過釋放之後，最多等多久要看到下一次原生出現。實測同一份 trace：
+#: 70 次轉送裡 57 次在 5 s 內等到（Paging 期間 SMF 已經把上行隧道交出去）；
+#: 5 次要等到幾分鐘後 —— 那已經是下一個週期，不能綁。
+FORWARD_MAX_LEAD_S = 10.0
+
+
+def _bind_quotes(
+    messages: list[Message],
+    sightings: dict[IdKey, list[tuple[int, float, int]]],
+    released_at: dict[IdKey, list[int]],
+) -> None:
+    """把每則訊息的轉述鍵綁到某一次原生出現的那一輪；綁不上的從 `quotes` 拿掉。
+
+    綁上的轉述改寫成那一輪的鍵（與原生那則的 `identity_keys` 逐字相同），讓
+    `correlate` 找得到它。規則見 `model.QUOTE_REPORTED`／`QUOTE_FORWARDED`。
+    """
+    for msg in messages:
+        if not msg.quotes:
+            continue
+        bound: set[Quote] = set()
+        for quote in msg.quotes:
+            generation = _bind(quote, msg, sightings.get(quote.key, []), released_at.get(quote.key, []))
+            if generation is None:
+                continue
+            key = quote.key
+            if generation:
+                kind, raw = key
+                scope, _, value = raw.rpartition("/")
+                key = episodic(kind, scope, value, generation)
+            bound.add(Quote(key, quote.looks))
+        msg.quotes = frozenset(bound)
+
+
+def _released_between(releases: list[int], start: int, end: int) -> bool:
+    """`[start, end)` 之間有沒有釋放。釋放訊息自己帶的鍵屬於舊的那一輪（先改寫、再 +1），
+    所以落在 `start` 那一格的釋放算「之後」、落在 `end` 那一格的不算「之間」。"""
+    i = bisect_left(releases, start)
+    return i < len(releases) and releases[i] < end
+
+
+def _bind(quote: Quote, msg: Message, seen: list[tuple[int, float, int]], releases: list[int]) -> int | None:
+    """這個轉述該綁第幾輪；綁不上回 None。`seen` 依格序排好（主迴圈就是依格序走的）。"""
+    frames = [frame for frame, _ts, _gen in seen]
+    before = bisect_left(frames, msg.frame)
+    after = bisect_right(frames, msg.frame)
+    prev = seen[before - 1] if before else None
+    nxt = seen[after] if after < len(seen) else None
+    if prev is not None and not _released_between(releases, prev[0], msg.frame):
+        if quote.looks == QUOTE_FORWARDED or msg.ts - prev[1] <= REPORT_MAX_AGE_S:
+            return prev[2]
+        return None
+    if quote.looks != QUOTE_FORWARDED:
+        return None  # 回報型永不往後綁：晚到的回報若綁下一輪，那一輪可能屬於別人
+    if nxt is not None and nxt[1] - msg.ts <= FORWARD_MAX_LEAD_S and not _released_between(releases, msg.frame, nxt[0]):
+        return nxt[2]
+    return None
+
+
+__all__ = ["FORWARD_MAX_LEAD_S", "REPORT_MAX_AGE_S", "REUSABLE", "apply"]

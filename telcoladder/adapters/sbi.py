@@ -21,12 +21,15 @@ from telcoladder.identity import connection_scope, globally_unique, gtp_tunnels,
 from telcoladder.model import (
     BLIND_UNDECODED_STREAM,
     NF_ROLE_HINTS_KEY,
+    QUOTE_FORWARDED,
+    QUOTE_REPORTED,
     BlindSpot,
     Continuation,
     Endpoint,
     IdKey,
     IdKind,
     Message,
+    Quote,
 )
 
 NAME = "sbi"
@@ -414,7 +417,9 @@ def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
     if imsi:
         # SUPI 全網唯一，不加範圍前綴（同 parse() 的理由）。
         keys.add(globally_unique(IdKind.SUPI, imsi))
-    keys |= _n2_tunnel_keys(block)
+    # N2 SM information 的隧道**不在這裡**：它們是 SBI 訊息轉述的鍵，不是載荷自己的鍵
+    # （`model.Quote`）。同一條 stream 的 SBI 訊息在 `parse()`／`continuations()` 帶著它們，
+    # 載荷靠上面的 `SBI_STREAM` 接回那則訊息 —— 連通性不變，語意只剩一種。
     return frozenset(keys)
 
 
@@ -572,6 +577,38 @@ def _request_body_detail(members, src_ip: str, path: str, service: str | None, m
     return detail
 
 
+#: N2 SM information 的類型（TS 29.502 的 n2SmInfoType、TS 29.518 的 ngapIeType）→ 轉述方向。
+#:
+#: **只收量測過、而且有測試的。** 一份 AMF 側的真實 trace 上帶隧道的只有這三種：
+#: gNB→SMF 的 `PDU_RES_SETUP_RSP`、`HANDOVER_REQ_ACK`（隧道已在 N2 上出現，SBI 事後轉述），
+#: 與 SMF→gNB 的 `PDU_RES_SETUP_REQ`（SBI 先提，N2 之後才用）。其餘類型一律不橋接 ——
+#: 方向猜錯的後果是把轉述綁到別人的那一輪，遇到新類型再量、再加。
+_N2_QUOTE_DIRECTION: dict[str, str] = {
+    "PDU_RES_SETUP_RSP": QUOTE_REPORTED,
+    "HANDOVER_REQ_ACK": QUOTE_REPORTED,
+    "PDU_RES_SETUP_REQ": QUOTE_FORWARDED,
+}
+
+
+def _n2_quotes(frame: Frame, stream_id: int | None, members) -> frozenset[Quote]:
+    """這條 stream 的 body 夾帶的 N2 SM information 裡的隧道，當成轉述鍵（`model.Quote`）。
+
+    方向看 JSON 那一段宣告的類型（協定欄位，不隨 tshark 版本改名）；隧道本身由
+    `_n2_tunnel_keys` 從 tshark 解出來的 NGAP 容器挖。類型沒宣告、不在
+    `_N2_QUOTE_DIRECTION` 裡、或同一個 body 裡混了兩個方向 → 不橋接。
+    """
+    types = {value for name, value in members if name in ("n2SmInfoType", "ngapIeType") and value}
+    directions = {_N2_QUOTE_DIRECTION.get(t) for t in types}
+    if not types or None in directions or len(directions) != 1:
+        return frozenset()
+    tunnels: set[IdKey] = set()
+    for block in frame.layer("http2"):
+        if stream_id is None or _to_int(block.get("http2_http2_streamid")) == stream_id:
+            tunnels |= _n2_tunnel_keys(block)
+    (looks,) = directions
+    return frozenset(Quote(key, looks) for key in tunnels)
+
+
 def continuations(frame: Frame) -> list[Continuation]:
     """契約鉤子（`adapters.attach_continuations`）：body 比 HEADERS 晚一格到的那些 stream。
 
@@ -602,14 +639,16 @@ def continuations(frame: Frame) -> list[Continuation]:
             continue
         out.append(Continuation(
             protocol=NAME, key=scoped(IdKind.SBI_STREAM, scope, stream_id), src=src,
-            frame=frame.number, apply=_late_body(members, frame.src_ip),
+            frame=frame.number, apply=_late_body(members, frame.src_ip, _n2_quotes(frame, stream_id, members)),
         ))
     return out
 
 
-def _late_body(members: list[tuple[str, str]], src_ip: str):
+def _late_body(members: list[tuple[str, str]], src_ip: str, quotes: frozenset[Quote] = frozenset()):
     """把晚到的 body 合進它的主人：與同格時 `parse()` 做的事逐條相同。"""
     def apply(owner: Message) -> None:
+        if quotes:
+            owner.quotes = owner.quotes | quotes
         already = {value for kind, value in owner.identity_keys if kind is IdKind.SUPI}
         extra = _extra_supis(members, "", already)
         if extra:
@@ -715,6 +754,7 @@ def parse(frame: Frame) -> list[Message]:
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
                 identity_keys=frozenset(identity),
+                quotes=_n2_quotes(frame, stream_id, members),
                 cause=None,  # SBI 的錯誤語意在 HTTP 狀態碼，不走 cause 表
                 is_failure=status is not None and status >= _FAILURE_STATUS_FLOOR,
                 detail=detail,

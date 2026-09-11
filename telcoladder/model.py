@@ -256,6 +256,41 @@ class Continuation(NamedTuple):
     apply: Callable[[Message], None]
 
 
+#: 轉述的方向（`Quote.looks`）—— 決定 `lifecycle` 把它綁到哪一次原生出現。
+#:
+#: * `QUOTE_REPORTED`：對方**已經**在原生介面上配好，這則訊息事後轉述。例如 AMF 把
+#:   gNB 回的 `PDU_RES_SETUP_RSP` 轉給 SMF：下行隧道先在 N2 上出現，SBI 才提到它。
+#:   只往回看 —— 綁前一次原生出現；中間跨過釋放就不綁（晚到的轉述只能綁回原主）。
+#: * `QUOTE_FORWARDED`：這則訊息先提，對方之後才在原生介面上用。例如 SMF 經 AMF 把
+#:   UPF 的上行隧道交給 gNB（`PDU_RES_SETUP_REQ`）：SBI 先提，N2 才出現。前一次原生
+#:   出現之後沒有釋放 → 那一輪仍然活著，綁它；有釋放 → 綁**下一次**原生出現，
+#:   而且兩者之間不得再有釋放、相距不得超過 `lifecycle.FORWARD_MAX_LEAD_S`。
+QUOTE_REPORTED = "reported"
+QUOTE_FORWARDED = "forwarded"
+
+
+class Quote(NamedTuple):
+    """一把**轉述**的身分鍵：這則訊息提到它，但不是它的配發者。
+
+    SBI 的 body 夾著 N2 SM information，裡面的 GTP 隧道（位址＋TEID）與 N2 上那一把
+    逐字相同 —— 那是把 SBI、N2、N4 接起來的線路事實。可是把它當成這則訊息自己的鍵
+    有兩個錯（2026-09-11 實測一份 AMF trace）：
+
+    1. `lifecycle` 會把同一則訊息上的可回收鍵記成互為關聯。SBI 訊息同時帶著 SM context
+       參照與它轉述的隧道，每次 idle 的 UEContextRelease 就一路把 SM context 也改成新的一輪
+       —— 而 PDU session 在 idle 期間一直都在。實測 20 則 retrieve 因此被拆成孤兒。
+    2. 轉述可能晚到。晚到的轉述若被當成當下這一輪的鍵，而那個 TEID 已經配給了別人，
+       兩個訂戶就被接成一條 —— 圖照樣畫得出來。
+
+    所以轉述鍵**不放進** `Message.identity_keys`：`lifecycle` 依方向把它綁到某一次原生
+    出現（綁不上就丟掉），`correlate` 把綁上的當成弱邊，會讓一組帶上兩個不同 SUPI 的
+    一律拒絕。
+    """
+
+    key: IdKey
+    looks: str
+
+
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。
 IdKey = tuple[IdKind, str]
 
@@ -436,6 +471,13 @@ class Message:
     adapter 只負責宣告「這則訊息釋放了什麼」,不必知道 episode 怎麼算。
     """
 
+    quotes: frozenset[Quote] = field(default_factory=frozenset)
+    """這則訊息**轉述**、但不是它配發的身分鍵（見 `Quote`）。**從不放進 `identity_keys`。**
+
+    誰寫：adapter（目前只有 SBI 夾帶的 N2 SM information）。誰讀：`lifecycle` 把它綁到
+    某一次原生出現（綁不上就從這裡拿掉），`correlate` 把綁上的當成弱邊。adapter 只負責
+    宣告「這則訊息提到了什麼、是回報還是轉送」。預設為空 —— 既有外掛不必改。
+    """
     cause: CauseRef | None = None
     """若訊息帶 cause code。"""
 
@@ -452,6 +494,12 @@ class Flow:
 
     messages: list[Message] = field(default_factory=list)
     identity_keys: frozenset[IdKey] = frozenset()
+    quote_joins: int = 0
+    """這條流程有幾次合併是**靠轉述鍵**接起來的（`correlate` 的弱邊）。
+
+    可追溯用：它說的是「這一段是推論接上的，依據是某則訊息轉述了另一段的 N2 隧道」，
+    不是「這兩段共用同一把自己的鍵」。0 代表全部靠強鍵。
+    """
 
     def endpoints(self) -> list[Endpoint]:
         """流程中出現過的端點，依首次出現順序。

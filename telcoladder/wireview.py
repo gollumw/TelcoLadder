@@ -42,6 +42,7 @@ def collapse(flows: list[Flow]) -> list[Flow]:
             Flow(
                 messages=[_merge(groups[key]) for key in order],
                 identity_keys=flow.identity_keys,
+                quote_joins=flow.quote_joins,
             )
         )
     return collapsed

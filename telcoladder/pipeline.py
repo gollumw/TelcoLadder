@@ -29,7 +29,7 @@ from telcoladder.adapters import (
     attach_continuations, blind_spots, continuations, default_decode_as, parse_frame,
 )
 from telcoladder.causes import annotate
-from telcoladder.correlate import correlate
+from telcoladder.correlate import correlate_with_stats
 from telcoladder.endpoints import fill_hostless
 from telcoladder.nettrace import Sidecar, apply as apply_trace, is_nettrace, read_hints
 from telcoladder.lifecycle import apply as apply_lifecycle
@@ -243,6 +243,14 @@ class Analysis:
     auto_decode: AutoDecode | None = None
 
     trace_sidecar: "Sidecar | None" = None
+
+    quote_joins: int = 0
+    """有幾次合併是**靠轉述鍵**接起來的（SBI 轉述的 N2 隧道，見 `model.Quote`）。
+    那是推論，不是兩段共用同一把自己的鍵 —— 所以要講出來（`summary.not_visible`）。"""
+
+    quote_refusals: int = 0
+    """有幾次轉述鍵**本來會**接起兩段、卻因為兩段各帶不同的 SUPI 而被拒絕。
+    不是 0 代表線路上有指向兩個人的證據；那一段維持分開，並且講出來。"""
     """這是 TS 32.423 XML trace 時，從檔案中繼資料撿回來的事實（`nettrace.py`）。
     `None` 代表不是那種檔。**一定要呈現**：角色、主機名、歸戶有一部分不是從
     封包來的，讀的人要知道。"""
@@ -521,7 +529,7 @@ def _analyse_within(
     # 沒有觀測到釋放時這是恆等函式（`lifecycle.apply` 第一行就回頭），
     # 所以不含 release 的擷取檔行為逐位元組不變。
     apply_lifecycle(messages)
-    flows = correlate(messages)
+    flows, quote_stats = correlate_with_stats(messages)
     if wire:
         flows = collapse(flows)
 
@@ -556,4 +564,6 @@ def _analyse_within(
         auto_decode=adjustment,
         prefilter=report,
         trace_sidecar=sidecar,
+        quote_joins=quote_stats.joined,
+        quote_refusals=quote_stats.refused,
     )

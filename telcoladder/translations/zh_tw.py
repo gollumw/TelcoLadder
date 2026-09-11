@@ -597,4 +597,8 @@ CATALOG: dict[str, str] = {
         '--key 必須是十六進位。',
     'Key (shown once, keep it to anonymize related captures consistently): {key}':
         '金鑰（只顯示這一次；留著它，相關的擷取檔才能脫敏得一致）：{key}',
+    '{n} flow segment(s) were joined to their subscriber through an N2 tunnel that an SBI message reported or forwarded - an inference from the wire, not a key the segments share.':
+        '{n} 段流程是靠 SBI 訊息轉述（回報或轉送）的 N2 隧道接回訂戶的 —— 這是從線路推論出來的，不是這些段落共用自己的鍵。',
+    '{n} such join(s) were refused because they would have merged two different subscribers; those segments stay separate.':
+        '另有 {n} 次這樣的接合被拒絕，因為它會把兩個不同的訂戶併在一起；那些段落維持分開。',
 }

@@ -73,7 +73,11 @@ def test_lights_add_up_to_the_flowtable(multi) -> None:
     assert (doc["subscribers"]["red"], doc["subscribers"]["amber"], doc["subscribers"]["green"]) == (4, 0, 2)
     assert doc["subscribers"]["red"] + doc["subscribers"]["amber"] + doc["subscribers"]["green"] == len(grouped)
     orphans = [r for r in table.subscribers if not r.grouped]
-    assert doc["subscribers"]["unattributed_flows"] == sum(len(r.sessions) for r in orphans) == 9
+    # 9 → 5 (2026-09-11): four orphaned sm-contexts/N/modify exchanges now join
+    # their subscriber through the N2 tunnel their body reports (model.Quote).
+    # The six subscribers and their lights above do not move — a join that
+    # changed a light would mean a quote reached the wrong person.
+    assert doc["subscribers"]["unattributed_flows"] == sum(len(r.sessions) for r in orphans) == 5
 
 
 def test_verdict_is_the_worst_light_not_the_first(epc_ims, diameter, multi) -> None:
