@@ -14,9 +14,9 @@ AMF namf-comm 的每一個位址都沒有票。實測一份 AMF 側的 UE trace�
 3. 沒有提示時那個位址**確實**解不出來 —— 這條是提示存在的理由，不是裝飾；
 4. 類別互相矛盾、類別不在表上、別條 stream 的 body、不是 N1N2 的路徑：都**不猜**。
 
-**已知缺口，釘成可見的**：Open5GS 把 HEADERS 與 DATA 拆成前後兩格（`multi-imsi`），
-body 在下一格時拿不到提示。實測那份 AMF trace 34 則全部同格，所以先做同格；跨格要走
-`SBI_STREAM` 的鍵接回去，另開一票。那條測試在缺口補上的那天會紅 —— 那正是它的用途。
+**拆格也成立**：Open5GS 把 HEADERS 與 DATA 拆成前後兩格（`multi-imsi`）。這裡原本釘著
+「body 在下一格時拿不到提示」這個缺口；body 晚到時由 `sbi.continuations()` 接回同一個判斷
+之後翻過來，改驗「拆格與同格得到同一個提示」（`tests/test_sbi_late_body.py` 守接回本身）。
 """
 
 from __future__ import annotations
@@ -78,12 +78,16 @@ def test_the_hint_is_what_resolves_an_otherwise_silent_caller() -> None:
     assert resolve_roles([with_hint])[CALLER] == "SMF"
 
 
-def test_a_body_in_the_next_frame_yields_no_hint_yet() -> None:
-    """已知缺口（見模組說明）：Open5GS 把 body 放在下一格，這裡拿不到提示。
-    補上跨格接法的那天這條會紅 —— 到時把它翻過來，不要刪。"""
-    requests = _n1n2_requests(SPLIT_BODY)
+def test_a_body_in_the_next_frame_now_yields_the_same_hint() -> None:
+    """原本的已知缺口，翻過來：Open5GS 把 body 放在下一格，接回之後提示照樣在。
+    走完整條管線 —— 逐格解析看不到接回，只驗 `parse_frame` 會驗到空氣。"""
+    analysis = analyse(SPLIT_BODY)
+    requests = [m for flow in analysis.flows for m in flow.messages
+                if m.protocol == "sbi" and m.label.startswith("POST ") and "/n1-n2-messages" in m.label]
     assert requests, "multi-imsi 該有 N1N2 請求 —— 沒有的話這條在驗空氣"
-    assert not any(NF_ROLE_HINTS_KEY in m.detail for m in requests)
+    assert all(m.detail.get(NF_ROLE_HINTS_KEY) == f"{m.src.key}=SMF" for m in requests)
+    # 逐格解析（沒有接回）確實拿不到 —— 證明提示是接回帶來的，不是別的路徑。
+    assert not any(NF_ROLE_HINTS_KEY in m.detail for m in _n1n2_requests(SPLIT_BODY))
 
 
 def _frame_with_members(members: list[str], stream: int = 1) -> Frame:

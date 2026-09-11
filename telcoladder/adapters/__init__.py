@@ -21,6 +21,7 @@
 | `CARRIER_LAYER` | 它的區塊在 tshark 輸出裡叫什麼層；**預設等於 `NAME`** |
 | `carrier_keys(block, frame)` | 從**載體區塊**推出的身分鍵，回 `frozenset[IdKey]` |
 | `blind_spots(frame)` | 這一格裡**我看得到卻讀不出來**的東西，見下 |
+| `continuations(frame)` | 這一格裡**屬於更早某則訊息**的內容（HTTP/2 的 body 比標頭晚一格到），見 `attach_continuations()` |
 
 `CARRIER_LAYER` 存在是因為 **adapter 的名字與 tshark 的層名是兩回事**：
 `sbi.NAME` 是 `"sbi"`（會出現在 `Message.protocol` 上），但它的區塊在 `-T ek`
@@ -80,6 +81,7 @@ filter 是「把這個協定的封包留下來」，前提是 tshark **已經認
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Iterable
 from functools import cache
 from typing import Protocol
@@ -93,6 +95,7 @@ from telcoladder.model import (
     BLIND_ECIES_PROTECTED_SUCI,
     BLIND_UNDECODED_STREAM,
     BlindSpot,
+    Continuation,
     IdKey,
     Message,
 )
@@ -120,6 +123,9 @@ class Adapter(Protocol):
 
     #: 選用。這一格裡「看得到協定層、但讀不出內容」的東西。見 `blind_spots()`。
     def blind_spots(self, frame: Frame) -> Iterable[BlindSpot]: ...
+
+    #: 選用。這一格裡屬於更早某則訊息的內容（標頭與 body 分兩格送）。見 `attach_continuations()`。
+    def continuations(self, frame: Frame) -> Iterable[Continuation]: ...
 
     #: 選用。**這段裸位元組是不是你的協定？** 只在擷取檔的 link type 是
     #: USER n（tshark 一個 dissector 都不掛）時才會被問到，見 `sniff_payload()`。
@@ -305,6 +311,59 @@ def blind_spots(frame: Frame) -> list[BlindSpot]:
             continue
         out.extend(hook(frame))
     return out
+
+
+def continuations(frame: Frame) -> list[Continuation]:
+    """問過每一個 adapter：這一格裡有沒有**屬於更早某則訊息**的內容？
+
+    與 `blind_spots()` 同形：`pipeline` 逐格問，不指名任何 adapter。收齊之後由
+    `attach_continuations()` 一次接回去 —— 主人一定在前面的格裡，但得等全部訊息
+    都建好了才找得到它。
+    """
+    out: list[Continuation] = []
+    for adapter in adapters():
+        hook = getattr(adapter, "continuations", None)
+        if hook is None:
+            continue
+        out.extend(hook(frame))
+    return out
+
+
+def attach_continuations(messages: list[Message], pending: list[Continuation]) -> int:
+    """把每一段晚到的內容交給它的主人，回傳接上了幾段。
+
+    主人是**時間上最近的前一則**同協定、帶著同一把鍵、來自同一個端點的訊息：
+
+    * 「同一個端點」就是方向 —— 請求的 body 與請求同方向，回應的 body 與回應同方向，
+      同一條 stream 上的兩則訊息靠它分開。
+    * 「最近的前一則」處理先後 —— 鍵本身（SBI 的 stream 鍵）已經帶著連線，而同一條
+      連線內 HTTP/2 從不重用 stream 編號。
+
+    找不到主人（標頭在擷取起點之前、或標頭解不開）就略過：那段內容沒有地方掛，
+    而**編一個主人比不接更糟** —— 那會把內容說的事實安到別人頭上。
+    """
+    if not pending:
+        return 0
+    wanted = {(c.protocol, c.key, c.src.key, c.src.port) for c in pending}
+    owners: dict[tuple, list[Message]] = {}
+    for msg in messages:
+        for key in msg.identity_keys:
+            slot = (msg.protocol, key, msg.src.key, msg.src.port)
+            if slot in wanted:
+                owners.setdefault(slot, []).append(msg)
+    frames: dict[tuple, list[int]] = {}
+    for slot, found in owners.items():
+        found.sort(key=lambda m: m.frame)
+        frames[slot] = [m.frame for m in found]
+    attached = 0
+    for cont in sorted(pending, key=lambda c: c.frame):
+        slot = (cont.protocol, cont.key, cont.src.key, cont.src.port)
+        at = bisect_left(frames.get(slot, []), cont.frame) - 1
+        if at < 0:
+            continue
+        cont.apply(owners[slot][at])
+        attached += 1
+    return attached
 
 
 def sniff_payload(payload: bytes) -> "Adapter | None":

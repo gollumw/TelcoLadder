@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from telcoladder.i18n import _
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import NamedTuple
@@ -229,6 +230,30 @@ class BlindSpot(NamedTuple):
 BLIND_CIPHERED_NAS = "ciphered_nas"
 BLIND_ECIES_PROTECTED_SUCI = "ecies_protected_suci"
 BLIND_UNDECODED_STREAM = "undecoded_stream"
+
+
+class Continuation(NamedTuple):
+    """這一格裡**屬於更早某則訊息**的內容。
+
+    HTTP/2 把一則請求拆成 HEADERS（路徑、方法）與 DATA（body）兩種 frame。有的實作
+    把兩者塞進同一個 TCP 段，有的（Open5GS）分成前後兩段 —— 擷取檔裡就是兩格。
+    `parse()` 看到 HEADERS 就建立訊息，那時 body 還沒來；body 那一格不是一則新訊息
+    （它不是新的一支箭），只是前一則訊息的後半。
+
+    分工比照 `BlindSpot`：**「這段內容屬於哪條 stream、裡面說了什麼」是 adapter 知識**；
+    「時間上最近的前一則同協定、同鍵、同來源的訊息是誰」是核心知識
+    （`adapters.attach_continuations`）。核心找到主人之後呼叫 `apply(主人)`，
+    合併的語意仍由 adapter 決定 —— 核心不認得 body。
+
+    `apply` 必須在 adapter 那一格就把事實算完再包起來，**不要讓它抓著 `Frame`**：
+    晚到的 body 在大檔上動輒幾百份，封包物件整份留到最後，記憶體會隨檔案長。
+    """
+
+    protocol: str
+    key: IdKey
+    src: Endpoint
+    frame: int
+    apply: Callable[[Message], None]
 
 
 #: 一把身分 key：種類 + 值。值一律轉成字串，避免 1 與 "1" 併不起來。
