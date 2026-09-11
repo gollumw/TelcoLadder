@@ -304,8 +304,8 @@ CATALOG: dict[str, str] = {
         'TelcoLadder → http://{host}:{port}   （Ctrl-C 結束）',
     '\n⚠ tshark not found - analysis is not possible yet:\n{error}\n':
         '\n⚠ 找不到 tshark，現在還不能分析：\n{error}\n',
-    '\n⚠ Found {n} temp capture file(s) left by a previous run (older than a day):':
-        '\n⚠ 找到 {n} 個前次執行留下的暫存擷取檔（超過一天）：',
+    '\n⚠ Found {n} temp capture file(s) from an earlier run - or from another TelcoLadder server that is still running:':
+        '\n⚠ 找到 {n} 個暫存擷取檔 —— 前次執行留下的，或另一個還在跑的 TelcoLadder 伺服器正在用的：',
     '  Those are customer captures. Delete them yourself once you are sure - this tool will not.\n':
         '  那是客戶封包。確認不需要之後請自行刪除 —— 本工具不會替你刪。\n',
     '\nDone.':

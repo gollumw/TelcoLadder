@@ -375,10 +375,16 @@ def test_serve_cleans_up_sessions_on_exit() -> None:
 
 @pytest.mark.skipif(
     sys.platform == "win32",
-    reason="Windows 不用訊號送 SIGTERM（TerminateProcess 不經處理器），沒得測",
+    reason="Windows 不用訊號送 SIGTERM／SIGHUP（TerminateProcess 不經處理器），沒得測",
 )
-def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
-    """`kill -TERM` 之後暫存目錄必須是空的。
+@pytest.mark.parametrize("sig_name", ["SIGTERM", "SIGHUP"])
+def test_termination_signals_actually_clean_up_the_uploaded_capture(tmp_path, sig_name) -> None:
+    """`kill -TERM` 與**關掉終端機**（SIGHUP）之後，暫存目錄都必須是空的。
+
+    SIGHUP 是後來補的：從終端機起的 serve 直接關掉視窗，上傳的客戶擷取檔整份留在
+    暫存目錄 —— 與 SIGTERM 當年同一個洞，只是換了一個訊號。子行程先把 SIGHUP 設回
+    預設處置，模擬「從終端機直接起」；否則若測試本身跑在 nohup 底下，子行程會繼承
+    SIG_IGN，而那正是刻意不接管的情況（見下一條）。
 
     **這條要真的開一個行程、真的送訊號、真的量暫存目錄**，因為上面那條
     原始碼檢查對這個 bug 是**空轉通過**的：`finally` 一直都寫著
@@ -397,7 +403,8 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
     # 進 pipe 是整批緩衝，這裡會空等到逾時）。
     child = subprocess.Popen(
         [sys.executable, "-u", "-c",
-         "import sys; from telcoladder.web import serve;"
+         "import signal, sys; from telcoladder.web import serve;"
+         " signal.signal(signal.SIGHUP, signal.SIG_DFL);"
          " sys.exit(serve('127.0.0.1', 0))"],
         cwd=Path(__file__).resolve().parents[1],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -418,12 +425,12 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
         uploaded = sorted(sandbox.glob(f"{SESSION_PREFIX}*"))
         assert len(uploaded) == 1, f"上傳沒有留下剛好一個暫存檔：{uploaded}"
 
-        child.send_signal(signal.SIGTERM)
+        child.send_signal(getattr(signal, sig_name))
         try:
             output = child.communicate(timeout=30)[0]
         except subprocess.TimeoutExpired:
             child.kill()
-            pytest.fail("SIGTERM 之後 30 秒還沒結束 —— 清理路徑卡住了")
+            pytest.fail(f"{sig_name} 之後 30 秒還沒結束 —— 清理路徑卡住了")
     finally:
         if child.poll() is None:  # 上面任何一步炸掉都不要留下孤兒行程
             child.kill()
@@ -431,10 +438,43 @@ def test_sigterm_actually_cleans_up_the_uploaded_capture(tmp_path) -> None:
 
     leftover = sorted(sandbox.glob(f"{SESSION_PREFIX}*"))
     assert not leftover, (
-        f"SIGTERM 之後還留著上傳的擷取檔：{leftover}\n"
+        f"{sig_name} 之後還留著上傳的擷取檔：{leftover}\n"
         f"子行程輸出：\n{output}"
     )
     assert child.returncode == 0, f"結束碼 {child.returncode}，輸出：\n{output}"
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="這個平台沒有 SIGHUP（Windows）")
+def test_a_server_started_under_nohup_keeps_ignoring_sighup() -> None:
+    """用 `nohup` 起的伺服器，SIGHUP 的處置本來就是 SIG_IGN —— 使用者要它在終端機關掉後
+    繼續跑。接管它等於把那個刻意的設定翻過來。對照：處置是預設時，SIGHUP 要被接進清理那條路；
+    離開之後兩個訊號都還原。"""
+    from telcoladder.web import _termination_as_keyboard_interrupt
+
+    original_hup, original_term = signal.getsignal(signal.SIGHUP), signal.getsignal(signal.SIGTERM)
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        with _termination_as_keyboard_interrupt():
+            assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN, "nohup 的設定被翻掉了"
+            assert signal.getsignal(signal.SIGTERM) not in (signal.SIG_DFL, signal.SIG_IGN, original_term)
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+        with _termination_as_keyboard_interrupt():
+            assert signal.getsignal(signal.SIGHUP) not in (signal.SIG_DFL, signal.SIG_IGN), "關終端機沒有接進清理"
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_DFL, "離開之後 SIGHUP 沒有還原"
+        assert signal.getsignal(signal.SIGTERM) == original_term, "離開之後 SIGTERM 沒有還原"
+    finally:
+        signal.signal(signal.SIGHUP, original_hup)
+        signal.signal(signal.SIGTERM, original_term)
+
+
+def test_a_fresh_stray_capture_is_reported_at_the_next_start(tmp_path, monkeypatch) -> None:
+    """一份剛被留下的上傳副本（關掉終端機、`kill -9`）要在下一次啟動就被提起，不是一天後 ——
+    客戶擷取檔留在暫存目錄的每一小時都是風險。**只回報，不刪**：檔案還在。"""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    fd, path = session_mod.make_session_file()
+    os.close(fd)
+    assert session_mod.sweep_stray_files() == [path]
+    assert path.exists(), "回報的函式把檔案刪了"
 
 
 def test_two_sessions_on_one_pcap_get_different_ids(server) -> None:

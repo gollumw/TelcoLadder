@@ -672,11 +672,16 @@ def make_session_file() -> tuple[int, Path]:
     return fd, Path(name)
 
 
-def sweep_stray_files(older_than: float = 86400.0) -> list[Path]:
-    """找出前一次執行留下的殘檔（`kill -9` 之類）。
+def sweep_stray_files(older_than: float = 0.0) -> list[Path]:
+    """找出前一次執行留下的殘檔（`kill -9`、關掉終端機之類）。
 
     **只回報，不刪。** 我們無法確定那個檔案是不是還有別的行程在用，
     而擅自刪掉一個來歷不明的檔案比留著它更糟。
+
+    **預設全部回報，不等。** 原本只報一天以前的 —— 為了不把另一個還在跑的 serve
+    正在用的檔案報出來。代價是一份剛被留下的客戶擷取檔，要一天後的某次啟動才會被提起；
+    這種檔案留在暫存目錄的每一小時都是風險，而多報一個「也可能是別的 serve 在用」的檔案
+    只是多一行字 —— 訊息本身把兩種可能都講出來。
     """
     strays: list[Path] = []
     tmp = Path(tempfile.gettempdir())

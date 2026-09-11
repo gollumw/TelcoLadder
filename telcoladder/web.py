@@ -1246,46 +1246,65 @@ def make_server(
     return server
 
 
-@contextmanager
-def _sigterm_as_keyboard_interrupt() -> Iterator[None]:
-    """把 SIGTERM 導進 Ctrl-C 那條路，好讓 `serve()` 的 `finally` 真的跑得到。
+#: 會讓 `serve()` 的清理跑不到的結束訊號。SIGTERM 是 `kill` 的預設；**SIGHUP 是關掉終端機時
+#: 送來的** —— 從終端機起的 serve 直接關掉視窗，Python 的預設處置同樣是當場結束，上傳的客戶
+#: 擷取檔整份留在暫存目錄（實測過一份）。Windows 沒有 SIGHUP，所以用 getattr 取。
+_TERMINATION_SIGNALS = tuple(
+    sig for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)) if sig is not None
+)
 
-    **Python 對 SIGTERM 的預設處置是當場結束行程** —— 不丟例外，於是
+
+@contextmanager
+def _termination_as_keyboard_interrupt() -> Iterator[None]:
+    """把 SIGTERM 與 SIGHUP 導進 Ctrl-C 那條路，好讓 `serve()` 的 `finally` 真的跑得到。
+
+    **Python 對這兩個訊號的預設處置都是當場結束行程** —— 不丟例外，於是
     `finally` 與 `atexit` 都不會跑。換句話說在這條處理裝上之前，
     `kill -TERM` 的清理效果等同 `kill -9`：實測留下 7 個
-    `telcoladder-session-*.pcap`，那是客戶封包（見 `CLAUDE.md` §2.1）。
-    而 `serve()` 裡那句「這是唯一保證會跑到的清理點」的註解讓人以為
-    已經處理了 —— 沒有任何一層會說話。
+    `telcoladder-session-*.pcap`，那是客戶封包（見 `CLAUDE.md` §2.1）；關掉終端機
+    （SIGHUP）也一樣。而 `serve()` 裡那句「這是唯一保證會跑到的清理點」的註解讓人
+    以為已經處理了 —— 沒有任何一層會說話。
 
     **必須是 raise，不能在處理器裡呼叫 `server.shutdown()`**：
     處理器跑在主執行緒上，而 `shutdown()` 會等 `serve_forever()` 的迴圈
     自己結束 —— 那個迴圈正被這個處理器擋著，直接死鎖。
 
-    **處理器先把處置恢復成預設再 raise。** 這樣清理途中再來一次 SIGTERM
+    **處理器先把處置恢復成原本的再 raise。** 這樣清理途中再來一次訊號
     是當場結束（跟裝這條之前一樣），而不是從 `finally` 中間再拋一次例外
     把清理攔腰砍斷。
+
+    **用 `nohup` 起的就不接 SIGHUP**：那時它的處置已經是 `SIG_IGN`，意思是「關掉
+    終端機也要繼續跑」。接管它等於把使用者刻意的設定翻過來，終端機一關伺服器就停。
 
     Windows 允許註冊 SIGTERM 但不會用同一套機制送達（`TerminateProcess`
     不經訊號），所以那裡註冊了也等於沒有 —— 無害，故不特別分支。
     回收測試也因此只在 POSIX 上跑。
     """
+    previous: dict[int, object] = {}
 
     def _raise(signum, frame) -> None:  # noqa: ARG001 —— 簽章由 signal 決定
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler if handler is not None else signal.SIG_DFL)
         raise KeyboardInterrupt
 
     try:
-        previous = signal.signal(signal.SIGTERM, _raise)
+        for sig in _TERMINATION_SIGNALS:
+            if sig == getattr(signal, "SIGHUP", None) and signal.getsignal(sig) == signal.SIG_IGN:
+                continue
+            previous[sig] = signal.signal(sig, _raise)
     except ValueError:
         # 不在主執行緒 —— `signal.signal()` 只能在主執行緒註冊。這條路徑
         # （例如測試把伺服器包進 thread）本來就有自己的清理，放棄註冊
         # 而不是炸掉。
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
         yield
         return
     try:
         yield
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 def serve(
@@ -1318,12 +1337,12 @@ def serve(
         # 的檔案比留著它更糟。使用者看到清單就能自己決定。
         strays = sweep_stray_files()
         if strays:
-            print(_('\n⚠ Found {n} temp capture file(s) left by a previous run (older than a day):').format(n=len(strays)))
+            print(_('\n⚠ Found {n} temp capture file(s) from an earlier run - or from another TelcoLadder server that is still running:').format(n=len(strays)))
             for path in strays:
                 print(f"    {path}")
             print(_('  Those are customer captures. Delete them yourself once you are sure - this tool will not.\n'))
 
-    with _sigterm_as_keyboard_interrupt():
+    with _termination_as_keyboard_interrupt():
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -1331,7 +1350,7 @@ def serve(
         finally:
             server.shutdown()
             # **先清工作階段再關 socket。** 這是唯一保證會跑到的清理點 ——
-            # 前提是行程真的走得到這裡，而 Ctrl-C 與 SIGTERM 兩條路都靠
+            # 前提是行程真的走得到這裡，而 Ctrl-C、SIGTERM、SIGHUP 三條路都靠
             # 上面那個 context manager 才成立（atexit 也掛了一份，但那條在
             # `kill -9` 下同樣不會跑）。
             store = getattr(server, "store", None)
