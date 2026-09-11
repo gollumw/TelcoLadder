@@ -307,11 +307,10 @@ export function SessionAnalysisView({
     const box = ladderBoxRef.current;
     if (e.button !== 0 || !box) return;
     drag.current = { active: true, moved: false, x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
-    try {
-      box.setPointerCapture(e.pointerId);
-    } catch {
-      // 合成的指標事件沒有真的指標可抓 —— 拖曳照樣做，只是離開面板就停。
-    }
+    // **這裡不抓指標。** 按下就 `setPointerCapture` 的話，放開時的 click 會被瀏覽器改送到
+    // 這個容器（Pointer Events：click 的目標是 pointerdown 與 pointerup 目標的共同祖先，
+    // 而被抓住時 pointerup 的目標就是抓的人）—— 箭頭上的 onClick 永遠收不到，點事件
+    // 選不到、右邊的解碼面板停在第一格。等真的拖超過門檻才抓（下面的 move）。
     setDragging(true);
   };
   const onLadderPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -321,6 +320,13 @@ export function SessionAnalysisView({
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (!d.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    if (!d.moved) {
+      try {
+        box.setPointerCapture(e.pointerId); // 拖出面板也繼續平移
+      } catch {
+        // 合成的指標事件沒有真的指標可抓 —— 拖曳照樣做，只是離開面板就停。
+      }
+    }
     d.moved = true;
     box.scrollLeft = d.left - dx;
     box.scrollTop = d.top - dy;
@@ -472,14 +478,17 @@ export function SessionAnalysisView({
   const selectedEvent = filteredEvents.find((e) => e.frameNumber === selectedFrame) ?? filteredEvents[0] ?? null;
   const selectedPacket = selectedEvent ? rawPackets.find((p) => p.frameNumber === selectedEvent.frameNumber) ?? null : null;
 
-  // 解碼樹優先用資料自帶的（mock 有），沒有才看懶載入結果。
+  // 解碼樹優先用資料自帶的（mock 有），沒有才看懶載入結果。**依事件的 frame 編號要，
+  // 不等 `selectedPacket`** —— 後者來自封包清單的載入視窗，一份上千則事件的 trace 捲到
+  // 後段時，那些格根本不在視窗裡，樹就永遠不會被要。Data Mining 修過同一件事。
+  const selectedFrameNumber = selectedEvent?.frameNumber ?? null;
   const selectedTree =
     selectedPacket?.decodeTree ??
-    (selectedPacket ? (treeByFrame?.[selectedPacket.frameNumber] ?? undefined) : undefined);
+    (selectedFrameNumber !== null ? (treeByFrame?.[selectedFrameNumber] ?? undefined) : undefined);
 
   useEffect(() => {
-    if (selectedPacket && !selectedPacket.decodeTree) onRequestTree?.(selectedPacket.frameNumber);
-  }, [selectedPacket, onRequestTree]);
+    if (selectedFrameNumber !== null && !selectedPacket?.decodeTree) onRequestTree?.(selectedFrameNumber);
+  }, [selectedFrameNumber, selectedPacket, onRequestTree]);
 
   // **選中的事件要在面板裡看得到。** 梯形圖是視窗大小的可捲面板，而總覽的
   // 「跳到失敗那一則」與封包清單的點選都只改 `selectedFrame` —— 一份 1,484 則
@@ -1163,15 +1172,9 @@ export function SessionAnalysisView({
                 {selectedTree ? (
                   <ProtocolTree nodes={selectedTree} selectedId={selectedEvent.status === "ERROR" ? selectedEvent.causeNodeId : undefined} />
                 ) : (
-                  // **兩種「沒有樹」要分得出來。** 「還沒載入」與「這一格在
-                  // 封包清單的視窗外」是不同的狀況，而使用者能做的事也不同：
-                  // 後者要他先去 Data Mining 捲到那一格。講成同一句話，他會
-                  // 以為工具壞了。
-                  <div className="p-3 text-xs text-fg-dim font-mono">
-                    {selectedPacket
-                      ? t("Decode tree not loaded yet")
-                      : t("Frame #{n} is outside the range the packet list has loaded - scroll to it in Data Mining to see the decode tree", { n: selectedEvent.frameNumber })}
-                  </div>
+                  // 樹依 frame 編號懶載入，不再受封包清單視窗限制 —— 原本「這一格在視窗外，
+                  // 請去 Data Mining 捲到它」那句話已經不會成立，所以只剩「還沒載入」一種。
+                  <div className="p-3 text-xs text-fg-dim font-mono">{t("Decode tree not loaded yet")}</div>
                 )}
               </>
             ) : (
