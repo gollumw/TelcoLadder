@@ -99,6 +99,22 @@ message that carries both sides' identifiers at once. The bridges that exist:
   (`sip:<IMSI>@ims.mnc…`). Over-derivation is the silent-merge failure again.
 - **S1-U SGW F-TEID** joins the target side of an N26 handover — see §4.
 
+**A body that arrives one frame late still belongs to its headers.** HTTP/2 sends
+a request as HEADERS (path, method) and DATA (the JSON body). Some implementations
+put both into one TCP segment; Open5GS sends two, so the capture shows two frames,
+and the message is created from the first one before its body exists. Whatever the
+body says (the SUPI of a `POST /nsmf-pdusession/v1/sm-contexts`, the N1/N2 class
+that names an N1N2 caller, callback URIs, a self-declared NF type) used to be lost.
+The SBI adapter now reports such bodies through an optional contract hook, and the
+pipeline hands each one to its owner after the last frame: the most recent earlier
+message of the same protocol, carrying the same stream key, sent from the same
+endpoint. The stream key already includes the TCP connection, and HTTP/2 never
+reuses a stream number within one, so the owner is unambiguous; a body whose
+headers were never seen is dropped rather than given a guessed owner. A SUPI from a
+body or a `supi=` query parameter is attached only when it is the only one and does
+not contradict the path. On the four Open5GS fixtures this moved 12, 80, 12 and 8
+orphan messages into their subscribers, with no flow gaining a second SUPI.
+
 ## 3. The cause library: 775 values, tshark as the only oracle
 
 Twenty-one YAML tables under `telcoladder/data/causes/` hold 775 cause values

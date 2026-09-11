@@ -22,6 +22,7 @@ from telcoladder.model import (
     BLIND_UNDECODED_STREAM,
     NF_ROLE_HINTS_KEY,
     BlindSpot,
+    Continuation,
     Endpoint,
     IdKey,
     IdKind,
@@ -75,6 +76,8 @@ CARRIER_LAYER = "http2"
 #: HTTP/2 frame type。只有 HEADERS(1) 帶得到 method/path/status，
 #: DATA(0)、SETTINGS(4)、WINDOW_UPDATE(8) 等不產生時序圖上的箭頭。
 _TYPE_HEADERS = 1
+#: HTTP/2 DATA frame 的型別碼（RFC 7540）—— body 住在這裡。
+_TYPE_DATA = 0
 
 #: 4xx/5xx 視為失敗。SBI 的錯誤語意就靠 HTTP 狀態碼（TS 29.500 §5.2.7）。
 _FAILURE_STATUS_FLOOR = 400
@@ -454,25 +457,27 @@ def _unescape_json_string(value: str) -> str:
 def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | None:
     """N1N2MessageTransfer 請求的呼叫端角色，寫成 `nf.py` 認的 `位址=角色`。
 
-    body 在別格時得不到提示 —— 老實回 None，不從路徑猜；兩個類別指向不同的 NF
-    也回 None。
+    這一格裡沒有 body 就回 None，不從路徑猜；兩個類別指向不同的 NF 也回 None。
 
-    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格，來自 5 個
-    位址；Open5GS 的測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成
-    前後兩格，那裡拿不到提示 —— `tests/test_sbi_n1n2_sender.py` 把這個缺口釘成
-    可見的。跨格接回去要走 `SBI_STREAM` 的鍵，另開一票。
+    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格；Open5GS 的
+    測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成前後兩格 —— 那一種
+    由 `continuations()` 在 body 那一格接回同一個判斷（`_request_body_detail`）。
     """
     if "/n1-n2-messages" not in path:
         return None
+    role = _n1n2_role(_json_members(frame, stream_id))
+    return f"{frame.src_ip}={role}" if role else None
+
+
+def _n1n2_role(members) -> str | None:
+    """body 裡的 N1／N2 類別指向哪一種 NF；沒有、不在表上或互相矛盾都回 None。"""
     roles: set[str] = set()
-    for name, value in _json_members(frame, stream_id):
+    for name, value in members:
         if name in _N1N2_CLASS_MEMBERS:
             role = N1N2_SENDER_BY_CLASS.get(value)
             if role:
                 roles.add(role)
-    if len(roles) != 1:
-        return None
-    return f"{frame.src_ip}={roles.pop()}"
+    return roles.pop() if len(roles) == 1 else None
 
 
 def _callback_paths(frame: Frame, stream_id: int | None) -> str:
@@ -480,8 +485,13 @@ def _callback_paths(frame: Frame, stream_id: int | None) -> str:
 
     只留路徑：之後的通知是用 `:path` 打過來的，主機在 `:authority`。
     """
+    return _callback_paths_from(_json_members(frame, stream_id))
+
+
+def _callback_paths_from(members) -> str:
+    """`_callback_paths` 的本體，吃已經拆好的 JSON 成員（同格與晚到的 body 共用）。"""
     paths: set[str] = set()
-    for name, value in _json_members(frame, stream_id):
+    for name, value in members:
         if name not in CALLBACK_URI_MEMBERS or not value:
             continue
         path = urlsplit(value).path if "://" in value else value
@@ -493,6 +503,11 @@ def _callback_paths(frame: Frame, stream_id: int | None) -> str:
 def _declared_nf_type(frame: Frame, stream_id: int | None, path: str, service: str | None, method: str) -> str | None:
     """請求裡自報的 NF 型別（見 `_DECLARED_TYPE_QUERY`／`_DECLARED_TYPE_MEMBERS`），
     大寫；查詢參數與 body 說了兩個不同的值就回 None。"""
+    return _declared_nf_type_from(_json_members(frame, stream_id), path, service, method)
+
+
+def _declared_nf_type_from(members, path: str, service: str | None, method: str) -> str | None:
+    """`_declared_nf_type` 的本體，吃已經拆好的 JSON 成員（同格與晚到的 body 共用）。"""
     values: set[str] = set()
     query = path.partition("?")[2]
     if query:
@@ -503,10 +518,116 @@ def _declared_nf_type(frame: Frame, stream_id: int | None, path: str, service: s
                     values.add(raw.strip().upper())
     marker = _DECLARED_TYPE_MEMBERS.get(service or "")
     if marker and method in ("PUT", "POST", "PATCH"):
-        for name, value in _json_members(frame, stream_id):
+        for name, value in members:
             if name == marker and value.strip():
                 values.add(value.strip().upper())
     return values.pop() if len(values) == 1 else None
+
+
+def _extra_supis(members, path: str, already: set[str]) -> set[str]:
+    """body 的 `supi` 成員與查詢參數 `supi=` 說出的 SUPI —— **路徑之外的另外兩處**。
+
+    `POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 只在 body 裡（實測一份 AMF trace
+    270 則 SBI 因此歸不了戶）；NRF 的 UDM 探索把它放在查詢參數。兩處都只認 `supi`：
+    gpsi／pei 是別的識別碼空間，混進來會把不相干的人併成一條。
+
+    **只在恰好一個、而且不與路徑上的 SUPI 矛盾時才給。** 零個是沒有；兩個以上是
+    群組或矛盾 —— 掛上去等於宣告這些人是同一個人，那是比不歸戶嚴重得多的錯。
+    與路徑矛盾時信路徑：路徑是資源的身分，body 可能是別的東西。
+    """
+    found: set[str] = set()
+    for name, value in members:
+        if name == "supi" and value:
+            supi = _supi_from_identifier(value)
+            if supi:
+                found.add(supi)
+    query = path.partition("?")[2] if path else ""
+    if query:
+        for raw in parse_qs(query).get("supi", []):
+            supi = _supi_from_identifier(raw.strip())
+            if supi:
+                found.add(supi)
+    if len(found) != 1 or (already and not found <= already):
+        return set()
+    return found - already
+
+
+def _request_body_detail(members, src_ip: str, path: str, service: str | None, method: str) -> dict[str, str]:
+    """請求 body 能給 `nf.py` 的三個線路事實 —— 同格的 `parse()` 與晚到的 body 共用這一份。
+
+    兩份各寫一次的後果是：同一個事實在 Open5GS（拆兩格）與另一家（同格）上得到
+    不同的判斷，而兩邊都不會報錯。
+    """
+    detail: dict[str, str] = {}
+    if service == "namf-comm" and "/n1-n2-messages" in path:
+        role = _n1n2_role(members)
+        if role:
+            detail[NF_ROLE_HINTS_KEY] = f"{src_ip}={role}"
+    callbacks = _callback_paths_from(members)
+    if callbacks:
+        detail["callback-uris"] = callbacks
+    declared = _declared_nf_type_from(members, path, service, method)
+    if declared:
+        detail["declared-nf-type"] = declared
+    return detail
+
+
+def continuations(frame: Frame) -> list[Continuation]:
+    """契約鉤子（`adapters.attach_continuations`）：body 比 HEADERS 晚一格到的那些 stream。
+
+    同一格裡有這條 stream 的 HEADERS 時，`parse()` 已經讀過 body，這裡不重複。
+    其餘每條帶著 JSON 的 DATA 都是更早那則訊息的後半：事實在這一格就算完，只把結果
+    交出去（`Continuation` 的說明：不抓著 `Frame`）。
+
+    實測：Open5GS 的四份 fixture 各有 101～579 份這樣的 body；一份 AMF 側的真實
+    trace 則是 0 份（975 份全部同格）。
+    """
+    blocks = frame.layer("http2")
+    headed = {
+        _to_int(b.get("http2_http2_streamid"))
+        for b in blocks if _to_int(b.get("http2_http2_type")) == _TYPE_HEADERS
+    }
+    scope = connection_scope(frame)
+    src = Endpoint(frame.src_ip, frame.src_port)
+    out: list[Continuation] = []
+    seen: set[int] = set()
+    for block in blocks:
+        stream_id = _to_int(block.get("http2_http2_streamid"))
+        if (_to_int(block.get("http2_http2_type")) != _TYPE_DATA or stream_id is None
+                or stream_id in headed or stream_id in seen):
+            continue
+        seen.add(stream_id)
+        members = list(_json_members(frame, stream_id))
+        if not members:
+            continue
+        out.append(Continuation(
+            protocol=NAME, key=scoped(IdKind.SBI_STREAM, scope, stream_id), src=src,
+            frame=frame.number, apply=_late_body(members, frame.src_ip),
+        ))
+    return out
+
+
+def _late_body(members: list[tuple[str, str]], src_ip: str):
+    """把晚到的 body 合進它的主人：與同格時 `parse()` 做的事逐條相同。"""
+    def apply(owner: Message) -> None:
+        already = {value for kind, value in owner.identity_keys if kind is IdKind.SUPI}
+        extra = _extra_supis(members, "", already)
+        if extra:
+            owner.identity_keys = owner.identity_keys | {globally_unique(IdKind.SUPI, s) for s in extra}
+        path = owner.detail.get("path")
+        if not path:
+            return  # 回應：身分之外沒有要從 body 讀的東西
+        method = owner.label.partition(" ")[0]
+        found = _request_body_detail(members, src_ip, path, owner.detail.get("service"), method)
+        for key in (NF_ROLE_HINTS_KEY, "callback-uris"):
+            if key in found:
+                owner.detail.setdefault(key, found[key])
+        # 自報型別在標頭那一格只看得到查詢參數；body 到了才是完整的判斷（含矛盾時不投）。
+        if "declared-nf-type" in found:
+            owner.detail["declared-nf-type"] = found["declared-nf-type"]
+        else:
+            owner.detail.pop("declared-nf-type", None)
+    return apply
 
 
 def parse(frame: Frame) -> list[Message]:
@@ -534,6 +655,8 @@ def parse(frame: Frame) -> list[Message]:
 
         authority = first(block.get("http2_http2_headers_authority"))
         location = first(block.get("http2_http2_headers_location"))
+        #: 同一格裡這條 stream 的 body（沒有就是空的 —— body 晚到時由 `continuations` 接回）。
+        members = list(_json_members(frame, stream_id))
 
         identity: set[IdKey] = set()
         if stream_id is not None:
@@ -543,6 +666,9 @@ def parse(frame: Frame) -> list[Message]:
             # NGAP/NAS 那條流程的唯一連結。
             for supi in _supis_in_path(str(path)):
                 identity.add(globally_unique(IdKind.SUPI, supi))
+        on_path = {value for kind, value in identity if kind is IdKind.SUPI}
+        for supi in _extra_supis(members, str(path) if path else "", on_path):
+            identity.add(globally_unique(IdKind.SUPI, supi))
         # 請求看 `:path`、回應看 `location` —— 建立回應的 201 是唯一講出
         # 新 smContextRef 的地方，漏了它整條鏈就從第一環斷掉。
         for source in (path, location):
@@ -560,21 +686,10 @@ def parse(frame: Frame) -> list[Message]:
             service = _service_from_path(str(path))
             if service:
                 detail["service"] = service
-            # 打 AMF 的 namf-comm 是誰：`nf.py` 對這個服務刻意不投消費者票，
-            # body 裡的類別才是證據（見 `N1N2_SENDER_BY_CLASS`）。只看請求。
-            if method and service == "namf-comm":
-                hint = _n1n2_sender_hint(frame, stream_id, str(path))
-                if hint:
-                    detail[NF_ROLE_HINTS_KEY] = hint
             if method:
-                # 兩個跨訊息的線路事實，`nf.py` 讀：登記了哪些回呼 URI（之後打到
-                # 那裡的就是提供者），與請求自己報的 NF 型別。只看請求。
-                callbacks = _callback_paths(frame, stream_id)
-                if callbacks:
-                    detail["callback-uris"] = callbacks
-                declared = _declared_nf_type(frame, stream_id, str(path), service, str(method))
-                if declared:
-                    detail["declared-nf-type"] = declared
+                # body 給 `nf.py` 的三個線路事實（N1N2 類別、回呼 URI、自報型別），
+                # 只看請求。body 晚一格到時由 `continuations()` 用同一份函式補上。
+                detail.update(_request_body_detail(members, frame.src_ip, str(path), service, str(method)))
         user_agent = first(block.get("http2_http2_headers_user_agent"))
         if user_agent:
             # TS 29.500 要求 SBI 的 User-Agent 帶發送端的 NF type，

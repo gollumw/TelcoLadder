@@ -25,7 +25,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from telcoladder.adapters import blind_spots, default_decode_as, parse_frame
+from telcoladder.adapters import (
+    attach_continuations, blind_spots, continuations, default_decode_as, parse_frame,
+)
 from telcoladder.causes import annotate
 from telcoladder.correlate import correlate
 from telcoladder.endpoints import fill_hostless
@@ -275,6 +277,9 @@ def _extract(
     否則採用與否的比較（訊息數）就不是在比同一件事。
     """
     messages: list[Message] = []
+    #: 屬於更早某則訊息的內容（HTTP/2 的 body 晚一格到）。主人一定在前面，
+    #: 但得等全部訊息建好才找得到 —— 所以先收齊，迴圈結束再一次接回。
+    pending = []
     ciphered = 0
     protected_suci = 0
     undecoded: set = set()
@@ -284,6 +289,7 @@ def _extract(
         display_filter=display_filter,
     ):
         messages.extend(parse_frame(frame))
+        pending.extend(continuations(frame))
         # 超過 MTU 的訊息（SIP over UDP 常見）被 IP 分片；tshark 在**最後一片**
         # 重組並解碼，前面幾片在 phs 裡是 `ip → data` 的葉子。它們不是漏掉的
         # 信令 —— 是已解碼訊息的一部分。重組的那一格自己列著所有分片的格號。
@@ -297,6 +303,8 @@ def _extract(
                 protected_suci += 1
             elif spot.kind == BLIND_UNDECODED_STREAM and spot.key is not None:
                 undecoded.add(spot.key)
+    # 在 apply_roles 之前：body 帶的角色證據（N1N2 類別、回呼 URI、自報型別）要趕上投票。
+    attach_continuations(messages, pending)
     return messages, ciphered, protected_suci, undecoded, fragments
 
 
