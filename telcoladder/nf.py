@@ -64,6 +64,7 @@ SBI_SERVICE_TO_NF: dict[str, str] = {
     "npcf-am-policy-control": "PCF",
     "npcf-smpolicycontrol": "PCF",
     "npcf-policyauthorization": "PCF",
+    "npcf-ue-policy-control": "PCF",
     "nbsf-management": "BSF",
     "nnrf-nfm": "NRF",
     "nnrf-disc": "NRF",

@@ -183,6 +183,10 @@ const LANE_GAP = 150;
 const LANE_MARGIN = 70;
 const ROW_HEIGHT = 50;
 const TOP_PAD = 60;
+//: 泳道標頭的高度：標題在 y=20／24、副標在 y=33，生命線從 TOP_PAD-20 起。標頭另畫一張
+//: `sticky` 的 SVG，捲動長 trace 時網元名稱留在面板頂端；主圖從這個 y 開始裁，兩張疊起來
+//: 與原本一張逐像素相同。
+const HEADER_H = TOP_PAD - 20;
 
 /**
  * 泳道的 x 座標。**找不到回 null，不回 0 號泳道。**
@@ -837,11 +841,42 @@ export function SessionAnalysisView({
               // 4.1 倍 —— 字級、線寬、間距全部跟著爆掉。實測
               // 一份網元匯出的 SMF trace 實測正是這個情況。
               // 改成畫在它自己的尺寸上，容器已經有 overflow-x-auto 會捲。
+              <>
+              {/* **網元名稱固定在面板頂端。** 一份真實 trace 上千則事件、幾萬 px 高，捲到中段就
+                  看不出哪條生命線是哪個網元 —— 只剩箭頭，不知道誰打給誰。標頭跟著橫向捲
+                  （同一個捲動容器、同一個寬度與縮放），只有縱向黏住。底色必須不透明，否則
+                  底下捲過去的箭頭會透出來。 */}
               <svg
-                viewBox={`0 0 ${width} ${height}`}
+                viewBox={`0 0 ${width} ${HEADER_H}`}
                 width={Math.round(width * zoom)}
-                height={Math.round(height * zoom)}
-                className="max-w-none"
+                height={Math.round(HEADER_H * zoom)}
+                className="sticky top-0 z-10 block max-w-none"
+              >
+                <rect x={0} y={0} width={width} height={HEADER_H} style={{ fill: "rgb(var(--surface-1))" }} />
+                {activeLanes.map((lane, i) => {
+                  const x = LANE_MARGIN + i * LANE_GAP;
+                  return (
+                    <g key={lane.id}>
+                      {lane.title && <title>{lane.title}</title>}
+                      <text x={x} y={lane.sub ? 20 : 24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
+                        {lane.label}
+                      </text>
+                      {/* 副標：主機名或位址。放在標題與生命線起點之間。 */}
+                      {lane.sub && (
+                        <text x={x} y={33} textAnchor="middle" style={{ fill: "rgb(var(--fg-dim))" }} fontSize={9.5} fontFamily="ui-monospace, monospace">
+                          {lane.sub}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                <line x1={0} y1={HEADER_H - 0.5} x2={width} y2={HEADER_H - 0.5} style={{ stroke: "var(--ladder-lifeline)" }} strokeWidth={1} />
+              </svg>
+              <svg
+                viewBox={`0 ${HEADER_H} ${width} ${height - HEADER_H}`}
+                width={Math.round(width * zoom)}
+                height={Math.round((height - HEADER_H) * zoom)}
+                className="block max-w-none"
                 role="img"
                 aria-label="5G SA call flow ladder diagram"
               >
@@ -879,15 +914,6 @@ export function SessionAnalysisView({
                     <g key={lane.id}>
                       {lane.title && <title>{lane.title}</title>}
                       <line x1={x} y1={TOP_PAD - 20} x2={x} y2={height - 10} style={{ stroke: "var(--ladder-lifeline)" }} strokeWidth={1} />
-                      <text x={x} y={lane.sub ? 20 : 24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
-                        {lane.label}
-                      </text>
-                      {/* 副標：主機名或位址。放在標題與生命線起點（TOP_PAD-20＝40）之間。 */}
-                      {lane.sub && (
-                        <text x={x} y={33} textAnchor="middle" style={{ fill: "rgb(var(--fg-dim))" }} fontSize={9.5} fontFamily="ui-monospace, monospace">
-                          {lane.sub}
-                        </text>
-                      )}
                     </g>
                   );
                 })}
@@ -998,6 +1024,7 @@ export function SessionAnalysisView({
                   );
                 })}
               </svg>
+              </>
             )}
 
             {hover && hoveredPacket && (

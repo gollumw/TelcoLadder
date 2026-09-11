@@ -209,8 +209,6 @@ const zh_TW: Record<string, string> = {
   "No packet matches the filter": "沒有符合過濾條件的封包",
   "Decode tree not loaded yet": "解碼樹尚未載入",
   "Select a packet to view its decode tree": "選一個封包以檢視解碼樹",
-  "This source does not provide raw bytes": "此來源尚未提供原始位元組",
-  "Select a packet to view the hex dump": "選一個封包以檢視 Hex Dump",
 
   // DecodeAsPanel
   "Built-in default": "內建預設",

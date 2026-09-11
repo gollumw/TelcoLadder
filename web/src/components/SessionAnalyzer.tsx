@@ -20,6 +20,8 @@ import { CallsView } from "./CallsView";
 //: 以 Session-Id／transaction／跳為單位 —— DRA 維運人員問的是那個問題。
 //: 第五個 `calls`（2026-09-08）：與梯形圖同一層、換一個座標系 —— 不以訂戶為軸，
 //: 以「誰打給誰」為軸。看 VoLTE 的人問的是那個問題。
+//: **按鈕依使用順序排**：總覽 → 封包（Data Mining）→ 三種梯形圖視角。先看誰失敗，再看那一格
+//: 封包，梯形圖是往下鑽的那一層 —— 按鈕順序跟著動線走，不跟著模式被加進來的先後。
 type Mode = "overview" | "flow" | "calls" | "diameter" | "mining";
 
 // **這裡是 GUI 與資料之間唯一的接縫（Phase 2 起）。**
@@ -55,8 +57,6 @@ export default function SessionAnalyzer({
   decodeAsError,
   decodeAsBusy,
   onApplyDecodeAs,
-  bytesByFrame,
-  onRequestBytes,
   treeByFrame,
   decodeNote,
   onRequestTree,
@@ -101,10 +101,6 @@ export default function SessionAnalyzer({
     rules: string[],
     options?: { disabled?: string[]; promote?: string[] },
   ) => void;
-  /** 已取到的原始位元組（懶載入）。沒有這一格的鍵＝還沒問過。 */
-  bytesByFrame?: Record<number, string | null>;
-  /** 要求某一格的位元組。沒提供＝這個來源沒有這個能力（例如 mock）。 */
-  onRequestBytes?: (frame: number) => void;
   /** 已取到的解碼樹（懶載入）。沒有這一格的鍵＝還沒問過。 */
   treeByFrame?: Record<number, import("@/lib/types").ProtocolNode[] | null>;
   onRequestTree?: (frame: number) => void;
@@ -257,6 +253,17 @@ export default function SessionAnalyzer({
               </button>
               <button
                 type="button"
+                onClick={() => setMode("mining")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  mode === "mining" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
+                )}
+              >
+                <Binary className="h-3.5 w-3.5" />
+                {t("Data Mining (Wireshark view)")}
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode("flow")}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
@@ -287,17 +294,6 @@ export default function SessionAnalyzer({
               >
                 <Network className="h-3.5 w-3.5" />
                 {t("Diameter Flows")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("mining")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
-                  mode === "mining" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
-                )}
-              >
-                <Binary className="h-3.5 w-3.5" />
-                {t("Data Mining (Wireshark view)")}
               </button>
             </div>
           </div>
@@ -390,8 +386,6 @@ export default function SessionAnalyzer({
             decodeAsError={decodeAsError}
             decodeAsBusy={decodeAsBusy}
             onApplyDecodeAs={onApplyDecodeAs}
-            bytesByFrame={bytesByFrame}
-            onRequestBytes={onRequestBytes}
             treeByFrame={treeByFrame}
             decodeNote={decodeNote}
             onRequestTree={onRequestTree}
