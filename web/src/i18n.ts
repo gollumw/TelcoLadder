@@ -301,7 +301,6 @@ const zh_TW: Record<string, string> = {
   "· release requested by the RAN": "· 釋放由無線側請求",
   "· release ordered by the core": "· 釋放由核網下令",
   "· RRC cause {cause}": "· RRC 建立原因 {cause}",
-  "Frame #{n} is outside the range the packet list has loaded - scroll to it in Data Mining to see the decode tree": "Frame #{n} 不在封包清單目前載入的範圍內 —— 到 Data Mining 捲到該格即可看到解碼樹",
   "Select a signalling event to view its decode": "選一個信令事件以檢視解碼內容",
   "Correlation State Matrix": "多維度狀態關聯矩陣 · Correlation State Matrix",
   "This subscriber established no PDU session; there is no correlation data to show (rejected at registration, during signalling).": "此用戶尚未建立 PDU Session，無關聯資料可顯示（註冊於信令階段即被拒絕）。",
