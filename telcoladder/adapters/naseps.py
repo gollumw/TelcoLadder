@@ -136,6 +136,14 @@ ESM_MESSAGE_TYPES: dict[int, str] = {
 #: 網路發起的 `Detach request` 也帶 EMM cause，而那是一次正常的網路操作 ——
 #: 與 `ngap.py` 那條「帶 cause 的 successfulOutcome 不該被標紅」同一個判斷。
 #: 這也讓兩個 NAS adapter 的規則長得一樣（`nas5gs.py` 的 `_FAILURE_TYPES`）。
+#: 安全標頭型別 12 ＝「SERVICE REQUEST 專用的安全標頭」（TS 24.301）。**Service request 沒有
+#: 訊息型別欄位** —— 它整則就是這個標頭加 KSI／序號與縮短的 MAC，所以抽不到 EMM 型別。
+#: 以前這一種被當成「加密讀不到」而丟掉：實測一份 MME 側的 UE trace，15 則全是它，
+#: 圖上 15 個 InitialUEMessage 後面都少了一句 Service request，加密數卻多報 15。
+#: tshark 的 info 欄位把它叫 `Service request`（測試拿 tshark 當 oracle 核對）。
+_SERVICE_REQUEST_HEADER = 12
+
+
 _FAILURE_TYPES: frozenset[int] = frozenset(
     code for table in (EMM_MESSAGE_TYPES, ESM_MESSAGE_TYPES)
     for code, name in table.items()
@@ -189,8 +197,8 @@ def count_ciphered(frame: Frame) -> int:
     count = 0
     for block, _carrier, _adapter in carried_blocks(NAME, frame):
         header = _to_int(block.get("nas-eps_nas-eps_security_header_type"))
-        if not header:
-            continue
+        if not header or header == _SERVICE_REQUEST_HEADER:
+            continue  # 明文，或 Service request（沒有型別欄位，但不是密文）
         if block.get("nas-eps_nas-eps_nas_msg_emm_type") is not None:
             continue
         if block.get("nas-eps_nas-eps_nas_msg_esm_type") is not None:
@@ -241,13 +249,19 @@ def parse(frame: Frame) -> list[Message]:
             label = ESM_MESSAGE_TYPES.get(esm_type, f"ESM message 0x{esm_type:02x}")
             cause_table = "nas_eps_esm"
             cause_field = "nas-eps_nas-eps_esm_cause"
+        elif _to_int(block.get("nas-eps_nas-eps_security_header_type")) == _SERVICE_REQUEST_HEADER:
+            # 沒有型別欄位的那一種（見 `_SERVICE_REQUEST_HEADER`）。不帶 cause、不是失敗。
+            msg_type = -1
+            label = "Service request"
+            cause_table = ""
+            cause_field = ""
         else:
             # 多半是 Security Mode Command 之後的加密 NAS —— 內層看不到就跳過，
             # **不編造**。外層的 S1AP 訊息已由 s1ap adapter 記錄，
             # 而「有幾則讀不到」由 `blind_spots()` 誠實回報。
             continue
 
-        cause_value = _to_int(block.get(cause_field))
+        cause_value = _to_int(block.get(cause_field)) if cause_field else None
         cause = (CauseRef(table=cause_table, value=cause_value)
                  if cause_value is not None else None)
 

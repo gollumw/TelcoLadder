@@ -104,6 +104,7 @@ from telcoladder.model import ( NF_ROLE_HINTS_KEY,
 )
 from telcoladder.pipeline import Analysis
 from telcoladder.pdusession import PDU_SESSION_ID
+from telcoladder.wireview import CARRIED_JOINER
 
 #: 「incomplete 且落在擷取結尾附近」的判定窗（秒），語意同 `flowtable.TAIL_SLACK`。
 TAIL_SLACK = 2.0
@@ -233,7 +234,9 @@ def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = 
     if kind.startswith("sip-"):
         return ("ims", TAXONOMY.get(kind, ("ims", "other"))[1])
     family, category = TAXONOMY.get(kind, ("other", "other"))
-    if kind in ("ue-context-release", "handover") or family == "other":
+    # `service-request` 兩個世代同名（NAS-5GS 與 NAS-EPS 都叫 `Service request`）—— 沒有這條，
+    # 4G 的 Service request 會照表被歸成 5G。
+    if kind in ("ue-context-release", "handover", "service-request") or family == "other":
         if kind == "ue-context-release":
             category = "release"
         if "s1ap" in protocols or "nas-eps" in protocols:
@@ -328,10 +331,22 @@ class Procedure:
     """執行時延：HandoverCommand 到 HandoverNotify（UE 真的切過去了）。"""
 
 
+def _own_label(msg: Message) -> str:
+    """The carrier message's own label.
+
+    A wire-view row that merged a carried message reads `Context Request ▸ Tracking area update
+    request`. Exact matches must look at what the carrier itself says: matching the whole row means
+    every carrier row stops matching the day it learns to carry something. Measured on a real MME
+    trace when GTPv2-C began carrying NAS: 5GS→EPS ×5 and EPS→5GS ×4 idle mobility silently became
+    plain TAUs.
+    """
+    return msg.label.split(CARRIED_JOINER, 1)[0]
+
+
 def _opens(msg: Message) -> _Kind | None:
     for kind in KINDS:
         if kind.exact:
-            if msg.label == kind.opener:
+            if _own_label(msg) == kind.opener:
                 return kind
         elif kind.opener in msg.label:
             return kind
@@ -447,8 +462,8 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         # 目標側是 HandoverRequestAcknowledge（`HandoverResourceAllocationResponse`）。
         # 兩側都擷取到時（n26-handover），目標側的 Ack 會早於來源側的 Command —— 先找
         # Command，找不到才用 Ack（純目標側的 trace 只有 Ack）。
-        command = (next((m for m in window if m.label == "HandoverPreparationResponse"), None)
-                   or next((m for m in window if m.label == "HandoverResourceAllocationResponse"), None))
+        command = (next((m for m in window if _own_label(m) == "HandoverPreparationResponse"), None)
+                   or next((m for m in window if _own_label(m) == "HandoverResourceAllocationResponse"), None))
         notify = next((m for m in window if "HandoverNotification" in m.label), None)
         if command is not None:
             ho_prep = round(command.ts - window[0].ts, 6)
@@ -459,7 +474,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的裁定），是 gNB 說
         # 「語音去 EPS」—— 這一段的身分就是 EPS fallback。
         kind_name = "eps-fallback"
-    elif kind.name == "tau" and any(m.label == "Context Request" for m in window):
+    elif kind.name == "tau" and any(_own_label(m) == "Context Request" for m in window):
         # 兩側都擷取到：eNB↔MME 的 TAU 與 MME↔AMF 的 context 交換是同一次移動。
         kind_name = "mobility-5gs-to-eps"
     elif kind.name == "mobility-context-transfer":

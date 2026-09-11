@@ -51,13 +51,20 @@ from telcoladder.model import (
 
 NAME = "gtpv2"
 
-#: adapter 之間的排列順序（小的先跑）。它不載送任何協定，所以這個數字只是
-#: 呈現偏好 —— 挑 45 是為了與同屬承載／隧道家族的 pfcp（40）與 gtp（50）相鄰。
-ORDER = 45
+#: adapter 之間的排列順序（小的先跑）。**這個數字有語意**：GTPv2-C 載送 NAS-EPS
+#: （見 `CARRIES`），而契約要求載體排在載荷之前（`test_carrier_precedes_payload_in_adapter_order`），
+#: 所以它必須小於 nas-eps 的 21。挑 13：s1ap 是 11，12 留給外掛測試用的假 adapter。
+#: 同一格裡只有 GTPv2 與它夾帶的 NAS，這個數字不影響其他協定的呈現順序。
+ORDER = 13
 
 #: 丟給 tshark 的 display filter 片段。**漏了這個，adapter 一格都收不到，
 #: 而且完全不會報錯**。
 DISPLAY_FILTER = "gtpv2"
+
+#: 這個 adapter 載送的協定。Context Request 的 Complete Request Message IE 夾著 UE 原始的
+#: TAU／Attach request（TS 29.274）—— 新 MME 把它轉給舊 MME／AMF 驗證。tshark 把它掛在
+#: `gtpv2.nas-eps`；不宣告的話那幾則 NAS 一則都收不到（實測一份 MME trace：9 則），而且不報錯。
+CARRIES = ("nas-eps",)
 
 #: `telcoladder check` 要驗證存在的 dissector。
 DISSECTORS = ("gtpv2",)
@@ -289,8 +296,7 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def carrier_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
-    """契約入口。目前沒有 adapter 宣告被 GTPv2-C 載送（它可以夾帶 NAS，
-    但那不在 T6 的範圍），入口先留著 —— 契約要求載體提供它。"""
+    """契約入口：被夾帶的 NAS 從這裡借 GTPv2-C 那一則的鑰匙（控制面 TEID、F-TEID、IMSI）。"""
     return _identity_keys(block, frame)
 
 
