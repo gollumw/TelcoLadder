@@ -14,6 +14,7 @@
   "adapters.pfcp",
   "adapters.s1ap",
   "adapters.sbi",
+  "adapters.sgsap",
   "adapters.sip",
   "anonymize",
   "callflow",

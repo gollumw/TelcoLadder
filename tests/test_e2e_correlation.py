@@ -125,7 +125,9 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
                  # S1AP 是 4G 的 S1-MME，同樣不會出現在 5G 擷取檔裡（2026-08-24）。
                  fixtures / "4g-volte-end-to-end" / "capture.pcap",
                  # H.248 只在 IMS 的媒體控制上（2026-09-06）。
-                 fixtures / "ims-volte-call" / "capture.pcap"):
+                 fixtures / "ims-volte-call" / "capture.pcap",
+                 # SGsAP 只在 MME↔MSC/VLR 的 SGs 上（2026-09-12）。
+                 fixtures / "4g-sgs-location-update" / "capture.pcap"):
         for frame in read_frames(pcap):
             for message in parse_frame(frame):
                 counts[message.protocol] = counts.get(message.protocol, 0) + 1

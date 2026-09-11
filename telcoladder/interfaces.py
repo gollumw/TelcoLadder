@@ -78,6 +78,11 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
     # **Mw（P-CSCF↔S-CSCF）刻意不收**：這份擷取檔沒有那一腿，而
     # 一條沒有封包驗過的參考點與一個猜出來的條號是同一種傷（§2.3）。
     ("sip", frozenset({"UE", "P-CSCF"})): "Gm",
+
+    # ── CS fallback／SMS over SGs（TS 23.272）：MME 與 MSC/VLR ──
+    #
+    # 兩端角色都來自訊息型別（`adapters/sgsap.py` 的 `FROM_MME`／`FROM_VLR`），不是推論。
+    ("sgsap", frozenset({"MME", "MSC/VLR"})): "SGs",
 }
 
 

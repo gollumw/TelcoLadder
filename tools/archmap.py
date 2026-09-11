@@ -70,7 +70,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",
         "adapters.pfcp", "adapters.gtp", "adapters.diameter", "adapters.s1ap",
         "adapters.naseps", "adapters.gtpv2", "adapters.sip", "adapters.megaco",
-        "adapters.carrier",
+        "adapters.sgsap", "adapters.carrier",
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
@@ -157,6 +157,10 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
      "承載建立。**控制面與使用者面的 TEID 分成兩個號碼空間**（T3 的 `GTP_TEID_C`）——"
      "同一台 SGW 兩者常是同一個 IP，混用就會接錯人。角色由 F-TEID 的介面型別直接指名，"
      "走通用的 `NF_ROLE_HINTS_KEY`，**`nf.py` 不認得 GTPv2**。"),
+    ("4G 控制面", "adapters.sgsap", "SGs", "shipped",
+     "MME↔MSC/VLR：combined attach 的位置更新、CSFB 的 Paging、SMS over SGs。每一則都帶 IMSI，"
+     "靠 `SUPI` 併進訂戶流程。角色由訊息型別交出（`NF_ROLE_HINTS_KEY`），兩個方向都可能的"
+     "（Reset、Status）不給。自成 `SGS_CSFB_SMS` 分頁，S1-MME 分頁也收它。cause 表還沒有。"),
     ("IMS 訊令", "adapters.sip", "Gm", "shipped",
      "註冊與 INVITE。**只收 `From` 當關聯鍵** —— 收 `To` 會把「A 打給 C」與"
      "「B 打給 C」的三個人整段歷史併成一條。IMPU 從 IMSI 推導（與 Diameter 共用"
@@ -173,7 +177,7 @@ _DOMAIN_GROUPS = [
     ("G5", "5G 核網 · 已交付", ("5G 核網",), "ok"),
     ("GU", "使用者面 · 跨世代", ("使用者面",), "ok"),
     ("G4D", "4G / IMS 訂閱與政策 · 已交付", ("4G EPC · IMS",), "ok"),
-    ("G4", "4G 控制面 · 三個 adapter 全部落地（E1 完成）", ("4G 控制面",), "ok"),
+    ("G4", "4G 控制面 · E1 的三個 adapter 與 SGsAP 已落地", ("4G 控制面",), "ok"),
     ("GI", "IMS · SIP 已落地，媒體（E3）待評估", ("IMS 訊令", "IMS 媒體"), "ok"),
 ]
 

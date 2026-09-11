@@ -11,7 +11,9 @@ export type TelecomDomain =
   | "ACCESS_S1_EPS"
   | "BEARER_S11_S5S8"
   | "IMS_SIP"
-  | "IMS_MEDIA_CONTROL";
+  | "IMS_MEDIA_CONTROL"
+  // SGs（2026-09-12）：MME ↔ MSC/VLR。S1-MME 分頁也收它（SessionAnalysisView 的 ALSO_IN_TAB）。
+  | "SGS_CSFB_SMS";
 
 export type NetworkNode = "UE" | "gNB" | "AMF" | "SMF" | "UPF" | "AUSF";
 

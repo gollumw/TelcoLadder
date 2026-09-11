@@ -67,7 +67,7 @@ cell cites the frame it came from.
 | Generation | Protocols | Cause explanations |
 |---|---|---|
 | **5G core** | NGAP, NAS-5GS, HTTP/2 SBI, PFCP, GTP-U | 206 |
-| **4G / EPC** | S1AP, NAS-EPS, GTPv2-C (S11, S5/S8, N26) | 236 |
+| **4G / EPC** | S1AP, NAS-EPS, GTPv2-C (S11, S5/S8, N26), SGsAP (SGs) | 236 |
 | **IMS** | SIP (calls, KPIs), Diameter, H.248/MEGACO | 333 |
 
 Every cause code is resolved through a hand-verified table to the specification
