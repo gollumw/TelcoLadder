@@ -11,15 +11,38 @@
 # dissector set — and TelcoLadder locates it in Program Files or through
 # TELCOLADDER_TSHARK, exactly as the pip install does.
 #
-# Why the recipe looks the way it does:
-#   --collect-data telcoladder      the cause tables, decode-as list and the
-#                                   browser bundle are package data, not code
-#   --collect-submodules telcoladder adapters are loaded through entry points,
-#                                   so static analysis never sees them
-#   --copy-metadata telcoladder     importlib.metadata.entry_points() needs the
-#                                   dist-info to find the adapter group
-# Drop any one of the three and the build succeeds while the executable
-# silently parses nothing — the smoke test below is what turns that into red.
+# Why the recipe looks the way it does. Measured 2026-09-11 (PyInstaller 6.22,
+# clean non-editable install) by building with each flag dropped in turn and
+# running the smoke test plus five fixtures across adapter families:
+#   --collect-data telcoladder      load-bearing. The cause tables, decode-as
+#                                   list and the browser bundle are package
+#                                   data, not code. Drop it and the build
+#                                   succeeds, `analyze` still renders a diagram,
+#                                   and `summarize` silently stops explaining
+#                                   causes — the third smoke command below is
+#                                   what turns that into red.
+#   --collect-submodules telcoladder insurance, not a requirement today. The
+#                                   eleven built-in adapters are static imports
+#                                   in adapters/__init__.py (BUILTIN_ADAPTERS),
+#                                   so PyInstaller's analysis already bundles
+#                                   every one of them; dropping the flag changed
+#                                   nothing across five adapter families. It
+#                                   starts to matter the day an adapter is
+#                                   reached only through an entry point.
+#   --copy-metadata telcoladder     insurance, not a requirement today. This
+#                                   project declares no telcoladder.adapters
+#                                   entry points of its own — pyproject has
+#                                   [project.scripts] and nothing else — and a
+#                                   frozen bundle cannot have plugins pip
+#                                   installed into it, so nothing reads this
+#                                   metadata. Dropping it produced no behaviour
+#                                   change and no warning. It would matter if
+#                                   __version__ ever came from
+#                                   importlib.metadata instead of a literal.
+# The note that used to stand here said all three were load-bearing and that the
+# adapters load through entry points. Both claims were wrong, and the smoke test
+# only ever proved the first flag — keep that asymmetry visible rather than
+# letting a green run imply more than it checks.
 
 name: Windows portable build
 
@@ -70,8 +93,9 @@ jobs:
 
       - name: Smoke test the bundle
         # Three commands, three things proven: tshark is found and the dissectors
-        # are present; a fixture renders (adapters loaded through entry points);
-        # a known cause is explained (the YAML tables travelled with the exe).
+        # are present; a fixture renders (the built-in adapters reached the
+        # bundle); a known cause is explained (the YAML tables travelled with
+        # the exe — the one thing that goes red if --collect-data is dropped).
         shell: pwsh
         run: |
           $exe = "TelcoLadder-Windows-x64/telcoladder.exe"
