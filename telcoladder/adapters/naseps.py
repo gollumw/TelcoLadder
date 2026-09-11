@@ -26,7 +26,7 @@ from __future__ import annotations
 from telcoladder.adapters.carrier import carried_blocks
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import globally_unique
+from telcoladder.identity import globally_unique, s_tmsi_keys
 from telcoladder.model import (
     BLIND_CIPHERED_NAS,
     IDENTITY_SOURCE_KEY,
@@ -180,6 +180,9 @@ def _identity_keys(block: dict, carrier: dict | None, carrier_adapter,
     if imsi:
         # **進 SUPI，不是另開一把 IMSI**（T3 的單向門，CLAUDE.md §12）。
         keys.add(globally_unique(IdKind.SUPI, imsi))
+    # GUTI 去掉 PLMN 與 MME Group ID 就是 S-TMSI：TAU／Attach request 的舊 GUTI、accept 與
+    # GUTI reallocation 的新 GUTI。與 S1AP 的 S-TMSI 算出同一把 key（`identity.s_tmsi`）。
+    keys |= s_tmsi_keys(block.get("nas-eps_nas-eps_emm_mme_code"), block.get("nas-eps_nas-eps_emm_m_tmsi"))
     if carrier is not None and carrier_adapter is not None:
         keys |= carrier_keys_from(carrier_adapter, carrier, frame)
     return frozenset(keys)

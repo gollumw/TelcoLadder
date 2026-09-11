@@ -535,6 +535,17 @@ another gNB↔AMF association is another subscriber - the safe direction),
 and a TMSI **re-allocated inside the same capture** merges two people,
 because the re-allocation happens in ciphered messages the tool cannot see.
 
+**4G works the same way, with a wider key.** The S-TMSI (MME code + M-TMSI,
+from S1AP's S-TMSI and Paging UEPagingID and from the NAS GUTI) joins a
+paged UE and a UE returning from idle on another eNB to its subscriber; it
+appears as `S-TMSI <mmec>-<m-tmsi>` and `identity=s_tmsi:<raw>`. Unlike the
+5G key it is **capture-wide**, because Paging goes out on many S1 connections
+and the answer comes back on another one. The cost: two MMEs outside one pool
+can hand out the same pair. The tool does not refuse such joins; it counts
+them - the "not visible" section says how many flows hold two SUPIs that only
+an S-TMSI (or a GTPv2-C sequence number, which pairs a TEID-0 response with
+its request) ties together.
+
 ## 8. Two kinds of source file: wire captures vs NE traces
 
 > **A third kind (2026-09-05): raw protocol exports.** Some elements write

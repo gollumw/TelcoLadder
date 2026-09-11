@@ -69,6 +69,8 @@ Each is documented in depth where it lives; every failure mode here is
 | one SIP message seen on several legs is one observation: dedup key `(Call-ID/CSeq, label, cause)` | `procedures._distinct`, `adapters/sip.py` | one 486 counted once per leg; a call's message count multiplied by the hop count |
 | SIP user outcomes (busy, declined, cancelled) come from the cause table's `outcome: user`, never from code | `data/causes/sip_status.yaml`, `causes.annotate` | every busy callee turns the verdict red, or the set silently drifts |
 | the SDP media endpoint key is `(c= address, m= port)`, computed in one place; BYE and Subtract Reply release it | `identity.media_endpoint`, `lifecycle.py` | H.248 never joins its call, or two calls that reuse a gateway port merge |
+| the 4G S-TMSI key is capture-wide, not connection-scoped; a flow whose SUPIs only it (or a GTPv2-C sequence number) holds together is reported, not vetoed | `identity.s_tmsi`, `correlate.supi_bridges` | Paging and a UE returning on another eNB split off; or a cross-pool collision merges two subscribers unannounced |
+| a GTPv2-C transaction key is released by its response and never drags other keys along | `identity.gtpv2_transaction`, `lifecycle.SOLITARY` | a reused sequence number merges two subscribers, or closing a transaction orphans the tunnels its response carried |
 | decode tree runs tshark two-pass (`-2`) | `decode.py` | cross-frame reassembly links vanish |
 | exactly one rendering implementation per judgement | `render_mermaid.py` + `web/` | two surfaces drift, no error |
 

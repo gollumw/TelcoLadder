@@ -155,6 +155,9 @@ def _inferred_joins(analysis: Analysis) -> list[str]:
         lines.append(_("{n} flow segment(s) were joined to their subscriber because an SBI resource id literally contains a SUPI this capture shows elsewhere - the id is assigned by a network function in a format no specification fixes, so this is an inference.").format(n=analysis.quote_joins_embedded))
     if analysis.quote_refusals:
         lines.append(_("{n} such join(s) were refused because they would have merged two different subscribers; those segments stay separate.").format(n=analysis.quote_refusals))
+    if analysis.supi_bridges:
+        # 強鍵照常接、不否決，但接起兩個 SUPI 時要講出來 —— `correlate.supi_bridges`。
+        lines.append(_("{n} flow(s) hold more than one SUPI that only an S-TMSI or a GTPv2-C sequence number ties together - neither is unique across MMEs or over time, so check whether each is really one subscriber.").format(n=analysis.supi_bridges))
     return lines
 
 

@@ -22,7 +22,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import connection_scope, gtp_tunnels, scoped
+from telcoladder.identity import connection_scope, gtp_tunnels, s_tmsi_keys, scoped
 from telcoladder.model import (
     RELEASE_BY_CORE, RELEASE_BY_RAN, RELEASE_INITIATOR_KEY,
     CauseRef, Endpoint, IdKey, IdKind, Message,
@@ -272,6 +272,9 @@ def identity_keys(block: dict[str, Any], scope: str) -> frozenset[IdKey]:
         block.get("s1ap_s1ap_gTP_TEID"),
         block.get("s1ap_s1ap_transportLayerAddressIPv4"),
     )
+    # S-TMSI（InitialUEMessage、Paging 的 UEPagingID）：閒置的 UE 被 Paging、或在另一台 eNB
+    # 回來時，線上只有它。**範圍不是這條連線**，理由見 `identity.s_tmsi`。
+    keys |= s_tmsi_keys(block.get("s1ap_s1ap_mMEC"), block.get("s1ap_s1ap_m_TMSI"))
     return frozenset(keys)
 
 

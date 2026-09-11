@@ -125,6 +125,34 @@ def correlate_with_stats(messages: list[Message]) -> tuple[list[Flow], QuoteStat
     return flows, QuoteStats(joined=len(bridges), refused=refused, embedded=embedded)
 
 
+#: 範圍不是一條連線、或會被重用的**強鍵**（`identity.s_tmsi`、`identity.gtpv2_transaction`）。
+#: 它們照常接，但把兩個 SUPI 接成一條時要講出來。
+_BRIDGING_KINDS = frozenset({IdKind.S_TMSI, IdKind.GTPV2_TRANSACTION})
+
+
+def supi_bridges(flows: list[Flow]) -> int:
+    """有幾條流程的多個 SUPI **只靠** `_BRIDGING_KINDS` 才接在一起。
+
+    S-TMSI 用整份擷取檔的範圍（強鍵），代價靠事後偵測講出來，不做否決（否決會把
+    Paging 與換到另一台 eNB 的 UE 重新切出去）。判準刻意窄：一條流程帶兩個 SUPI 本身不一定是錯（一通電話的兩端可能靠
+    Call-ID 接在一起）；這裡只數「拿掉這些鍵，那些 SUPI 就分屬不同段」的流程。
+    """
+    count = 0
+    for flow in flows:
+        if len({value for kind, value in flow.identity_keys if kind is IdKind.SUPI}) < 2:
+            continue
+        uf = _UnionFind()
+        for msg in flow.messages:
+            keys = sorted(key for key in msg.identity_keys if key[0] not in _BRIDGING_KINDS)
+            for key in keys:
+                uf.add(key)
+            for key in keys[1:]:
+                uf.union(keys[0], key)
+        roots = {uf.find(key) for msg in flow.messages for key in msg.identity_keys if key[0] is IdKind.SUPI}
+        count += len(roots) > 1
+    return count
+
+
 def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey], int, int]:
     """依封包順序把轉述鍵當成弱邊接上；回傳（每次接上後的根，拒絕次數，其中靠資源 id
     夾帶的 SUPI 接上的次數）。

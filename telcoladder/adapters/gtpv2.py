@@ -39,7 +39,7 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import globally_unique, gtp_control_tunnel, gtp_tunnel
+from telcoladder.identity import globally_unique, gtp_control_tunnel, gtp_tunnel, gtpv2_transaction
 from telcoladder.model import (
     NF_ROLE_HINTS_KEY,
     CauseRef,
@@ -180,6 +180,14 @@ MESSAGE_TYPES: dict[int, str] = {
     244: "SRVCC CS to PS Cancel Acknowledge",
 }
 
+#: 回應型的訊息（名稱以 Response／Acknowledge／Acknowledgement 結尾）。**由名稱推導，不手列**。
+#: 交易鍵的方向靠它：回應的發起方是它的**收件者**。命令的 Failure Indication 也是回應，但刻意
+#: 不收 —— 漏收只是那一則配不回命令，名稱規則之外再手列一份才是會漂的東西。
+RESPONSE_TYPES: frozenset[int] = frozenset(
+    code for code, name in MESSAGE_TYPES.items()
+    if name.endswith(("Response", "Acknowledge", "Acknowledgement"))
+)
+
 #: F-TEID 的介面型別裡，哪些是控制面。**由名稱推導，不手列**（含 `GTP-C`）——
 #: 手列的集合會與 tshark 的表漂，而漂了不會有人知道。
 CONTROL_PLANE_INTERFACES: frozenset[int] = frozenset([6, 7, 10, 11, 12, 13, 14, 17, 18, 24, 25, 26, 27, 30, 32, 35, 36, 40])
@@ -244,6 +252,11 @@ def _identity_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
         # **進 SUPI，不是另開一把 IMSI**（T3 的單向門，CLAUDE.md §12）。
         keys.add(globally_unique(IdKind.SUPI, str(imsi)))
 
+    # 交易鍵：標頭 TEID 為 0 的回應（對方找不到 context）只剩序號接得回請求。
+    transaction = _transaction_key(block, frame)
+    if transaction is not None:
+        keys.add(transaction)
+
     # 標頭的 TEID 是**收件者**配的 —— 範圍是目的位址（比照 `gtp.py`）。
     # **0 要跳過**：那是「還沒有 context」，不是一個真的端點；
     # 不跳的話每一則第一次的請求都會共用 `<dst>/0` 而被黏成一條。
@@ -271,6 +284,17 @@ def _identity_keys(block: dict[str, Any], frame: Frame) -> frozenset[IdKey]:
             keys.add(key)
 
     return frozenset(keys)
+
+
+def _transaction_key(block: dict[str, Any], frame: Frame) -> IdKey | None:
+    """這則訊息所屬的那筆交易（`identity.gtpv2_transaction`）。回應的發起方是它的收件者。"""
+    message_type = _to_int(block.get("gtpv2_gtpv2_message_type"))
+    if message_type is None:
+        return None
+    seq = block.get("gtpv2_gtpv2_seq")
+    if message_type in RESPONSE_TYPES:
+        return gtpv2_transaction(frame.dst_ip, frame.src_ip, seq)
+    return gtpv2_transaction(frame.src_ip, frame.dst_ip, seq)
 
 
 def _role_hints(block: dict[str, Any]) -> str:
@@ -315,6 +339,8 @@ def parse(frame: Frame) -> list[Message]:
                  if cause_value is not None else None)
 
         detail: dict[str, str] = {"message-type": str(message_type)}
+        # 回應完成這筆交易：之後同一個序號是新的一輪（`lifecycle`）。
+        done = _transaction_key(block, frame) if message_type in RESPONSE_TYPES else None
 
         # **線路上直接說了誰是誰。** 見 `model.NF_ROLE_HINTS_KEY`：
         # `nf.py` 通用處理這個鍵，不認得 GTPv2。
@@ -339,6 +365,7 @@ def parse(frame: Frame) -> list[Message]:
                 dst=Endpoint(frame.dst_ip, frame.dst_port),
                 label=label,
                 identity_keys=_identity_keys(block, frame),
+                releases=frozenset({done}) if done is not None else frozenset(),
                 cause=cause,
                 is_failure=cause_value is not None and cause_value >= REJECTION_CAUSE_FROM,
                 detail=detail,
