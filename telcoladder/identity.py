@@ -242,6 +242,56 @@ def _bits(value: object, width: int) -> int | None:
         return None
 
 
+def s_tmsi(mmec: object, m_tmsi: object) -> IdKey | None:
+    """4G 的 S-TMSI（MME Code ＋ M-TMSI）的 key —— S1AP 與 NAS 兩種來源一份正規化。
+
+    S1AP 的 `S-TMSI`（InitialUEMessage、Paging 的 UEPagingID）與 NAS 的 GUTI 去掉 PLMN 與
+    MME Group ID 之後是同一組兩個欄位。Paging 與閒置後在另一台 eNB 發起的 InitialUEMessage
+    只帶這個，不帶 S1AP UE ID 也不帶 IMSI —— 少了它，同一個 UE 的這些訊息各自成一條流程。
+
+    **範圍是整份擷取檔，不是連線**（與 `fiveg_s_tmsi` 不同）：Paging 由 MME 發給多台 eNB，
+    UE 回應時走的是另一條 S1 連線，連線範圍永遠接不上。代價是 pool 之外的另一台 MME 可能配出
+    同一組 MMEC＋M-TMSI。一份短擷取檔內撞上的機率低，所以照接、不否決；撞上時由
+    `correlate.supi_bridges` 事後把「靠這把 key 才接起兩個 SUPI」的流程數講出來。
+    任何一欄解不出來就回 None。
+    """
+    code = _teid_int(mmec)
+    tmsi = _teid_int(m_tmsi)
+    if code is None or tmsi is None:
+        return None
+    return (IdKind.S_TMSI, f"{code}-{tmsi:08x}")
+
+
+def s_tmsi_keys(codes: object, tmsis: object) -> set[IdKey]:
+    """成對的 MMEC／M-TMSI 欄位 → 一組 S-TMSI key（`-T ek` 把同名欄位收成陣列）。
+
+    **兩邊個數不同就一把都不建。** NAS 的 M-TMSI 也可能單獨出現（身分型別 TMSI），那時
+    位置對位置配會把一個 MMEC 配到別人的 M-TMSI 上 —— 寧可少一個關聯。S1AP 與 NAS 都走這裡。
+    """
+    left = codes if isinstance(codes, list) else ([] if codes is None else [codes])
+    right = tmsis if isinstance(tmsis, list) else ([] if tmsis is None else [tmsis])
+    if len(left) != len(right):
+        return set()
+    return {key for code, tmsi in zip(left, right) if (key := s_tmsi(code, tmsi)) is not None}
+
+
+def gtpv2_transaction(requester: str, responder: str, seq: object) -> IdKey | None:
+    """一筆 GTPv2-C 交易：發起方 → 回應方 ＋ 序號。把一則回應接回它的請求。
+
+    存在的理由是**標頭 TEID 為 0 的回應**：收件者找不到那個 context 時（例如 Relocation
+    Cancel），回應裡沒有 TEID 也沒有 IMSI，唯一接得回請求的就是序號（實測一份 MME trace：
+    6 則這樣的回應，序號 6/6 對得上請求）。
+
+    **範圍帶方向**：序號由發起方配，兩端各有一套 —— MME 往 SGW 的 5 號與 SGW 往 MME 的 5 號
+    是兩筆無關的交易。序號只保證**還沒完成的**交易不重複，所以回應要宣告釋放這把 key
+    （`lifecycle`），之後重用同一個序號的交易才會是新的一輪。
+    """
+    number = _teid_int(seq)
+    if number is None or not requester or not responder:
+        return None
+    return scoped(IdKind.GTPV2_TRANSACTION, f"{requester}>{responder}", number)
+
+
 def globally_unique(kind: IdKind, value: object) -> IdKey:
     """給**全網唯一**的識別碼建 key。
 

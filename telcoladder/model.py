@@ -49,6 +49,17 @@ class IdKind(StrEnum):
     # 釋放就不猜。連線範圍比 AMF 位址更嚴：只會少併，不會多併。
     FIVEG_S_TMSI = "fiveg_s_tmsi"
 
+    # ── 4G 的暫時身分（2026-09-12）──
+    #
+    # 值是 `<MME Code>-<M-TMSI 八位十六進位>`（`identity.s_tmsi`）。S1AP 的 S-TMSI
+    # （InitialUEMessage、Paging）與 NAS GUTI 去掉 PLMN 與 MME Group ID 之後同值。
+    # 實測一份 MME 側的單一用戶 trace：少了它，Paging 與閒置後在另一台 eNB 發起的
+    # TAU 各自成流程。
+    #
+    # **範圍是整份擷取檔**，理由與代價見 `identity.s_tmsi`。與 5G-S-TMSI 一樣
+    # **不進 `lifecycle.REUSABLE`**：重配在加密的 accept 裡，線上看不到釋放。
+    S_TMSI = "s_tmsi"
+
     # ── Phase 2：4G EPC 控制面。T4–T6 的 adapter 尚未實作 ──
     #
     # **這裡刻意沒有 `IMSI`。** 4G 的 IMSI 一律進 `SUPI` —— 兩者是同一個
@@ -89,6 +100,9 @@ class IdKind(StrEnum):
     #: context 與 SDP 都是 `$`（讓 MGW 選）—— 它唯一能接上 Reply 的就是交易號。**
     #: 與 `SBI_STREAM` 同一類：配對用，自己不成一條流程。
     H248_TRANSACTION = "h248_transaction"
+    #: 一筆 GTPv2-C 交易的請求與回應（`identity.gtpv2_transaction`）。與 `H248_TRANSACTION`
+    #: 同一類：標頭 TEID 為 0 的回應沒有別的東西接得回請求。
+    GTPV2_TRANSACTION = "gtpv2_transaction"
 
     @property
     def id_class(self) -> "IdClass":
@@ -148,6 +162,7 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.AMF_UE_NGAP_ID: IdClass.SUBSCRIBER,
     # 暫時身分，但指的確實是某個 UE —— 與 NGAP 的兩把 UE ID 同一類。
     IdKind.FIVEG_S_TMSI: IdClass.SUBSCRIBER,
+    IdKind.S_TMSI: IdClass.SUBSCRIBER,
     # S1AP 的兩把 UE ID 與上面 NGAP 那兩把同構：只在一條 S1 連線內唯一，
     # 但指的確實是某個 UE。一律走 `identity.scoped()`（§3.3：少了連線前綴，
     # 兩個 eNB 底下各自從 1 開始配號的用戶會被併成同一條）。
@@ -159,6 +174,7 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
     IdKind.H248_CONTEXT: IdClass.SESSION,
     IdKind.MEDIA_ENDPOINT: IdClass.SESSION,
     IdKind.H248_TRANSACTION: IdClass.EXCHANGE,
+    IdKind.GTPV2_TRANSACTION: IdClass.EXCHANGE,
     IdKind.GTP_TEID: IdClass.SESSION,
     # **控制面的 TEID 必須與使用者面分開，不能共用 `GTP_TEID`。**
     # GTP-C 走 2123、GTP-U 走 2152，而**同一台 SGW 兩者常是同一個 IP** ——
@@ -178,7 +194,7 @@ ID_CLASSES: dict["IdKind", "IdClass"] = {
 #: `summary` 都從這裡取，三處各自排序就是三種標題。
 SUBSCRIBER_IDENTITY_ORDER: tuple["IdKind", ...] = (
     IdKind.SUPI, IdKind.IMPU, IdKind.MSISDN, IdKind.IMPI,
-    IdKind.FIVEG_S_TMSI,
+    IdKind.FIVEG_S_TMSI, IdKind.S_TMSI,
     IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID,
     IdKind.MME_UE_S1AP_ID, IdKind.ENB_UE_S1AP_ID,
 )
@@ -530,7 +546,7 @@ class Flow:
             if kind in by_kind:
                 return f"{kind.value.upper()} {by_kind[kind]}"
         # 暫時身分與連線內的 ID：順序與 `SUBSCRIBER_IDENTITY_ORDER` 一致。
-        for kind in (IdKind.FIVEG_S_TMSI, IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
+        for kind in (IdKind.FIVEG_S_TMSI, IdKind.S_TMSI, IdKind.AMF_UE_NGAP_ID, IdKind.RAN_UE_NGAP_ID):
             if kind in by_kind:
                 return f"{kind.value} {by_kind[kind]}"
         # 會話層的 key 接不上訂戶，但**它本身就是一個值得命名的東西** ——

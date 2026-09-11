@@ -187,7 +187,7 @@ TOOLS: list[dict] = [
             ("supi", {"type": "string",
                       "description": "SUPI / IMSI, digits only, as returned by list_subscribers."}),
             ("identity", {"type": "string",
-                          "description": "Alternative to supi for subscribers that have none (most Service-request traffic): 'kind:raw' as listed under subscribers_without_supi, e.g. 'fiveg_s_tmsi:<scope>/<set>-<pointer>-<tmsi>'."}),
+                          "description": "Alternative to supi for subscribers that have none (most Service-request traffic): 'kind:raw' as listed under subscribers_without_supi, e.g. 'fiveg_s_tmsi:<scope>/<set>-<pointer>-<tmsi>' or 's_tmsi:<mmec>-<m-tmsi>'."}),
             required=("pcap_path",),
         ),
     },

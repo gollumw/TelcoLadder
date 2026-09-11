@@ -98,7 +98,16 @@ REUSABLE: frozenset[IdKind] = frozenset({
     # 就釋放），媒體埠同樣回收 —— 不釋放，下一通拿到同一個埠的電話會黏上上一通。
     IdKind.H248_CONTEXT,
     IdKind.MEDIA_ENDPOINT,
+    # GTPv2-C（2026-09-12）：序號只保證未完成的交易不重複，發起方會重用 —— 回應釋放它。
+    IdKind.GTPV2_TRANSACTION,
 })
+
+#: 只配一次請求與回應、**不與任何別的鍵連坐**的種類。
+#:
+#: 一則 Create Session Response 同時帶交易鍵與使用者面 F-TEID；連坐的話，回應一釋放交易鍵
+#: 就把那些隧道一起放掉，之後帶同一個 TEID 的 S1AP／GTP-U 訊息全落到下一輪、接不回來。
+#: 反過來也一樣：隧道被釋放，不該讓一筆還在等回應的交易變成下一輪。
+SOLITARY: frozenset[IdKind] = frozenset({IdKind.GTPV2_TRANSACTION})
 
 
 def _reusable(keys: "frozenset[IdKey] | set[IdKey]") -> set[IdKey]:
@@ -169,11 +178,13 @@ def apply(messages: list[Message]) -> list[Message]:
                 rewritten.add(episodic(kind, scope, value, generation))
             msg.identity_keys = frozenset(rewritten)
 
+            paired = {key for key in live if key[0] not in SOLITARY}
             for key in live:
-                associates[key] |= live - {key}
                 sightings[key].append((msg.frame, msg.ts, episode[key]))
+            for key in paired:
+                associates[key] |= paired - {key}
             for anchor in msg.identity_keys - live:
-                anchored[anchor] |= live
+                anchored[anchor] |= paired
 
         released = _reusable(msg.releases)
         if released:

@@ -29,7 +29,7 @@ from telcoladder.adapters import (
     attach_continuations, blind_spots, continuations, default_decode_as, parse_frame,
 )
 from telcoladder.causes import annotate
-from telcoladder.correlate import correlate_with_stats
+from telcoladder.correlate import correlate_with_stats, supi_bridges
 from telcoladder.endpoints import fill_hostless
 from telcoladder.nettrace import Sidecar, apply as apply_trace, is_nettrace, read_hints
 from telcoladder.lifecycle import apply as apply_lifecycle
@@ -243,6 +243,10 @@ class Analysis:
     auto_decode: AutoDecode | None = None
 
     trace_sidecar: "Sidecar | None" = None
+
+    supi_bridges: int = 0
+    """有幾條流程的多個 SUPI **只靠** S-TMSI 或 GTPv2-C 交易鍵才接在一起（`correlate.supi_bridges`）。
+    不是 0 代表那幾條流程可能是兩個人被接成一條 —— 要講出來（`summary.not_visible`）。"""
 
     quote_joins: int = 0
     """有幾次合併是**靠轉述鍵**接起來的（SBI 轉述的 N2 隧道，見 `model.Quote`）。
@@ -534,6 +538,7 @@ def _analyse_within(
     # 所以不含 release 的擷取檔行為逐位元組不變。
     apply_lifecycle(messages)
     flows, quote_stats = correlate_with_stats(messages)
+    bridged = supi_bridges(flows)
     if wire:
         flows = collapse(flows)
 
@@ -571,4 +576,5 @@ def _analyse_within(
         quote_joins=quote_stats.joined,
         quote_refusals=quote_stats.refused,
         quote_joins_embedded=quote_stats.embedded,
+        supi_bridges=bridged,
     )

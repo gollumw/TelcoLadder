@@ -65,6 +65,7 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.RAN_UE_NGAP_ID: "RAN UE NGAP ID",
     IdKind.AMF_UE_NGAP_ID: "AMF UE NGAP ID",
     IdKind.FIVEG_S_TMSI: "5G-S-TMSI",
+    IdKind.S_TMSI: "S-TMSI",
     IdKind.SBI_STREAM: "SBI HTTP/2 stream",
     IdKind.PFCP_SEID: "PFCP SEID",
     # 2026-08-23 補：身分搜尋的下拉選單改由這張表驅動之後，沒有標籤的
@@ -81,6 +82,7 @@ KIND_LABELS: dict[IdKind, str] = {
     IdKind.MME_UE_S1AP_ID: "MME UE S1AP ID",
     IdKind.H248_CONTEXT: "H.248 context",
     IdKind.H248_TRANSACTION: "H.248 transaction",
+    IdKind.GTPV2_TRANSACTION: "GTPv2-C transaction",
     IdKind.MEDIA_ENDPOINT: "SDP media endpoint",
 }
 

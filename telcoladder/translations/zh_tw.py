@@ -601,6 +601,8 @@ CATALOG: dict[str, str] = {
         '{n} 段流程是靠 SBI 訊息轉述（回報或轉送）的 N2 隧道接回訂戶的 —— 這是從線路推論出來的，不是這些段落共用自己的鍵。',
     '{n} such join(s) were refused because they would have merged two different subscribers; those segments stay separate.':
         '另有 {n} 次這樣的接合被拒絕，因為它會把兩個不同的訂戶併在一起；那些段落維持分開。',
+    '{n} flow(s) hold more than one SUPI that only an S-TMSI or a GTPv2-C sequence number ties together - neither is unique across MMEs or over time, so check whether each is really one subscriber.':
+        '{n} 條流程帶著不只一個 SUPI，而且只靠 S-TMSI 或 GTPv2-C 序號接在一起 —— 這兩者跨 MME、跨時間都不保證唯一，請確認每一條是否真的是同一個訂戶。',
     '{n} flow segment(s) were joined to their subscriber because an SBI resource id literally contains a SUPI this capture shows elsewhere - the id is assigned by a network function in a format no specification fixes, so this is an inference.':
         '{n} 段流程是因為 SBI 資源 id 裡逐字夾著一個這份擷取檔別處出現過的 SUPI 而接回訂戶的 —— 那個 id 是網元自己配發的，格式沒有任何規範固定，所以這是推論。',
 }
