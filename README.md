@@ -267,6 +267,12 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
   invisible; the packets still appear as their NGAP carrier. GTP-U joins the
   subscriber but carries no throughput or loss KPIs; there is no RTP adapter;
   ISUP and CAMEL are recognised but not read.
+- **Joins through a tunnel an SBI message quotes are inferences.** They bind by
+  direction, inside a time window, never across a release, and never where they
+  would give one flow two SUPIs; the summary counts each one. What remains: a
+  stale forwarded quote that arrives after its tunnel was released, where the UPF
+  reused that exact TEID within 10 s for a UE whose flow shows no SUPI, could
+  still be joined. On a single capture point that order violates the protocol.
 - **Mermaid gets slow with very large flows.** Use `--max-messages`; truncation
   is always stated inside the diagram.
 - **`anonymize` proves absence only for what tshark can name.** Identities it

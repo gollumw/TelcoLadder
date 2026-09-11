@@ -115,6 +115,29 @@ body or a `supi=` query parameter is attached only when it is the only one and d
 not contradict the path. On the four Open5GS fixtures this moved 12, 80, 12 and 8
 orphan messages into their subscribers, with no flow gaining a second SUPI.
 
+**A tunnel that an SBI message only quotes is a weak edge, not a key.** When the
+AMF forwards a gNB's `PDU_RES_SETUP_RSP` to the SMF, the SBI body carries the
+same GTP tunnel (address and TEID) that appears on N2. On a real AMF-side
+capture that was the only wire evidence tying three network-triggered Service
+Requests (Paging, Service request, InitialContextSetup, no cleartext identity)
+to their subscriber; using it took that capture from 7 flows to 2 and from 76.8%
+to 99.7% attributed. Treating it as the SBI message's own key was wrong twice:
+identifier recycling records every recyclable key on a message as associated, so
+each idle UEContextRelease also advanced the SM context to a new round and split
+later calls on that context off (20 on that capture); and a quote that arrives
+late would be taken as belonging to the current round, joining whoever holds the
+tunnel by then. So a quote lives beside the keys, not among them. Recycling
+binds it to one native sighting by direction: a *reported* tunnel (gNB to SMF,
+already allocated on N2) binds only backwards, within 60 s and never across a
+release; a *forwarded* one (SMF to gNB, used on N2 afterwards) binds to the live
+round if nothing released it since, otherwise to the next sighting within 10 s
+with no release in between. Unbound quotes are dropped, and quotes never join
+each other without a native sighting. Correlation applies bound quotes after all
+strong keys, and refuses any that would give a group two different SUPIs. The
+direction comes from the protocol's own N2 SM-information type; only the types
+measured on a real capture bridge, and every join or refusal is counted in the
+summary's *not visible* section.
+
 ## 3. The cause library: 775 values, tshark as the only oracle
 
 Twenty-one YAML tables under `telcoladder/data/causes/` hold 775 cause values

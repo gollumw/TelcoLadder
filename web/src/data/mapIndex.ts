@@ -553,6 +553,7 @@ export interface OverviewJson {
     only_n2: boolean;
     undecoded_traffic: Array<{ protocol: string; frames: number; port: number | null; decode_as_hint: string | null }>;
     coverage_notes: string[];
+    inferred_joins?: string[];
     auto_decode: string[];
     trace_sidecar: string[];
     narrowed: string[];
@@ -639,7 +640,7 @@ export function toOverview(body: OverviewJson): Overview {
       // 四組都是引擎寫好的句子，順序：自動調整 → 旁路事實 → 收窄 → coverage。
       // 它們是給 CLI／Markdown 的原文，帶 `**粗體**` 標記；瀏覽器顯示純文字，把標記拿掉
       // （只動排版，不動一個字）。
-      notes: [...(nv.auto_decode ?? []), ...(nv.trace_sidecar ?? []), ...(nv.narrowed ?? []), ...(nv.coverage_notes ?? [])].map(
+      notes: [...(nv.auto_decode ?? []), ...(nv.inferred_joins ?? []), ...(nv.trace_sidecar ?? []), ...(nv.narrowed ?? []), ...(nv.coverage_notes ?? [])].map(
         (line) => line.replace(/\*\*/g, ""),
       ),
     },

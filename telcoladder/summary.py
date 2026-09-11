@@ -141,6 +141,16 @@ def _capture(analysis: Analysis) -> dict:
 _N2_PROTOCOLS = frozenset({"ngap", "nas-5gs"})
 
 
+def _inferred_joins(analysis: Analysis) -> list[str]:
+    """轉述鍵做了什麼：接上幾段、拒絕幾段。都是 0 就不講。"""
+    lines: list[str] = []
+    if analysis.quote_joins:
+        lines.append(_("{n} flow segment(s) were joined to their subscriber through an N2 tunnel that an SBI message reported or forwarded - an inference from the wire, not a key the segments share.").format(n=analysis.quote_joins))
+    if analysis.quote_refusals:
+        lines.append(_("{n} such join(s) were refused because they would have merged two different subscribers; those segments stay separate.").format(n=analysis.quote_refusals))
+    return lines
+
+
 def _not_visible(analysis: Analysis) -> dict:
     coverage = analysis.coverage
     protocols = {m.protocol for f in analysis.flows for m in f.messages}
@@ -169,6 +179,9 @@ def _not_visible(analysis: Analysis) -> dict:
         # 「改擷取方式」是相反的處置；只給一個數字，agent 會建議錯的那一個。
         # （2026-08-23 複審：我自己列的第一個不放心，外部複審判為可省 —— 不對，
         # 正是 5gc-e2e 這種「已經在解卻解不開」的情況 auto_decode 不會出聲。）
+        # 推論接上的流程段落：它們不共用自己的鍵，是靠 SBI 轉述的 N2 隧道接起來的（`model.Quote`）。
+        # 與 auto_decode 同一族：工具替使用者做了什麼判斷，要講出來、要能回頭查。
+        "inferred_joins": _inferred_joins(analysis),
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
         "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
         # TS 32.423 XML trace 的旁路事實（角色、FQDN、逐則 IMSI）。與 auto_decode 同一族：
@@ -519,7 +532,7 @@ def render_markdown(doc: dict) -> str:
     # 讀不出來」。兩句反過來排，讀的人會先看到「--decode-as 沒用」再看到
     # 「decode-as 有用」—— 兩句都對，但順序錯了就像互相矛盾。
     # coverage_notes 的第一句是「N 格沒解碼」的重述，上面已經講過，略去。
-    items += nv["narrowed"] + nv["auto_decode"] + nv.get("trace_sidecar", []) + nv["coverage_notes"][1:]
+    items += nv["narrowed"] + nv["auto_decode"] + nv.get("inferred_joins", []) + nv.get("trace_sidecar", []) + nv["coverage_notes"][1:]
     out += [f"- {line}" for line in items] or [f'- {_("Everything decoded; nothing was narrowed or adjusted.")}']
 
     # ── 網元 ──

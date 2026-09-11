@@ -14,7 +14,8 @@
 1. **兩條路算出同一把鑰匙。** SBI 挖出來的與 NGAP 發出來的必須逐字相同 ——
    不同的話症狀是「明明是同一條隧道，就是併不起來」，而沒有任何一層會報錯。
 2. 沒有 NGAP 的擷取檔上，PFCP 真的併進了訂戶那條流程。
-3. **有 NGAP 時什麼都不變。** 新的一條路不得動到原本那條。
+3. **有 NGAP 時只多接、不改接。** SBI 轉述的隧道是弱邊（`model.Quote`）：它能把一段原本
+   孤立的 SBI 交換接回原生帶著那條隧道的訂戶，但不會搬動任何既有的歸屬。
 
 `!sctp` 把 5gc-e2e 的 NGAP 濾掉，留下 SBI／PFCP —— 那正是 SMF 側 trace 的形狀。
 
@@ -149,26 +150,40 @@ def test_it_merges_that_session_and_not_everything_else(smf_shaped) -> None:
 # ── 有 NGAP 時什麼都不變 ─────────────────────────────────────────────
 
 
-def test_the_ngap_path_is_untouched(whole) -> None:
-    """新的一條路不得動到原本那條：完整的擷取檔上流程數與 PFCP 歸屬不變。
+def test_the_ngap_path_is_untouched_and_one_orphaned_report_finds_its_owner(whole) -> None:
+    """有 NGAP 時新路只多接一段，不改接任何既有歸屬。
 
-    7 條是 CLAUDE.md §5 那張表釘住的數字（N4 接上之後）。
+    原本是 7 條。多接回的是 frame 494 那段 `sm-contexts/3/modify`：AMF 把 gNB 回的
+    `PDU_RES_SETUP_RSP`（下行隧道）轉給 SMF。它原本孤立在外，現在經轉述鍵接回原生帶著
+    那條隧道、而且只有一個 SUPI 的訂戶流程 —— 接的一側沒有 SUPI，所以不可能是誤併。
     """
-    assert len(whole.flows) == 7
+    assert len(whole.flows) == 6
+    assert (whole.quote_joins, whole.quote_refusals) == (1, 0)
     flow = _supi_flow(whole)
     kinds = {k for k, _ in flow.identity_keys}
     assert {IdKind.PFCP_SEID, IdKind.GTP_TEID} <= kinds
+    assert 494 in {m.frame for m in flow.messages}, "那段回報沒有接回它的訂戶"
+    assert flow.quote_joins == 1
 
 
-def test_the_carried_nas_message_still_carries_its_own_identity() -> None:
-    """橋接是**加**鑰匙，不是換掉 —— 夾帶的 NAS 仍然帶著 stream 與 SUPI。"""
+def test_the_carried_nas_keeps_its_own_identity_and_the_tunnel_is_a_quote(whole) -> None:
+    """夾帶的 NAS 帶著自己的鍵（stream），**不帶**它轉述的隧道 —— 隧道是同一條 stream 上
+    那則 SBI 訊息的轉述鍵（`model.Quote`），而且與 NGAP 發出的那一把逐字相同。
+
+    原本這條要求 NAS 自己帶著隧道。那是同一個事實的第二種語意：當成自己的鍵時，
+    `lifecycle` 會把它與同一則訊息的其他鍵記成關聯，而且晚到的轉述會被當成當下這一輪。
+    """
     for frame in read_frames(E2E, decode_as=default_decode_as()):
         if frame.number != 463:
             continue
         (msg,) = parse_frame(frame)
         kinds = {k for k, _ in msg.identity_keys}
         assert IdKind.SBI_STREAM in kinds
-        assert IdKind.GTP_TEID in kinds, "橋沒接上"
+        assert IdKind.GTP_TEID not in kinds, "隧道又變回載荷自己的鍵了"
+    ngap_tunnels = {k for f in whole.flows for m in f.messages if m.protocol == "ngap"
+                    for k in m.identity_keys if k[0] is IdKind.GTP_TEID}
+    quoted = {q.key for f in whole.flows for m in f.messages if m.protocol == "sbi" for q in m.quotes}
+    assert quoted and quoted <= ngap_tunnels, "SBI 轉述的隧道與 NGAP 那一把對不上"
 
 
 # ── 不寫死路徑 ────────────────────────────────────────────────────────

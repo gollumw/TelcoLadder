@@ -12,7 +12,10 @@ Phase 2 接 IMS 時這個檔**不需要改**：SIP 的 Call-ID、Diameter 的 Se
 
 from __future__ import annotations
 
-from telcoladder.model import Flow, IdKey, Message, is_flow_worthy
+from collections import defaultdict
+from typing import NamedTuple
+
+from telcoladder.model import Flow, IdKey, IdKind, Message, is_flow_worthy
 
 
 class _UnionFind:
@@ -32,6 +35,9 @@ class _UnionFind:
             self._parent[key], key = root, self._parent[key]
         return root
 
+    def __contains__(self, key: IdKey) -> bool:
+        return key in self._parent
+
     def union(self, a: IdKey, b: IdKey) -> None:
         self.add(a)
         self.add(b)
@@ -40,7 +46,21 @@ class _UnionFind:
             self._parent[root_b] = root_a
 
 
+class QuoteStats(NamedTuple):
+    """轉述鍵（`model.Quote`）這一趟做了什麼 —— 給「看不見的東西」那一節講出來。"""
+
+    joined: int
+    """靠轉述鍵接起來的次數。"""
+    refused: int
+    """會讓一組帶上兩個不同 SUPI、因此拒絕的次數。"""
+
+
 def correlate(messages: list[Message]) -> list[Flow]:
+    """`correlate_with_stats` 只要流程的那一半。"""
+    return correlate_with_stats(messages)[0]
+
+
+def correlate_with_stats(messages: list[Message]) -> tuple[list[Flow], QuoteStats]:
     """把訊息分組成流程，依每組最早的訊息排序。
 
     兩種訊息會被歸進共用的「無用戶關聯」流程，而不是被丟掉 —— 丟掉會讓
@@ -64,6 +84,10 @@ def correlate(messages: list[Message]) -> list[Flow]:
         # 同一則訊息暴露的所有 key 指向同一個用戶，先把它們接起來。
         for key in keys[1:]:
             uf.union(keys[0], key)
+
+    # 弱邊：轉述鍵（已由 `lifecycle` 綁到某一次原生出現）。**強鍵全部接完才套** ——
+    # 這樣否決看得到每一組完整的 SUPI 集合，而不是接到一半的樣子。
+    bridges, refused = _apply_quotes(uf, messages)
 
     grouped: dict[IdKey | None, list[Message]] = {}
     for msg in messages:
@@ -91,8 +115,47 @@ def correlate(messages: list[Message]) -> list[Flow]:
         keys_full: set[IdKey] = set()
         for msg in group:
             keys_full |= msg.identity_keys
-        flows.append(Flow(messages=group, identity_keys=frozenset(keys_full)))
+        joins = sum(1 for anchor in bridges if root is not None and uf.find(anchor) == root)
+        flows.append(Flow(messages=group, identity_keys=frozenset(keys_full), quote_joins=joins))
 
     # 依首則訊息的時間排序，讓輸出順序穩定且符合直覺。
     flows.sort(key=lambda f: (f.messages[0].ts, f.messages[0].frame))
-    return flows
+    return flows, QuoteStats(joined=len(bridges), refused=refused)
+
+
+def _apply_quotes(uf: _UnionFind, messages: list[Message]) -> tuple[list[IdKey], int]:
+    """依封包順序把轉述鍵當成弱邊接上；回傳（每次接上後的根，拒絕次數）。
+
+    * 轉述鍵必須接到**原生**出現過的鍵 —— 兩則訊息只是轉述了同一條隧道，不足以
+      說它們是同一個人（`uf` 裡只有 identity_keys，轉述從不進去）。
+    * 接上會讓一組帶上兩個不同 SUPI → 拒絕。那是最不能接受的一類錯（兩個人被畫成
+      一條流程而且看起來很合理）；受害的一組沒有 SUPI 時否決幫不上忙，那一半靠
+      `lifecycle` 的方向與時間規則守。
+    """
+    quoted = sorted((m for m in messages if m.quotes and m.identity_keys), key=lambda m: (m.frame, m.ts))
+    if not quoted:
+        return [], 0
+    supis: dict[IdKey, set[str]] = defaultdict(set)
+    for msg in messages:
+        for kind, value in msg.identity_keys:
+            if kind is IdKind.SUPI:
+                supis[uf.find((kind, value))].add(value)
+    bridges: list[IdKey] = []
+    refused = 0
+    for msg in quoted:
+        mine = min(msg.identity_keys)
+        for quote in sorted(msg.quotes):
+            if quote.key not in uf:
+                continue
+            a, b = uf.find(mine), uf.find(quote.key)
+            if a == b:
+                continue
+            both = supis.get(a, set()) | supis.get(b, set())
+            if supis.get(a) and supis.get(b) and len(both) > 1:
+                refused += 1
+                continue
+            uf.union(a, b)
+            root = uf.find(a)
+            supis[root] = both
+            bridges.append(root)
+    return bridges, refused

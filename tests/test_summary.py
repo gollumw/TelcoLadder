@@ -95,6 +95,8 @@ NOT_VISIBLE_FIELDS = {
     "narrowed", "auto_decode", "trace_sidecar", "only_n2",
     # 2026-09-06：分片算已解碼、ESP 是看不見的（加欄不升版）。
     "ip_fragments_reassembled", "ipsec_esp",
+    # 2026-09-11：靠 SBI 轉述的 N2 隧道接回的段數與被 SUPI 否決的次數（加欄不升版）。
+    "inferred_joins",
 }
 
 
