@@ -449,3 +449,71 @@ def test_a_repeated_opener_without_a_failure_still_merges() -> None:
     ])
     procs, _unassigned = segment_flow(flow, capture_end=100.0)
     assert [(p.outcome, p.messages) for p in procs] == [("success", 3)]
+
+
+def _ho(frame: int, protocol: str, label: str, ts: float, handover_type: str = "") -> Message:
+    msg = Message(
+        frame=frame, ts=ts, protocol=protocol,
+        src=Endpoint("10.0.0.1"), dst=Endpoint("10.0.0.2"), label=label,
+    )
+    if handover_type:
+        msg.detail["handover-type"] = handover_type
+    return msg
+
+
+def _cancelled_attempt(first_frame: int, ts0: float, *, gap_before_cancel: float = 1.0) -> list[Message]:
+    """一次 EPS→5GS 換手被喊停：準備 → 轉送請求 → 取消的兩條腿 → 兩個回應。
+
+    六則的形狀取自一份真實 MME trace（只記形狀與則數，不記識別碼）。方向標記掛在
+    HandoverRequired 上，與 adapter 的來源一致（`adapters/s1ap.py` 的 HandoverType IE）。
+    """
+    cancel_ts = ts0 + 1 + gap_before_cancel
+    return [
+        _ho(first_frame, "s1ap", "HandoverPreparation", ts0, handover_type="eps-to-5gs"),
+        _ho(first_frame + 1, "gtpv2", "Forward Relocation Request", ts0 + 1),
+        _ho(first_frame + 2, "s1ap", "HandoverCancel", cancel_ts),
+        _ho(first_frame + 3, "gtpv2", "Relocation Cancel Request", cancel_ts + 1),
+        _ho(first_frame + 4, "s1ap", "HandoverCancelResponse", cancel_ts + 2),
+        _ho(first_frame + 5, "gtpv2", "Relocation Cancel Response", cancel_ts + 3),
+    ]
+
+
+def test_a_new_opener_after_a_finished_attempt_is_a_new_attempt() -> None:
+    """兩次背靠背的取消換手是兩段，不是「一段八則 ＋ 一段四則」。
+
+    實測一份 MME trace：6 組背靠背的取消換手全被切成這個形狀，第二段少了方向標記、
+    世代從互通掉回 4G；另有 1 次被取消的嘗試整個被併進其後成功的換手。修正後是
+    14 次取消、段數 84 → 86 —— 不是變少，是邊界對了。第二次嘗試緊接著開始（間隔不到
+    `QUIET_GAP`，所以安靜期救不了），而它自己中間有一個較長的間隔，於是舊規則
+    在錯的地方收段。
+
+    突變：`_new_attempt` 拿掉 `_outcome_seen()` 那一項 → 回到八則＋四則，而且
+    第二段變成 4G 的一般換手。
+    """
+    from telcoladder.model import Flow
+
+    # 第二次嘗試在第一次結束後 0.5 秒開始（不觸發安靜期），取消前隔 2 秒（會觸發）。
+    flow = Flow(messages=_cancelled_attempt(1, 1.0) + _cancelled_attempt(7, 6.5, gap_before_cancel=2.0))
+    procs, unassigned = segment_flow(flow, capture_end=100.0)
+
+    assert [(p.kind, p.outcome, p.messages) for p in procs] == [
+        ("handover-eps-to-5gs", "cancelled", 6),
+        ("handover-eps-to-5gs", "cancelled", 6),
+    ]
+    assert {p.family for p in procs} == {"interworking"}, "第二段不該掉回 4G"
+    assert sum(p.messages for p in procs) + len(unassigned) == 12, "守恆"
+
+
+def test_the_cancel_exchange_belongs_to_the_attempt_it_cancels() -> None:
+    """對照組：取消的兩條腿（S1AP 與 GTPv2）屬於它取消的那一次嘗試，不是新的一次。
+
+    這條守的是上一條測試的反向突變。`HandoverCancel` 與 `Relocation Cancel Request`
+    本身就是 `handover` 的 opener，而 `_outcome_seen()` 把取消請求算成收場 ——
+    突變：`_new_attempt` 拿掉 `CANCEL_LABELS` 例外 → 切成三則＋三則，而且後半段
+    拿取消 opener 自己的成功標籤判定，一次被取消的換手報成 success。
+    """
+    from telcoladder.model import Flow
+
+    procs, unassigned = segment_flow(Flow(messages=_cancelled_attempt(1, 1.0)), capture_end=100.0)
+    assert [(p.kind, p.outcome, p.messages) for p in procs] == [("handover-eps-to-5gs", "cancelled", 6)]
+    assert not unassigned
