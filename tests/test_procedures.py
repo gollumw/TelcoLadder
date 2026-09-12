@@ -308,6 +308,8 @@ PROCEDURE_FIELDS = {
     "family", "category", "registration_type",
     # 折進場景的釋放標上所屬場景（xDR 版本 3）。
     "folded_into",
+    # 方向與觸發者從 kind 名稱移成欄位（xDR 版本 4）。
+    "direction", "trigger",
 }
 
 
@@ -357,7 +359,7 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
     )
     assert proc.returncode == 0, proc.stderr
     doc = json.loads(out.read_text(encoding="utf-8"))
-    assert doc["xdr_version"] == xdr.XDR_VERSION == 3
+    assert doc["xdr_version"] == xdr.XDR_VERSION == 4
     assert doc["procedures"], "一段程序都沒有 —— 端到端斷了"
 
 
@@ -501,9 +503,9 @@ def test_a_new_opener_after_a_finished_attempt_is_a_new_attempt() -> None:
     flow = Flow(messages=_cancelled_attempt(1, 1.0) + _cancelled_attempt(7, 6.5, gap_before_cancel=2.0))
     procs, unassigned = segment_flow(flow, capture_end=100.0)
 
-    assert [(p.kind, p.outcome, p.messages) for p in procs] == [
-        ("handover-eps-to-5gs", "cancelled", 6),
-        ("handover-eps-to-5gs", "cancelled", 6),
+    assert [(p.kind, p.direction, p.outcome, p.messages) for p in procs] == [
+        ("handover", "eps-to-5gs", "cancelled", 6),
+        ("handover", "eps-to-5gs", "cancelled", 6),
     ]
     assert {p.family for p in procs} == {"interworking"}, "第二段不該掉回 4G"
     assert sum(p.messages for p in procs) + len(unassigned) == 12, "守恆"
@@ -520,7 +522,7 @@ def test_the_cancel_exchange_belongs_to_the_attempt_it_cancels() -> None:
     from telcoladder.model import Flow
 
     procs, unassigned = segment_flow(Flow(messages=_cancelled_attempt(1, 1.0)), capture_end=100.0)
-    assert [(p.kind, p.outcome, p.messages) for p in procs] == [("handover-eps-to-5gs", "cancelled", 6)]
+    assert [(p.kind, p.direction, p.outcome, p.messages) for p in procs] == [("handover", "eps-to-5gs", "cancelled", 6)]
     assert not unassigned
 
 

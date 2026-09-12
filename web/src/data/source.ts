@@ -209,6 +209,10 @@ export interface CallFlowProcedure {
   category: string;
   /** 5G 註冊的型別（`nas5gs.REGISTRATION_TYPES` 的 slug）；非註冊段 null。 */
   registrationType: string | null;
+  /** 方向（`procedures.DIRECTIONS`）：跨系統的換手與移動才有，其餘 null。**有方向就是互通世代。** */
+  direction?: string | null;
+  /** 觸發者（`procedures.TRIGGERS`）：只有 service request 有（`ue`／`network`），其餘 null。 */
+  trigger?: string | null;
 }
 
 /** 一個訂戶的梯形圖資料。 */
@@ -476,6 +480,9 @@ export interface OverviewCause {
 
 export interface OverviewProcedure {
   kind: string;
+  /** 方向與觸發者（2026-09-13 起不再寫在 kind 裡）—— 名字由 `procedureName` 組回來。 */
+  direction?: string | null;
+  trigger?: string | null;
   subscriber: OverviewSubscriberRef | null;
   startFrame: number;
   endFrame: number;

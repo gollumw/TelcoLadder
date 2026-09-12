@@ -17,8 +17,8 @@ EPS→5GS 換手（Forward Relocation Request 進來、HandoverRequest 出去）
 | 2 | PDUSessionResourceModify → Response，unsuccessful transfer 帶 radioNetwork **#36** | AMF↔gNB | `eps-fallback` |
 | 3 | UEContextReleaseRequest → Command → Complete | gNB↔AMF | `ue-context-release` |
 | 4 | UplinkNASTransport（TAU request，帶 IMSI）→ DownlinkNASTransport（TAU accept） | eNB↔MME | `tau`（4G） |
-| 5 | Context Request（夾 TAU Request）→ Context Response → Context Acknowledge | MME↔AMF | `mobility-5gs-to-eps` |
-| 6 | Forward Relocation Request → HandoverRequest → Ack → FR Response → HandoverNotify → FR Complete Notification/Ack | MME↔AMF↔gNB | `handover-eps-to-5gs` |
+| 5 | Context Request（夾 TAU Request）→ Context Response → Context Acknowledge | MME↔AMF | `tau`，方向 `5gs-to-eps` |
+| 6 | Forward Relocation Request → HandoverRequest → Ack → FR Response → HandoverNotify → FR Complete Notification/Ack | MME↔AMF↔gNB | `handover`，方向 `eps-to-5gs` |
 | 7 | UplinkNASTransport（Registration request，**mobility registration updating**，5G-GUTI）→ Registration accept | gNB↔AMF | `registration`（mobility…，成功） |
 | 8–13 | 同 2–7，但最後的註冊被 **Registration reject**（5GMM #11） | | `registration`（mobility…，失敗） |
 

@@ -290,6 +290,9 @@ export interface CallFlowProcedureJson {
   family: string | null;
   category: string | null;
   registration_type: string | null;
+  // 2026-09-13：方向與觸發者從 kind 名稱移成欄位。
+  direction?: string | null;
+  trigger?: string | null;
 }
 
 export function toCallFlowProcedure(p: CallFlowProcedureJson) {
@@ -309,6 +312,8 @@ export function toCallFlowProcedure(p: CallFlowProcedureJson) {
     family: p.family ?? "other",
     category: p.category ?? "other",
     registrationType: p.registration_type ?? null,
+    direction: p.direction ?? null,
+    trigger: p.trigger ?? null,
   };
 }
 
@@ -577,6 +582,8 @@ export interface OverviewJson {
   }>;
   failed_procedures: Array<{
     procedure: string;
+    direction?: string | null;
+    trigger?: string | null;
     subscriber_ref: OverviewRefJson | null;
     start_frame: number;
     end_frame: number;
@@ -663,6 +670,8 @@ export function toOverview(body: OverviewJson): Overview {
     })),
     failedProcedures: (body.failed_procedures ?? []).map((p) => ({
       kind: p.procedure,
+      direction: p.direction ?? null,
+      trigger: p.trigger ?? null,
       subscriber: p.subscriber_ref ? refToSubscriber(p.subscriber_ref) : null,
       startFrame: p.start_frame,
       endFrame: p.end_frame,

@@ -83,8 +83,11 @@ def test_a_context_request_that_carries_nas_still_opens_the_mobility_procedure()
     EPS→5GS ×4 idle mobility turned into TAUs the moment GTPv2-C began carrying NAS.
     """
     procedures, _unassigned = segment(analyse(FIXTURE))
-    at_frame_4 = [p.kind for p in procedures if p.start_frame == 4]
-    assert at_frame_4 and at_frame_4[0].startswith("mobility"), [(p.kind, p.start_frame) for p in procedures]
+    # 2026-09-13 起方向是屬性，不寫在 kind 裡。MME 發出 Context Request ＝ UE 去了 EPS，所以方向是
+    # 5GS→EPS —— 這一段是所有 fixture 裡唯一釘住「方向由誰來要 context 決定」的地方。
+    at_frame_4 = [(p.kind, p.category, p.direction) for p in procedures if p.start_frame == 4]
+    assert at_frame_4 == [("context-transfer", "mobility", "5gs-to-eps")], \
+        [(p.kind, p.direction, p.start_frame) for p in procedures]
 
 
 def _msg(frame: int, protocol: str, label: str, src: str, dst: str):
@@ -99,7 +102,7 @@ def test_a_carrier_row_opens_the_carriers_procedure_not_the_carried_ones() -> No
 
     row = _msg(1, "gtpv2", "Context Request ▸ Tracking area update request", "192.0.2.2", "192.0.2.9")
     kind = _opens(row)
-    assert kind is not None and kind.name == "mobility-context-transfer", kind
+    assert kind is not None and kind.name == "context-transfer", kind
 
 
 def test_a_tau_window_with_a_nas_carrying_context_request_is_5gs_to_eps_mobility() -> None:
@@ -117,4 +120,5 @@ def test_a_tau_window_with_a_nas_carrying_context_request_is_5gs_to_eps_mobility
         _msg(5, "s1ap", "DownlinkNASTransport ▸ Tracking area update accept", mme, enb),
     ]
     procedures, _leftover = segment_flow(Flow(messages=messages, identity_keys=frozenset()), capture_end=10.0)
-    assert [p.kind for p in procedures][:1] == ["mobility-5gs-to-eps"], [(p.kind, p.start_frame) for p in procedures]
+    assert [(p.kind, p.direction) for p in procedures][:1] == [("tau", "5gs-to-eps")], \
+        [(p.kind, p.direction, p.start_frame) for p in procedures]

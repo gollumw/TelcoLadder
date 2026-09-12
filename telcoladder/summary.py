@@ -501,6 +501,16 @@ def _table(headers: list[str], rows: list[list[object]]) -> list[str]:
     return lines
 
 
+def _procedure_text(p: dict) -> str:
+    """程序欄：kind 加上屬性，例如 `handover (eps-to-5gs)`、`service-request (network)`。
+
+    方向與觸發者從 kind 名稱移成欄位之後（xDR 版本 4），只印 kind 會失去原本名字帶著的
+    資訊。屬性是引擎的值不是白話，所以不走 `_()`。
+    """
+    extras = [value for value in (p.get("direction"), p.get("trigger")) if value]
+    return f'{p["procedure"]} ({", ".join(extras)})' if extras else p["procedure"]
+
+
 def render_markdown(doc: dict) -> str:
     """把 `build()` 的 dict 排成 Markdown。**只排版，不另外算任何東西** ——
     JSON 與 Markdown 講的必須是同一組事實。"""
@@ -594,7 +604,7 @@ def render_markdown(doc: dict) -> str:
         rows = []
         for p in doc["procedures"]:
             rows.append([
-                p["supi"] or p.get("subscriber") or "—", p["procedure"],
+                p["supi"] or p.get("subscriber") or "—", _procedure_text(p),
                 f'{OUTCOME_MARK[p["outcome"]]} {p["outcome"]}',
                 f'{p["start_frame"]}–{p["end_frame"]}', f'{p["duration_s"]}s',
                 _ref_text(p["cause_ref"]) if p["cause_ref"]

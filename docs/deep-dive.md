@@ -197,7 +197,7 @@ AMF" inference.
 `HandoverPreparation` in both adapters and is matched exactly, because
 `HandoverPreparationResponse` is its prefix); `HandoverNotify` or Forward
 Relocation Complete Acknowledge closes it. The HandoverType IE gives the
-direction, so the segment is `handover-5gs-to-eps`; `ho_prep_s` (Required →
+direction, so the segment is `handover` with direction `5gs-to-eps`; `ho_prep_s` (Required →
 Command) and `ho_exec_s` (Command → Notify) are the two milestones. A
 `HandoverFailure` from the target eNB makes the segment a failure whose cause
 is the S1AP table's `no-radio-resources-available-in-target-cell`.

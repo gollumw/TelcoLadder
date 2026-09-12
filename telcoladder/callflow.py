@@ -343,6 +343,10 @@ def _render(
             "family": p.family,
             "category": p.category,
             "registration_type": p.registration_type,
+            # 2026-09-13：方向與觸發者從 kind 名稱移成欄位 —— 少了這兩欄，畫面會無聲地少掉
+            # 原本寫在名字裡的資訊（「EPS→5GS」、「網路觸發」）。
+            "direction": p.direction,
+            "trigger": p.trigger,
         }
         for p in procedures
     ]

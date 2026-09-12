@@ -67,14 +67,16 @@ def test_eps_fallback_cause_is_named_by_the_table() -> None:
 def test_the_cycle_is_cut_into_its_procedures(procs) -> None:
     kinds = Counter(p.kind for p in procs)
     assert kinds["eps-fallback"] == 2, kinds
-    assert kinds["handover-eps-to-5gs"] == 2, kinds
-    assert kinds["mobility-5gs-to-eps"] == 2, kinds
-    assert kinds["tau"] == 2, kinds          # 週期性 TAU，純 4G
+    # 方向是屬性不是名字（2026-09-13）：兩次 EPS→5GS 換手、兩次 5GS→EPS 閒置移動（TAU）。
+    assert Counter(p.direction for p in procs if p.kind == "handover") == {"eps-to-5gs": 2}, kinds
+    assert Counter(p.direction for p in procs if p.kind == "tau") == {"5gs-to-eps": 2, None: 2}, kinds
+    assert kinds["tau"] == 4, kinds          # 2 次週期性（純 4G）＋ 2 次 5GS→EPS 閒置移動
     # 兩次釋放各自折進它結尾的 eps-fallback（2026-09-13），不再自成一段。
     assert "ue-context-release" not in kinds, kinds
     assert sum(len(p.folded) for p in procs if p.kind == "eps-fallback") == 2
     assert kinds["registration"] == 3, kinds
-    assert "pdu-session-modification" not in kinds and "handover" not in kinds and "mobility-context-transfer" not in kinds
+    assert "pdu-session-modification" not in kinds and "context-transfer" not in kinds
+    assert all(p.direction for p in procs if p.kind == "handover"), "這份擷取檔沒有系統內的換手"
 
 
 def test_registration_types_and_outcomes(procs) -> None:
@@ -97,8 +99,8 @@ def test_every_procedure_has_a_family_and_a_category(procs) -> None:
     for expected in (
         ("registration", "5g", "registration"),
         ("eps-fallback", "interworking", "fallback"),
-        ("handover-eps-to-5gs", "interworking", "handover"),
-        ("mobility-5gs-to-eps", "interworking", "mobility"),
+        ("handover", "interworking", "handover"),
+        ("tau", "interworking", "mobility"),
         ("tau", "4g", "mobility"),
     ):
         assert expected in seen, (expected, sorted(seen))
@@ -109,7 +111,7 @@ def test_every_procedure_has_a_family_and_a_category(procs) -> None:
 
 def test_inbound_handover_direction_and_kpis(procs) -> None:
     """目標側：Forward Relocation Request 開段，HandoverType 給方向，Ack 與 Notify 給時延。"""
-    for p in (x for x in procs if x.kind == "handover-eps-to-5gs"):
+    for p in (x for x in procs if x.kind == "handover" and x.direction == "eps-to-5gs"):
         assert p.outcome == "success"
         assert p.ho_prep_s == pytest.approx(0.020, abs=0.002), "Forward Relocation Request → HandoverRequestAcknowledge"
         assert p.ho_exec_s == pytest.approx(0.080, abs=0.002), "Acknowledge → HandoverNotify"
@@ -118,13 +120,16 @@ def test_inbound_handover_direction_and_kpis(procs) -> None:
 
 def test_context_transfer_direction_comes_from_who_asked(procs) -> None:
     """兩側都擷取到：TAU（eNB↔MME）開的窗把 N26 的 context 交換吸進來，成為一段
-    `mobility-5gs-to-eps`，以 TAU accept 收尾。"""
-    moves = [x for x in procs if x.kind.startswith("mobility-")]
+    `tau`（方向 5GS→EPS），以 TAU accept 收尾。"""
+    moves = [x for x in procs if x.category == "mobility" and x.direction]
     assert len(moves) == 2
     for p in moves:
-        assert p.kind == "mobility-5gs-to-eps" and p.outcome == "success"
+        assert (p.kind, p.direction, p.outcome) == ("tau", "5gs-to-eps", "success")
         assert set(p.protocols) == {"gtpv2", "s1ap"}, p.protocols
-    taus = [x for x in procs if x.kind == "tau"]
+    # 系統內的週期性 TAU：沒有方向、純 S1AP。2026-09-13 起 `tau` 也包含上面那兩段跨系統的
+    # （它們吸收了 N26 的 GTPv2-C 交換），所以「純 S1AP」只對沒有方向的那兩段成立。
+    taus = [x for x in procs if x.kind == "tau" and x.direction is None]
+    assert len(taus) == 2, [(p.kind, p.direction) for p in procs if p.kind == "tau"]
     assert all(p.outcome == "success" and p.protocols == ("s1ap",) for p in taus)
 
 
