@@ -113,12 +113,27 @@ def test_procedure_outcomes_match_the_summary(ki, multi, diameter) -> None:
     for doc, analysis, _t in (ki, multi, diameter):
         summary = build_summary(analysis, source_name="x")
         expected = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0, "cancelled": 0}
-        for p in summary["procedures"]:
+        # 總覽數的是**場景**；摘要與 xDR 另外為折進場景的釋放各列一列（`folded_into`）。
+        scenes = [p for p in summary["procedures"] if p["folded_into"] is None]
+        for p in scenes:
             expected[p["outcome"]] += 1
-        assert doc["procedures"] == {"total": len(summary["procedures"]), **expected}
+        assert doc["procedures"] == {"total": len(scenes), **expected}
         assert [p["start_frame"] for p in doc["failed_procedures"]] == sorted(
-            p["start_frame"] for p in summary["procedures"] if p["outcome"] == "failure"
+            p["start_frame"] for p in scenes if p["outcome"] == "failure"
         )
+
+
+def test_the_overview_counts_scenarios_while_the_xdr_keeps_folded_releases() -> None:
+    """總覽與梯形圖數**場景**；xDR 仍為每一個折進場景的釋放輸出一列。兩者刻意不同 ——
+    總覽回答「這個訂戶做了什麼」，xDR 讓算釋放的消費端數得到釋放。
+
+    上一條測試用的三份擷取檔都沒有折疊，守不到這件事。
+    突變：總覽也把 `folded` 算進結局 → 總數多 2。
+    """
+    doc, analysis, _table = _overview("5gc-context-release")
+    rows = build_summary(analysis, source_name="x")["procedures"]
+    assert doc["procedures"]["total"] == 2
+    assert len(rows) == 4 and sum(1 for r in rows if r["folded_into"] is not None) == 2
 
 
 def test_failure_cards_cover_exactly_the_summary_failures(ki, multi) -> None:

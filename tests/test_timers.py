@@ -43,7 +43,7 @@ from telcoladder.model import Endpoint, Message
 from telcoladder.pipeline import Analysis, analyse
 from telcoladder.procedures import segment
 from telcoladder.tshark import TsharkNotFound, find_tshark
-from telcoladder.xdr import procedure_record
+from telcoladder.xdr import procedure_record, procedure_records
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RELEASE_5G = FIXTURES / "5gc-context-release" / "capture.pcap"
@@ -77,7 +77,8 @@ def _msg(frame: int, ts: float, label: str, protocol: str = "ngap", *,
 
 def test_a_release_six_seconds_after_an_unanswered_authentication_request_matches_t3560(release_5g) -> None:
     procs, _unassigned = segment(release_5g)
-    releases = {p.release_initiator: p for p in procs if p.kind == "ue-context-release"}
+    # 2026-09-13 起釋放折進它結尾的註冊段；釋放本身留在 `folded`，照獨立段定稿。
+    releases = {c.release_initiator: c for p in procs for c in p.folded}
     core = releases["core"]
     assert core.timer == "T3560", core
     assert core.timer_gap_s == pytest.approx(6.0, abs=0.001)
@@ -92,13 +93,19 @@ def test_a_release_six_seconds_after_an_unanswered_authentication_request_matche
         "而且上一則不是網路等回應的請求"
     )
     assert "T3" not in ran.note
-    # 其他段一律沒有。
-    assert all(p.timer is None for p in procs if p.kind != "ue-context-release")
+    # **母場景也帶著同一個吻合，而且是刻意的。** Authentication request 與 6 秒後的釋放
+    # Command 折疊後落在同一段裡、彼此相鄰 —— 讀場景的人最需要的正是這句解釋；釋放那一列
+    # （xDR 仍輸出）則保留它原本就有的同一句。兩處重複是結果，不是疏漏。
+    scene = next(p for p in procs if any(c is core for c in p.folded))
+    assert (scene.kind, scene.timer, scene.timer_frames) == ("registration", "T3560", (2, 3))
+    assert scene.duration == pytest.approx(6.015, abs=0.001), "時長是完整跨距：含那 6 秒的等待與釋放"
+    # 沒有釋放的段、以及訂戶 B 那個不吻合的場景，一律沒有。
+    assert all(p.timer is None for p in procs if p is not scene)
 
 
 def test_the_xdr_carries_the_match(release_5g) -> None:
     procs, _unassigned = segment(release_5g)
-    records = {r["release_initiator"]: r for r in map(procedure_record, procs)
+    records = {r["release_initiator"]: r for p in procs for r in procedure_records(p)
                if r["procedure"] == "ue-context-release"}
     assert records["core"]["timer"] == "T3560"
     assert records["core"]["timer_frames"] == [2, 3]

@@ -71,6 +71,8 @@ Each is documented in depth where it lives; every failure mode here is
 | the SDP media endpoint key is `(c= address, m= port)`, computed in one place; BYE and Subtract Reply release it | `identity.media_endpoint`, `lifecycle.py` | H.248 never joins its call, or two calls that reuse a gateway port merge |
 | the 4G S-TMSI key is capture-wide, not connection-scoped; a flow whose SUPIs only it (or a GTPv2-C sequence number) holds together is reported, not vetoed | `identity.s_tmsi`, `correlate.supi_bridges` | Paging and a UE returning on another eNB split off; or a cross-pool collision merges two subscribers unannounced |
 | a GTPv2-C transaction key is released by its response and never drags other keys along | `identity.gtpv2_transaction`, `lifecycle.SOLITARY` | a reused sequence number merges two subscribers, or closing a transaction orphans the tunnels its response carried |
+| a same-kind opener after a finished attempt is a new attempt - unless the opener is that attempt's own cancel | `procedures.segment_flow` (`_new_attempt`) | back-to-back cancelled handovers are cut mid-attempt and the tail is misfiled as 4G; or the two legs of one cancel split and the second half reports success |
+| a context release folds into the scenario it ends only when it is the next thing in that subscriber's flow - by position, never by frame number | `procedures._fold_releases` | frame numbers interleave on multi-subscriber captures, so frame adjacency silently stops folding; a looser rule attaches a release to a scenario that is not its own |
 | decode tree runs tshark two-pass (`-2`) | `decode.py` | cross-frame reassembly links vanish |
 | exactly one rendering implementation per judgement | `render_mermaid.py` + `web/` | two surfaces drift, no error |
 

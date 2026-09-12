@@ -70,7 +70,9 @@ def test_the_cycle_is_cut_into_its_procedures(procs) -> None:
     assert kinds["handover-eps-to-5gs"] == 2, kinds
     assert kinds["mobility-5gs-to-eps"] == 2, kinds
     assert kinds["tau"] == 2, kinds          # 週期性 TAU，純 4G
-    assert kinds["ue-context-release"] == 2, kinds
+    # 兩次釋放各自折進它結尾的 eps-fallback（2026-09-13），不再自成一段。
+    assert "ue-context-release" not in kinds, kinds
+    assert sum(len(p.folded) for p in procs if p.kind == "eps-fallback") == 2
     assert kinds["registration"] == 3, kinds
     assert "pdu-session-modification" not in kinds and "handover" not in kinds and "mobility-context-transfer" not in kinds
 
@@ -94,7 +96,6 @@ def test_every_procedure_has_a_family_and_a_category(procs) -> None:
     seen = {(p.kind, p.family, p.category) for p in procs}
     for expected in (
         ("registration", "5g", "registration"),
-        ("ue-context-release", "5g", "release"),
         ("eps-fallback", "interworking", "fallback"),
         ("handover-eps-to-5gs", "interworking", "handover"),
         ("mobility-5gs-to-eps", "interworking", "mobility"),
@@ -102,6 +103,8 @@ def test_every_procedure_has_a_family_and_a_category(procs) -> None:
     ):
         assert expected in seen, (expected, sorted(seen))
     assert all(p.family and p.category for p in procs)
+    # 折進場景的釋放照獨立段定稿，世代與類別照舊。
+    assert {(c.kind, c.family, c.category) for p in procs for c in p.folded} == {("ue-context-release", "5g", "release")}
 
 
 def test_inbound_handover_direction_and_kpis(procs) -> None:
