@@ -371,8 +371,15 @@ def role_contradictions(messages: list[Message]) -> dict[str, tuple[str, ...]]:
 #: Gx-only 的擷取檔仍然叫 PCEF —— 只有一票時不動它。
 ROLE_FAMILIES: tuple[frozenset[str], ...] = (
     frozenset({"PGW", "PCEF"}),
+    # Rx 的 AF 與 SIP 的 P-CSCF（2026-09-13）。同一個位址同時收到兩張最強層的票 —— SIP 從
+    # Contact 說它是 P-CSCF、Rx 的 AA 請求說它是 AF —— 那是一台 P-CSCF 在 Rx 上扮演 AF，不是矛盾。
+    # 沒有這一組時的症狀依端點鍵而不同：同一個鍵（同埠，或沒有 IP 層、以主機名為鍵的匯出）兩票
+    # 抵銷、只剩位址；不同埠則按埠拆成兩條泳道，同一台機器畫成兩個網元。
+    # **只在兩種票都到齊時才合併**：只有 Rx 的擷取檔仍然叫 AF —— AF 不一定是 P-CSCF，線路上沒有
+    # 別的證據時不猜。家族名取 P-CSCF：兩個名字都是線路事實，它比較具體。
+    frozenset({"AF", "P-CSCF"}),
 )
-_FAMILY_NAME = {frozenset({"PGW", "PCEF"}): "PGW"}
+_FAMILY_NAME = {frozenset({"PGW", "PCEF"}): "PGW", frozenset({"AF", "P-CSCF"}): "P-CSCF"}
 
 
 #: 依據種類 → 證據層（0 最強）。檔頭有各層的理由。**沒列的種類算最弱**：
@@ -719,7 +726,7 @@ DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
     (16777238, 272): ("PCEF", "PCRF"),   # Credit-Control
     (16777238, 258): ("PCRF", "PCEF"),   # Re-Auth —— PCRF 主動
     # ── 2026-09-05 用真封包驗過之後補的四個介面 ──
-    # Rx（App 16777236，TS 29.214）：AF（通常是 P-CSCF）向 PCRF 要資源。
+    # Rx（App 16777236，TS 29.214）：AF 向 PCRF 要資源。AF 不一定是 P-CSCF —— 同一台也出現在 SIP 上時見 `ROLE_FAMILIES`。
     (16777236, 265): ("AF", "PCRF"),     # AA
     (16777236, 275): ("AF", "PCRF"),     # Session-Termination
     (16777236, 258): ("PCRF", "AF"),     # Re-Auth —— PCRF 主動
@@ -756,7 +763,7 @@ PARTICIPANT_ORDER = (
     "MSC/VLR",
     # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
     # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
-    # Rx 的 AF 貼著 P-CSCF（它多半就是 P-CSCF）；Sh 的 AS 在 S-CSCF 之後；
+    # Rx 的 AF 貼著 P-CSCF（兩者可能是同一台，但不一定）；Sh 的 AS 在 S-CSCF 之後；
     # 3GPP AAA 貼著 HSS（SWx 的對端）。
     # SLF（Cx／Sh 的 redirect agent，2026-09-06）貼在 HSS 前面：查詢先到它，
     # 再被指到 HSS。MGC／MGW 是 H.248 的兩端（Iq／Mn／Mp 分不出來，故用中性名）。

@@ -7,7 +7,7 @@ CCR 又回應 RAR，工具正確留白，卻沒說是因為證據互斥。
 fixture 是 `diameter-user-dlt`（無 IP 層，端點是主機名 —— 所以這裡的角色
 是以主機名為鍵解出來的）。突變（都做過）：拔掉 `ROLE_FAMILIES` → pgw 消失
 （它同時收到 Gx 的 PCEF 票與 S6b 的 PGW 票）；拔掉 Rx 的 AA 與 STR 兩列 → af 消失；
-刪掉 YAML 的 3006 → `known` 變 False。
+刪掉 YAML 的 3006 → `known` 變 False；拔掉 {AF, P-CSCF} 這一組家族 → 同一台 P-CSCF 失去名字或被拆成兩條泳道。
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from telcoladder.causes import lookup
-from telcoladder.model import CauseRef, Endpoint, Message
+from telcoladder.model import NF_ROLE_HINTS_KEY, CauseRef, Endpoint, Message
 from telcoladder.nf import ROLE_FAMILIES, resolve_roles, role_contradictions
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark, user_dlt_pref
@@ -83,6 +83,43 @@ def test_gx_only_captures_still_say_pcef(diameter_pcap: Path) -> None:
     """對照：只有 Gx 證據時仍然叫 PCEF —— 家族名只在兩種票都到齊時才用。"""
     msgs = [m for f in analyse(diameter_pcap).flows for m in f.messages]
     assert resolve_roles(msgs)["198.51.100.41"] == "PCEF"
+
+
+def test_an_af_that_is_also_the_p_cscf_on_sip_is_one_p_cscf() -> None:
+    """Rx 的 AA 請求說這台是 AF，SIP 的 Contact 說它是 P-CSCF —— 兩張最強層的票，指的是同一台：
+    一台 P-CSCF 在 Rx 上扮演 AF。
+
+    兩種形狀都要守，因為沒有這一組家族時的症狀不同（兩種都在合併前實跑確認過）：
+
+    * **同一個端點鍵**（同埠，或沒有 IP 層、以主機名為鍵的匯出）：兩票抵銷，角色整個消失、只剩位址，
+      `role_contradictions` 報出 AF 與 P-CSCF。
+    * **不同的埠**（真實網路的常態）：按埠拆成兩條泳道，一條 P-CSCF、一條 AF —— 同一台機器畫成兩個網元。
+
+    對照組：只有 Rx 仍然叫 AF（AF 不一定是 P-CSCF，線路上沒有別的證據時不猜）；只有 SIP 叫 P-CSCF。
+    突變：拿掉 {AF, P-CSCF} 這一組 → 兩種形狀都在位址層判不出來。
+    """
+    ue, pcrf = Endpoint("192.0.2.10", 5060), Endpoint("192.0.2.30", 3868)
+    pcscf = "192.0.2.20"
+
+    def votes(sip_port: int, rx_port: int) -> tuple[Message, Message]:
+        sip = Message(frame=1, ts=0.1, protocol="sip", src=ue, dst=Endpoint(pcscf, sip_port), label="REGISTER",
+                      detail={NF_ROLE_HINTS_KEY: f"{ue.ip}=UE;{pcscf}=P-CSCF"})
+        aar = Message(frame=2, ts=0.2, protocol="diameter", src=Endpoint(pcscf, rx_port), dst=pcrf,
+                      label="AA Request", detail={"application-id": "16777236", "command-code": "265"})
+        return sip, aar
+
+    wrong: list[str] = []
+    for sip_port, rx_port in ((5060, 5060), (5060, 3868)):
+        sip, aar = votes(sip_port, rx_port)
+        shape = f"SIP 埠 {sip_port}、Rx 埠 {rx_port}"
+        # 兩種形狀都檢查完才判定 —— 在迴圈裡直接 assert 的話，第一種紅了就看不到第二種。
+        if resolve_roles([sip, aar]).get(pcscf) != "P-CSCF" or pcscf in role_contradictions([sip, aar]):
+            wrong.append(shape)
+        assert resolve_roles([aar]).get(pcscf) == "AF", f"{shape}：只有 Rx 時不猜它是 P-CSCF"
+        assert resolve_roles([sip]).get(pcscf) == "P-CSCF", shape
+    assert not wrong, f"這些形狀下同一台 P-CSCF 沒有得到一個名字：{wrong}"
+    assert frozenset({"AF", "P-CSCF"}) in ROLE_FAMILIES
+
 
 
 # ── 矛盾要說得出 ────────────────────────────────────────────────────────
