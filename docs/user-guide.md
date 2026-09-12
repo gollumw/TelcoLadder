@@ -384,7 +384,9 @@ protocol that carried it:
   exchanges sat inside a scenario.
 - **A Diameter exchange inside no window stands on its own** as an
   HSS-initiated scenario — `hss-cancel-location`, `hss-insert-subscriber-data`
-  and so on — in the 4G generation. A capture that contains only Diameter is
+  and so on — **in the generation its interface belongs to**: S6a/S6d and Gx are
+  4G, Cx/Dx and Sh are IMS. The Application-Id on the wire decides that, not the
+  command name. A capture that contains only Diameter is
   therefore all HSS-initiated scenarios, which is the honest reading: it shows
   no scenario at all. There is no longer a separate "Diameter" generation in
   the grouping. (The ladder's Diameter *tab* is unchanged; that is about which

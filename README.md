@@ -199,7 +199,8 @@ Each of these is a fixture in `tests/fixtures/` you can run yourself.
   subscriber was doing, not which protocol carried it**: the S6a exchange
   inside an attach is part of that attach, and an HSS answer of "unknown user"
   is that attach's failure. A Diameter exchange that belongs to no scenario
-  stands on its own as an HSS-initiated one.
+  stands on its own as an HSS-initiated one — under 4G for S6a/Gx and under IMS
+  for Cx/Sh, which the Application-Id decides.
 - **Reads Diameter through the DRA**: S6a/S6d, Cx/Dx, Sh, Rx, Gx, SWx and S6b,
   roles from who initiates which command, a request seen on both sides of a
   relay shown as one transaction with two hops, a relayed failure counted once.

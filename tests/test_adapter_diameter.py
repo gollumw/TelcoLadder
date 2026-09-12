@@ -486,14 +486,80 @@ def test_procedures_are_cut_by_session_id(analysis) -> None:
         ("hss-authentication-information", "success"),
         ("hss-update-location", "failure"),
     ]
-    # 沒有「Diameter」這個世代了：每一段都歸在 4G 的 HSS 觸發底下。
-    assert {(p.family, p.category) for p in procedures} == {("4g", "hss")}
+    # 沒有「Diameter」這個世代了：每一段都歸在**某個世代**的 HSS 觸發底下，
+    # 而世代看介面（下一條測試）。類別兩邊都是 `hss`。
+    assert {p.category for p in procedures} == {"hss"}
+    assert {p.family for p in procedures} == {"4g", "ims"}
     # 每一段都要指得回一個訂戶，而且失敗段要帶得出 cause。
     for p in procedures:
         assert p.supi, p.kind
         if p.outcome == "failure":
             assert p.cause, p.kind
 
+
+
+def test_the_cx_segments_are_ims_while_s6a_and_gx_stay_4g(analysis) -> None:
+    """**世代看線路上寫著的介面，不是命令名。**
+
+    這份擷取檔兩個世代都有，所以它是這條規則唯一驗得到的地方：Cx/Dx 的 UAR／MAR／SAR
+    是 I/S-CSCF ↔ HSS，發生在 IMS；S6a 與 Gx 是 EPC 的腿。
+
+    歸錯的症狀是靜默的 —— 使用者在 4G 那一段找一次 IMS 註冊的 Cx（或反過來），
+    而畫面看起來完全正常。
+
+    突變（都做過）：`_family_of` 的 IMS 分支拿掉 → 四段 Cx 掛回 4G；
+    `IMS_REFERENCE_POINTS` 收進 Gx → Gx 的兩段跟著變 IMS；`_diameter_segments`
+    不再把介面傳進去 → 全部回到 4G。
+    """
+    from telcoladder.procedures import segment
+
+    procedures, _unassigned = segment(analysis)
+    by_family: dict[str, set[str]] = {}
+    for proc in procedures:
+        by_family.setdefault(proc.family, set()).add(proc.kind)
+    assert by_family == {
+        "ims": {"hss-user-authorization", "hss-multimedia-auth", "hss-server-assignment"},
+        "4g": {"hss-authentication-information", "hss-update-location", "hss-credit-control"},
+    }
+    # 類別不變：兩個世代都是「訂戶資料那一側的事」。
+    assert {proc.category for proc in procedures} == {"hss"}
+
+
+def test_an_sh_exchange_outside_any_window_is_ims_too() -> None:
+    """Sh（AS ↔ HSS）在這份擷取檔裡沒有樣本 —— 用合成訊息驗，**不要讓「沒有樣本」
+    變成「沒有規則」**。同一段把介面換成 S6a 就回到 4G，那是這條測試的陰性對照。
+    """
+    from telcoladder.model import Endpoint, Flow, Message
+    from telcoladder.procedures import segment_flow
+
+    app, hss = Endpoint("10.0.0.5", 5, "AS"), Endpoint("10.0.0.4", 4, "HSS")
+
+    def family_of(interface: str) -> str:
+        messages = [
+            Message(frame=frame, ts=float(frame), protocol="diameter", src=app, dst=hss,
+                    label=label, detail={"session-id": "s1", "end-to-end-id": str(frame),
+                                         "reference_point": interface})
+            for frame, label in ((1, "User-Data Request"), (2, "User-Data Answer"))
+        ]
+        [proc] = segment_flow(Flow(messages=messages), capture_end=9.0)[0]
+        assert proc.kind == "hss-user-data", proc.kind
+        return proc.family
+
+    assert family_of("Sh") == "ims"
+    assert family_of("S6a/S6d") == "4g"
+
+
+def test_the_ims_reference_point_names_come_from_the_adapters_own_table() -> None:
+    """`IMS_REFERENCE_POINTS` 是字串比對 —— **打錯一個字的症狀是規則靜默不生效**，
+    沒有任何一層會報錯。所以名字必須正好是 adapter 從 Application-Id 查出來的那些，
+    而且正好是 Cx/Dx 與 Sh 那兩個 id。
+    """
+    from telcoladder.adapters.diameter import APPLICATIONS
+    from telcoladder.interfaces import IMS_REFERENCE_POINTS
+
+    assert IMS_REFERENCE_POINTS <= set(APPLICATIONS.values()), "名字不在 adapter 的表裡"
+    assert {app for app, name in APPLICATIONS.items()
+            if name in IMS_REFERENCE_POINTS} == {16777216, 16777217}
 
 def test_peer_maintenance_is_not_a_procedure(analysis) -> None:
     """CER / DWR 規範上就不帶 Session-Id —— 它們是連線維護，不是程序。

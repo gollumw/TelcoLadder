@@ -86,6 +86,21 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
 }
 
 
+#: 哪些參考點屬於 IMS。**分段層靠它決定一段 Diameter 的世代**：Cx/Dx 是
+#: I/S-CSCF ↔ HSS、Sh 是 AS ↔ HSS —— 兩條都發生在 IMS，而 S6a/S6d 是 EPC 的腿。
+#: 少了這份表，一次 IMS 註冊的三段 Cx 會被標成 4G 的「HSS 觸發」，掛在 EPC 底下，
+#: 而讀的人正在找的是另一個世代（`procedures._family_of`）。
+#:
+#: 字串與 `adapters/diameter.py` 的 `APPLICATIONS` 逐字相同 —— 線路上的 Application-Id
+#: 決定介面名，adapter 把它放進 `detail["reference_point"]`。**打錯一個字的症狀是
+#: 「這條規則靜默不生效」**，沒有任何一層會報錯，所以由 `tests/test_adapter_diameter.py`
+#: 拿 adapter 的表釘住。
+#:
+#: **Rx 刻意不收**：AF ↔ PCRF 是策略介面，即使那個 AF 多半就是 P-CSCF。
+#: Gx、SWx、S6b 同理 —— 它們都不是 IMS 的腿。
+IMS_REFERENCE_POINTS: frozenset[str] = frozenset({"Cx/Dx", "Sh"})
+
+
 def reference_point(protocol: str, src_role: str | None, dst_role: str | None) -> str | None:
     """這則訊息走在哪個參考點上。**查不到回 None，不猜。**
 
@@ -100,4 +115,4 @@ def reference_point(protocol: str, src_role: str | None, dst_role: str | None) -
     return _REFERENCE_POINTS.get((protocol, frozenset({src_role, dst_role})))
 
 
-__all__ = ["reference_point"]
+__all__ = ["reference_point", "IMS_REFERENCE_POINTS"]
