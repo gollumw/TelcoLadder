@@ -66,6 +66,19 @@ ULR／AIR、一次閒置移動裡的 CLR，工程師問的是「那次 attach �
 同型 opener 收段開新段；沒有失敗時照舊合併（SCP 兩腿、定時器重送之間沒有
 reject）。
 
+**收尾之後再來一個同型 opener，同樣是新的一次嘗試**（2026-09-13）。取消刻意
+不算失敗（見「結局判定」），所以上面那條檢查不到它：實測一份 MME trace，兩次
+背靠背的取消換手（各六則）被併成一段八則，剩下的四則自成一段，而那一段少了
+方向標記、世代掉回 4G。那份 trace 裡 6 組都是這個形狀；另有 1 次被取消的嘗試
+整個被併進其後成功的換手，結局報成 success —— 被取消過這件事在輸出裡根本看不到。
+修正後是 14 次被取消的 EPS→5GS 換手，段數 84 → 86：**沒有變少**，因為那些本來
+就是不同的嘗試；變的是邊界、世代與結局。
+
+**例外是取消自己。** `HandoverCancel` 與 `Relocation Cancel Request` 本身就是
+`handover` 的 opener，而 `_outcome_seen()` 把取消請求算成收場；不留這個例外，
+同一次取消的兩條腿會被拆成兩段，後半段再拿取消 opener 自己的成功標籤判定，
+於是一次被取消的換手報成 **success**。
+
 ## 結局判定
 
 視窗內掃描:**最後一則失敗之後若出現成功收段訊息 → success**（認證重同步
@@ -954,6 +967,21 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
         return any(any(s in m.label for s in active_kind.success)
                    or _own_label(m).startswith(CANCEL_LABELS) for m in window)
 
+    def _new_attempt(msg: Message) -> bool:
+        """這則同型 opener 是新的一次嘗試，還是同一次的重複觀測？
+
+        兩種算新的：**視窗裡已經有失敗**（reject 之後的同型 request，檔頭規則 ③），
+        以及**這次嘗試已經收尾**。
+
+        **取消自己是例外**，理由見檔頭規則 ③：取消請求本身是 `handover` 的 opener，
+        而 `_outcome_seen()` 把它算成收場 —— 少了例外，同一次取消的兩條腿會被拆開，
+        而後半段會報成 success。這與 `_outcome_seen()` 是**兩個不同的判準**，不要
+        合併：那個回答「可以進入安靜期收段了嗎」，這個回答「這是下一次嘗試嗎」。
+        """
+        if any(m.is_failure for m in window):
+            return True
+        return _outcome_seen() and not _own_label(msg).startswith(CANCEL_LABELS)
+
     for msg in others:
         # **結局之後的安靜期＝這段結束。** 沒有這一段，一份擷取檔的最後一段
         # 會吸收到檔尾，`duration` 因此嚴重灌水（見檔頭規則 ②）。
@@ -964,10 +992,10 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
         opened = _opens(msg)
         if opened is not None:
             # 同型開段訊息重複（SCP 轉送兩腿／NAS 重送）→ 併入現有段 ——
-            # **除非這段已經有失敗**：reject 之後的同型 request 是新的一次嘗試
-            # （檔頭規則 ③），併進去會把 reject 洗成 success。
+            # **除非這一次嘗試已經結束**（`_new_attempt`，檔頭規則 ③）：失敗之後、
+            # 或收尾之後的同型 opener 是下一次嘗試，併進去會把兩件事洗成一件。
             if (active_kind is not None and opened.name == active_kind.name
-                    and not any(m.is_failure for m in window)):
+                    and not _new_attempt(msg)):
                 window.append(msg)
                 last = msg
                 continue
