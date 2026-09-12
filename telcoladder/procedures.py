@@ -10,13 +10,23 @@ xDR）以程序為單位就是這個原因。
 本模組是 `Analysis` 之上的純函式（與 `flowtable` 同一個理由：判讀會迭代、
 會被反駁，放在資料契約外面）。
 
-## 兩套切段規則，依協定分家（2026-08-23）
+## 切段規則：SIP 分家，Diameter 跟著場景走（2026-09-12 修訂）
 
-NAS／NGAP 用下面那套視窗判定；**Diameter 用 Session-Id**，因為 RFC 6733 §8
-已經把邊界標在線路上了 —— 協定自己說得出來的東西不必用推的（見
-`_diameter_segments`）。兩套先分家再各自跑：混著跑的話，一則 Diameter 訊息
-落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那一段的耗時與訊息數
-會因此變成錯的，**且看起來完全合理**。
+**SIP 以 Call-ID 切段**（`_sip_segments`）—— 協定自己把邊界標在線路上，不必推。
+
+**Diameter 不分家。** 2026-08-23 到 2026-09-12 之間它以 Session-Id 自成一段、
+自成一個「Diameter」世代；那個分法對協定是對的，對讀的人是錯的：一次 attach 裡的
+ULR／AIR、一次閒置移動裡的 CLR，工程師問的是「那次 attach 成功了嗎」，不是
+「那筆 S6a 交易成功了嗎」。實測一份 MME trace：19 段 Diameter 有 18 段落在某個場景的
+視窗裡，被列成 19 個獨立段之後，那 18 段在畫面上與它們所屬的場景各據一方。
+
+所以現在 Diameter 跟著視窗走：**落在某個場景視窗內就是那個場景的一部分**（那一段的
+訊息數、耗時、結局都含它 —— ULR 被拒就是那次 attach 失敗），**落在所有視窗之外的**
+才以 Session-Id 自成一段，歸到 4G 的「HSS 觸發」（`_diameter_segments`，kind `hss-*`）。
+只有 Diameter 的擷取檔因此全部是 HSS 觸發段，那是誠實的：那份檔裡看不到任何場景。
+
+**代價寫明**：一則被中繼轉送而重複觀測到的 Diameter 訊息，`messages` 會照原始筆數算
+（與 `_diameter_segments` 的規則相同），`failures` 走 `_distinct` 去重 —— 一次失敗只算一次。
 
 ## 切段規則（NAS／NGAP）—— 從真實 fixture 逼出來的三個判定
 
@@ -193,7 +203,38 @@ KINDS: tuple[_Kind, ...] = (
     _Kind("tau", "Tracking area update request",
           ("Tracking area update accept", "Tracking area update complete")),
     _Kind("detach", "Detach request", ("Detach accept",)),
+    # ── 4G 的場景（2026-09-12）。實測一份 MME trace：這四種佔了未指派訊息的 45 則中的 45 則 ──
+    #
+    # **網路觸發的 service request 與 UE 觸發的是同一個 kind。** DDN（SGW 說「有下行資料」）
+    # 或 Paging 開段，UE 其後送的 `Service request` 是同型 opener，照規則 ③ 併進同一段 ——
+    # 分成兩段的話，畫面上會有一個「只有 Paging 的段」與一個「沒有前因的 service request」。
+    # 段名在 `_finish` 裡依視窗裡有沒有 DDN／Paging 改寫成 `service-request-network`。
+    _Kind("service-request", "Downlink Data Notification", ("Service accept", "InitialContextSetupResponse"),
+          exact=True),
+    _Kind("service-request", "Paging", ("Service accept", "InitialContextSetupResponse"), exact=True),
+    # 專屬承載的建立與釋放：GTPv2-C 開段（PGW 發起），S1AP 側是同一件事的無線腿。
+    _Kind("dedicated-bearer-activation", "Create Bearer Request",
+          ("Create Bearer Response",), exact=True),
+    _Kind("dedicated-bearer-deactivation", "Delete Bearer Request",
+          ("Delete Bearer Response",), exact=True),
+    # 承載修改：eNB 的 E-RABModificationIndication 開段，中間夾著 S11 的 Modify Bearer。
+    _Kind("bearer-modification", "E-RABModificationIndication",
+          ("E-RABModificationIndicationResponse",), exact=True),
+    # **取消本身也開段，而且 kind 就是 `handover`。** 換手被喊停之後那一段就收了
+    # （`_outcome_seen`），其後的取消往返（S1AP 的 HandoverCancel、S10／N26 的 Relocation
+    # Cancel）若沒有自己的開段規則，就會落在所有視窗之外 —— 實測一份 MME trace：24 則。
+    # 同 kind 表示它與還開著的那次換手會合併（規則 ③），不會把一次換手切成兩段。
+    _Kind("handover", "HandoverCancel", ("HandoverCancelResponse",), exact=True),
+    _Kind("handover", "Relocation Cancel Request", ("Relocation Cancel Response",), exact=True),
+    # PDN 連線釋放（S11 的 Delete Session）—— detach 或核網釋放的承載腿。
+    _Kind("pdn-connection-release", "Delete Session Request", ("Delete Session Response",), exact=True),
 )
+
+#: 這幾則一出現，那一段的 service request 就是**網路觸發**的（`_finish` 改寫段名）。
+NETWORK_TRIGGERS = ("Downlink Data Notification", "Paging")
+
+#: 換手被取消的訊號。S1AP 的 HandoverCancel 與 GTPv2-C 的 Relocation Cancel 是同一件事的兩層。
+CANCEL_LABELS = ("Relocation Cancel", "HandoverCancel")
 
 #: EPS fallback 的訊號：NGAP radioNetwork #36（名稱釘在 `data/causes/ngap_radioNetwork.yaml`，
 #: `tests/test_procedure_taxonomy.py` 對過 —— 這裡只放號碼，名稱永遠從表來）。
@@ -221,6 +262,13 @@ TAXONOMY: dict[str, tuple[str, str]] = {
     "mobility-5gs-to-eps": ("interworking", "mobility"),
     "mobility-eps-to-5gs": ("interworking", "mobility"),
     "mobility-context-transfer": ("interworking", "mobility"),
+    # 4G 的場景（2026-09-12）。`service-request-network` 的世代看協定（下面的規則）——
+    # 5G 也有網路觸發的 service request（Paging 走 NGAP）。
+    "service-request-network": ("4g", "service-request"),
+    "dedicated-bearer-activation": ("4g", "session"),
+    "dedicated-bearer-deactivation": ("4g", "session"),
+    "bearer-modification": ("4g", "session"),
+    "pdn-connection-release": ("4g", "session"),
     "sip-register": ("ims", "registration"),
     "sip-call": ("ims", "call"),
 }
@@ -229,21 +277,30 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = False) -> tuple[str, str]:
     """`TAXONOMY` 的查表，加上兩條看協定的規則：`ue-context-release` 與一般 `handover`
     在 4G 上是 S1AP 的，`diameter-*` 是動態命名的。"""
-    if kind.startswith("diameter-"):
-        return ("diameter", "other")
+    if kind.startswith("hss-"):
+        # 不在任何場景視窗內的 Diameter：HSS 主動的取消位置、訂閱資料更新，或一份只有
+        # Diameter 的擷取檔。**不另立一個「Diameter」世代** —— 分類的軸是用戶的場景，
+        # 不是協定（那個世代 2026-09-12 移除）。
+        return ("4g", "hss")
     if kind.startswith("sip-"):
         return ("ims", TAXONOMY.get(kind, ("ims", "other"))[1])
     family, category = TAXONOMY.get(kind, ("other", "other"))
     # `service-request` 兩個世代同名（NAS-5GS 與 NAS-EPS 都叫 `Service request`）—— 沒有這條，
     # 4G 的 Service request 會照表被歸成 5G。
-    if kind in ("ue-context-release", "handover", "service-request") or family == "other":
+    if kind in ("ue-context-release", "handover", "service-request",
+                "service-request-network") or family == "other":
         if kind == "ue-context-release":
             category = "release"
-        if "s1ap" in protocols or "nas-eps" in protocols:
+        # **只看接取與承載的協定決定世代。** Diameter 與 SGsAP 是跟著場景走的
+        # （2026-09-12 起它們會落在視窗裡），拿它們判世代的話，一個「GTPv2-C ＋ 一則 S6a」
+        # 的視窗兩條規則都不中，於是掉回 `TAXONOMY` 的預設值 5G —— 實測一份 MME trace：
+        # 一次被取消的換手因此被標成 5G。
+        core = tuple(p for p in protocols if p not in ("diameter", "sgsap"))
+        if "s1ap" in core or "nas-eps" in core:
             family = "4g"
-        elif "ngap" in protocols or "nas-5gs" in protocols:
+        elif "ngap" in core or "nas-5gs" in core:
             family = "5g"
-        elif kind == "handover" and protocols == ("gtpv2",):
+        elif kind == "handover" and core == ("gtpv2",):
             # 只看到 Forward Relocation 那幾則：N26（對端是 AMF）還是 S10（MME 池內），
             # 線路提示裡有沒有 AMF 就分得出來 —— `gtpv2.py` 從 F-TEID 介面型別讀的。
             family = "interworking" if hints_name_an_amf else "4g"
@@ -411,7 +468,9 @@ def _flow_subscriber(flow: Flow) -> str | None:
 def _finish(kind: _Kind, window: list[Message], supi: str | None,
             capture_end: float, subscriber: str | None = None,
             previous: Message | None = None) -> Procedure:
-    failures = [m for m in window if m.is_failure]
+    # **失敗走去重**：視窗裡可能有被中繼轉送而重複觀測到的 Diameter 訊息（`_distinct`），
+    # 不去重的話一次失敗會照腿數倍增。`messages` 仍記原始筆數 —— 兩個基準不同是刻意的。
+    failures = [m for m in _distinct(window) if m.is_failure]
     last_success = max(
         (i for i, m in enumerate(window)
          if any(s in m.label for s in kind.success)),
@@ -477,6 +536,10 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
     elif kind.name == "tau" and any(_own_label(m) == "Context Request" for m in window):
         # 兩側都擷取到：eNB↔MME 的 TAU 與 MME↔AMF 的 context 交換是同一次移動。
         kind_name = "mobility-5gs-to-eps"
+    elif kind.name == "service-request" and any(
+            _own_label(m).startswith(NETWORK_TRIGGERS) for m in window):
+        # DDN 或 Paging 起頭 —— 是網路要找這個 UE，不是 UE 自己要服務。排障的第一個分岔。
+        kind_name = "service-request-network"
     elif kind.name == "mobility-context-transfer":
         # 誰來要 context，UE 就是去了對方那邊。角色是 `nf.apply_roles` 判的線路事實；
         # 判不出來就留通用名，不猜方向。
@@ -486,6 +549,14 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         kind_name, tuple(sorted({m.protocol for m in window})),
         hints_name_an_amf=any("=AMF" in m.detail.get(NF_ROLE_HINTS_KEY, "") for m in window),
     )
+
+    # **被取消的換手不是失敗的換手。** 來源側改變主意（或目標側沒有 context）時，線路上是
+    # Relocation Cancel／HandoverCancel，而收到的回應帶著一個錯誤 cause —— 照結局判定會被
+    # 標成失敗，而那會讓「換手成功率」把每一次取消都算成網路故障。實測一份 MME trace：
+    # 6 次 EPS→5GS 換手全是這個形狀。取消保留 cause（它說明了為什麼取消），但不算失敗。
+    if outcome != "success" and kind_name.startswith("handover") and any(
+            _own_label(m).startswith(CANCEL_LABELS) for m in window):
+        outcome = "cancelled"
 
     return Procedure(
         kind=kind_name,
@@ -536,17 +607,21 @@ _HANDOVER_KIND_BY_TYPE = {
 _DIAMETER = "diameter"
 
 
-def _command_slug(label: str) -> str:
-    """`"3GPP-Update-Location Request"` → `"diameter-update-location"`。
+def _hss_kind(label: str) -> str:
+    """`"3GPP-Cancel-Location Request"` → `"hss-cancel-location"`。
 
-    去掉 `Request`／`Answer` 後綴與 `3GPP-` 前綴 —— 前者是方向不是程序，
-    後者對每個 3GPP 命令都一樣，留著只是雜訊。認不得的命令會是
-    `diameter-command-999`，那是誠實的「我不知道這是什麼」。
+    去掉 `Request`／`Answer` 後綴與 `3GPP-` 前綴 —— 前者是方向不是程序，後者對每個
+    3GPP 命令都一樣，留著只是雜訊。認不得的命令會是 `hss-command-999`，那是誠實的
+    「我不知道這是什麼」。
+
+    **前綴是 `hss-` 而不是 `diameter-`**（2026-09-12）：分類的軸是用戶的場景，
+    而這些段全是「訂戶資料那一側主動來的事」—— 取消位置、訂閱資料更新。
+    協定名留在 `Procedure.protocols` 裡，沒有資訊遺失。
     """
     name = label.rsplit(" ", 1)[0]
     if name.upper().startswith("3GPP-"):
         name = name[5:]
-    return "diameter-" + name.lower().replace(" ", "-")
+    return "hss-" + name.lower().replace(" ", "-")
 
 
 def _distinct(messages: list[Message]) -> list[Message]:
@@ -580,7 +655,10 @@ def _distinct(messages: list[Message]) -> list[Message]:
 
 def _diameter_segments(messages: list[Message], supi: str | None,
                        capture_end: float, subscriber: str | None = None) -> tuple[list[Procedure], list[Message]]:
-    """Diameter 以 **Session-Id** 為單位切段，不用 NAS 那套視窗判定。
+    """**視窗之外的** Diameter 以 Session-Id 為單位切段，不用 NAS 那套視窗判定。
+
+    2026-09-12 起這裡只收「不屬於任何場景」的那些（`segment_flow` 先讓視窗挑走）——
+    段名是 `hss-*`、世代是 4G、類別是 `hss`。
 
     ## 為什麼是 Session-Id
 
@@ -626,7 +704,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         # 段名取**開段的那個命令**。同一個 session 上有多種命令時（Gx 的
         # CCR-I/U/T 其實都是 272）第一個請求就是它的身分。
         opener = requests[0] if requests else distinct[0]
-        kind = _command_slug(opener.label)
+        kind = _hss_kind(opener.label)
 
         if failed:
             outcome = "failure"
@@ -661,8 +739,10 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             protocols=tuple(sorted({m.protocol for m in window})),
             sequence=_match_sequence(failed),
             note=note,
-            family="diameter",
-            category="other",
+            # **世代與類別只有一份定義**（`_family_of`）。在這裡另寫一次 `("4g", "hss")`
+            # 的話，那個函式裡的 `hss-` 分支就成了沒有人走的死碼 —— 而兩份定義遲早會漂。
+            **dict(zip(("family", "category"),
+                       _family_of(kind, tuple(sorted({m.protocol for m in window}))))),
         ))
     return procedures, unassigned
 
@@ -825,13 +905,11 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     # **先按協定分家，再各自切段。** 兩套判準互不干擾 —— 混著跑的話，一則
     # Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗吸進去，而那個
     # 視窗的耗時與訊息數會因此變成錯的（而且看起來完全合理）。
-    diameter = [m for m in flow.messages if m.protocol == _DIAMETER]
+    # **只有 SIP 分家**（Call-ID 是協定自己標的邊界）。Diameter 跟著視窗走 ——
+    # 檔頭「切段規則」那一節說明為什麼 2026-09-12 改成這樣。
     sip = [m for m in flow.messages if m.protocol == _SIP]
-    others = [m for m in flow.messages if m.protocol not in (_DIAMETER, _SIP)]
-    procedures, unassigned = _diameter_segments(diameter, supi, capture_end, subscriber)
-    sip_procedures, sip_unassigned = _sip_segments(sip, supi, capture_end, subscriber)
-    procedures += sip_procedures
-    unassigned += sip_unassigned
+    others = [m for m in flow.messages if m.protocol != _SIP]
+    procedures, unassigned = _sip_segments(sip, supi, capture_end, subscriber)
 
     active_kind: _Kind | None = None
     window: list[Message] = []
@@ -848,9 +926,15 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
         active_kind, window = None, []
 
     def _outcome_seen() -> bool:
-        """視窗裡已經出現過收段訊息了嗎。"""
+        """視窗裡已經出現過收段訊息了嗎。
+
+        **取消也算收場**（2026-09-12）：換手被喊停之後不會再有 HandoverNotification，
+        少了這一條，那個視窗會一路開到下一個開段訊息為止 —— 其後十秒才來的 HSS 交換
+        會被吸進「那次換手」，而那一段的耗時與訊息數看起來完全合理。
+        """
         assert active_kind is not None
-        return any(any(s in m.label for s in active_kind.success) for m in window)
+        return any(any(s in m.label for s in active_kind.success)
+                   or _own_label(m).startswith(CANCEL_LABELS) for m in window)
 
     for msg in others:
         # **結局之後的安靜期＝這段結束。** 沒有這一段，一份擷取檔的最後一段
@@ -891,6 +975,16 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             unassigned.append(msg)
         last = msg
     close()
+
+    # 落在所有視窗之外的 Diameter：以 Session-Id 自成一段，歸到 4G 的「HSS 觸發」。
+    # 沒有 Session-Id 的（CER／DWR／DPR）仍留在未指派堆 —— 那是連線維護，不是程序。
+    stray = [m for m in unassigned if m.protocol == _DIAMETER]
+    if stray:
+        unassigned = [m for m in unassigned if m.protocol != _DIAMETER]
+        hss, leftover = _diameter_segments(stray, supi, capture_end, subscriber)
+        procedures += hss
+        unassigned += leftover
+
     procedures.sort(key=lambda p: p.start_frame)
     return procedures, unassigned
 

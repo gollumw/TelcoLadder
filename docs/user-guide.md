@@ -371,6 +371,33 @@ field experience, written by a person, and a citation would be invented.
 
 ---
 
+### Scenarios, not protocols (2026-09-12)
+
+A procedure is named after **what the subscriber was doing**, never after the
+protocol that carried it:
+
+- **A Diameter exchange inside a scenario's window belongs to that scenario.**
+  The ULR/AIR of an attach, the CLR of an idle move — they are part of that
+  attach or that move, and their outcome is part of it too: an HSS answer of
+  "unknown user" makes *that attach* a failure, even though every NAS and S1AP
+  message in the window looks fine. Measured on an MME trace: 18 of 19 Diameter
+  exchanges sat inside a scenario.
+- **A Diameter exchange inside no window stands on its own** as an
+  HSS-initiated scenario — `hss-cancel-location`, `hss-insert-subscriber-data`
+  and so on — in the 4G generation. A capture that contains only Diameter is
+  therefore all HSS-initiated scenarios, which is the honest reading: it shows
+  no scenario at all. There is no longer a separate "Diameter" generation in
+  the grouping. (The ladder's Diameter *tab* is unchanged; that is about which
+  interface a message rode, not about what the subscriber was doing.)
+- **4G scenarios**: a service request is marked *network-triggered* when a
+  Downlink Data Notification or a Paging started it — the first fork when
+  someone asks why the UE woke up — and dedicated bearer setup, modification
+  and release are named as such rather than left as loose messages.
+- **A handover that ends in a Relocation Cancel or HandoverCancel is
+  `cancelled`**, the fifth outcome. It is not counted as a failure: someone
+  called it off, the network did not break. On the same MME trace six handovers
+  changed from "failed" to "cancelled".
+
 ### Calls (SIP) are procedures too
 
 Since 2026-09-06 a SIP dialog is one procedure: `sip-call` for an INVITE

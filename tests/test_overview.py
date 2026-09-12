@@ -112,7 +112,7 @@ def test_a_clean_capture_is_green_and_an_empty_one_says_empty() -> None:
 def test_procedure_outcomes_match_the_summary(ki, multi, diameter) -> None:
     for doc, analysis, _t in (ki, multi, diameter):
         summary = build_summary(analysis, source_name="x")
-        expected = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0}
+        expected = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0, "cancelled": 0}
         for p in summary["procedures"]:
             expected[p["outcome"]] += 1
         assert doc["procedures"] == {"total": len(summary["procedures"]), **expected}

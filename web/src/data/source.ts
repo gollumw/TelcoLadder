@@ -190,7 +190,7 @@ export interface CallFlowParticipant {
  *  frame 範圍過濾。兩邊各存一份訊息會漂移，而且白白多送一份。 */
 export interface CallFlowProcedure {
   kind: string;
-  outcome: "success" | "failure" | "incomplete" | "ended-by-user";
+  outcome: "success" | "failure" | "incomplete" | "ended-by-user" | "cancelled";
   /** 終端 cause（最後一則失敗的）。 */
   cause: string | null;
   /** 起因（第一則失敗的）。**只在與終端不同時才有** —— ki-mismatch 的終端
@@ -291,7 +291,7 @@ export interface CallRow {
   callee: string | null;
   calleeMsisdn: string | null;
   subscriber: string | null;
-  outcome: "success" | "failure" | "incomplete" | "ended-by-user";
+  outcome: "success" | "failure" | "incomplete" | "ended-by-user" | "cancelled";
   cause: string | null;
   /** INVITE 的最終回應碼（200／486／487／503…）。沒等到就是 null。 */
   finalStatus: number | null;
@@ -516,7 +516,7 @@ export interface OverviewNotVisible {
 export interface Overview {
   verdict: "red" | "amber" | "green" | "empty";
   subscribers: { total: number; red: number; amber: number; green: number; unattributedFlows: number };
-  procedures: { total: number; success: number; failure: number; incomplete: number; "ended-by-user": number };
+  procedures: { total: number; success: number; failure: number; incomplete: number; "ended-by-user": number; cancelled: number };
   events: { failures: number; unanswered: number; retrans: number };
   notVisible: OverviewNotVisible;
   causes: OverviewCause[];

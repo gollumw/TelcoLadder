@@ -189,11 +189,17 @@ Each of these is a fixture in `tests/fixtures/` you can run yourself.
   the scopes described above. On a production trace with TLS on SBI and
   ECIES-protected SUCIs the N2 side still forms its own per-UE flow; what
   could not be read is counted and reported, not silently dropped.
-- **Splits a subscriber's traffic into procedures** — registration, attach,
-  PDU session, service request, deregistration, context release, handover,
-  IMS registration and call — each with outcome, cause, first failure,
-  duration, and where applicable the initiator, the matched timer, or the
-  handover preparation and execution times.
+- **Splits a subscriber's traffic into scenarios** — registration, attach,
+  PDU session, service request (UE- or network-triggered), dedicated bearer
+  setup, modification and release, deregistration, context release, handover
+  (including one that was **cancelled**, which is not a failure), idle
+  mobility, IMS registration and call — each with outcome, cause, first
+  failure, duration, and where applicable the initiator, the matched timer, or
+  the handover preparation and execution times. **The axis is what the
+  subscriber was doing, not which protocol carried it**: the S6a exchange
+  inside an attach is part of that attach, and an HSS answer of "unknown user"
+  is that attach's failure. A Diameter exchange that belongs to no scenario
+  stands on its own as an HSS-initiated one.
 - **Reads Diameter through the DRA**: S6a/S6d, Cx/Dx, Sh, Rx, Gx, SWx and S6b,
   roles from who initiates which command, a request seen on both sides of a
   relay shown as one transaction with two hops, a relayed failure counted once.

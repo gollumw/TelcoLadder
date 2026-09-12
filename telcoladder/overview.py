@@ -181,7 +181,7 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
 
     # ── 程序結局 ───────────────────────────────────────────────────────
     end = capture_end(analysis)
-    outcomes = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0}
+    outcomes = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0, "cancelled": 0}
     failed_procedures: list[dict] = []
     for flow_id, flow in enumerate(analysis.flows):
         segments, _unassigned = segment_flow(flow, capture_end=end)

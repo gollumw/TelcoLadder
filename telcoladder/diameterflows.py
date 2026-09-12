@@ -59,6 +59,8 @@ DIAMETER = "diameter"
 #: 結局的完整詞彙 —— 與 `procedures.Procedure.outcome` 同一組。Diameter 的切段只會給前三個
 #: （`ended-by-user` 是 SIP 通話的：忙線、拒接、取消），但這裡列全：少認一個值的症狀是
 #: 前端一段沒有顏色，而且不報錯（`tests/test_sip_calls.py` 掃這件事）。
+#: 這個視圖沒有 `cancelled`（那是被取消的換手，`procedures._finish`）—— 一筆 Diameter
+#: 交易只有收到答覆、收到錯誤、或沒等到三種下場。列在這裡是為了讓下一個讀的人知道它不是漏的。
 OUTCOMES = ("success", "failure", "incomplete", "ended-by-user")
 
 #: 流程把手的前綴：`/callflow?diameter=d:3`。位置索引，與 `identities.FLOW_HANDLE_PREFIX`

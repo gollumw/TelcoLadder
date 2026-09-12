@@ -242,7 +242,8 @@ def test_outcomes_agree_with_the_subscriber_ladder(analysis, doc) -> None:
         ladder = events(analysis, supi)
         assert "error" not in ladder
         for proc in ladder["procedures"]:
-            if not proc["kind"].startswith("diameter-"):
+            # 視窗之外的 Diameter 段（這份擷取檔全部是）2026-09-12 起叫 `hss-*`。
+            if not proc["kind"].startswith("hss-"):
                 continue
             session_id = next(
                 e["session_id"] for e in ladder["events"]
