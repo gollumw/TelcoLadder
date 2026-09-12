@@ -108,6 +108,7 @@ from dataclasses import dataclass, field
 from telcoladder import timers
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
+from telcoladder.interfaces import IMS_REFERENCE_POINTS
 from telcoladder.causes import is_user_outcome
 from telcoladder.model import ( NF_ROLE_HINTS_KEY,
     RELEASE_INITIATOR_KEY, CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef,
@@ -274,13 +275,24 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 }
 
 
-def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = False) -> tuple[str, str]:
+def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = False,
+               interfaces: tuple[str, ...] = ()) -> tuple[str, str]:
     """`TAXONOMY` 的查表，加上兩條看協定的規則：`ue-context-release` 與一般 `handover`
     在 4G 上是 S1AP 的，`diameter-*` 是動態命名的。"""
     if kind.startswith("hss-"):
         # 不在任何場景視窗內的 Diameter：HSS 主動的取消位置、訂閱資料更新，或一份只有
         # Diameter 的擷取檔。**不另立一個「Diameter」世代** —— 分類的軸是用戶的場景，
         # 不是協定（那個世代 2026-09-12 移除）。
+        #
+        # **世代看線路上寫著的介面**（2026-09-13）：Cx/Dx 與 Sh 一樣是「HSS 那一側的事」，
+        # 但它們發生在 IMS（I/S-CSCF ↔ HSS、AS ↔ HSS）。都歸 4G 的話，一次 IMS 註冊的
+        # 三段 Cx 會掛在 EPC 底下 —— 而那是另一個世代的事。介面來自 Application-Id
+        # （`interfaces.IMS_REFERENCE_POINTS`），不是從命令名猜的。
+        #
+        # 判準是 `all`：一段裡只要混到 EPC 的腿就維持 4G。**寧可標得保守** ——
+        # 標錯世代的症狀是使用者在 4G 那一段找不到他要的東西，而畫面看起來很正常。
+        if interfaces and all(name in IMS_REFERENCE_POINTS for name in interfaces):
+            return ("ims", "hss")
         return ("4g", "hss")
     if kind.startswith("sip-"):
         return ("ims", TAXONOMY.get(kind, ("ims", "other"))[1])
@@ -706,6 +718,11 @@ def _diameter_segments(messages: list[Message], supi: str | None,
         opener = requests[0] if requests else distinct[0]
         kind = _hss_kind(opener.label)
 
+        # 這一段走在哪些參考點上。**線路上寫的**（Application-Id → adapter 的
+        # `detail["reference_point"]`），世代靠它分（`_family_of` 的 `hss-` 分支）。
+        interfaces = tuple(sorted({name for m in window
+                                   if (name := m.detail.get("reference_point"))}))
+
         if failed:
             outcome = "failure"
             cause = _cause_text(failed[-1])
@@ -742,7 +759,8 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             # **世代與類別只有一份定義**（`_family_of`）。在這裡另寫一次 `("4g", "hss")`
             # 的話，那個函式裡的 `hss-` 分支就成了沒有人走的死碼 —— 而兩份定義遲早會漂。
             **dict(zip(("family", "category"),
-                       _family_of(kind, tuple(sorted({m.protocol for m in window}))))),
+                       _family_of(kind, tuple(sorted({m.protocol for m in window})),
+                                  interfaces=interfaces))),
         ))
     return procedures, unassigned
 
