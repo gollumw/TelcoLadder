@@ -28,11 +28,19 @@ from telcoladder.pipeline import Analysis
 from telcoladder.procedures import Procedure, segment
 
 #: schema 版本。破壞性變更才遞增 —— 消費端靠它決定要不要拒讀。
-XDR_VERSION = 2
+#:
+#: **3（2026-09-13）：context 釋放折進它結尾的那個場景。** 欄位只增不減（`folded_into`），
+#: 但語意變了：場景列的 `end_frame`／`messages`／`duration_s` 現在包含那次釋放，並帶著
+#: `release_initiator` 與 `release_cause`；原本的釋放列仍在，改標上 `folded_into`（所屬場景的
+#: `start_frame`）。**逐列加總 `messages` 的消費端要跳過帶 `folded_into` 的列**，否則重複計算。
+XDR_VERSION = 3
 
 
-def procedure_record(p: Procedure) -> dict:
-    """一段程序的 xDR 列。`summary` 也用同一份 —— 兩邊各寫一次必然漂移。"""
+def procedure_record(p: Procedure, folded_into: int | None = None) -> dict:
+    """一段程序的 xDR 列。`summary` 也用同一份 —— 兩邊各寫一次必然漂移。
+
+    `folded_into`：這一列是折進某個場景的釋放時，那個場景的 `start_frame`；否則 None。
+    要展開一整段（含折進來的釋放）用 `procedure_records`。"""
     return {
         "procedure": p.kind,
         "supi": p.supi,
@@ -67,8 +75,8 @@ def procedure_record(p: Procedure) -> dict:
             if p.release_cause is not None else None
         ),
         "final_status": p.final_status,
-        # `ue-context-release` 段是誰先開口的（`"ran"`／`"core"`）；其他段 null。
-        # 加欄不升版（檔頭規則 ②）。
+        # 段裡有 context 釋放時是誰先開口的（`"ran"`／`"core"`）—— 獨立的釋放段，或折進
+        # 這個場景的釋放（版本 3）；沒有釋放的段 null。
         "release_initiator": p.release_initiator,
         # 收場的間隔吻合哪個 NAS 定時器的預設值（`timers.py`）；沒吻合全 null。
         # **吻合不是證實** —— 欄名刻意不叫 timeout。加欄不升版。
@@ -82,7 +90,24 @@ def procedure_record(p: Procedure) -> dict:
         "family": p.family,
         "category": p.category,
         "registration_type": p.registration_type,
+        # 折進某個場景的釋放：那個場景的 `start_frame`；其他列 null（版本 3，見 `XDR_VERSION`）。
+        "folded_into": folded_into,
     }
+
+
+def procedure_records(p: Procedure) -> list[dict]:
+    """一段程序的全部 xDR 列：這一段，再加上折進它的每一個釋放各一列。
+
+    **xDR 與 `summary` 都走這裡**：兩邊各展開一次的話，列的集合或順序遲早會不同，而
+    `tests/test_summary.py` 的 `test_procedures_match_xdr` 就是在守這件事。
+    """
+    return [procedure_record(p)] + [procedure_record(child, folded_into=p.start_frame) for child in p.folded]
+
+
+def row_order(record: dict) -> tuple:
+    """xDR 與 `summary` 共用的列順序。折進場景的釋放依自己的 `start_frame` 排入，
+    多用戶檔裡可能與別人的段交錯 —— 所以兩邊必須用同一把鍵，不能各自排。"""
+    return (record["start_frame"], record["supi"] or "")
 
 
 def cause_rollup(analysis: Analysis) -> list[dict]:
@@ -121,7 +146,7 @@ def build(analysis: Analysis, *, source_name: str) -> dict:
     return {
         "xdr_version": XDR_VERSION,
         "source": source_name,
-        "procedures": [procedure_record(p) for p in procedures],
+        "procedures": sorted((r for p in procedures for r in procedure_records(p)), key=row_order),
         # **未指派不是丟掉。** 心跳、NGSetup、歸不了戶的 SBI 交換都在這裡 ——
         # 消費端要能對帳:assigned + unassigned == total。
         "messages_total": total,
@@ -137,4 +162,4 @@ def dumps(analysis: Analysis, *, source_name: str) -> str:
                       ensure_ascii=False, indent=2) + "\n"
 
 
-__all__ = ["XDR_VERSION", "build", "cause_rollup", "dumps", "procedure_record"]
+__all__ = ["XDR_VERSION", "build", "cause_rollup", "dumps", "procedure_record", "procedure_records", "row_order"]

@@ -454,6 +454,22 @@ def test_procedures_match_xdr(e2e) -> None:
     assert stripped == xdr_rows
 
 
+def test_procedures_match_xdr_when_releases_fold() -> None:
+    """同上，但這份擷取檔有釋放折進場景。展開與排序只要兩邊各寫一份就會分歧 ——
+    `5gc-e2e` 沒有折疊，上一條守不到。
+    突變：`summary` 不展開 `folded` → 少兩列。
+    """
+    from telcoladder import xdr
+
+    analysis = analyse(FIXTURES / "5gc-context-release" / "capture.pcap")
+    doc = summary.build(analysis, source_name="x")
+    xdr_rows = xdr.build(analysis, source_name="x")["procedures"]
+    stripped = [{k: v for k, v in p.items() if k not in {"cause_ref", "first_failure_ref"}}
+                for p in doc["procedures"]]
+    assert stripped == xdr_rows
+    assert sum(1 for r in xdr_rows if r["folded_into"] is not None) == 2
+
+
 @pytest.mark.parametrize("name", ALL_FIXTURES)
 def test_markdown_stays_within_budget(name: str) -> None:
     analysis = analyse(FIXTURES / name / "capture.pcap")

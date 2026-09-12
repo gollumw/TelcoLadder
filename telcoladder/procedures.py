@@ -380,15 +380,18 @@ class Procedure:
     CANCEL 永遠是主叫。"""
     release_cause: "CauseRef | None" = None
     """釋放原因的出處：BYE／CANCEL 的 Reason 標頭（Q.850 或 SIP），沒有 Reason 時
-    是結束這通電話的最終回應碼。文字由呈現層查表。"""
+    是結束這通電話的最終回應碼。文字由呈現層查表。
+    **非通話段**（2026-09-13）：段裡有 context 釋放時，是那則釋放帶的 Cause IE（正常釋放也有）。
+    """
     final_status: int | None = None
     """INVITE 的最終回應碼（200、486、487、503…）。沒等到就是 None。"""
 
     release_initiator: str | None = None
-    """`ue-context-release` 段：`"ran"`（gNB／eNB 先送了 ReleaseRequest）或
+    """段裡有 context 釋放時：`"ran"`（gNB／eNB 先送了 ReleaseRequest）或
     `"core"`（AMF／MME 直接下 Command，前面沒有無線側的請求）。**線路事實**：
-    取自段的第一則訊息是哪一種（adapter 填 `RELEASE_INITIATOR_KEY`）。
-    其他 kind 一律 None。"""
+    取自段裡**第一則**帶 `RELEASE_INITIATOR_KEY` 的訊息。獨立的釋放段就是它的開段
+    訊息；**折進場景的釋放**（`folded`）讓那個場景也帶著它 ——「這次服務請求最後是
+    無線側先放掉的」。沒有釋放的段一律 None。"""
 
     timer: str | None = None
     """這段的收場（釋放／拒絕／失敗）距離網路上一則等回應的請求，**吻合**哪個
@@ -401,6 +404,7 @@ class Procedure:
 
     # ── 換手的 KPI（2026-09-09）。非換手段一律 None：沒量到的不填。
     ho_prep_s: float | None = None
+    """準備時延：HandoverRequired 到 HandoverCommand（來源側等目標側準備好資源）。"""
     #: 世代與類別（`TAXONOMY`／`_family_of`）：畫面把 97 顆晶片收成十來組靠的就是它。
     family: str | None = None
     category: str | None = None
@@ -408,9 +412,15 @@ class Procedure:
     #: `initial-registration`／`mobility-registration-updating`／…；非註冊段 null。
     #: 「回 5G 之後的行動更新註冊 20 次全失敗」與「初始註冊失敗」是兩種不同的故障。
     registration_type: str | None = None
-    """準備時延：HandoverRequired 到 HandoverCommand（來源側等目標側準備好資源）。"""
     ho_exec_s: float | None = None
     """執行時延：HandoverCommand 到 HandoverNotify（UE 真的切過去了）。"""
+
+    folded: "tuple[Procedure, ...]" = ()
+    """折進這一段的 context 釋放（`_fold_releases`），各自照獨立段定稿。
+
+    這一段的 `messages`、`end_frame`、`duration` **已經包含**它們 —— 畫面與守恆律看這一段。
+    xDR 另外為每一個輸出一列並標上 `folded_into`（`xdr.procedure_records`），讓算釋放的
+    消費端仍數得到。**逐列加總 `messages` 要跳過帶 `folded_into` 的列**，否則重複計算。"""
 
 
 def _own_label(msg: Message) -> str:
@@ -583,6 +593,10 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
             _own_label(m).startswith(CANCEL_LABELS) for m in window):
         outcome = "cancelled"
 
+    # 釋放：段裡第一則帶發起方鍵的訊息。語意與先前「看第一則」相同 —— 獨立的釋放段逐位元組
+    # 不變；折進場景的釋放在視窗中段（`_fold_releases`），所以不能再只看 `window[0]`。
+    release_opener = next((m for m in window if RELEASE_INITIATOR_KEY in m.detail), None)
+
     return Procedure(
         kind=kind_name,
         supi=supi,
@@ -599,11 +613,10 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         protocols=tuple(sorted({m.protocol for m in window})),
         note=note,
         sequence=_match_sequence(failures),
-        # 誰先開口的，看**第一則**：請求開的段是無線側，Command 開的段是核網。
-        release_initiator=(
-            window[0].detail.get(RELEASE_INITIATOR_KEY)
-            if kind.name == "ue-context-release" else None
-        ),
+        # 誰先開口的：請求開的是無線側，Command 開的是核網。
+        release_initiator=release_opener.detail[RELEASE_INITIATOR_KEY] if release_opener else None,
+        # 那則釋放帶的 Cause IE。通話段的 `release_cause` 另由 SIP 路徑填（`_sip_segments`）。
+        release_cause=release_opener.cause if release_opener is not None else None,
         timer=timer_hint.timer.name if timer_hint else None,
         timer_gap_s=round(timer_hint.gap_s, 6) if timer_hint else None,
         timer_frames=(
@@ -923,6 +936,51 @@ def _sip_segments(messages: list[Message], supi: str | None,
     return procedures, unassigned
 
 
+@dataclass(slots=True)
+class _Window:
+    """收好、還沒定稿的一段：開段的 kind、訊息、開段前一則（定時器判讀用），以及它在這條
+    流程（去掉 SIP 之後）裡的位置。`folded` 是折進來的釋放。"""
+
+    kind: _Kind
+    messages: list[Message]
+    previous: Message | None
+    first_pos: int
+    last_pos: int
+    folded: list["_Window"] = field(default_factory=list)
+
+
+def _fold_releases(windows: list[_Window]) -> list[_Window]:
+    """把緊接在一個場景之後的 context 釋放折進那個場景。
+
+    **釋放是場景的尾巴，不是場景。** 實測一份 MME 側單一訂戶的 trace：20 段釋放全部緊接在
+    前一段之後（服務請求後 12、閒置移動後 4、PDN 釋放後 2、換手後 2），佔全部段數的四分之一
+    —— 畫面上每一次服務請求都是兩顆晶片，讀的人得自己把它們配對。
+
+    **判準是流程內的位置相鄰，不是格號相鄰。** 那份 trace 裡剛好都只差一格，但那是單一訂戶
+    檔的假象：多用戶檔的 frame 會交錯，用格號會在真實的多用戶 trace 上靜默停止折疊。位置相鄰
+    說的正是證據本身 ——「這個訂戶的流程裡，場景與釋放之間什麼都沒發生」—— 而且失敗時往安全的
+    方向倒：中間夾了任何一則沒歸段的訊息就不折。**接錯比沒接上更糟**：把釋放掛到不是它的場景
+    上，那一段的時長與結局會看起來完全合理。
+
+    只折進**場景**：前一段本身是一個沒有母場景的釋放時，下一個釋放維持自成一段。
+
+    折進去的釋放不會消失：它留在 `folded` 裡照獨立段定稿，xDR 仍為它輸出一列
+    （`xdr.procedure_records`）。
+    """
+    out: list[_Window] = []
+    for w in windows:
+        parent = out[-1] if out else None
+        if (w.kind.name == "ue-context-release" and parent is not None
+                and parent.kind.name != "ue-context-release"
+                and w.first_pos == parent.last_pos + 1):
+            parent.folded.append(w)
+            parent.messages = parent.messages + w.messages
+            parent.last_pos = w.last_pos
+            continue
+        out.append(w)
+    return out
+
+
 def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], list[Message]]:
     """把一條流程切成程序段。回傳 (段, 未指派的訊息)。
 
@@ -948,12 +1006,15 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
     # 一則之後隔了多久才開這一段」—— 釋放段常是這個形狀（`timers.hint`）。
     before_window: Message | None = None
     last: Message | None = None
+    # **先收齊再定稿。** 釋放要折進它結尾的那個場景（`_fold_releases`），而那需要兩個視窗的
+    # 訊息清單都還在 —— 收段當下就 `_finish` 的話，時長與 cause 都算不回來。
+    windows: list[_Window] = []
+    first_pos = last_pos = 0
 
     def close() -> None:
         nonlocal active_kind, window
         if active_kind is not None and window:
-            procedures.append(_finish(active_kind, window, supi, capture_end, subscriber,
-                                      previous=before_window))
+            windows.append(_Window(active_kind, window, before_window, first_pos, last_pos))
         active_kind, window = None, []
 
     def _outcome_seen() -> bool:
@@ -982,7 +1043,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             return True
         return _outcome_seen() and not _own_label(msg).startswith(CANCEL_LABELS)
 
-    for msg in others:
+    for pos, msg in enumerate(others):
         # **結局之後的安靜期＝這段結束。** 沒有這一段，一份擷取檔的最後一段
         # 會吸收到檔尾，`duration` 因此嚴重灌水（見檔頭規則 ②）。
         if active_kind is not None and window and _outcome_seen():
@@ -997,7 +1058,7 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             if (active_kind is not None and opened.name == active_kind.name
                     and not _new_attempt(msg)):
                 window.append(msg)
-                last = msg
+                last, last_pos = msg, pos
                 continue
             # **N26 的 context 交換是正在進行的那個移動程序的一部分。** 4G 側的 TAU
             # （或 5G 側的行動更新註冊）開了窗、還沒收到 accept 時，MME／AMF 向對方要
@@ -1007,20 +1068,27 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             elif (active_kind is not None and opened.name == "mobility-context-transfer"
                     and active_kind.name in ("tau", "attach", "registration") and not _outcome_seen()):
                 window.append(msg)
-                last = msg
+                last, last_pos = msg, pos
                 continue
             close()
             before_window = last
             active_kind = opened
             window = [msg]
-            last = msg
+            last, first_pos, last_pos = msg, pos, pos
             continue
         if active_kind is not None:
             window.append(msg)
+            last_pos = pos
         else:
             unassigned.append(msg)
         last = msg
     close()
+
+    for w in _fold_releases(windows):
+        proc = _finish(w.kind, w.messages, supi, capture_end, subscriber, previous=w.previous)
+        proc.folded = tuple(_finish(r.kind, r.messages, supi, capture_end, subscriber, previous=r.previous)
+                            for r in w.folded)
+        procedures.append(proc)
 
     # 落在所有視窗之外的 Diameter：以 Session-Id 自成一段，歸到 4G 的「HSS 觸發」。
     # 沒有 Session-Id 的（CER／DWR／DPR）仍留在未指派堆 —— 那是連線維護，不是程序。

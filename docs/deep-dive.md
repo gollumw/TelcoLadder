@@ -233,6 +233,31 @@ opens on either message and reports the initiator from its first message —
 request → command → complete is one segment owned by the RAN; a command with no
 request before it is the core's own decision.
 
+**A release that ends a scenario is part of that scenario.** On an MME-side
+single-subscriber trace, all 20 releases came directly after the scenario they
+closed, and as segments of their own they were a quarter of all 84 segments -
+every service request showed up as two chips the reader had to pair by hand. So
+a release that is the next thing in the subscriber's flow folds into the
+scenario it ends: that scenario's frame span, message count and duration include
+the release, and it carries the release's initiator and cause. When the release
+closes a registration six seconds after an unanswered Authentication request,
+the timer match is reported on both the scenario and the release's own row; it
+is the same observation, and each row stays self-contained.
+
+The fold is decided by **position in the flow, not by frame number**. In that
+trace every release happened to be one frame later, but on a multi-subscriber
+capture frame numbers interleave, and a rule that silently stops working there
+is worse than no rule. A release with anything unassigned in front of it, or
+with no scenario before it, stays a segment of its own - attaching a release to
+a scenario that is not its own would give that scenario a plausible duration
+and outcome that are simply wrong.
+
+The xDR still has a row for every folded release, marked with `folded_into`
+(the start frame of the scenario it belongs to), so anyone counting releases can
+still count them. A consumer that sums `messages` across rows must skip those
+rows, because the scenario's count already includes them; the change of meaning
+is why the xDR version went from 2 to 3.
+
 **The reason is never restated.** The cause on the message goes through the
 cause table like every other cause; there is no second verdict string such as
 "core-initiated: deregistration or authentication failure", because a

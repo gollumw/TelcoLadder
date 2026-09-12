@@ -184,8 +184,10 @@ def test_handovers_are_segmented_with_direction_and_kpis(analysis) -> None:
     assert ok.ho_prep_s == pytest.approx(0.07, abs=0.002), "HandoverRequired → HandoverCommand"
     assert ok.ho_exec_s == pytest.approx(0.08, abs=0.002), "HandoverCommand → HandoverNotify"
     # 換手成功之後來源側由核網放掉 context：successful-handover。
-    release = next(p for p in procs if p.kind == "ue-context-release" and p.supi == SUPI_OK)
-    assert release.release_initiator == "core"
+    # 釋放折進這次換手（2026-09-13）：換手段帶著發起方，釋放本身留在 `folded`。
+    [release] = ok.folded
+    assert (release.kind, release.release_initiator) == ("ue-context-release", "core")
+    assert ok.release_initiator == "core"
 
     failed = handovers[SUPI_FAIL]
     assert failed.outcome == "failure"

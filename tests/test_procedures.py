@@ -32,6 +32,8 @@ ALL_FIXTURES = [
     "ne-trace", "supi-not-provisioned", "unknown-dnn", "userplane",
     # Diameter 走另一套切段（Session-Id），守恆等式對它一樣要成立。
     "diameter-epc-ims",
+    # 釋放折進場景的（2026-09-13）：折疊只在視窗之間搬訊息，等式照樣要成立。
+    "5gc-context-release", "4g-volte-end-to-end", "interworking-cycle", "n26-handover",
 ]
 
 
@@ -165,10 +167,11 @@ def test_release_in_the_subscribers_own_flow_is_attributed() -> None:
     要歸到那個人名下 —— 不是丟進未歸戶。"""
     result = analyse(FIXTURES / "supi-not-provisioned" / "capture.pcap")
     procs, _ = segment(result)
-    assert _by_kind(procs) == [
-        ("001019999999999", "registration", "failure"),
-        ("001019999999999", "ue-context-release", "success"),
-    ]
+    # 2026-09-13 起釋放折進它結尾的場景：一段，而釋放留在 `folded`，同樣歸在這個人名下。
+    assert _by_kind(procs) == [("001019999999999", "registration", "failure")]
+    [release] = procs[0].folded
+    assert (release.supi, release.kind, release.outcome) == ("001019999999999", "ue-context-release", "success")
+    assert procs[0].release_initiator == "core"
 
 
 def test_multi_imsi_yields_two_procedures_per_subscriber() -> None:
@@ -303,6 +306,8 @@ PROCEDURE_FIELDS = {
     "ho_prep_s", "ho_exec_s",
     # 2026-09-11：世代／類別（`procedures.TAXONOMY`）與 5G 註冊型別。加欄不升版。
     "family", "category", "registration_type",
+    # 折進場景的釋放標上所屬場景（xDR 版本 3）。
+    "folded_into",
 }
 
 
@@ -352,7 +357,7 @@ def test_cli_writes_xdr(tmp_path, e2e_pcap) -> None:
     )
     assert proc.returncode == 0, proc.stderr
     doc = json.loads(out.read_text(encoding="utf-8"))
-    assert doc["xdr_version"] == xdr.XDR_VERSION == 2
+    assert doc["xdr_version"] == xdr.XDR_VERSION == 3
     assert doc["procedures"], "一段程序都沒有 —— 端到端斷了"
 
 
@@ -517,3 +522,66 @@ def test_the_cancel_exchange_belongs_to_the_attempt_it_cancels() -> None:
     procs, unassigned = segment_flow(Flow(messages=_cancelled_attempt(1, 1.0)), capture_end=100.0)
     assert [(p.kind, p.outcome, p.messages) for p in procs] == [("handover-eps-to-5gs", "cancelled", 6)]
     assert not unassigned
+
+
+def _at(frame: int, ts: float, label: str) -> Message:
+    return Message(frame=frame, ts=ts, protocol="ngap",
+                   src=Endpoint("10.0.0.1"), dst=Endpoint("10.0.0.2"), label=label)
+
+
+def test_a_release_folds_into_the_scenario_it_ends() -> None:
+    """釋放是場景的尾巴，不是場景：緊接在註冊之後的釋放折進那次註冊。
+
+    實測一份 MME 側的 trace：20 段釋放全部緊接在前一段之後，佔全部段數的四分之一。
+    折進去之後，場景的訊息數、結束格與發起方都包含那次釋放，釋放本身留在 `folded`。
+    突變：`_fold_releases` 原樣回傳 → 兩段。
+    """
+    from telcoladder.model import RELEASE_BY_CORE, RELEASE_INITIATOR_KEY, Flow
+
+    command = _msg(3, "UEContextReleaseCommand")
+    command.detail[RELEASE_INITIATOR_KEY] = RELEASE_BY_CORE
+    flow = Flow(messages=[_msg(1, "Registration request"), _msg(2, "Registration accept"),
+                          command, _msg(4, "UEContextReleaseComplete")])
+    procs, unassigned = segment_flow(flow, capture_end=100.0)
+
+    [scene] = procs
+    assert (scene.kind, scene.outcome, scene.messages, scene.end_frame) == ("registration", "success", 4, 4)
+    assert scene.release_initiator == RELEASE_BY_CORE
+    [release] = scene.folded
+    assert (release.kind, release.messages, release.start_frame) == ("ue-context-release", 2, 3)
+    assert not unassigned
+
+
+def test_a_release_with_anything_in_between_stays_its_own_segment() -> None:
+    """位置相鄰才折。場景與釋放之間夾了一則沒歸段的訊息，就不能說釋放是那個場景的尾巴。
+
+    **接錯比沒接上更糟**：掛到不是它的場景上，那一段的時長與結局會看起來完全合理。
+    判準刻意用流程內的位置而不是格號 —— 多用戶檔的格號會交錯。
+    突變：`_fold_releases` 拿掉位置相鄰的條件 → 折進去。
+    """
+    from telcoladder.model import Flow
+
+    flow = Flow(messages=[
+        _at(1, 1.0, "Registration request"), _at(2, 2.0, "Registration accept"),
+        # 結局之後超過 `QUIET_GAP`：註冊段收了，這一則沒有段可以歸。
+        _at(3, 5.0, "UplinkNASTransport"),
+        _at(4, 6.0, "UEContextReleaseCommand"), _at(5, 7.0, "UEContextReleaseComplete"),
+    ])
+    procs, unassigned = segment_flow(flow, capture_end=100.0)
+    assert [(p.kind, len(p.folded)) for p in procs] == [("registration", 0), ("ue-context-release", 0)]
+    assert len(unassigned) == 1
+    assert sum(p.messages for p in procs) + len(unassigned) == 5, "守恆"
+
+
+def test_a_release_never_folds_into_another_release() -> None:
+    """只折進場景。前一段本身是沒有母場景的釋放時，下一次釋放維持自成一段 ——
+    兩次釋放不是「一次釋放的尾巴」。
+    突變：拿掉「母段不是釋放」的條件 → 第二次被併成第一次的尾巴。
+    """
+    from telcoladder.model import Flow
+
+    flow = Flow(messages=[_msg(1, "UEContextReleaseCommand"), _msg(2, "UEContextReleaseComplete"),
+                          _msg(3, "UEContextReleaseCommand"), _msg(4, "UEContextReleaseComplete")])
+    procs, _unassigned = segment_flow(flow, capture_end=100.0)
+    assert [(p.kind, p.messages, len(p.folded)) for p in procs] == [
+        ("ue-context-release", 2, 0), ("ue-context-release", 2, 0)]

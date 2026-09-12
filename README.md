@@ -191,13 +191,15 @@ Each of these is a fixture in `tests/fixtures/` you can run yourself.
   could not be read is counted and reported, not silently dropped.
 - **Splits a subscriber's traffic into scenarios** — registration, attach,
   PDU session, service request (UE- or network-triggered), dedicated bearer
-  setup, modification and release, deregistration, context release, handover
+  setup, modification and release, deregistration, handover
   (including one that was **cancelled**, which is not a failure), idle
   mobility, IMS registration and call — each with outcome, cause, first
   failure, duration, and where applicable the initiator, the matched timer, or
   the handover preparation and execution times. **The axis is what the
   subscriber was doing, not which protocol carried it**: the S6a exchange
-  inside an attach is part of that attach, and an HSS answer of "unknown user"
+  inside an attach is part of that attach, the context release that ends a
+  scenario is part of that scenario (its initiator and cause travel with it,
+  and the xDR still lists the release as a row of its own), and an HSS answer of "unknown user"
   is that attach's failure. A Diameter exchange that belongs to no scenario
   stands on its own as an HSS-initiated one — under 4G for S6a/Gx and under IMS
   for Cx/Sh, which the Application-Id decides.

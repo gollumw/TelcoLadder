@@ -351,8 +351,11 @@ def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]
             if msg.is_failure:
                 failures.append(_failure_record(msg, supi))
         segments, _unassigned = segment_flow(flow, capture_end=end)
-        for p in segments:
-            record = xdr.procedure_record(p)
+        # 一段，再加上折進它的每一個釋放各一列 —— 與 xDR 同一個展開（`xdr.procedure_records`）。
+        # 折進來的釋放照樣依自己的 frame 範圍算 cause 出處。
+        rows = [(s, None) for s in segments] + [(c, s.start_frame) for s in segments for c in s.folded]
+        for p, folded_into in rows:
+            record = xdr.procedure_record(p, folded_into=folded_into)
             # 視窗是流程裡連續的一段，所以 frame 範圍就能把它切回來。
             window = [m for m in flow.messages if p.start_frame <= m.frame <= p.end_frame]
             failed = [m for m in window if m.is_failure]
@@ -370,7 +373,7 @@ def _procedures_and_failures(analysis: Analysis) -> tuple[list[dict], list[dict]
                 _cause_ref(failed[0]) if p.first_failure and len(failed) > 1 else None
             )
             procedures.append(record)
-    procedures.sort(key=lambda r: (r["start_frame"], r["supi"] or ""))
+    procedures.sort(key=xdr.row_order)
     failures.sort(key=lambda f: (f["frame"], f["protocol"], f["message"]))
     return procedures, failures
 

@@ -45,7 +45,7 @@ from telcoladder.model import RELEASE_BY_CORE, RELEASE_BY_RAN, RELEASE_INITIATOR
 from telcoladder.pipeline import Analysis, analyse
 from telcoladder.procedures import segment
 from telcoladder.tshark import TsharkNotFound, find_tshark
-from telcoladder.xdr import procedure_record
+from telcoladder.xdr import procedure_record, procedure_records
 from tests.conftest import assert_matches_oracle
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -128,8 +128,10 @@ def test_a_ran_requested_release_exists_and_is_one_segment(release_5g) -> None:
     收到命令，是 `core`；訂戶 B 是 `ran`。兩者**同時存在**，這條才分得出差別。
     """
     procs, _unassigned = segment(release_5g)
-    releases = [p for p in procs if p.kind == "ue-context-release"]
+    # 2026-09-13 起釋放折進它結尾的場景；釋放本身留在 `folded`，照獨立段定稿。
+    releases = [c for p in procs for c in p.folded]
     assert len(releases) == 2
+    assert not [p for p in procs if p.kind == "ue-context-release"], "兩次釋放都有母場景，不該再自成一段"
     by_initiator = {p.release_initiator: p for p in releases}
     assert set(by_initiator) == {RELEASE_BY_RAN, RELEASE_BY_CORE}, (
         f"兩種發起方要各有一段：{[p.release_initiator for p in releases]}"
@@ -137,8 +139,9 @@ def test_a_ran_requested_release_exists_and_is_one_segment(release_5g) -> None:
     assert by_initiator[RELEASE_BY_RAN].messages == 3, "請求＋命令＋完成要併成一段"
     assert by_initiator[RELEASE_BY_CORE].messages == 2
     assert all(p.outcome == "success" for p in releases)
-    # 其他 kind 的段一律沒有發起方 —— 那個欄位不屬於它們。
-    assert all(p.release_initiator is None for p in procs if p.kind != "ue-context-release")
+    # 發起方跟著釋放走：含釋放的場景帶著它，沒有釋放的段一律沒有。
+    assert {p.release_initiator for p in procs if p.folded} == {RELEASE_BY_RAN, RELEASE_BY_CORE}
+    assert all(p.release_initiator is None for p in procs if not p.folded)
 
 
 def test_s1ap_releases_are_segmented_too(volte_4g) -> None:
@@ -149,7 +152,8 @@ def test_s1ap_releases_are_segmented_too(volte_4g) -> None:
     commands = [f for f, (code, kind) in oracle.items() if code == 23 and kind == "initiating"]
     assert commands, "4G fixture 沒有釋放命令"
     procs, _unassigned = segment(volte_4g)
-    releases = [p for p in procs if p.kind == "ue-context-release"]
+    # 釋放可能自成一段，也可能折進它結尾的場景（2026-09-13）—— 兩處都要數。
+    releases = [p for p in procs if p.kind == "ue-context-release"] + [c for p in procs for c in p.folded]
     assert len(releases) == len(commands)
     assert {p.release_initiator for p in releases} == {RELEASE_BY_CORE}
     assert {p.start_frame for p in releases} == set(commands)
@@ -206,7 +210,10 @@ def test_the_ladder_and_the_xdr_carry_the_initiator(release_5g) -> None:
     assert rrc[5] == "mo-Signalling"
 
     procs, _unassigned = segment(release_5g)
-    records = [procedure_record(p) for p in procs]
-    assert {r["release_initiator"] for r in records if r["procedure"] == "ue-context-release"} \
-        == {RELEASE_BY_RAN, RELEASE_BY_CORE}
-    assert all(r["release_initiator"] is None for r in records if r["procedure"] != "ue-context-release")
+    records = [r for p in procs for r in procedure_records(p)]
+    # 折進場景的釋放仍各有一列，並標上所屬場景 —— 算釋放的消費端數得到它們。
+    releases = [r for r in records if r["procedure"] == "ue-context-release"]
+    assert {r["release_initiator"] for r in releases} == {RELEASE_BY_RAN, RELEASE_BY_CORE}
+    assert all(r["folded_into"] is not None for r in releases)
+    scenes = [r for r in records if r["folded_into"] is None]
+    assert {r["release_initiator"] for r in scenes} == {RELEASE_BY_RAN, RELEASE_BY_CORE}
