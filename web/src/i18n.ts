@@ -319,7 +319,6 @@ const zh_TW: Record<string, string> = {
   "Every light and count on this page points back to a row in the session table or the procedure list. Nothing here is scored or weighted.": "這一頁的每盞燈、每個數字都指得回工作階段表或程序清單的某一列。這裡沒有任何評分或加權。",
   "Subscribers": "訂戶",
   "{red} red · {amber} amber · {green} green": "{red} 紅 · {amber} 黃 · {green} 綠",
-  "{s} succeeded · {f} failed · {u} ended by user · {i} incomplete": "{s} 成功 · {f} 失敗 · {u} 使用者結束 · {i} 未完成",
   "IMS registration": "IMS 註冊",
   "Call (SIP)": "通話（SIP）",
   "Failure messages": "失敗訊息",
@@ -466,6 +465,9 @@ const zh_TW: Record<string, string> = {
   "failure": "失敗",
   "incomplete": "未完成",
   "ended-by-user": "由使用者結束",
+  "cancelled": "已取消",
+  "{s} succeeded · {f} failed · {c} cancelled · {u} ended by user · {i} incomplete":
+    "{s} 成功 · {f} 失敗 · {c} 已取消 · {u} 由使用者結束 · {i} 未完成",
 };
 
 const CATALOGS: Record<Exclude<Lang, "en">, Record<string, string>> = { zh_TW };

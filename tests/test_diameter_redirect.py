@@ -100,7 +100,8 @@ def test_a_followed_redirect_is_a_success(procedures) -> None:
     突變：`_distinct` 的鍵少了 cause → 2001 被同一 End-to-End 的 3006 吃掉，
     這段變 incomplete。
     """
-    (lir,) = [p for p in procedures if p.kind == "diameter-location-info"]
+    # 這份擷取檔只有 Diameter，沒有任何場景視窗，所以每一段都是 `hss-*`（2026-09-12）。
+    (lir,) = [p for p in procedures if p.kind == "hss-location-info"]
     assert lir.outcome == "success", (lir.outcome, lir.note)
     assert lir.messages == 6 and lir.failures == 0
     assert lir.cause is None
@@ -112,7 +113,7 @@ def test_an_unfollowed_redirect_is_incomplete_and_says_so(procedures) -> None:
 
     突變：結局判定用 `answers` 而非 `settled` → 這段變 success。
     """
-    (udr,) = [p for p in procedures if p.kind == "diameter-user-data" and p.messages == 3]
+    (udr,) = [p for p in procedures if p.kind == "hss-user-data" and p.messages == 3]
     assert udr.outcome == "incomplete"
     assert udr.failures == 0
     assert "Redirected to 1 host(s)" in udr.note
@@ -121,7 +122,7 @@ def test_an_unfollowed_redirect_is_incomplete_and_says_so(procedures) -> None:
 
 def test_a_redirect_with_nowhere_to_go_is_a_failure_counted_once(procedures) -> None:
     """Session 3：3006 沒有 Redirect-Host，在兩條腿上各看到一次 → 一次失敗。"""
-    (udr,) = [p for p in procedures if p.kind == "diameter-user-data" and p.messages == 4]
+    (udr,) = [p for p in procedures if p.kind == "hss-user-data" and p.messages == 4]
     assert udr.outcome == "failure"
     assert udr.failures == 1, "同一則回應在兩條腿上被算成兩次"
     assert "nowhere to go" in (udr.cause or ""), udr.cause

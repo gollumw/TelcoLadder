@@ -127,12 +127,27 @@ const PROCEDURE_LABEL: Record<string, string> = {
   "mobility-context-transfer": "Context transfer (N26)",
   tau: "TAU (4G)",
   detach: "Detach (4G)",
+  // 4G 的場景（2026-09-12）。`hss-*` 是不屬於任何場景的 HSS 交換 —— 查無此值時原樣顯示
+  // （`hss-purge-ue` 之類），那是誠實的「引擎知道命令名，畫面還沒給它短標籤」。
+  "service-request-network": "Service request (network)",
+  "dedicated-bearer-activation": "Dedicated bearer setup",
+  "dedicated-bearer-deactivation": "Dedicated bearer release",
+  "bearer-modification": "Bearer modification",
+  "pdn-connection-release": "PDN connection release",
+  "hss-cancel-location": "HSS cancel location",
+  "hss-insert-subscriber-data": "Subscription data update",
+  "hss-delete-subscriber-data": "Subscription data removal",
+  "hss-update-location": "Location update (HSS)",
+  "hss-authentication-information": "Authentication vectors (HSS)",
+  "hss-notify": "Notify (HSS)",
 };
 
 //: 世代標籤（`procedures.TAXONOMY` 的 family）。5G／4G／IMS／Diameter 是專有名詞，不翻；
 //: 只有 interworking 與 other 走 `t()`。順序就是畫面上組的順序。
-const FAMILY_LABEL: Record<string, string> = { "5g": "5G", "4g": "4G", ims: "IMS", diameter: "Diameter" };
-const FAMILY_ORDER = ["5g", "4g", "interworking", "ims", "diameter", "other"];
+//: **沒有「Diameter」這個世代**（2026-09-12 移除）：Diameter 的段要嘛屬於某個場景，
+//: 要嘛是 4G 的 HSS 觸發。分類的軸是用戶的場景，不是協定。
+const FAMILY_LABEL: Record<string, string> = { "5g": "5G", "4g": "4G", ims: "IMS" };
+const FAMILY_ORDER = ["5g", "4g", "interworking", "ims", "other"];
 
 //: 5G 註冊型別（`nas5gs.REGISTRATION_TYPES` 的 slug）→ 短標籤。查無此值原樣顯示。
 const REGISTRATION_TYPE_LABEL: Record<string, string> = {
@@ -164,6 +179,8 @@ const OUTCOME_STYLE: Record<string, string> = {
   incomplete: "border-signal-amber-border bg-signal-amber-bg text-signal-amber hover:border-signal-amber font-medium transition-colors",
   // 一方自己結束的通話（忙線、拒接、取消）：不紅、不綠 —— 中性。
   "ended-by-user": "border-border bg-surface-2 text-fg-muted hover:border-border-focus transition-colors",
+  // 被取消的換手：有人喊停，不是網路故障 —— 同樣中性。
+  cancelled: "border-border bg-surface-2 text-fg-muted hover:border-border-focus transition-colors",
 };
 
 //: 結局的符號。**incomplete 用 ⋯ 不用 ✗** —— 「沒等到結局」與「失敗」
@@ -173,6 +190,7 @@ const OUTCOME_MARK: Record<string, string> = {
   failure: "✗",
   incomplete: "⋯",
   "ended-by-user": "○",
+  cancelled: "⊘",
 };
 
 const STATUS_TEXT: Record<CallFlowEvent["status"], string> = {

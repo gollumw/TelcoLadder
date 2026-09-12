@@ -212,9 +212,13 @@ def test_the_summary_and_xdr_carry_the_call_fields(analysis) -> None:
     assert "Busy Here" in md
 
 
-def test_every_outcome_enumeration_knows_the_fourth_value() -> None:
+def test_every_outcome_enumeration_knows_the_extra_values() -> None:
     """列舉結局的地方少認一個值，症狀是 KeyError 或畫面上一段沒有顏色 —— 靜默。
-    掃：凡是同時寫著 `"failure"` 與 `"incomplete"` 的檔，都要寫著 `ended-by-user`。"""
+
+    掃：凡是同時寫著 `"failure"` 與 `"incomplete"` 的檔，都要寫著 `ended-by-user`（SIP 的
+    第四個結局）與 `cancelled`（2026-09-12 的第五個：被取消的換手）。**那個值不會出現的檔
+    也要寫**，用一句註解說明為什麼 —— 下一個讀的人需要知道的正是這件事。"""
+    extra = ("ended-by-user", "cancelled")
     pattern = re.compile(r'["\']incomplete["\']')
     files = [
         *(ROOT / "telcoladder").glob("*.py"),
@@ -224,9 +228,12 @@ def test_every_outcome_enumeration_knows_the_fourth_value() -> None:
     missing = []
     for path in files:
         text = path.read_text(encoding="utf-8")
-        if pattern.search(text) and '"failure"' in text and "ended-by-user" not in text:
-            missing.append(path.relative_to(ROOT).as_posix())
-    assert not missing, f"這些檔列舉了結局卻不認得 ended-by-user：{missing}"
+        if not (pattern.search(text) and '"failure"' in text):
+            continue
+        absent = [value for value in extra if value not in text]
+        if absent:
+            missing.append(f"{path.relative_to(ROOT).as_posix()}: {absent}")
+    assert not missing, f"這些檔列舉了結局卻少認一個：{missing}"
 
 
 def test_the_fragmented_invite_and_the_esp_are_accounted_for(analysis) -> None:

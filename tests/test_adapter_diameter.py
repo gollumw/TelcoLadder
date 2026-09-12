@@ -461,28 +461,33 @@ def test_the_relay_does_not_get_a_network_function_role(messages) -> None:
 
 
 def test_procedures_are_cut_by_session_id(analysis) -> None:
-    """Diameter 的段界由 **Session-Id** 決定，不是 NAS 那套視窗判定。
+    """**視窗之外的** Diameter 段界由 Session-Id 決定，不是 NAS 那套視窗判定。
 
     RFC 6733 §8：一個 session 就是共用同一個 Session-Id 的一串訊息 ——
     **協定自己把邊界標在線路上了**。對 S6a 這種無狀態介面它自然退化成
     「一次交易一段」，因為那正是協定的行為。
+
+    這份擷取檔只有 Diameter，沒有任何場景視窗，所以**每一段都是視窗之外的** ——
+    段名是 `hss-*`、世代是 4G（2026-09-12：分類的軸是用戶的場景，不是協定）。
     """
     from telcoladder.procedures import segment
 
     procedures, unassigned = segment(analysis)
     assert [(p.kind, p.outcome) for p in procedures] == [
-        ("diameter-authentication-information", "success"),
-        ("diameter-update-location", "success"),
-        ("diameter-credit-control", "success"),
-        ("diameter-user-authorization", "success"),
-        ("diameter-multimedia-auth", "success"),
-        ("diameter-server-assignment", "success"),
-        ("diameter-update-location", "failure"),
-        ("diameter-multimedia-auth", "failure"),
-        ("diameter-credit-control", "failure"),
-        ("diameter-authentication-information", "success"),
-        ("diameter-update-location", "failure"),
+        ("hss-authentication-information", "success"),
+        ("hss-update-location", "success"),
+        ("hss-credit-control", "success"),
+        ("hss-user-authorization", "success"),
+        ("hss-multimedia-auth", "success"),
+        ("hss-server-assignment", "success"),
+        ("hss-update-location", "failure"),
+        ("hss-multimedia-auth", "failure"),
+        ("hss-credit-control", "failure"),
+        ("hss-authentication-information", "success"),
+        ("hss-update-location", "failure"),
     ]
+    # 沒有「Diameter」這個世代了：每一段都歸在 4G 的 HSS 觸發底下。
+    assert {(p.family, p.category) for p in procedures} == {("4g", "hss")}
     # 每一段都要指得回一個訂戶，而且失敗段要帶得出 cause。
     for p in procedures:
         assert p.supi, p.kind
@@ -533,11 +538,12 @@ def test_a_relayed_procedure_spans_the_whole_path(analysis) -> None:
     assert relayed.duration == pytest.approx(0.022, abs=1e-6)
 
 
-def test_diameter_and_nas_segmenters_do_not_interfere() -> None:
-    """混合擷取檔裡兩套判準必須各走各的。
+def test_diameter_inside_a_window_belongs_to_that_scenario() -> None:
+    """**2026-09-12 起這是刻意的**（在那之前兩套判準各走各的）。
 
-    合著跑的話，一則 Diameter 訊息落在 NAS 的開段與收段之間就會被那個視窗
-    吸進去 —— 那一段的耗時與訊息數因此變成錯的，**而且看起來完全合理**。
+    一次註冊裡的 ULR 屬於那次註冊：讀的人問的是「那次註冊成功了嗎」，不是「那筆 S6a
+    交易成功了嗎」。所以視窗內的 Diameter 折進場景，**連失敗一起算**；視窗之外的才
+    自成一段（下一條測試）。實測一份 MME trace：19 段有 18 段落在某個場景的視窗裡。
     """
     from telcoladder.model import Endpoint, Flow
     from telcoladder.procedures import segment_flow
@@ -560,10 +566,22 @@ def test_diameter_and_nas_segmenters_do_not_interfere() -> None:
     ])
     procedures, unassigned = segment_flow(flow, capture_end=1.0)
     kinds = {p.kind: p for p in procedures}
-    assert set(kinds) == {"registration", "diameter-update-location"}
-    # NAS 那段**不能**把中間兩則 Diameter 吸進去。
-    assert kinds["registration"].messages == 2
-    assert kinds["diameter-update-location"].messages == 2
+    # 一段，不是兩段：那次註冊含中間兩則 Diameter。
+    assert set(kinds) == {"registration"}
+    assert kinds["registration"].messages == 4
+    assert "diameter" in kinds["registration"].protocols
+    assert not unassigned
+
+    # 視窗之外的同一筆交易：自成一段，歸到 4G 的「HSS 觸發」。
+    outside = Flow(messages=[
+        nas(1, 0.0, "Registration request"),
+        nas(2, 0.1, "Registration accept"),
+        dia(3, 5.0, "3GPP-Cancel-Location Request", "s2"),
+        dia(4, 5.1, "3GPP-Cancel-Location Answer", "s2"),
+    ])
+    alone = {p.kind: p for p in segment_flow(outside, capture_end=6.0)[0]}
+    assert set(alone) == {"registration", "hss-cancel-location"}
+    assert (alone["hss-cancel-location"].family, alone["hss-cancel-location"].category) == ("4g", "hss")
     assert not unassigned
 
 
@@ -575,7 +593,7 @@ def test_the_summary_now_reports_diameter_procedures(analysis) -> None:
     assert len(doc["procedures"]) == 11
     md = summary.render_markdown(doc)
     assert "No procedure could be segmented" not in md
-    assert "diameter-update-location" in md
+    assert "hss-update-location" in md
     # 失敗的段要帶得出 3GPP 出處。
     failed = [p for p in doc["procedures"] if p["outcome"] == "failure"]
     assert {p["cause_ref"]["value"] for p in failed} == {5420, 5001, 5012}

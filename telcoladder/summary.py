@@ -50,7 +50,8 @@ SUMMARY_VERSION = 2
 
 #: 結局 → 一眼看得出的記號。與 React 介面的 `OUTCOME_MARK` 同一套語彙。
 #: `ended-by-user` 用 ○：不是 ✗（不是失敗）、不是 ✓（沒接成）—— 一方自己結束的。
-OUTCOME_MARK = {"success": "✓", "failure": "✗", "incomplete": "⋯", "ended-by-user": "○"}
+#: `cancelled` 用 ⊘：換手被取消不是失敗，也不是沒等到結局 —— 有人喊停。
+OUTCOME_MARK = {"success": "✓", "failure": "✗", "incomplete": "⋯", "ended-by-user": "○", "cancelled": "⊘"}
 
 
 # ── 建構 ────────────────────────────────────────────────────────────────

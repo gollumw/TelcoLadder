@@ -276,7 +276,7 @@ export function firstFrameBySupi(subscribers: FlowSubscriber[]): Record<string, 
 /** `/callflow` 回的一則事件。欄位名由後端 `viewer.callflow_json` 決定。 */
 export interface CallFlowProcedureJson {
   kind: string;
-  outcome: "success" | "failure" | "incomplete" | "ended-by-user";
+  outcome: "success" | "failure" | "incomplete" | "ended-by-user" | "cancelled";
   cause: string | null;
   first_failure: string | null;
   pdu_session_id: string | null;
@@ -547,7 +547,7 @@ export interface OverviewRefJson {
 export interface OverviewJson {
   verdict: "red" | "amber" | "green" | "empty";
   subscribers: { total: number; red: number; amber: number; green: number; unattributed_flows: number };
-  procedures: { total: number; success: number; failure: number; incomplete: number; "ended-by-user": number };
+  procedures: { total: number; success: number; failure: number; incomplete: number; "ended-by-user": number; cancelled: number };
   events: { failures: number; unanswered: number; retrans: number };
   not_visible: {
     ciphered_nas: number;

@@ -29,13 +29,17 @@ const OUTCOME_STYLE: Record<CallRow["outcome"], string> = {
   incomplete: "text-signal-amber",
   // 一方自己結束的（忙線、拒接、取消）：**不紅、不綠** —— 網路沒壞。
   "ended-by-user": "text-fg-muted",
+  cancelled: "text-fg-muted",
 };
 
 const OUTCOME_MARK: Record<CallRow["outcome"], string> = {
   success: "✓",
   failure: "✗",
   incomplete: "⋯",
+  // 通話不會是 cancelled（那是被取消的換手）：拒接／取消走 ended-by-user。
+  // 兩張表仍列出它 —— 結局的型別是共用的，少一個鍵會讓畫面上那一列沒有符號。
   "ended-by-user": "○",
+  cancelled: "⊘",
 };
 
 /** 誰掛的。**明確對應，不用 `t(row.releasedBy)`** —— 動態的鍵靜態掃描看不到，

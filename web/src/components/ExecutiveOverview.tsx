@@ -123,7 +123,7 @@ export function ExecutiveOverview({
         <Tile
           label={t("Procedures")}
           value={procedures.total}
-          sub={t("{s} succeeded · {f} failed · {u} ended by user · {i} incomplete", { s: procedures.success, f: procedures.failure, u: procedures["ended-by-user"], i: procedures.incomplete })}
+          sub={t("{s} succeeded · {f} failed · {c} cancelled · {u} ended by user · {i} incomplete", { s: procedures.success, f: procedures.failure, c: procedures.cancelled, u: procedures["ended-by-user"], i: procedures.incomplete })}
           tone={procedures.failure ? "red" : procedures.incomplete ? "amber" : "neutral"}
         />
         <Tile label={t("Failure messages")} value={events.failures} tone={events.failures ? "red" : "neutral"} />

@@ -301,6 +301,8 @@ def calls_json(analysis: Analysis) -> dict:
             "answered": len(answered),
             "failed": sum(1 for e in entries if e["outcome"] == "failure"),
             "ended_by_user": sum(1 for e in entries if e["outcome"] == "ended-by-user"),
+            # 通話沒有 `cancelled` 這個結局：被叫拒接／主叫取消走的是 `ended-by-user`
+            # （判準在 cause 表的 `outcome: user`）。`cancelled` 是換手被喊停，與這裡無關。
             "incomplete": sum(1 for e in entries if e["outcome"] == "incomplete"),
         },
     }
