@@ -752,6 +752,8 @@ PARTICIPANT_ORDER = (
     # HSS 的對端，而**一份混合擷取檔裡兩種都會出現**；跟著接取側排，
     # UE → eNB → MME → SGW → PGW 才讀得下去。
     "eNB", "MME", "SGW", "PGW",
+    # SGs 的對端（2026-09-12）：CS 那一側，排在 EPC 之後。
+    "MSC/VLR",
     # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
     # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
     # Rx 的 AF 貼著 P-CSCF（它多半就是 P-CSCF）；Sh 的 AS 在 S-CSCF 之後；

@@ -93,7 +93,16 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "BEARER_S11_S5S8", label: "Bearer (S11/S5-S8)" },
   { id: "IMS_SIP", label: "IMS (SIP Gm/Mw)" },
   { id: "IMS_MEDIA_CONTROL", label: "Media control (H.248)" },
+  { id: "SGS_CSFB_SMS", label: "SGs (CSFB/SMS)" },
 ];
+
+//: 一個分頁也收別的 domain。SGs 是 4G 接取流程的 CS 那一半（combined attach／TAU 的位置更新、CSFB 的
+//: Paging）—— 讀 S1-MME 的人要在同一頁看到它；它自己也有一頁。
+const ALSO_IN_TAB: Partial<Record<TelecomDomain, TelecomDomain[]>> = { ACCESS_S1_EPS: ["SGS_CSFB_SMS"] };
+
+function inTab(tab: TelecomDomain, domain: TelecomDomain | undefined): boolean {
+  return domain === tab || (domain !== undefined && (ALSO_IN_TAB[tab] ?? []).includes(domain));
+}
 
 //: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**
 //: （`PROCEDURE_LABEL[p.kind] ?? p.kind`）—— 引擎日後加 4G 的 attach /
@@ -439,7 +448,7 @@ export function SessionAnalysisView({
       const ranges = currentGroup.members;
       events = events.filter((e) => ranges.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
     }
-    events = domain === "ALL" ? events : events.filter((e) => e.domain === domain);
+    events = domain === "ALL" ? events : events.filter((e) => inTab(domain, e.domain));
     return onlyAnomalies ? events.filter((e) => e.status === "ERROR" || e.slow) : events;
   }, [supiEvents, domain, current, currentGroup, onlyAnomalies]);
 
@@ -449,7 +458,7 @@ export function SessionAnalysisView({
     let events = supiEvents;
     if (current) events = events.filter((e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame);
     else if (currentGroup) events = events.filter((e) => currentGroup.members.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
-    if (domain !== "ALL") events = events.filter((e) => e.domain === domain);
+    if (domain !== "ALL") events = events.filter((e) => inTab(domain, e.domain));
     return events.length - filteredEvents.length;
   }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents]);
 
@@ -769,7 +778,8 @@ export function SessionAnalysisView({
               供應是同一個判斷：**畫面只該列真的存在的東西**（§10）。 */}
           <div className="mb-3 flex flex-wrap items-center gap-1">
             {DOMAIN_TABS.filter(
-              (tab) => tab.id === "ALL" || presentDomains.has(tab.id),
+              (tab) => tab.id === "ALL" || presentDomains.has(tab.id)
+                || (ALSO_IN_TAB[tab.id] ?? []).some((also) => presentDomains.has(also)),
             ).map((tab) => (
               <button
                 key={tab.id}

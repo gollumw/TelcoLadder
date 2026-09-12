@@ -62,6 +62,9 @@ _DOMAIN_BY_PROTOCOL = {
     "sip": "IMS_SIP",
     # H.248（2026-09-06）：媒體閘道控制自成一頁 —— 它與 SIP 訊令是同一通電話的兩層。
     "megaco": "IMS_MEDIA_CONTROL",
+    # SGs（2026-09-12）：4G 用戶的 CS 那一半（combined attach／TAU 的位置更新、CSFB 的 Paging、SMS）。
+    # 自成一頁，前端的 S1-MME 分頁也收它（`SessionAnalysisView` 的 `ALSO_IN_TAB`）—— 讀接取流程的人要看得到。
+    "sgsap": "SGS_CSFB_SMS",
 }
 
 

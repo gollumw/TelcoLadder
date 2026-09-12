@@ -133,12 +133,12 @@ class Adapter(Protocol):
 
 
 from telcoladder.adapters import (  # noqa: E402
-    diameter, gtp, gtpv2, megaco, nas5gs, naseps, ngap, pfcp, s1ap, sbi, sip,
+    diameter, gtp, gtpv2, megaco, nas5gs, naseps, ngap, pfcp, s1ap, sbi, sgsap, sip,
 )
 
 #: 不經外掛機制、永遠都在的那些。
 BUILTIN_ADAPTERS: tuple[Adapter, ...] = (
-    ngap, s1ap, nas5gs, naseps, sip, megaco, sbi, diameter, pfcp, gtpv2, gtp,
+    ngap, s1ap, nas5gs, naseps, sip, megaco, sbi, diameter, sgsap, pfcp, gtpv2, gtp,
 )  # type: ignore[assignment]
 
 _REQUIRED_ATTRS = ("NAME", "ORDER", "DISPLAY_FILTER", "DISSECTORS", "parse")
@@ -227,7 +227,7 @@ def protocol_filters(present: "set[str] | frozenset[str]") -> list[dict[str, str
     外掛加進來的協定不必為了好看而改核心程式碼。
     """
     labels = {"ngap": "NGAP / NAS", "nas-5gs": "NGAP / NAS", "sbi": "SBI",
-              "pfcp": "PFCP", "gtp": "GTP-U", "diameter": "Diameter"}
+              "pfcp": "PFCP", "gtp": "GTP-U", "diameter": "Diameter", "sgsap": "SGsAP"}
     out: list[dict[str, str]] = []
     seen: set[str] = set()
     for adapter in adapters():
