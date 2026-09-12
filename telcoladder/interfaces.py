@@ -96,7 +96,9 @@ _REFERENCE_POINTS: dict[tuple[str, frozenset[str]], str] = {
 #: 「這條規則靜默不生效」**，沒有任何一層會報錯，所以由 `tests/test_adapter_diameter.py`
 #: 拿 adapter 的表釘住。
 #:
-#: **Rx 刻意不收**：AF ↔ PCRF 是策略介面，即使那個 AF 多半就是 P-CSCF。
+#: **Rx 刻意不收**：AF ↔ PCRF 是策略介面，而那個 AF **不一定是 P-CSCF** —— 線路上的
+#: Application-Id 只說得出「這是 Rx」，說不出另一端是不是 IMS 的網元。分不出來就不要猜
+#: （這張表的紀律與 `reference_point()` 相同：查不到回 None，不給一個猜出來的答案）。
 #: Gx、SWx、S6b 同理 —— 它們都不是 IMS 的腿。
 IMS_REFERENCE_POINTS: frozenset[str] = frozenset({"Cx/Dx", "Sh"})
 
