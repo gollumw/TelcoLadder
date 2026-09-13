@@ -65,6 +65,8 @@ _DOMAIN_BY_PROTOCOL = {
     # SGs（2026-09-12）：4G 用戶的 CS 那一半（combined attach／TAU 的位置更新、CSFB 的 Paging、SMS）。
     # 自成一頁，前端的 S1-MME 分頁也收它（`SessionAnalysisView` 的 `ALSO_IN_TAB`）—— 讀接取流程的人要看得到。
     "sgsap": "SGS_CSFB_SMS",
+    # ENUM（2026-09-13）：號碼翻成路由位址。自成一頁 —— 它不是 SIP，也不是 HSS 查詢。
+    "enum": "IMS_ENUM",
 }
 
 

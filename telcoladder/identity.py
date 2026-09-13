@@ -292,6 +292,128 @@ def gtpv2_transaction(requester: str, responder: str, seq: object) -> IdKey | No
     return scoped(IdKind.GTPV2_TRANSACTION, f"{requester}>{responder}", number)
 
 
+#: 一個 SIP／tel 位址裡，**它自己宣告是電話號碼**的那一段。
+#:
+#: 判準刻意收窄成「URI 說它是號碼」，而不是「開頭是一串數字」：
+#:
+#:   `tel:+15550100`                         → tel: 這個 scheme 本身就是宣告
+#:   `sip:+15550100@ims.…`                   → `+` 是 E.164 前綴
+#:   `sip:5550100;phone-context=…`           → RFC 3966 的本地號碼，context 是宣告
+#:   `sip:…;user=phone`                      → 參數明講 user part 是號碼
+#:
+#: **第一版寫成「開頭連續數字就算」，而那會把 IMSI 推導的 IMPU 當成門號** ——
+#: `sip:001011234567895@ims.mnc001…` 的 user part 是 IMSI，不是任何人撥得通的
+#: 號碼。實測 4G fixture 上它被標成「門號 001010111111111」，那是一個看起來
+#: 完全合理的錯（CLAUDE.md §4 那一族）。號碼不明就說不明。
+#:
+#: **2026-09-13 從 `calls.py` 搬來**：Diameter 的 `Public-Identity` 要用同一套判準
+#: 收 MSISDN 鍵。兩份會漂 —— 一邊放寬了，同一個號碼在通話頁認得、在 Cx 上併不起來。
+_TEL_SCHEME = re.compile(r"^tel:(\+?[\d\-().\s]{4,})$", re.I)
+_SIP_USER = re.compile(r"^sips?:([^@;]+)(.*)$", re.I)
+
+
+def msisdn_of(uri: str | None) -> str | None:
+    """位址 → 電話號碼。**位址沒說它是號碼就回 None，不從數字形狀猜。**
+
+    一個 IMPU 可以完全不含號碼（企業用戶的 `sip:alice@example.com`，或
+    IMSI 推導的 `sip:<IMSI>@ims.…`）。那時「號碼不明」是實話，而編一個
+    看起來像號碼的東西會被當真 —— 而且它會被拿去撥。
+
+    回傳保留 `+`：本地形式（`5550100`）與國際形式（`+15550100`）是兩件事，
+    只有後者能拿來當關聯鍵（`international_msisdn`）。
+    """
+    if not uri:
+        return None
+    text = uri.strip()
+    # 顯示名稱形式：`"Alice" <sip:…>` —— 先取角括號裡那段，**再** strip。
+    # 反過來做的話 `.strip("<>")` 會先吃掉結尾的 `>`，角括號判斷就失效，
+    # 而症狀是帶顯示名的位址全部回「號碼不明」（實測踩過）。
+    if "<" in text and ">" in text:
+        text = text[text.index("<") + 1:text.index(">")]
+    text = text.strip().strip("<>")
+
+    tel = _TEL_SCHEME.match(text)
+    if tel:
+        return _phone_digits(tel.group(1))
+
+    sip = _SIP_USER.match(text)
+    if not sip:
+        return None
+    user, rest = sip.group(1), sip.group(2)
+    declares_phone = "phone-context=" in rest.lower() or "user=phone" in rest.lower()
+    if user.startswith("+") or declares_phone:
+        return _phone_digits(user)
+    return None
+
+
+def _phone_digits(raw: str) -> str | None:
+    """把 RFC 3966 允許的視覺分隔（`-` `.` `(` `)` 空白）去掉，只留 `+` 與數字。
+
+    去完少於 4 位就不算 —— 那多半是分機或服務碼，當成門號會冒充它不是的東西。
+    """
+    keep = "".join(ch for ch in raw if ch.isdigit() or ch == "+")
+    return keep if len(keep.lstrip("+")) >= 4 else None
+
+
+#: 國際號碼（E.164）最少幾位才收成關聯鍵。國碼 1–3 位 ＋ 用戶號，短於這個多半是服務碼。
+_MIN_E164_DIGITS = 8
+
+
+def international_msisdn(uri: str | None) -> str | None:
+    """位址 → **國際形式**的號碼（不含 `+`），只有這種能當 MSISDN 鍵。
+
+    **本地形式一律不收，也不補國碼。** `tel:0…;phone-context=…` 要變成國際號碼得知道
+    國碼與國內冠碼，那是一張表 —— 而這個工具不建那張表（使用者裁定 2026-09-13）。
+    真實樣本上被叫的國際形式本來就出現在後段的 Request-URI 與 P-Asserted-Identity，
+    所以用得到的地方都比得起來；比不起來的地方，少一個關聯好過猜一個。
+    """
+    number = msisdn_of(uri)
+    if not number or not number.startswith("+"):
+        return None
+    digits = number[1:]
+    return digits if len(digits) >= _MIN_E164_DIGITS else None
+
+
+def msisdn_from_tbcd(raw: object) -> str | None:
+    """Diameter `MSISDN` AVP（TBCD）→ 號碼（不含 `+`）。
+
+    tshark 把這個 AVP 當 bytes 交出來（`21:20:55:05:11:f1`）：**每個位元組低位 nibble
+    是先來的那個數字**，奇數位補 `f`。TS 29.329 的 MSISDN 是國際形式，所以解出來
+    就能直接當鍵。解不出純數字（壞資料、非 TBCD）就回 None，不修補。
+    """
+    text = str(raw or "").replace(":", "").strip().lower()
+    if not text or len(text) % 2 or any(ch not in "0123456789abcdef" for ch in text):
+        return None
+    digits = "".join(text[i + 1] + text[i] for i in range(0, len(text), 2)).rstrip("f")
+    return digits if digits.isdigit() and len(digits) >= _MIN_E164_DIGITS else None
+
+
+def e164_digits(value: object) -> str | None:
+    """`Subscription-Id-Data`（型別 END_USER_E164）這種**已經宣告是 E.164** 的欄位 → 號碼。
+
+    容忍前導 `+`；其餘非數字就不收。
+    """
+    text = str(value or "").strip().lstrip("+")
+    return text if text.isdigit() and len(text) >= _MIN_E164_DIGITS else None
+
+
+def msisdn_from_enum_name(name: object) -> str | None:
+    """ENUM 的查詢名稱（`2.2.1.0.5.5.5.2.0.2.1.e164.arpa`）→ 號碼 `12025550122`。
+
+    RFC 6116：號碼的數字**反過來**、每位一個 label，接在 `e164.arpa` 之前。
+    任何一個 label 不是單一數字就不是 ENUM 名稱，回 None。
+    """
+    text = str(name or "").strip().rstrip(".").lower()
+    suffix = ".e164.arpa"
+    if not text.endswith(suffix):
+        return None
+    labels = text[: -len(suffix)].split(".")
+    if not labels or any(len(label) != 1 or not label.isdigit() for label in labels):
+        return None
+    digits = "".join(reversed(labels))
+    return digits if len(digits) >= _MIN_E164_DIGITS else None
+
+
 def globally_unique(kind: IdKind, value: object) -> IdKey:
     """給**全網唯一**的識別碼建 key。
 

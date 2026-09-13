@@ -30,7 +30,10 @@
    tshark 的啟發式一格都解不開 —— 做這份檔時實測踩過。
 2. **內建埠被別的協定佔用**：7777 是 SBI 的內建 HTTP/2 埠，也是這裡 Gm SA 的保護埠。
 3. **非標準埠上的 Diameter**：自動偵測要從載荷認出 Diameter，而不是一律建議 HTTP/2。
-4. **（後續）端到端關聯**：ICID 串起各條腿與 Rf；號碼加時間窗接上 Sh／Cx／ENUM。
+4. **同一個門號併成一條、兩個門號不併**：Sh 的 TBCD MSISDN、Cx 的國際形式 Public-Identity、
+   Rf 的 E.164 Subscription-Id 與 ENUM 的查詢名稱帶同一把 `MSISDN` 鍵；ICID 只當屬性
+   （`tests/test_volte_e2e_identity.py`）。
+5. **（後續）端到端通話**：ICID 串起各條腿與 Rf；號碼加時間窗接上 Sh／Cx／ENUM。
    負對照（別的門號、別的 ICID、通話之後、請求不在檔內）就是為那一步放的。
 
 ## 刻意不做的

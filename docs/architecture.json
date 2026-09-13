@@ -5,6 +5,7 @@
   "adapters",
   "adapters.carrier",
   "adapters.diameter",
+  "adapters.enum",
   "adapters.gtp",
   "adapters.gtpv2",
   "adapters.megaco",

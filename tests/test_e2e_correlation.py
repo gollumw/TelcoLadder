@@ -127,7 +127,9 @@ def test_every_builtin_adapter_finds_something(e2e_pcap):
                  # H.248 只在 IMS 的媒體控制上（2026-09-06）。
                  fixtures / "ims-volte-call" / "capture.pcap",
                  # SGsAP 只在 MME↔MSC/VLR 的 SGs 上（2026-09-12）。
-                 fixtures / "4g-sgs-location-update" / "capture.pcap"):
+                 fixtures / "4g-sgs-location-update" / "capture.pcap",
+                 # ENUM（DNS NAPTR）只在 IMS 的號碼路由上（2026-09-13）。
+                 fixtures / "volte-e2e-call" / "capture.pcap"):
         for frame in read_frames(pcap):
             for message in parse_frame(frame):
                 counts[message.protocol] = counts.get(message.protocol, 0) + 1
