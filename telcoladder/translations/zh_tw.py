@@ -390,8 +390,6 @@ CATALOG: dict[str, str] = {
         '這個訂戶沒有對應的流程：{supi}',
     'Needs the IMS adapter (not implemented yet)':
         '需要 IMS adapter（尚未實作）',
-    'Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling':
-        '需要 IMS adapter（尚未實作）—— MSISDN 來自 IMS/Diameter，不在 5G 核網信令裡',
     'Needs the SIP adapter (not implemented yet)':
         '需要 SIP adapter（尚未實作）',
     'Needs the Diameter adapter (not implemented yet)':

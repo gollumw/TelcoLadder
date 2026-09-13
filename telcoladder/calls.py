@@ -53,6 +53,7 @@ import re
 from dataclasses import dataclass
 
 from telcoladder.i18n import _
+from telcoladder.identity import msisdn_of as _msisdn_of
 from telcoladder.model import Message
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import Procedure, capture_end, segment_flow
@@ -67,61 +68,9 @@ CALL_KIND = "sip-call"
 #: 性質 —— 位置索引，重跑解碼會重算，舊把手要出聲而不是畫出別人的通話。
 HANDLE_PREFIX = "c:"
 
-#: 一個 SIP／tel 位址裡，**它自己宣告是電話號碼**的那一段。
-#:
-#: 判準刻意收窄成「URI 說它是號碼」，而不是「開頭是一串數字」：
-#:
-#:   `tel:+15550100`                         → tel: 這個 scheme 本身就是宣告
-#:   `sip:+15550100@ims.…`                   → `+` 是 E.164 前綴
-#:   `sip:5550100;phone-context=…`           → RFC 3966 的本地號碼，context 是宣告
-#:   `sip:…;user=phone`                      → 參數明講 user part 是號碼
-#:
-#: **第一版寫成「開頭連續數字就算」，而那會把 IMSI 推導的 IMPU 當成門號** ——
-#: `sip:001011234567895@ims.mnc001…` 的 user part 是 IMSI，不是任何人撥得通的
-#: 號碼。實測 4G fixture 上它被標成「門號 001010111111111」，那是一個看起來
-#: 完全合理的錯（CLAUDE.md §4 那一族）。號碼不明就說不明。
-_TEL_SCHEME = re.compile(r"^tel:(\+?[\d\-().\s]{4,})$", re.I)
-_SIP_USER = re.compile(r"^sips?:([^@;]+)(.*)$", re.I)
-
-
-def msisdn_of(uri: str | None) -> str | None:
-    """位址 → 電話號碼。**位址沒說它是號碼就回 None，不從數字形狀猜。**
-
-    一個 IMPU 可以完全不含號碼（企業用戶的 `sip:alice@example.com`，或
-    IMSI 推導的 `sip:<IMSI>@ims.…`）。那時「號碼不明」是實話，而編一個
-    看起來像號碼的東西會被當真 —— 而且它會被拿去撥。
-    """
-    if not uri:
-        return None
-    text = uri.strip()
-    # 顯示名稱形式：`"Alice" <sip:…>` —— 先取角括號裡那段，**再** strip。
-    # 反過來做的話 `.strip("<>")` 會先吃掉結尾的 `>`，角括號判斷就失效，
-    # 而症狀是帶顯示名的位址全部回「號碼不明」（實測踩過）。
-    if "<" in text and ">" in text:
-        text = text[text.index("<") + 1:text.index(">")]
-    text = text.strip().strip("<>")
-
-    tel = _TEL_SCHEME.match(text)
-    if tel:
-        return _digits(tel.group(1))
-
-    sip = _SIP_USER.match(text)
-    if not sip:
-        return None
-    user, rest = sip.group(1), sip.group(2)
-    declares_phone = "phone-context=" in rest.lower() or "user=phone" in rest.lower()
-    if user.startswith("+") or declares_phone:
-        return _digits(user)
-    return None
-
-
-def _digits(raw: str) -> str | None:
-    """把 RFC 3966 允許的視覺分隔（`-` `.` `(` `)` 空白）去掉，只留 `+` 與數字。
-
-    去完少於 4 位就不算 —— 那多半是分機或服務碼，當成門號會冒充它不是的東西。
-    """
-    keep = "".join(ch for ch in raw if ch.isdigit() or ch == "+")
-    return keep if len(keep.lstrip("+")) >= 4 else None
+#: 號碼判準住在 `identity.msisdn_of`（2026-09-13 搬過去：Diameter 要用同一套）。
+#: 這裡照舊匯出同名函式，既有的呼叫端與測試不必改。
+msisdn_of = _msisdn_of
 
 
 @dataclass(slots=True)

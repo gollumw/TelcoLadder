@@ -431,7 +431,8 @@ def _esp_address_pairs(tshark: Tshark, pcap: Path, *, prefs: Sequence[str] = ())
 KNOWN_UNSUPPORTED: dict[str, str] = {
     "isup": "ISUP over M3UA - PSTN breakout via the MGCF",
     "camel": "CAMEL/CAP - IN service trigger",
-    "dns": "DNS - ENUM/NAPTR routing lookups",
+    # ENUM 的 NAPTR 查詢有 adapter（`adapters/enum.py`），剩下的 DNS 仍然沒有。
+    "dns": "DNS other than ENUM NAPTR lookups",
     "radius": "RADIUS accounting",
 }
 

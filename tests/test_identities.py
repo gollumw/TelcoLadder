@@ -164,16 +164,31 @@ def test_frame_owners_maps_back_to_identities() -> None:
     assert supi.key in owners[sample]
 
 
-def test_a_capture_with_no_subscriber_still_lists_its_categories() -> None:
-    """實作了但這份擷取沒有的類別不占空間；未實作的一律列出（灰底）。"""
+def test_a_capture_with_no_subscriber_still_lists_its_categories(monkeypatch) -> None:
+    """實作了但這份擷取沒有的類別不占空間；未實作的一律列出（灰底）。
+
+    2026-09-13 起每個類別都有生產者（MSISDN 是最後一個），`UNIMPLEMENTED_KINDS` 是空的。
+    「未實作一律列出」那半條規則仍要守 —— 下一個宣告了卻還沒有 adapter 的類別靠它 ——
+    所以用 monkeypatch 放一個進去驗。
+    """
     analysis = analyse(require_capture("ki-mismatch/capture.pcap"))
     groups = {g["kind"]: g for g in availability(analysis)}
     assert "supi" in groups and groups["supi"]["values"]
-    # MSISDN 沒有值，但**必須出現** —— 消失會被讀成「查無結果」。
-    assert "msisdn" in groups
+    # MSISDN 實作了、這份 5G 擷取沒有 —— 不占空間。
+    assert "msisdn" not in groups
+
+    monkeypatch.setattr("telcoladder.identities.UNIMPLEMENTED_KINDS", (IdKind.MSISDN,))
+    groups = {g["kind"]: g for g in availability(analysis)}
+    # 沒有值，但**必須出現** —— 消失會被讀成「查無結果」。
     assert groups["msisdn"]["implemented"] is False
     assert groups["msisdn"]["values"] == []
-    assert "IMS" in groups["msisdn"]["reason"]
+    assert groups["msisdn"]["reason"]
+
+
+def test_msisdn_is_listed_where_the_capture_has_one() -> None:
+    """正面對照：VoLTE fixture 的 Sh／Rf／ENUM 帶門號，類別要列出值。"""
+    groups = {g["kind"]: g for g in availability(analyse(require_capture("volte-e2e-call/capture.pcap")))}
+    assert groups["msisdn"]["implemented"] is True and groups["msisdn"]["values"]
 
 
 # ── 三種「查無結果」必須講不同的話 ────────────────────────────────
