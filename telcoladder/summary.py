@@ -546,11 +546,11 @@ def render_markdown(doc: dict) -> str:
     if nv["ecies_protected_suci"]:
         items.append(_("{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.").format(n=nv["ecies_protected_suci"]))
     if nv["frames_not_decoded"]:
-        items.append(_("{n} of {total} frames produced no message; the coverage notes below say why.").format(n=nv["frames_not_decoded"], total=total))
+        items.append(_("{n} of {total} frames produced no message (reasons below).").format(n=nv["frames_not_decoded"], total=total))
     if nv.get("ip_fragments_reassembled"):
         items.append(_("{n} frames are earlier IP fragments of messages that were reassembled and decoded on their last fragment - they are part of decoded messages, not missing signalling.").format(n=nv["ip_fragments_reassembled"]))
     if nv.get("tcp_segments_reassembled"):
-        items.append(_("{n} frames are earlier TCP segments of messages that were reassembled and decoded on their last segment - they are part of decoded messages, not missing signalling.").format(n=nv["tcp_segments_reassembled"]))
+        items.append(_("{n} frames are earlier TCP segments of messages decoded on their last segment - not missing signalling.").format(n=nv["tcp_segments_reassembled"]))
     if nv.get("ipsec_esp"):
         items.append(_("{n} frames are IPsec ESP; nothing inside them can be read (Gm between UE and P-CSCF is normally IPsec-protected). tshark can decrypt them given the ESP SAs; otherwise capture inside the P-CSCF.").format(n=nv["ipsec_esp"]))
     if nv["sbi_streams_with_undecoded_headers"]:

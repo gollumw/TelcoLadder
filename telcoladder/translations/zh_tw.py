@@ -222,8 +222,8 @@ CATALOG: dict[str, str] = {
         "{step} {percent}%・約剩 {eta}",
     "  · {frames} frames are earlier TCP segments of messages that were reassembled and decoded - nothing is missing there.":
         "  · {frames} 格是已重組並解出的訊息的前段 TCP 區段 —— 那裡沒有漏掉任何東西。",
-    "{n} frames are earlier TCP segments of messages that were reassembled and decoded on their last segment - they are part of decoded messages, not missing signalling.":
-        "{n} 格是跨區段訊息的前段 TCP 區段，訊息在最後一段重組並解出 —— 它們是已解出訊息的一部分，不是漏掉的信令。",
+    "{n} frames are earlier TCP segments of messages decoded on their last segment - not missing signalling.":
+        "{n} 格是在最後一段解出的訊息的前段 TCP 區段 —— 不是漏掉的信令。",
     "  · {frames} frames are IP fragments whose other fragments are not in this capture, so those messages could not be reassembled - the capture is incomplete, not the protocol support.":
         "  · {frames} 格是 IP 分片，但同一個封包的其他分片不在這份擷取檔裡，所以組不回訊息 —— 缺的是擷取，不是協定支援。",
     "    That port is already being decoded as {protocol}, and these bytes still cannot be read - the capture is missing earlier bytes of those TCP streams (it was filtered, or started mid-stream). --decode-as will not help.":
@@ -560,7 +560,7 @@ CATALOG: dict[str, str] = {
         "{n} 則 NAS 訊息已加密，內容（包括任何 reject）讀不出來。",
     "{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.":
         "{n} 個 SUCI 受 ECIES 保護，那些訂戶的 SUPI 從線路上還原不出來。",
-    "{n} of {total} frames produced no message; the coverage notes below say why.":
+    "{n} of {total} frames produced no message (reasons below).":
         "{total} 格裡有 {n} 格沒有解出訊息；原因見下方的覆蓋率說明。",
     "{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.":
         "{n} 條 HTTP/2 stream 的標頭 tshark 解不出來（HPACK 缺口），上面的訊息看不見。",
