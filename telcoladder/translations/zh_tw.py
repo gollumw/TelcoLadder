@@ -186,6 +186,10 @@ CATALOG: dict[str, str] = {
         "{n} 格 IPsec ESP 沒有加密（NULL 加密，由 tshark 的啟發式認出；談成這條 SA 的註冊不一定在這份擷取檔裡），已解開內容。",
     "TCP port {port} is a built-in {default} port, but some connections on it carry {found}; the built-in decoding was kept, so the {found} messages on that port are not shown. If that port carries only {found}, re-run with --decode-as tcp.port=={port},{first}.":
         "TCP 埠 {port} 是內建的 {default} 埠，但上面有些連線跑的是 {found}；維持內建的解碼方式，所以那個埠上的 {found} 訊息沒有顯示。如果那個埠只跑 {found}，請加 --decode-as tcp.port=={port},{first} 重跑。",
+    "decided from IPsec-protected signalling: the address with {param} protected peers is the network side, each of its peers the access side (TS 33.203)":
+        "由 IPsec 保護的訊令判定：與 {param} 個對端走受保護連線的位址是網路側，它的每個對端是接取側（TS 33.203）",
+    "its own address is in Contact together with a subscriber identity - used only because the IPsec evidence in this capture decided nothing":
+        "它自己的位址連同訂戶身分寫在 Contact 裡 —— 只因為這份擷取檔的 IPsec 證據判不出任何角色才採用",
     "Message count {before} → {after}. Add --no-auto-decode to turn this off.":
         "訊息數 {before} → {after}。不想要這個行為就加 --no-auto-decode。",
     "editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.":

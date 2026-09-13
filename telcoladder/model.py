@@ -375,6 +375,19 @@ ENDPOINT_DST_KEY = "endpoint-dst"
 #: —— 兩者可信度都高，但錯的方式不同（後者是匯出端的設定，不是線路）。
 TRACE_ROLE_HINTS_KEY = "trace_role_hints"
 
+#: `Message.detail` 裡「**這則訊息走在一條 IPsec SA 裡，兩端各是這兩種角色之一**」的鍵，
+#: 值是 `接取側角色|網路側角色`（例如 `UE|P-CSCF`）。**不說哪一端是哪一個** —— 那要看整份檔：
+#: `nf` 以扇出判定，同時與兩個以上對端走這種 SA 的位址是網路側，它的對端是接取側。
+#:
+#: 為什麼不讓 adapter 直接判：一則訊息看不出方向。實測一份真實 VoLTE 擷取：P-CSCF 往被叫 UE
+#: 送的 INVITE，`Contact` 寫的是 P-CSCF 自己（它是 B2BUA），逐則判的話 P-CSCF 被標成 UE、
+#: 被叫 UE 被標成 P-CSCF，而兩個標籤看起來都合理。
+IPSEC_ROLES_KEY = "ipsec_roles"
+
+#: `Message.detail` 裡**後備**的角色提示，形狀與 `NF_ROLE_HINTS_KEY` 相同（`位址=角色;…`）。
+#: `nf` 只在 IPsec 的證據判不出任何角色時才採用 —— 它是推論，不是線路上寫著的。
+FALLBACK_ROLE_HINTS_KEY = "fallback_role_hints"
+
 #: 同一筆請求／回應交易的識別（Diameter 是 `hop:<Hop-by-Hop Id>`）。
 #: 只在沒有 IP 層時填 —— 有 IP 的擷取檔用不到它配端點。
 TRANSACTION_KEY = "transaction"

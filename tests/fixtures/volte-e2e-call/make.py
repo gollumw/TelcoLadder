@@ -197,8 +197,15 @@ class Leg:
         for i, (src, dst) in enumerate(zip(self.path, self.path[1:])):
             asserted = f"sip:{TEL_A}@{DOMAIN};user=phone" if method == "INVITE" and src != UE_A else None
             headers = self._headers(src, cseq, method, to_tag=to_tag, asserted=asserted, extra=list(extra or []))
-            if src == UE_A:
+            # `Contact`：主叫那一腿是 UE-A 自己（代理轉送時不改）；B2BUA 開的那一腿是 TAS
+            # **自己**；P-CSCF 往被叫 UE 那一跳換成 P-CSCF **自己**（它也是 B2BUA）。後兩個是真實
+            # 樣本上把核心節點與 P-CSCF 誤標成 UE 的形狀 —— 舊規則只看「host 是不是送出者」。
+            if self is LEG_A:
                 headers.append(("Contact", f"<sip:{IMSI_A}@{UE_A}:{UE_A_PROTECTED_PORT}>"))
+            elif dst == UE_B:
+                headers.append(("Contact", f"<sip:{PCSCF}:{SIP_PORT}>"))
+            else:
+                headers.append(("Contact", f"<sip:{TAS}:{SIP_PORT}>"))
             body = body_by_hop[i] if body_by_hop else ""
             if body:
                 headers.append(("Content-Type", "application/sdp"))

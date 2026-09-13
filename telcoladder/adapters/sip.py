@@ -41,6 +41,8 @@ from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
 from telcoladder.identity import globally_unique, imsi_from_ims_identity, media_endpoint
 from telcoladder.model import (
+    FALLBACK_ROLE_HINTS_KEY,
+    IPSEC_ROLES_KEY,
     NF_ROLE_HINTS_KEY,
     CauseRef,
     Endpoint,
@@ -234,25 +236,38 @@ def _media_addresses(block: dict[str, Any]) -> list[str]:
     return out
 
 
-def _role_hints(block: dict[str, Any], frame: Frame) -> str:
-    """誰是 UE、誰是 P-CSCF —— **由 `Contact` 標頭判，不由方向判**。
+#: `Contact` 的 user part 是 IMSI 推導的形狀（14–15 位數字）。
+_IMSI_USER = re.compile(r"^(?:sips?:)?\d{14,15}@", re.I)
 
-    `Contact` 說的是「之後要怎麼直接找到我」，所以在 UE 自己送出的請求裡
-    它的 host 就是 UE 的位址。**代理轉送時 `Contact` 仍然指向 UE**
-    （RFC 3261 §16.6 不准 proxy 改它），於是那一腿的來源 IP 對不上 ——
-    正是這個對不上讓規則不會把 P-CSCF 誤判成 UE。
 
-    這條**刻意窄**：對不上就不投票，圖上顯示 IP。那是誠實的「推不出來」，
-    而 `vote()` 遇到矛盾本來就會放棄（§4 那條「寧可不說也不要說錯」）。
+def _contact_claim(block: dict[str, Any], frame: Frame) -> str:
+    """**後備**：`Contact` 的 host 是送出者自己、而且帶著訂戶身分 → 送出者是 UE。
 
-    走通用的 `NF_ROLE_HINTS_KEY`（T6 建的）—— `Contact` 只有 adapter 讀得到，
-    而這是**傳遞線路事實，不是替 `nf` 做判斷**。
+    2026-09-13 以前這是唯一的規則，而且只看「host 是不是送出者」。實測一份真實 VoLTE
+    擷取：B2BUA（AS、SBG）另開一腿時 `Contact` 寫的也是自己，於是 11 則核網訊息把一台
+    核心節點標成 UE，被叫 UE 反而被標成 P-CSCF。
+
+    現在它**只在 IPsec 證據判不出來時**才被採用（`model.FALLBACK_ROLE_HINTS_KEY`），
+    而且收窄成 `Contact` 帶著訂戶身分：IMSI 推導的 user part，或 `+sip.instance`
+    （RFC 5626 的裝置識別）。核心節點的 `Contact` 不帶這些。
+
+    請求與回應都看：被叫 UE 只送回應，它的 `Contact` 一樣是自己。
     """
-    contact = first(block.get("sip_sip_contact_addr")) or first(block.get("sip_sip_Contact"))
-    if not contact or not first(block.get("sip_sip_Method")):
+    raw = str(first(block.get("sip_sip_Contact")) or "")
+    # tshark 不一定拆出 `contact.addr`（實測 4G fixture 上它是空的），那時退回原始標頭 ——
+    # 舊規則也是這樣取，漏掉的話 UE 整片變回 IP。
+    contact = str(first(block.get("sip_sip_contact_addr")) or raw)
+    if "<" in contact and ">" in contact:
+        contact = contact[contact.index("<") + 1:contact.index(">")]
+    if not contact or not frame.src_ip:
         return ""
-    text = str(contact)
-    if f"@{frame.src_ip}" not in text and f"@{frame.src_ip}:" not in text:
+    # host 在 `@` 之後；**沒有 user part 的 URI**（`sip:<位址>:<埠>`，真實 UE 常這樣寫）
+    # host 就緊接在 scheme 之後。只認 `@host` 的話，帶 `+sip.instance` 的 UE 永遠判不到。
+    hostport = re.sub(r"^sips?:", "", contact, flags=re.I).split("@")[-1]
+    host = hostport.split(";")[0].rsplit(":", 1)[0] if hostport.count(":") == 1 else hostport.split(";")[0]
+    if host.strip("[]") != frame.src_ip:
+        return ""
+    if not (_IMSI_USER.match(contact) or "+sip.instance" in raw):
         return ""
     return f"{frame.src_ip}=UE;{frame.dst_ip}=P-CSCF"
 
@@ -278,9 +293,13 @@ def parse(frame: Frame) -> list[Message]:
             continue
 
         detail: dict[str, str] = {}
-        hints = _role_hints(block, frame)
-        if hints:
-            detail[NF_ROLE_HINTS_KEY] = hints
+        claim = _contact_claim(block, frame)
+        if claim:
+            detail[FALLBACK_ROLE_HINTS_KEY] = claim
+        if frame.layer("esp"):
+            # Gm 上走 IPsec SA 的訊令，兩端一個是 UE、一個是 P-CSCF（TS 33.203）。**哪一端是哪一個
+            # 交給 `nf` 看整份檔的扇出判**，理由見 `model.IPSEC_ROLES_KEY`。
+            detail[IPSEC_ROLES_KEY] = "UE|P-CSCF"
         cseq = first(block.get("sip_sip_CSeq"))
         if cseq:
             detail["CSeq"] = str(cseq)
@@ -372,6 +391,13 @@ def parse(frame: Frame) -> list[Message]:
                 # 同一個標頭可以出現多次（多個機制），用換行分隔 —— 逗號在
                 # 參數裡本來就會出現，拿它當分隔會切錯。
                 detail[f"ipsec-{header.lower()}"] = "\n".join(values)
+        # **SA 協商寫著誰是誰。** `Security-Client`／`Security-Verify` 只有 UE 會送，
+        # `Security-Server` 只有 P-CSCF 會回（RFC 3329、TS 33.203）—— 而且這些標頭逐跳、
+        # 不越過 P-CSCF，所以它們所在的那一腿兩端就是 UE 與 P-CSCF。這是線路上寫著的。
+        if method and ("ipsec-security-client" in detail or "ipsec-security-verify" in detail):
+            detail[NF_ROLE_HINTS_KEY] = f"{frame.src_ip}=UE;{frame.dst_ip}=P-CSCF"
+        elif status is not None and "ipsec-security-server" in detail:
+            detail[NF_ROLE_HINTS_KEY] = f"{frame.src_ip}=P-CSCF;{frame.dst_ip}=UE"
 
         ports = _media_ports(block)
         if ports:
