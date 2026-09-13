@@ -37,7 +37,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from telcoladder.model import NF_ROLE_HINTS_KEY, Endpoint, Message, TRACE_ROLE_HINTS_KEY
+from telcoladder.model import (
+    FALLBACK_ROLE_HINTS_KEY, IPSEC_ROLES_KEY, NF_ROLE_HINTS_KEY, TRACE_ROLE_HINTS_KEY, Endpoint, Message,
+)
 
 #: N2 介面上 AMF 固定監聽的 SCTP 埠（TS 38.412）。
 NGAP_PORT = 38412
@@ -387,7 +389,13 @@ _FAMILY_NAME = {frozenset({"PGW", "PCEF"}): "PGW", frozenset({"AF", "P-CSCF"}): 
 EVIDENCE_TIER: dict[str, int] = {
     "wire-hint": 0, "trace-hint": 0,
     "ngap-dir": 0, "s1ap-dir": 0, "pfcp-dir": 0, "diameter-dir": 0,
+    # IPsec 扇出（2026-09-13）：與線路方向同一層 —— 「誰服務好幾個受保護的對端」是整份檔的
+    # 結構事實，不是字串宣稱。排低一層的話，同一台同時控制 H.248 的 P-CSCF 會被一票 `MGC`
+    # 蓋掉（實測 fixture 上 7777 從 P-CSCF 變成 MGC）。同層矛盾交給 `_split_by_port` 依埠分開。
+    "ipsec-fanout": 0,
     "n2-port": 1,
+    # 後備的 Contact：推論，而且只在扇出判不出時才用。
+    "contact": 1,
     "service": 2, "service-consumer": 2,
     # 三種同一層的路徑／內容證據（2026-09-11）：資源級唯一消費者、回呼 URI 的
     # 提供者、請求自報的型別。實測一份 AMF trace：30 個網元 12 個沒角色，其中
@@ -531,9 +539,27 @@ def _tally(messages: list[Message]) -> tuple[
             if endpoint.key == ip and endpoint.port is not None:
                 port_votes[(ip, endpoint.port)].setdefault(role, why)
 
+    # IPsec 保護的訊令：角色對 → 位址 → 對端（扇出判定用），以及後備提示（只在扇出判不出時用）。
+    ipsec_peers: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    # 同一份資料依埠再記一次：扇出的票要落到 (位址, 埠) 上，同一個 IP 身兼他職時才分得開。
+    ipsec_ports: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
+    fallback: list[tuple[str, str, tuple[Endpoint, ...]]] = []
+
     for msg in messages:
         current = (msg.src, msg.dst)
         src_ip, dst_ip = _endpoint_key(msg.src), _endpoint_key(msg.dst)
+
+        pair = msg.detail.get(IPSEC_ROLES_KEY)
+        if pair and src_ip and dst_ip:
+            ipsec_peers[pair][src_ip].add(dst_ip)
+            ipsec_peers[pair][dst_ip].add(src_ip)
+            for endpoint, address in ((msg.src, src_ip), (msg.dst, dst_ip)):
+                if endpoint.port is not None:
+                    ipsec_ports[pair][address].add(endpoint.port)
+        for hint in msg.detail.get(FALLBACK_ROLE_HINTS_KEY, "").split(";"):
+            address, _sep, role = hint.partition("=")
+            if address and role:
+                fallback.append((address, role, current))
 
         # ── 階梯 1：只有某一方會發起的程序 ──
         if msg.protocol == "ngap":
@@ -656,6 +682,35 @@ def _tally(messages: list[Message]) -> tuple[
                     # （實測：`SCP → NRF` 帶著 `user-agent: SMF`），
                     # 照收會把 SMF 這一票投在 SCP 身上。`vote()` 會擋掉。
                     vote(src_ip, nf_type, f"user-agent:{agent}")
+
+    # ── IPsec 扇出：同時與兩個以上對端走同一種 SA 的位址是網路側，它的對端是接取側 ──
+    #
+    # 一則訊息看不出方向（見 `model.IPSEC_ROLES_KEY`），整份檔看得出：UE 只有一個 P-CSCF，
+    # P-CSCF 服務好幾個 UE。只有一個 UE 的擷取檔扇出判不出來，那時退回後備提示。
+    current = ()
+    decided = False
+    for pair, peers in ipsec_peers.items():
+        access, _sep, network = pair.partition("|")
+        if not access or not network:
+            continue
+        hubs = {address for address, others in peers.items() if len(others) >= 2}
+
+        def fanout_vote(address: str, role: str, why: str) -> None:
+            nonlocal current
+            current = tuple(Endpoint(ip=address, port=port) for port in sorted(ipsec_ports[pair][address]))
+            vote(address, role, why)
+
+        for hub in sorted(hubs):
+            why = f"ipsec-fanout:{len(peers[hub])}"
+            fanout_vote(hub, network, why)
+            for peer in sorted(peers[hub] - hubs):
+                fanout_vote(peer, access, why)
+            decided = True
+    if not decided:
+        for address, role, ends in fallback:
+            current = ends
+            vote(address, role, "contact")
+    current = ()
 
     # 只採納沒有矛盾的判定（`_collapse`，看最強那一層）。同一個 IP 在最強層
     # 收到兩種互斥的角色代表推論鏈有問題，這時寧可不標 —— 標錯比不標更糟；

@@ -285,6 +285,8 @@ def _basis_sentence(basis: str) -> str:
         "s1ap-dir": _("initiator direction of S1AP procedure {param} (TS 36.413)"),
         "pfcp-dir": _("initiator of PFCP Session Establishment (TS 29.244)"),
         "n2-port": _("listens on 38412, the N2 port (TS 38.412)"),
+        "ipsec-fanout": _("decided from IPsec-protected signalling: the address with {param} protected peers is the network side, each of its peers the access side (TS 33.203)"),
+        "contact": _("its own address is in Contact together with a subscriber identity - used only because the IPsec evidence in this capture decided nothing"),
         "service": _("serves /{param} (TS 29.5xx service naming)"),
         "service-consumer": _("calls /{param}, a service with exactly one consumer NF type (TS 29.5xx)"),
         "user-agent": _("declares itself in User-Agent: {param} (TS 29.500)"),

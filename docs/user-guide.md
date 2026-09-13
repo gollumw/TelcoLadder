@@ -460,6 +460,22 @@ Measured on a real network-element capture (kept out of the repository; numbers 
 numbers' Diameter messages in the same seconds stay out; 10 are counted as unattributed; 2 Cx answers
 carry an IMSI-derived identity that no number in the call can be matched to, so they are neither
 attached nor counted as unattributed.
+
+#### Which end is the UE (2026-09-13)
+
+Lanes are labelled `UE` and `P-CSCF` from three kinds of evidence, strongest first:
+
+1. **Security agreement headers.** `Security-Client` and `Security-Verify` are sent only by a UE,
+   and `Security-Server` only by a P-CSCF.
+2. **IPsec fan-out.** SIP carried inside ESP runs between a UE and its P-CSCF. The address with
+   protected signalling to two or more peers is the P-CSCF, and each of its peers is a UE.
+3. **`Contact`, as a fallback.** It is used only when fan-out decides nothing, for example a capture
+   with a single UE and no registration. The sender counts as the UE only when `Contact` carries its
+   own address together with a subscriber identity: an IMSI-derived user part or `+sip.instance`.
+
+A B2BUA, whether an application server or an SBG acting as P-CSCF, writes its **own** address in
+`Contact` when it opens a leg. The old rule therefore labelled core nodes as UE. On one real capture
+it labelled 11 core messages that way, and it swapped the P-CSCF and the callee.
 ## 5. Five things to know when interpreting
 
 **1. Cause clauses are looked up, never AI-generated.** The

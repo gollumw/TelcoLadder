@@ -19,7 +19,7 @@ import pytest
 
 from telcoladder.adapters import parse_frame
 from telcoladder.extract import read_frames
-from telcoladder.model import NF_ROLE_HINTS_KEY, IdKind
+from telcoladder.model import FALLBACK_ROLE_HINTS_KEY, NF_ROLE_HINTS_KEY, IdKind
 from telcoladder.pipeline import analyse
 from telcoladder.tshark import find_tshark
 
@@ -216,7 +216,8 @@ def test_the_roles_come_from_the_contact_header(messages, analysis) -> None:
     走的是 T6 建的通用鍵，所以 `nf.py` 不認得 SIP。
     """
     register = next(m for m in messages if m.label == "REGISTER")
-    assert register.detail[NF_ROLE_HINTS_KEY] == "10.0.0.10=UE;10.0.0.6=P-CSCF"
+    # 2026-09-13 起 Contact 是**後備**提示（IPsec 證據判不出時才用），鍵因此分開。
+    assert register.detail[FALLBACK_ROLE_HINTS_KEY] == "10.0.0.10=UE;10.0.0.6=P-CSCF"
 
     roles = {}
     for flow in analysis.flows:
