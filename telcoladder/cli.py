@@ -181,6 +181,9 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
             print(f"ℹ {line}", file=sys.stderr)
         for line in result.auto_decode.describe():
             print(f"  · {line}", file=sys.stderr)
+    # 看到但**沒有**自動處理的埠衝突：那個埠上的訊息沒被畫出來，一定要講。
+    for conflict in result.decode_conflicts:
+        print(f"⚠ {conflict.describe()}", file=sys.stderr)
 
     # 覆蓋率排在加密警告之前：「我根本沒看到那些封包」比「我看到但讀不懂」
     # 更根本，使用者要先知道自己屬於哪一種。

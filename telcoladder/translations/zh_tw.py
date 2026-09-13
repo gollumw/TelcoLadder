@@ -178,6 +178,14 @@ CATALOG: dict[str, str] = {
         "這份擷取檔有 {n} 個傳輸方向的 TCP 序號從頭到尾沒有前進過 —— 那是網元匯出的 trace，不是線路側錄。tshark 會把那些封包當成重傳而略過，已關閉序號分析重跑。",
     "TCP port(s) {ports} carry payload no dissector claimed; decoding as HTTP/2 yields SBI messages, so it was included.":
         "TCP 埠 {ports} 上有沒被任何 dissector 認領的載荷，試著解成 HTTP/2 之後讀得出 SBI 訊息，已納入。",
+    "TCP port(s) {ports} carry payload no dissector claimed; the payload is recognisably {protocol}, so it was decoded as {protocol}.":
+        "TCP 埠 {ports} 上有沒被任何 dissector 認領的載荷，內容認得出是 {protocol}，已解成 {protocol}。",
+    "TCP port {port} is a built-in {default} port, but every connection on it carries {protocol}; it was decoded as {protocol} instead.":
+        "TCP 埠 {port} 是內建的 {default} 埠，但上面每一條連線跑的都是 {protocol}，已改解成 {protocol}。",
+    "{n} IPsec ESP frames are not encrypted (NULL encryption, recognised by tshark's heuristic - the security association that set this up is not necessarily in this capture), so their contents were decoded.":
+        "{n} 格 IPsec ESP 沒有加密（NULL 加密，由 tshark 的啟發式認出；談成這條 SA 的註冊不一定在這份擷取檔裡），已解開內容。",
+    "TCP port {port} is a built-in {default} port, but some connections on it carry {found}; the built-in decoding was kept, so the {found} messages on that port are not shown. If that port carries only {found}, re-run with --decode-as tcp.port=={port},{first}.":
+        "TCP 埠 {port} 是內建的 {default} 埠，但上面有些連線跑的是 {found}；維持內建的解碼方式，所以那個埠上的 {found} 訊息沒有顯示。如果那個埠只跑 {found}，請加 --decode-as tcp.port=={port},{first} 重跑。",
     "Message count {before} → {after}. Add --no-auto-decode to turn this off.":
         "訊息數 {before} → {after}。不想要這個行為就加 --no-auto-decode。",
     "editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.":

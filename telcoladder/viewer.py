@@ -114,9 +114,8 @@ def progress_json(session: Session) -> dict:
             # `AutoDecode` 這個物件存在的唯一理由就是這個（pipeline.py）——
             # 自動調整解碼方式而不告訴使用者，等於讓他無法反駁工具的判斷。
             "auto_decode": (
-                analysis.auto_decode.describe()
+                analysis.decoding_notes()
                 if (analysis := session.analysis) is not None
-                and getattr(analysis, "auto_decode", None) is not None
                 else []
             ),
         }

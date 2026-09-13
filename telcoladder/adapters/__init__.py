@@ -127,8 +127,9 @@ class Adapter(Protocol):
     #: 選用。這一格裡屬於更早某則訊息的內容（標頭與 body 分兩格送）。見 `attach_continuations()`。
     def continuations(self, frame: Frame) -> Iterable[Continuation]: ...
 
-    #: 選用。**這段裸位元組是不是你的協定？** 只在擷取檔的 link type 是
-    #: USER n（tshark 一個 dissector 都不掛）時才會被問到，見 `sniff_payload()`。
+    #: 選用。**這段裸位元組是不是你的協定？** 兩種情況會被問到（見 `sniff_payload()`）：
+    #: 擷取檔的 link type 是 USER n（tshark 一個 dissector 都不掛）；以及 `probe` 在
+    #: TCP 埠上看載荷的開頭 —— 那時拿到的可能只是一則訊息的第一個區段。
     def sniff(self, payload: bytes) -> bool: ...
 
 
@@ -369,7 +370,8 @@ def attach_continuations(messages: list[Message], pending: list[Continuation]) -
 def sniff_payload(payload: bytes) -> "Adapter | None":
     """問過每一個 adapter：這段裸位元組是不是你的協定？
 
-    **只用在 USER DLT 的擷取檔上**（`probe.inspect()`）：網元匯出的裸協定
+    **兩個呼叫端**（都在 `probe.inspect()`）：USER DLT 的擷取檔，以及 TCP 埠上
+    每條連線的前幾格載荷。前者是網元匯出的裸協定
     沒有任何鏈路／IP／傳輸層，tshark 對它一個 dissector 都不掛，每格都是
     `user_dlt` 底下一片 `data`。要它解，得先知道載荷是什麼 —— 而知道的
     是 adapter，不是核心（核心不認得任何一個協定的標頭形狀）。

@@ -34,6 +34,8 @@ ALL_FIXTURES = [
     "diameter-epc-ims",
     # 釋放折進場景的（2026-09-13）：折疊只在視窗之間搬訊息，等式照樣要成立。
     "5gc-context-release", "4g-volte-end-to-end", "interworking-cycle", "n26-handover",
+    # ESP 裡的 SIP、B2BUA 兩條腿、非標準埠的 Rf（2026-09-13）。
+    "volte-e2e-call",
 ]
 
 

@@ -90,6 +90,22 @@ _UNCLAIMED_TAILS = frozenset({"", "data"})
 WTAP_ENCAP_USER0 = 45
 WTAP_ENCAP_USER15 = 60
 
+#: ESP 的 null 加密啟發式解碼（Wireshark 的偏好）。**probe 一律開著掃**：ESP 裡
+#: 真的是明文時，裡面的 TCP 連線要算進形狀；是密文時 tshark 解不出下一層，
+#: 什麼都不會多出來。要不要在分析裡採用，照舊由 `pipeline` 的訊息數閘決定。
+ESP_NULL_PREF = "esp.enable_null_encryption_decode_heuristic:TRUE"
+
+#: 每條 TCP 連線嗅探前幾格帶載荷的封包。一則訊息的後續區段沒有起始列，
+#: 所以一格不夠；多看幾格是白讀。
+SNIFF_FRAMES_PER_STREAM = 3
+
+#: 每個埠最多看幾條連線。SBI 的埠上可能有上千條，全看等於把整份檔的載荷讀一遍。
+MAX_STREAMS_PER_PORT = 16
+
+#: 協定鏈尾巴的這個值表示「看了，但認不出來」。與 `_UNCLAIMED_TAILS` 不同：
+#: 那個是 tshark 說的，這個是 probe 自己連嗅探都認不出的結論。
+UNKNOWN = "unknown"
+
 #: 嗅探載荷時看前幾格。看一格不夠 —— 心跳與資料訊息形狀可能不同；
 #: 看太多格是白讀，`frame_bytes` 用 `-c N` 讀到第 N 格為止。
 SNIFF_FRAMES = 8
@@ -132,6 +148,21 @@ class CaptureShape:
     #: None 代表沒有人認領、或不只一個人認領 —— 兩者都不能猜。
     payload_dissector: str | None = None
 
+    #: 擷取檔裡的 ESP 格數，以及其中**開著 null 啟發式時看得到下一層**的格數。
+    #: 後者大於 0 才代表「這些 ESP 其實沒加密」—— 前者只說有 IPsec。
+    esp_frames: int = 0
+    esp_readable_frames: int = 0
+
+    #: 伺服端埠 → 那個埠上各條連線跑的協定（排序過）。只收**值得看的埠**：
+    #: 沒人認領的，以及呼叫端指名要看的（內建規則的埠）。一條連線認不出來記 `unknown`。
+    #:
+    #: 協定名稱是 adapter 的 `DISSECTORS`：tshark 自己認領的就照協定鏈，沒認領的
+    #: 看前幾格載荷問 adapter（`adapters.sniff_payload`）。
+    port_protocols: tuple[tuple[int, tuple[str, ...]], ...] = ()
+
+    def protocols_on(self, port: int) -> tuple[str, ...]:
+        return dict(self.port_protocols).get(port, ())
+
     def is_network_element_trace(self) -> bool:
         """看起來像網元吐出來的 trace，而不是線路側錄。
 
@@ -150,9 +181,14 @@ class CaptureShape:
         與 `suggested_decode_as` 同一個安全網：對映錯了 tshark 解不出訊息，
         `pipeline` 的「訊息數必須增加」條件會把整次重跑丟掉。
         """
-        if self.user_dlt is None or self.payload_dissector is None:
-            return ()
-        return (user_dlt_pref(self.user_dlt - LINKTYPE_USER0, self.payload_dissector),)
+        out: list[str] = []
+        if self.user_dlt is not None and self.payload_dissector is not None:
+            out.append(user_dlt_pref(self.user_dlt - LINKTYPE_USER0, self.payload_dissector))
+        # ESP 裡看得到下一層 —— null 加密。**看不到就不建議**：加密的 ESP 開著
+        # 啟發式也解不出東西，建議了只是白跑一趟。
+        if self.esp_readable_frames:
+            out.append(ESP_NULL_PREF)
+        return tuple(out)
 
     def suggested_decode_as(self) -> tuple[str, ...]:
         """對未認領的埠建議解成 HTTP/2。
@@ -164,7 +200,59 @@ class CaptureShape:
         猜錯不會造成傷害：非 HTTP/2 的載荷解不出 HTTP/2 frame，產不出訊息，
         `pipeline` 的「訊息數必須增加」條件會把整次重跑丟掉。
         """
-        return tuple(f"tcp.port=={port},http2" for port in self.unclaimed_ports)
+        return tuple(f"tcp.port=={port},{self._single_protocol(port) or 'http2'}"
+                     for port in self.unclaimed_ports)
+
+    def _single_protocol(self, port: int) -> str | None:
+        """這個埠上每一條看過的連線都是同一個認得出來的協定時，回那個協定。"""
+        seen = self.protocols_on(port)
+        return seen[0] if len(seen) == 1 and seen[0] != UNKNOWN else None
+
+    def overrides(self, rules: Iterable[str]) -> tuple[str, ...]:
+        """內建規則把一個埠指到 A，但那個埠上**每一條**連線跑的都是 B。
+
+        實測（真實 IMS 擷取，只記形狀）：Gm SA 的 P-CSCF 保護埠是 7777，也就是
+        SBI 預設的 HTTP/2 埠；內建的 `tcp.port==7777,http2` 讓 tshark 把那一腿的
+        SIP 全部當 HTTP/2 解，一則都不剩。
+
+        **只要有一條連線認不出來就不建議。** SBI 的 HTTP/2 在連線中段沒有可嗅探的
+        開頭，所以「認不出來」很可能就是真的 SBI —— 那時蓋掉內建規則會讓 SBI 消失。
+        那種埠由 `conflicts()` 報出來。
+        """
+        out: list[str] = []
+        for rule in rules:
+            port, protocol = rule_port(rule), rule.rsplit(",", 1)[-1]
+            if port is None or not rule.startswith("tcp.port=="):
+                continue
+            found = self._single_protocol(port)
+            if found is not None and found != protocol:
+                out.append(f"tcp.port=={port},{found}")
+        return tuple(out)
+
+    def conflicts(self, rules: Iterable[str]) -> tuple[tuple[int, str, tuple[str, ...]], ...]:
+        """內建規則的埠上**混著**別的協定：`(埠, 內建協定, 認出來的其他協定)`。
+
+        這種埠不自動改（見 `overrides()`），但要講出來 —— 否則那些訊息靜默消失。
+        """
+        out: list[tuple[int, str, tuple[str, ...]]] = []
+        for rule in rules:
+            port, protocol = rule_port(rule), rule.rsplit(",", 1)[-1]
+            if port is None or not rule.startswith("tcp.port=="):
+                continue
+            seen = self.protocols_on(port)
+            others = tuple(p for p in seen if p not in (UNKNOWN, protocol))
+            if others and (UNKNOWN in seen or protocol in seen or len(others) > 1):
+                out.append((port, protocol, others))
+        return tuple(out)
+
+
+def rule_port(rule: str) -> int | None:
+    """`tcp.port==8080,http2` → 8080。不是埠選擇器就回 None。"""
+    selector = rule.rsplit(",", 1)[0]
+    field, _unused, value = selector.partition("==")
+    if not field.endswith(".port") or not value.isdigit():
+        return None
+    return int(value)
 
 
 def _protocol_tail(protocols: str) -> str:
@@ -216,7 +304,8 @@ def server_port_of(
 
 
 def inspect(
-    pcap: Path, *, prefs: Sequence[str] = (), tshark: Tshark | None = None
+    pcap: Path, *, prefs: Sequence[str] = (), tshark: Tshark | None = None,
+    watch_ports: Iterable[int] = (),
 ) -> CaptureShape:
     """掃一趟，回報擷取檔形狀。
 
@@ -225,7 +314,11 @@ def inspect(
     它不帶載荷，但它說出誰是伺服端（`server_port_of`），而且不用多跑一趟。
 
     `prefs` 是使用者明講的 tshark 偏好（`--tshark-pref`）。這一趟要吃同一組，
-    否則「盤點形狀」與「真正分析」看的是兩份不同的檔。
+    否則「盤點形狀」與「真正分析」看的是兩份不同的檔。**另外一律加上
+    `ESP_NULL_PREF`**：null 加密的 ESP 裡的連線也是這份檔的形狀（見常數說明）。
+
+    `watch_ports` 是呼叫端要看協定的埠（內建 decode-as 規則的那些），即使那個埠
+    已經有 dissector 認領 —— 被**錯的** dissector 認領正是要找的情況。
     """
     tshark = tshark or find_tshark()
     encap = encap_type(pcap, tshark, prefs)
@@ -235,10 +328,11 @@ def inspect(
     if user_dlt is not None:
         payload_dissector = _sniff_payload(pcap, tshark, prefs)
 
+    scan_prefs = (*prefs, ESP_NULL_PREF)
     proc = tshark.run(
         [
-            "-r", str(pcap), *pref_args(prefs), *disable_protocol_args(),
-            "-Y", "tcp.len>0 || tcp.flags.syn==1",
+            "-r", str(pcap), *pref_args(scan_prefs), *disable_protocol_args(),
+            "-Y", "tcp.len>0 || tcp.flags.syn==1 || esp",
             "-T", "fields",
             # occurrence=f：隧道封包會有多層 TCP，只取最外層即可。
             "-E", "occurrence=f",
@@ -249,6 +343,7 @@ def inspect(
             "-e", "frame.protocols",
             "-e", "tcp.flags",
             "-e", "tcp.len",
+            "-e", "frame.number",
         ],
         timeout=300,
     )
@@ -266,12 +361,22 @@ def inspect(
     # stream → 未認領的載荷格數。伺服端埠定案後再按埠聚合
     # （**按埠而非按連線**，理由見上方常數說明）。
     unclaimed_by_stream: dict[str, int] = defaultdict(int)
+    # stream → 協定鏈尾巴的計數，以及前幾格帶載荷的 frame 編號（嗅探用）。
+    stream_tails: dict[str, Counter[str]] = defaultdict(Counter)
+    stream_samples: dict[str, list[str]] = defaultdict(list)
+    esp_frames = esp_readable = 0
 
     for line in proc.stdout.splitlines():
         fields = line.split("\t")
-        if len(fields) != 7:
+        if len(fields) != 8:
             continue
-        stream, srcport, dstport, seq, protocols, flags_hex, length = fields
+        stream, srcport, dstport, seq, protocols, flags_hex, length, number = fields
+        chain = protocols.split(":")
+        if "esp" in chain:
+            esp_frames += 1
+            # 啟發式解得出下一層，`esp` 後面才會還有東西。
+            if chain[-1] != "esp":
+                esp_readable += 1
         if not stream:
             continue
         stream_ports[stream].update((srcport, dstport))
@@ -285,7 +390,11 @@ def inspect(
         seqs[direction].add(seq)
         frames[direction] += 1
         first_payload_dst.setdefault(stream, dstport)
-        if _protocol_tail(protocols) in _UNCLAIMED_TAILS:
+        tail = _protocol_tail(protocols)
+        stream_tails[stream][tail] += 1
+        if len(stream_samples[stream]) < SNIFF_FRAMES_PER_STREAM:
+            stream_samples[stream].append(number)
+        if tail in _UNCLAIMED_TAILS:
             unclaimed_by_stream[stream] += 1
 
     streams_per_port = Counter(port for ports in stream_ports.values() for port in ports)
@@ -319,6 +428,11 @@ def inspect(
         key=lambda item: (-item[1], item[0]),
     )[:MAX_SUGGESTED_PORTS]
 
+    watched = {port for port, _count in ranked} | {int(p) for p in watch_ports}
+    port_protocols = _protocols_by_port(
+        pcap, tshark, scan_prefs, watched, server_port, stream_tails, stream_samples
+    )
+
     return CaptureShape(
         synthetic_seq=synthetic > 0,
         synthetic_directions=synthetic,
@@ -330,7 +444,82 @@ def inspect(
         encap_type=encap,
         user_dlt=user_dlt,
         payload_dissector=payload_dissector,
+        esp_frames=esp_frames,
+        esp_readable_frames=esp_readable,
+        port_protocols=port_protocols,
     )
+
+
+def _protocols_by_port(
+    pcap: Path,
+    tshark: Tshark,
+    prefs: Sequence[str],
+    ports: set[int],
+    server_port: dict[str, str],
+    stream_tails: dict[str, Counter[str]],
+    stream_samples: dict[str, list[str]],
+) -> tuple[tuple[int, tuple[str, ...]], ...]:
+    """每個指定的埠上，各條連線跑的是什麼協定。
+
+    一條連線的答案依序取：① tshark 在協定鏈上**恰好認出一個** adapter 的協定；
+    ② 否則拿前幾格載荷問 adapter（恰好一個認領才算）；③ 都不行就是 `unknown`。
+    嗅探只對需要的連線做，而且合併成一趟 tshark。
+    """
+    from telcoladder.adapters import adapters, sniff_payload
+
+    known = {name for adapter in adapters() for name in adapter.DISSECTORS}
+    streams_by_port: dict[int, list[str]] = defaultdict(list)
+    for stream, port in server_port.items():
+        if port.isdigit() and int(port) in ports:
+            streams_by_port[int(port)].append(stream)
+
+    verdict: dict[str, str] = {}
+    to_sniff: dict[str, str] = {}   # frame 編號 → stream
+    for port, streams in streams_by_port.items():
+        for stream in sorted(streams, key=lambda s: int(s) if s.isdigit() else 0)[:MAX_STREAMS_PER_PORT]:
+            claimed = {tail for tail in stream_tails[stream] if tail in known}
+            if len(claimed) == 1:
+                verdict[stream] = claimed.pop()
+            else:
+                verdict[stream] = UNKNOWN
+                for number in stream_samples[stream]:
+                    to_sniff[number] = stream
+
+    if to_sniff:
+        proc = tshark.run(
+            [
+                "-r", str(pcap), *pref_args(prefs), *disable_protocol_args(),
+                # **逗號分隔。** 空白分隔的集合 tshark 4.6 直接報語法錯，而 `run()` 不拋例外 ——
+                # 症狀是這一趟什麼都沒印、每條連線都變 `unknown`，Diameter 被建議成 HTTP/2。實測踩過。
+                "-Y", "frame.number in {" + ", ".join(sorted(to_sniff, key=int)) + "}",
+                "-T", "fields", "-E", "occurrence=f",
+                "-e", "frame.number", "-e", "tcp.payload",
+            ],
+            timeout=300,
+        )
+        hits: dict[str, set[str]] = defaultdict(set)
+        for line in proc.stdout.splitlines():
+            number, _tab, payload = line.partition("\t")
+            stream = to_sniff.get(number)
+            if stream is None or not payload:
+                continue
+            try:
+                raw = bytes.fromhex(payload.replace(":", ""))
+            except ValueError:
+                continue
+            adapter = sniff_payload(raw)
+            if adapter is not None:
+                hits[stream].add(adapter.DISSECTORS[0])
+        for stream, names in hits.items():
+            if len(names) == 1:
+                verdict[stream] = names.pop()
+
+    out: dict[int, set[str]] = defaultdict(set)
+    for port, streams in streams_by_port.items():
+        for stream in streams:
+            if stream in verdict:
+                out[port].add(verdict[stream])
+    return tuple(sorted((port, tuple(sorted(names))) for port, names in out.items()))
 
 
 def encap_type(pcap: Path, tshark: Tshark, prefs: Sequence[str] = ()) -> int | None:
