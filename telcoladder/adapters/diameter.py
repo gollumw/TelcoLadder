@@ -68,7 +68,9 @@ from typing import Any
 
 from telcoladder.extract import Frame, first
 from telcoladder.extract import to_int as _to_int
-from telcoladder.identity import globally_unique, imsi_from_ims_identity
+from telcoladder.identity import (
+    e164_digits, globally_unique, imsi_from_ims_identity, international_msisdn, msisdn_from_tbcd,
+)
 from telcoladder.model import (
     ENDPOINT_DST_KEY,
     ENDPOINT_SRC_KEY,
@@ -323,8 +325,34 @@ def _identity_keys(block: dict[str, Any]) -> set[IdKey]:
     for impu in _as_list(block.get("diameter_diameter_Public-Identity")):
         if impu:
             keys.add(globally_unique(IdKind.IMPU, str(impu).strip()))
+            # `sip:+…@` 或 `tel:+…` 形式的公開身分就是號碼。**只收國際形式**（見
+            # `identity.international_msisdn`）—— 本地形式要補國碼，這裡不猜。
+            number = international_msisdn(str(impu))
+            if number:
+                keys.add(globally_unique(IdKind.MSISDN, number))
+
+    # **同一個門號的 Diameter 併成一條**（2026-09-13）。真實樣本上被叫號碼的 Cx 路由查詢
+    # 與三段 Sh 查詢各自只有 Session-Id，於是切成四條流程，沒有一條說得出「這是誰」。
+    #
+    # Sh 的 `User-Identity` 裡是 TBCD 的 `MSISDN`（國際形式）。
+    for raw in _as_list(block.get("diameter_diameter_MSISDN")):
+        number = msisdn_from_tbcd(raw)
+        if number:
+            keys.add(globally_unique(IdKind.MSISDN, number))
+    # Rf／Gy 的 `Subscription-Id`：型別與資料是位置對位置的陣列，**只收型別 0（END_USER_E164）**。
+    # 型別 1 是 IMSI、2 是 SIP URI —— 同一個欄位裝著不同的號碼空間，不看型別就會把 IMSI 當門號。
+    kinds = _as_list(block.get("diameter_diameter_Subscription-Id-Type"))
+    for kind, data in zip(kinds, _as_list(block.get("diameter_diameter_Subscription-Id-Data"))):
+        if _to_int(kind) == _SUBSCRIPTION_ID_E164:
+            number = e164_digits(data)
+            if number:
+                keys.add(globally_unique(IdKind.MSISDN, number))
 
     return keys
+
+
+#: `Subscription-Id-Type` 的 END_USER_E164（RFC 4006 §8.47）。
+_SUBSCRIPTION_ID_E164 = 0
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -386,6 +414,11 @@ def parse(frame: Frame) -> list[Message]:
         session = first(block.get("diameter_diameter_Session-Id"))
         if session:
             detail["session-id"] = str(session)
+        icid = first(block.get("diameter_diameter_IMS-Charging-Identifier"))
+        if icid:
+            # Rf 的 ICID —— 與 SIP `P-Charging-Vector` 的 `icid-value` 是同一個值。
+            # **只當屬性**，理由見 `adapters/sip.py` 同名那段。
+            detail["icid"] = str(icid).strip()
 
         origin_host = str(first(block.get("diameter_diameter_Origin-Host")) or "").strip()
         destination_host = str(first(block.get("diameter_diameter_Destination-Host")) or "").strip()

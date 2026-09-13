@@ -268,7 +268,7 @@ def test_esp_is_named_and_told_what_to_do():
 @pytest.mark.parametrize("protocol, what", [
     ("isup", "PSTN breakout"),
     ("camel", "IN service trigger"),
-    ("dns", "ENUM/NAPTR"),
+    ("dns", "other than ENUM NAPTR"),
 ])
 def test_known_but_unsupported_protocols_are_named_not_just_counted(protocol, what):
     """「N 格是 isup」只是一個名字；讀的人要知道那在電信擷取檔裡通常是什麼、

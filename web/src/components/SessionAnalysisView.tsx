@@ -94,6 +94,7 @@ const DOMAIN_TABS: Array<{ id: TelecomDomain | "ALL"; label: string }> = [
   { id: "BEARER_S11_S5S8", label: "Bearer (S11/S5-S8)" },
   { id: "IMS_SIP", label: "IMS (SIP Gm/Mw)" },
   { id: "IMS_MEDIA_CONTROL", label: "Media control (H.248)" },
+  { id: "IMS_ENUM", label: "ENUM (DNS)" },
   { id: "SGS_CSFB_SMS", label: "SGs (CSFB/SMS)" },
 ];
 

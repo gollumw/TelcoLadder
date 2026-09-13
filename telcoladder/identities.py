@@ -10,7 +10,7 @@
 1. **使用者搜錯了** —— 這份擷取檔裡沒有這個 SUPI（但有別的，列出來給他看）
 2. **原理上取不到** —— SUCI 用了 ECIES 保護，MSIN 根本不在封包裡。
    再怎麼搜都不會有結果，要改用 NGAP UE ID
-3. **還沒實作** —— MSISDN 需要 IMS adapter（Phase 2）
+3. **還沒實作** —— 宣告了身分類別、但還沒有任何 adapter 產生它（2026-09-13 起沒有這種類別；MSISDN 是最後一個被補上的）
 
 三者的處置完全不同，混成一句「找不到」就是本專案最痛恨的靜默失敗
 （CLAUDE.md §4）。所以這裡的重點不是查詢，是**把原因分開講**。
@@ -49,9 +49,9 @@ UNIMPLEMENTED_KINDS: tuple[IdKind, ...] = (
     # 於是同步測試的靜態掃描看不到它。症狀是 UI 標「尚未實作」而引擎其實抽得到
     # （實測 userplane fixture：`gtp_teid` 有值）。掃描範圍已擴及 `identity.py`。
     # SIP_CALL_ID／IMPU **已於 2026-08-24 移出** —— `adapters/sip.py` 落地（T7）。
-    # MSISDN 還留著：SIP 的 `To`/`From` 用的是 IMPU，而 MSISDN 要等
-    # `tel:` URI 或 Diameter 的 `Subscription-Id`（都還沒抽）。
-    IdKind.MSISDN,
+    # MSISDN **已於 2026-09-13 移出** —— `adapters/diameter.py`（Sh 的 TBCD `MSISDN`、
+    # 國際形式的 `Public-Identity`、E.164 的 `Subscription-Id`）與 `adapters/enum.py`
+    # 開始產生它。
     # ENB/MME_UE_S1AP_ID **已於 2026-08-24 移出** —— `adapters/s1ap.py` 落地，
     # 開始產生它們。抓到這件事的正是同步測試（T3 就預告過「T4 落地那天會紅」）。
     # GTP_TEID_C **已於 2026-08-24 移出** —— `adapters/gtpv2.py` 落地（T6）。
@@ -90,7 +90,6 @@ KIND_LABELS: dict[IdKind, str] = {
 UNAVAILABLE_REASONS: dict[IdKind, str] = {
     IdKind.IMPI: N_('Needs the IMS adapter (not implemented yet)'),
     IdKind.IMPU: N_('Needs the IMS adapter (not implemented yet)'),
-    IdKind.MSISDN: N_('Needs the IMS adapter (not implemented yet) - MSISDN comes from IMS/Diameter, it is not in 5G core signalling'),
     IdKind.SIP_CALL_ID: N_('Needs the SIP adapter (not implemented yet)'),
     IdKind.DIAMETER_SESSION_ID: N_('Needs the Diameter adapter (not implemented yet)'),
     IdKind.GTP_TEID_C: N_('Needs the GTPv2-C adapter (not implemented yet) - control-plane TEIDs are a separate number space from the user-plane ones'),

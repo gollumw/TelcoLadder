@@ -767,7 +767,8 @@ PARTICIPANT_ORDER = (
     # 3GPP AAA 貼著 HSS（SWx 的對端）。
     # SLF（Cx／Sh 的 redirect agent，2026-09-06）貼在 HSS 前面：查詢先到它，
     # 再被指到 HSS。MGC／MGW 是 H.248 的兩端（Iq／Mn／Mp 分不出來，故用中性名）。
-    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "AS", "SLF", "HSS", "AAA", "PCEF", "PCRF",
+    # ENUM（2026-09-13）貼著 S-CSCF：號碼翻成路由位址是 S-CSCF／AS 在呼叫建立時問的。
+    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "ENUM", "AS", "SLF", "HSS", "AAA", "PCEF", "PCRF",
     "MGC", "MGW",
 )
 

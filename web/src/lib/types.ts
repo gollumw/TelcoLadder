@@ -12,6 +12,7 @@ export type TelecomDomain =
   | "BEARER_S11_S5S8"
   | "IMS_SIP"
   | "IMS_MEDIA_CONTROL"
+  | "IMS_ENUM"
   // SGs（2026-09-12）：MME ↔ MSC/VLR。S1-MME 分頁也收它（SessionAnalysisView 的 ALSO_IN_TAB）。
   | "SGS_CSFB_SMS";
 

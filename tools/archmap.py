@@ -70,7 +70,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
         "adapters", "adapters.ngap", "adapters.nas5gs", "adapters.sbi",
         "adapters.pfcp", "adapters.gtp", "adapters.diameter", "adapters.s1ap",
         "adapters.naseps", "adapters.gtpv2", "adapters.sip", "adapters.megaco",
-        "adapters.sgsap", "adapters.carrier",
+        "adapters.sgsap", "adapters.enum", "adapters.carrier",
     )),
     ("L3", "分析核心", "把訊息變成「誰跟誰、發生什麼」", (
         "pipeline", "correlate", "lifecycle", "nf", "causes", "coverage", "wireview",
@@ -168,6 +168,10 @@ DOMAINS: list[tuple[str, str, str, str, str]] = [
     ("IMS 媒體控制", "adapters.megaco", "Iq · Mn · Mp", "shipped",
      "H.248 的 MGC↔MGW。**參考點不填**（三對節點的訊息長得一樣，分不出是哪一對）。"
      "接上 SIP 通話靠 `identity.media_endpoint(位址, 埠)` —— 與 GTP-U 隧道同構的橋。"),
+    ("IMS 訊令", "adapters.enum", "—", "shipped",
+     "ENUM：被叫號碼翻成 SIP 路由位址（DNS NAPTR）。**只收 `e164.arpa` 底下的 NAPTR**，一般 DNS 不收。"
+     "查詢名稱就是反寫的號碼，所以一問一答都帶 `MSISDN` 鍵，與 Sh／Cx／Rf 併成同一個門號的流程。"
+     "NXDOMAIN 不算失敗（號碼不在 ENUM 裡是正常的路由答案）。"),
     ("IMS 媒體", "adapters.rtp", "—", "deferred",
      "E3。相依 SIP；testbed 讓 fixture 障礙消失後重新評估。"),
 ]

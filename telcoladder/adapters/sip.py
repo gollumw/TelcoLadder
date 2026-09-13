@@ -339,6 +339,14 @@ def parse(frame: Frame) -> list[Message]:
         # 主叫要求不顯示號碼（RFC 3323）。**與「網路不知道號碼」是兩件事**：
         # 網路斷言了、但要求被叫看不到。混為一談的話，「被叫沒看到號碼」這種
         # 工單就查不出是哪一種，而兩種的處理方式完全不同。
+        # **ICID**（`P-Charging-Vector` 的 `icid-value`）：一通電話經過 B2BUA 換了 Call-ID，
+        # 每一腿仍帶同一個 ICID，Rf 的 `IMS-Charging-Identifier` 也是它。
+        # **刻意只當屬性、不當關聯鍵**：它同時屬於主叫與被叫，進了 union-find 就會把
+        # 兩個人（以及他們日後各自的通話）併成一條 —— 與「只收 From 不收 To」同一個理由。
+        # 串起一通電話的是 `calls.py`，不是 `correlate`。
+        icid = first(block.get("sip_sip_icid_value"))
+        if icid:
+            detail["icid"] = str(icid).strip()
         privacy = first(block.get("sip_sip_Privacy"))
         if privacy:
             detail["Privacy"] = str(privacy)
