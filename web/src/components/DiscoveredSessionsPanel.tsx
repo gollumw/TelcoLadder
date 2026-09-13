@@ -4,6 +4,7 @@ import { t, useLang } from "../i18n";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Filter, PhoneCall, Radar, X } from "lucide-react";
 import { clockFromEpoch, cn, deriveSessionStatus, formatTimeOffset } from "@/lib/utils";
+import { formatTzOffset, useTzOffset } from "../timezone";
 import type { DiscoveredSession } from "@/lib/utils";
 import type { CallRow } from "@/data/source";
 import type { SessionIdentity, SessionStatus } from "@/lib/types";
@@ -36,11 +37,11 @@ const ACTIVITY_LABEL: Record<string, string> = {
 //: 接取是線路宣告的品牌名，兩種語言寫法相同，不進翻譯表。
 const ACCESS_LABEL: Record<string, string> = { volte: "VoLTE", vonr: "VoNR", vowifi: "VoWiFi" };
 
-/** 一通電話的時間：有絕對時間印 UTC 時刻，沒有就印相對秒數 —— 不編一個時刻。 */
-function callSpan(c: CallRow): string {
-  const start = clockFromEpoch(c.absStart);
-  const end = clockFromEpoch(c.absEnd);
-  if (start && end) return `${start.replace(" UTC", "")} → ${end}`;
+/** 一通電話的時間：有絕對時間印總覽選的時區，沒有就印相對秒數 —— 不編一個時刻。 */
+function callSpan(c: CallRow, tz: number): string {
+  const start = clockFromEpoch(c.absStart, tz);
+  const end = clockFromEpoch(c.absEnd, tz);
+  if (start && end) return `${start.replace(` ${formatTzOffset(tz)}`, "")} → ${end}`;
   return `T+${c.startTs.toFixed(3)}s → T+${(c.startTs + c.durationS).toFixed(3)}s`;
 }
 
@@ -66,6 +67,7 @@ export function DiscoveredSessionsPanel({
   onJumpToSession: (supi: string) => void;
 }) {
   useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
+  const tz = useTzOffset();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("packetCount");
 
@@ -230,9 +232,10 @@ export function DiscoveredSessionsPanel({
                                 {shortParty(c.callee, c.calleeMsisdn)}
                                 {c.calleeAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.calleeAccess] ?? c.calleeAccess}</span>}
                               </span>
-                              <span className="text-fg-dim" title={t("Times are UTC, so every machine shows the same instant")}>{callSpan(c)}</span>
+                              <span className="text-fg-dim" title={t("Times use the time zone chosen on the Overview (UTC by default)")}>{callSpan(c, tz)}</span>
                               {c.finalStatus !== null && <span>{c.finalStatus}</span>}
-                              {c.cause && <span className="text-signal-red">{c.cause}</span>}
+                              {/* 紅色只給有問題的通話。忙線、取消（487）是一方結束的，網路沒壞 —— 同一句 cause 標紅會讓人去查一個不存在的故障。 */}
+                              {c.cause && <span className={isProblemCall(c) ? "text-signal-red" : "text-fg-dim"}>{c.cause}</span>}
                             </li>
                           ))}
                       </ul>

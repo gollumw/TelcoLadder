@@ -4,6 +4,7 @@ import { t, useLang } from "../i18n";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowUpRight, Loader2, PhoneCall, PhoneMissed } from "lucide-react";
 import { clockFromEpoch, cn } from "@/lib/utils";
+import { useTzOffset } from "../timezone";
 import type { CallFlow, CallRow, Calls } from "@/data/source";
 import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
@@ -50,9 +51,9 @@ export function isProblemCall(c: CallRow): boolean {
 //: 接取是線路宣告的品牌名，兩種語言寫法相同。
 const ACCESS_LABEL: Record<string, string> = { volte: "VoLTE", vonr: "VoNR", vowifi: "VoWiFi" };
 
-/** 開始或結束的時刻：有絕對時間印 UTC，沒有就印相對秒數。 */
-function callTime(abs: number, rel: number): string {
-  return clockFromEpoch(abs) ?? `T+${rel.toFixed(3)}s`;
+/** 開始或結束的時刻：有絕對時間印總覽選的時區，沒有就印相對秒數。 */
+function callTime(abs: number, rel: number, tz: number): string {
+  return clockFromEpoch(abs, tz) ?? `T+${rel.toFixed(3)}s`;
 }
 
 /** 誰掛的。**明確對應，不用 `t(row.releasedBy)`** —— 動態的鍵靜態掃描看不到，
@@ -116,6 +117,7 @@ export function CallsView({
   fullEndToEnd: boolean;
   onToggleFullEndToEnd: () => void;
 }) {
+  const tz = useTzOffset();
   useLang();
   const [onlyProblems, setOnlyProblems] = useState(false);
 
@@ -204,8 +206,8 @@ export function CallsView({
               {OUTCOME_MARK[current.outcome]} {t(current.outcome)}
             </span>
           </h2>
-          <p className="mt-1 font-mono text-[11px] text-fg-dim" title={t("Times are UTC, so every machine shows the same instant")}>
-            {t("Start")} {callTime(current.absStart, current.startTs)} · {t("End")} {callTime(current.absEnd, current.startTs + current.durationS)}
+          <p className="mt-1 font-mono text-[11px] text-fg-dim" title={t("Times use the time zone chosen on the Overview (UTC by default)")}>
+            {t("Start")} {callTime(current.absStart, current.startTs, tz)} · {t("End")} {callTime(current.absEnd, current.startTs + current.durationS, tz)}
           </p>
           {current.cause && <p className="mt-1 text-xs text-signal-red">⚠ {current.cause}</p>}
           {current.note && <p className="mt-1 text-xs text-fg-dim">{current.note}</p>}
@@ -378,7 +380,7 @@ export function CallsView({
         <table className="w-full text-left text-[11px]">
           <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-dim">
             <tr>
-              <th className="px-2 py-1.5 font-medium" title={t("Times are UTC, so every machine shows the same instant")}>{t("Start")}</th>
+              <th className="px-2 py-1.5 font-medium" title={t("Times use the time zone chosen on the Overview (UTC by default)")}>{t("Start")}</th>
               <th className="px-2 py-1.5 font-medium">{t("End")}</th>
               <th className="px-2 py-1.5 font-medium">{t("Caller")}</th>
               <th className="px-2 py-1.5 font-medium">{t("Callee")}</th>
@@ -408,8 +410,8 @@ export function CallsView({
                 )}
                 onClick={() => onSelect(c.id)}
               >
-                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absStart, c.startTs)}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absEnd, c.startTs + c.durationS)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absStart, c.startTs, tz)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absEnd, c.startTs + c.durationS, tz)}</td>
                 <td className="px-2 py-1.5 font-mono text-fg" title={c.caller ?? undefined}>
                   {shortParty(c.caller, c.callerMsisdn)}
                   {c.callerAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.callerAccess] ?? c.callerAccess}</span>}

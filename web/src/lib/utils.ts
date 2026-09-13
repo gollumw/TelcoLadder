@@ -1,3 +1,4 @@
+import { formatTzOffset } from "../timezone";
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { IdentityKind } from "@/data/source";
@@ -126,13 +127,15 @@ export function computeDiscoveredSessions(packets: RawPacket[]): DiscoveredSessi
 }
 
 /**
- * epoch 秒 → `HH:MM:SS.mmm UTC`。**固定用 UTC，不用瀏覽器時區** —— 同一份擷取檔在兩台機器上
- * 必須印出同一個時刻，因為它會被貼進工單（與介面語言不看系統語系同一個理由）。
+ * epoch 秒 → `HH:MM:SS.mmm UTC+8`。**偏移量由呼叫端給（總覽的時區選單），預設 UTC，不用瀏覽器
+ * 時區** —— 同一份擷取檔在兩台機器上必須印出同一個時刻，因為它會被貼進工單（與介面語言不看
+ * 系統語系同一個理由）。偏移量永遠印在時刻後面，貼出去的字串自己說得清楚。
  * 0 是「沒有絕對時間」的哨兵值，回 null 讓呼叫端改顯示相對秒數。
  */
-export function clockFromEpoch(epoch: number): string | null {
+export function clockFromEpoch(epoch: number, offsetMinutes = 0): string | null {
   if (!epoch || !Number.isFinite(epoch)) return null;
-  return `${new Date(Math.floor(epoch * 1000)).toISOString().slice(11, 23)} UTC`;
+  const shifted = new Date(Math.floor(epoch * 1000) + offsetMinutes * 60_000);
+  return `${shifted.toISOString().slice(11, 23)} ${formatTzOffset(offsetMinutes)}`;
 }
 
 /** A session with no Registration ever captured is "mid-stream" regardless of error state; otherwise error beats connected. */
