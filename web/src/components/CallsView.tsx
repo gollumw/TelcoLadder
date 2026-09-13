@@ -81,6 +81,8 @@ export function CallsView({
   treeByFrame,
   onRequestTree,
   onViewInDataMining,
+  fullEndToEnd,
+  onToggleFullEndToEnd,
 }: {
   /** null＝還在取。 */
   calls: Calls | null;
@@ -97,6 +99,9 @@ export function CallsView({
   treeByFrame?: Record<number, ProtocolNode[] | null>;
   onRequestTree?: (frame: number) => void;
   onViewInDataMining: (frame: number) => void;
+  /** 梯形圖是不是完整端到端。**預設 false（只有 SIP 各腿）**。 */
+  fullEndToEnd: boolean;
+  onToggleFullEndToEnd: () => void;
 }) {
   useLang();
   const [onlyProblems, setOnlyProblems] = useState(false);
@@ -232,6 +237,58 @@ export function CallsView({
               </div>
             ))}
           </div>
+        </section>
+
+        {/* 只有 SIP ／ 完整端到端。**預設只有 SIP**：那與表上的訊息數是同一個數字。
+            完整端到端多出來的每一則都有依據（媒體端點、ICID、號碼＋通話期間），見 `calls.end_to_end`。 */}
+        <section className="rounded-lg border border-border bg-surface-1 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex overflow-hidden rounded border border-border text-[11px] font-medium">
+              {([false, true] as const).map((full) => (
+                <button
+                  key={String(full)}
+                  type="button"
+                  aria-pressed={fullEndToEnd === full}
+                  onClick={() => fullEndToEnd !== full && onToggleFullEndToEnd()}
+                  className={cn(
+                    "px-2.5 py-1 transition-colors",
+                    fullEndToEnd === full
+                      ? "bg-signal-cyan-bg text-signal-cyan"
+                      : "bg-surface-2 text-fg-dim hover:text-fg-muted",
+                  )}
+                >
+                  {full ? t("Full end-to-end") : t("SIP only")}
+                </button>
+              ))}
+            </div>
+            <span className="font-mono text-[11px] text-fg-dim">
+              {t("{n} SIP legs", { n: current.legs })}
+              {current.related && (
+                <span className="ml-2">
+                  {t("end-to-end adds {megaco} H.248 · {diameter} Diameter · {enum} ENUM", {
+                    megaco: current.related.megaco,
+                    diameter: current.related.diameter,
+                    enum: current.related.enum,
+                  })}
+                </span>
+              )}
+            </span>
+          </div>
+          {fullEndToEnd && (
+            <p className="mt-1 text-[11px] text-fg-dim">
+              {t("H.248 joins through the call's SDP media endpoints, Rf through its charging ID (ICID), HSS and ENUM lookups through the caller's or callee's international number within the call's time span.")}
+            </p>
+          )}
+          {!!current.unattributed && (
+            <p className="mt-1 text-[11px] text-signal-amber">
+              {t("{n} Diameter messages during this call carry no subscriber identity and were not attached - usually answers whose requests are not in the capture.", { n: current.unattributed })}
+              {fullEndToEnd && callFlow?.endToEnd && callFlow.endToEnd.unattributedFrames.length > 0 && (
+                <span className="ml-1 font-mono">
+                  {t("Frames: {frames}", { frames: callFlow.endToEnd.unattributedFrames.join(", ") })}
+                </span>
+              )}
+            </p>
+          )}
         </section>
 
         {callFlow ? (

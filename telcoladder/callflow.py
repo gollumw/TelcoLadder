@@ -145,24 +145,36 @@ def diameter_events(analysis: Analysis, handle: str, *, wire: bool = True) -> di
     return result
 
 
-def call_events(analysis: Analysis, handle: str, *, wire: bool = True) -> dict:
+def call_events(analysis: Analysis, handle: str, *, wire: bool = True, full: bool = False) -> dict:
     """**一通電話**的梯形圖資料（`/calls` 表上那一列）。
 
     與 `events()` 同一段渲染、同一種 JSON —— 通話視圖不另養一份梯形圖。
-    訊息集合是那一通的 SIP 訊息，程序段就是它自己那一段。
+    程序段是這通電話的每一腿。
 
-    **刻意不含這通電話的 H.248／RTP**：那些接得上是靠 `identity.media_endpoint`
-    的橋，屬於訂戶那條流程；在這裡混進來會讓「這通電話有幾則訊息」與
-    `/calls` 表上的數字對不起來，而兩個數字不一致沒有任何一層會說。
+    **預設只有 SIP 各腿**：那與 `/calls` 表上的 `messages` 是同一個數字。`full=True`
+    是完整端到端（`calls.end_to_end`）—— 加上有依據接上的 H.248、Diameter、ENUM；
+    多出來的數字在表上是另一欄（`related`），所以兩個數字各自對得上，不會互相矛盾。
     """
     calls = callsmod.build(analysis)
     try:
         call = callsmod.parse_handle(handle, calls)
     except ValueError as exc:
         return {"error": str(exc)}
-    result = _render(analysis, list(call.messages), [call.procedure],
-                     supi=None, wire=wire)
+    e2e = callsmod.end_to_end(analysis, call)
+    legs = call.legs or [call.procedure]
+    if full:
+        diameter = [m for m in e2e.messages if m.protocol == diameterflows.DIAMETER]
+        result = _render(analysis, list(e2e.messages), legs, supi=None, wire=wire,
+                         hosts=diameterflows.host_table(diameter) if diameter else None)
+    else:
+        result = _render(analysis, list(call.messages), legs, supi=None, wire=wire)
     result["call"] = handle
+    result["end_to_end"] = {
+        "full": full,
+        "related": e2e.related,
+        # 通話期間沒有依據接上的 Diameter 在哪幾格 —— 使用者要回去看原文時靠這個。
+        "unattributed_frames": sorted({m.frame for m in e2e.unattributed}),
+    }
     return result
 
 

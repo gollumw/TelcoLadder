@@ -422,7 +422,9 @@ class _Handler(BaseHTTPRequestHandler):
             identity_text = (query.get("identity") or [""])[0]
             call_handle = (query.get("call") or [""])[0]
             if call_handle:
-                payload = callflow_json(session, None, call=call_handle)
+                # `full=1`：完整端到端（H.248、Diameter、ENUM）。預設只有 SIP 各腿。
+                full = (query.get("full") or [""])[0] in ("1", "true")
+                payload = callflow_json(session, None, call=call_handle, full=full)
                 status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
                 self._send_json(payload, status)
                 return

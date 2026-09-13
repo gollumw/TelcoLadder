@@ -33,8 +33,9 @@
 4. **同一個門號併成一條、兩個門號不併**：Sh 的 TBCD MSISDN、Cx 的國際形式 Public-Identity、
    Rf 的 E.164 Subscription-Id 與 ENUM 的查詢名稱帶同一把 `MSISDN` 鍵；ICID 只當屬性
    （`tests/test_volte_e2e_identity.py`）。
-5. **（後續）端到端通話**：ICID 串起各條腿與 Rf；號碼加時間窗接上 Sh／Cx／ENUM。
-   負對照（別的門號、別的 ICID、通話之後、請求不在檔內）就是為那一步放的。
+5. **端到端通話**：ICID 串起兩條腿與 Rf；號碼加通話期間接上 Sh／Cx／ENUM；H.248 靠媒體端點。
+   負對照（別的門號、別的 ICID、通話之後、請求不在檔內）一個都不能出現在完整端到端裡
+   （`tests/test_volte_e2e_call.py`）。
 
 ## 刻意不做的
 
