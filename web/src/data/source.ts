@@ -328,6 +328,15 @@ export interface CallRow {
   unattributed: number | null;
 }
 
+/**
+ * 載入中的進度。**文字與百分比都是伺服器算好的**（`viewer._step_progress`）—— 首頁佇列與這裡
+ * 畫的是同一個結果。`percent` 是 null 代表這一步讀不出位置，只能報經過秒數，不編一個數字。
+ */
+export interface LoadProgress {
+  text: string;
+  percent: number | null;
+}
+
 export interface Calls {
   /** false＝這份檔一則 SIP 都沒有。**與「有 SIP 但零通電話」是兩件事** ——
    *  後者是真實情況（只抓到註冊、或通話在擷取開始前就建立了）。 */
@@ -582,7 +591,8 @@ export interface DataSource {
    * **錯的解釋比沒有解釋更糟**，所以這裡讓來源自己講。
    */
   readonly notice?: string;
-  load(): Promise<Dataset>;
+  /** `onProgress`：解析進行中的進度（文字與百分比都由伺服器算好，`viewer._step_progress`）。 */
+  load(onProgress?: (progress: LoadProgress) => void): Promise<Dataset>;
 
   /**
    * 取封包清單的一段。**每個來源都要實作** —— 包含 mock。

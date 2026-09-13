@@ -202,6 +202,24 @@ CATALOG: dict[str, str] = {
         '節點對照表 {path} 必須是「位址 → 節點名」的 JSON 物件，例如 {{"192.0.2.1": "SBG-01"}}。',
     'A JSON object of address to node name, e.g. {"192.0.2.1": "SBG-01"}. Addresses mapped to the same name are drawn as one lane. Read only from this path - never from a default location.':
         '「位址 → 節點名」的 JSON 物件，例如 {"192.0.2.1": "SBG-01"}。對到同一個名字的位址畫成一條泳道。只從這個路徑讀 —— 不會自動讀任何預設位置。',
+    "Building the packet list":
+        "建立封包清單",
+    "Scanning the capture's shape":
+        "掃描擷取檔形狀",
+    "Extracting signalling":
+        "抽取信令",
+    "Re-reading with adjusted decoding":
+        "以調整後的解碼方式重讀",
+    "Measuring coverage":
+        "統計覆蓋率",
+    "{s} s":
+        "{s} 秒",
+    "{m} min {s} s":
+        "{m} 分 {s} 秒",
+    "{step}… {elapsed} so far":
+        "{step}…（已 {elapsed}）",
+    "{step} {percent}% · about {eta} left":
+        "{step} {percent}%・約剩 {eta}",
     "Message count {before} → {after}. Add --no-auto-decode to turn this off.":
         "訊息數 {before} → {after}。不想要這個行為就加 --no-auto-decode。",
     "editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.":

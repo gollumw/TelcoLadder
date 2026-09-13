@@ -21,7 +21,9 @@
 
 from __future__ import annotations
 
+import time
 from collections import Counter
+from collections.abc import Callable
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -331,6 +333,15 @@ class Analysis:
         lines += [conflict.describe() for conflict in self.decode_conflicts]
         return lines + (self.lanes.describe() if self.lanes is not None else [])
 
+#: 進度回呼：`(步驟, 目前讀到第幾格)`。位置是 **frame 編號**（檔案裡的真實位置），讀不出位置的步驟給 None。
+#: 分母（檔案總格數）不在這一層 —— 呼叫端自己有 `capinfos` 的數字，這裡不猜。
+ProgressFn = Callable[[str, "int | None"], None]
+
+#: 回報抽取進度的節流：每這麼多格或這麼多秒一次，取先到的。
+_PROGRESS_EVERY_FRAMES = 200
+_PROGRESS_EVERY_S = 0.25
+
+
 def _extract(
     pcap: Path,
     rules: Sequence[str],
@@ -338,6 +349,8 @@ def _extract(
     relax_seq: bool,
     prefs: Sequence[str] = (),
     display_filter: str | None = None,
+    on_progress: ProgressFn | None = None,
+    step: str = "extract",
 ) -> tuple[list[Message], int, int, set, set[int]]:
     """跑一趟 tshark 並解析。回傳 (訊息, 加密的 NAS 數, ECIES SUCI 數, HPACK 缺口的
     stream, 已重組訊息的前段 IP 分片格)。
@@ -353,10 +366,21 @@ def _extract(
     protected_suci = 0
     undecoded: set = set()
     fragments: set[int] = set()
+    if on_progress is not None:
+        on_progress(step, 0)
+    reported_frame, reported_at = 0, time.monotonic()
     for frame in read_frames(
         pcap, decode_as=rules, relax_seq=relax_seq, prefs=prefs,
         display_filter=display_filter,
     ):
+        if on_progress is not None and (
+            frame.number - reported_frame >= _PROGRESS_EVERY_FRAMES
+            or time.monotonic() - reported_at >= _PROGRESS_EVERY_S
+        ):
+            # **位置是 frame 編號，不是解出幾格。** display filter 會跳過不相干的格，
+            # 用「解出幾格 ÷ 總格數」當百分比會一直停在很低然後突然完成。
+            on_progress(step, frame.number)
+            reported_frame, reported_at = frame.number, time.monotonic()
         messages.extend(parse_frame(frame))
         pending.extend(continuations(frame))
         # 超過 MTU 的訊息（SIP over UDP 常見）被 IP 分片；tshark 在**最後一片**
@@ -403,6 +427,7 @@ def analyse(
     prefilter: Prefilter | None = None,
     prefs: Sequence[str] = (),
     node_map: NodeMap | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> Analysis:
     """跑完整條管線。
 
@@ -462,6 +487,7 @@ def analyse(
             decode_as=decode_as, nas_from_ue=nas_from_ue, wire=wire,
             with_coverage=with_coverage, auto_decode=auto_decode,
             sliced=sliced is not None, slice_note=slice_note, prefs=prefs, node_map=node_map,
+            on_progress=on_progress,
         )
     finally:
         # 切片可能是客戶封包，一定要清。放 finally 而不是成功路徑末尾 ——
@@ -483,8 +509,13 @@ def _analyse_within(
     capture_duration_s: float | None = None,
     prefs: Sequence[str] = (),
     node_map: NodeMap | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> Analysis:
-    """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。"""
+    """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。
+
+    `on_progress` 依序收到 `probe`（沒有位置）、`extract`、需要時的 `retry`（frame 編號）、
+    `coverage`（沒有位置）。**讀不出位置的步驟不給位置** —— 那兩趟 tshark 一次跑完才交出結果。
+    """
     if wire:
         nas_from_ue = False
 
@@ -515,7 +546,8 @@ def _analyse_within(
         slice_note=slice_note,
     ) if not prefilter.is_empty() else None
     messages, ciphered, protected_suci, sbi_undecoded, fragments = _extract(
-        pcap, rules, relax_seq=False, prefs=prefs, display_filter=effective_filter
+        pcap, rules, relax_seq=False, prefs=prefs, display_filter=effective_filter,
+        on_progress=on_progress,
     )
 
     adjustment: AutoDecode | None = None
@@ -523,6 +555,8 @@ def _analyse_within(
     conflicts: tuple[PortConflict, ...] = ()
     if auto_decode:
         builtin = default_decode_as()
+        if on_progress is not None:
+            on_progress("probe", None)
         shape = inspect(
             pcap, prefs=prefs,
             watch_ports=[port for port in map(rule_port, builtin) if port is not None],
@@ -578,6 +612,7 @@ def _analyse_within(
             retried, retry_ciphered, retry_suci, retry_undecoded, retry_fragments = _extract(
                 pcap, retry_rules, relax_seq=shape.synthetic_seq,
                 prefs=(*extra_prefs, *prefs), display_filter=effective_filter,
+                on_progress=on_progress, step="retry",
             )
             # **採用條件：訊息數嚴格增加，而且沒有任何協定變少。** 猜錯的 decode-as
             # 解不出東西，關錯的序號分析也不會憑空生出訊息 —— 兩者都會在這裡被整個
@@ -636,6 +671,8 @@ def _analyse_within(
     coverage = None
     if with_coverage:
         # 便宜的那一半永遠跑、貴的那一半條件觸發 —— 見 coverage.py。
+        if on_progress is not None:
+            on_progress("coverage", None)
         coverage = measure(
             pcap,
             parsed_frames=len({m.frame for m in messages}),

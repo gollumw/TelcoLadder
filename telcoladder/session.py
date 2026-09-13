@@ -89,6 +89,11 @@ class Progress:
 
     indexed: int = 0
     total: int | None = None
+    step: str | None = None
+    """目前在哪一步：`index`、`probe`、`extract`、`retry`、`coverage`（`pipeline.ProgressFn`）。"""
+    step_position: int | None = None
+    """這一步讀到第幾格（frame 編號）。`index` 步驟看 `indexed`；讀不出位置的步驟是 None。"""
+    step_started: float | None = None
     truncated: bool = False
     error: str | None = None
     started: float = field(default_factory=time.monotonic)
@@ -460,6 +465,13 @@ def start_index(session: Session, *, on_done=None) -> threading.Thread:
     return thread
 
 
+def _enter_step(progress: Progress, step: str) -> None:
+    """換到下一步：位置歸零、計時重來 —— 剩餘時間只估**這一步**，不估整體。"""
+    progress.step = step
+    progress.step_position = None
+    progress.step_started = time.monotonic()
+
+
 class _Superseded(Exception):
     """另一個世代的 worker 接手了；這個 worker 安靜退場，不留任何寫入。"""
 
@@ -506,6 +518,7 @@ def _index_into_as(session: Session, generation: int) -> None:
             raise _Superseded
         session.progress.total = total
         session.progress.stage = "index"
+        _enter_step(session.progress, "index")
 
     rows: list[PacketRow] = []
     truncated = False
@@ -532,6 +545,9 @@ def _index_into_as(session: Session, generation: int) -> None:
     _publish(session, generation, rows, truncated=truncated)
     with session.lock:
         session.progress.stage = "analyse"
+        # 索引那一步結束了；解析的第一步由管線自己回報（`pipeline.ProgressFn`）。
+        # 不清掉的話，這一瞬間畫面寫著「建立封包清單 100%」而實際已在解析。
+        session.progress.step = None
 
     # 第二階段：完整解剖，身分與（階段 5 的）梯形圖靠它。
     #
@@ -542,8 +558,17 @@ def _index_into_as(session: Session, generation: int) -> None:
 
     # 使用者的規則要參與解剖本身，不能只影響封包清單 —— 否則訊息數、
     # 訂戶、梯形圖仍然是舊的，而清單看起來已經解開了。
+    def report(step: str, position: int | None) -> None:
+        with session.lock:
+            if session.index_generation != generation:
+                return
+            if session.progress.step != step:
+                _enter_step(session.progress, step)
+            session.progress.step_position = position
+
     result = analyse(
-        session.pcap, decode_as=session.user_decode_as, wire=session.wire, node_map=session.node_map
+        session.pcap, decode_as=session.user_decode_as, wire=session.wire, node_map=session.node_map,
+        on_progress=report,
     )
     with session.lock:
         if session.index_generation != generation:
@@ -580,6 +605,7 @@ def _index_into_as(session: Session, generation: int) -> None:
                 session.prefs = prefs
                 session.auto_prefs = prefs
                 session.progress.stage = "index"
+                _enter_step(session.progress, "index")
                 # 解碼方式變了，快取裡那些是用舊參數解出來的。
                 session.decode = DecodeCache()
                 session.frame_bytes = FrameBytesCache()
