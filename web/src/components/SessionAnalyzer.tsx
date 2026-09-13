@@ -9,6 +9,7 @@ import { currentToken, type Dataset, type PacketPage } from "@/data/source";
 import type { RawPacket } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
 import { DataMiningView } from "./DataMiningView";
+import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { DiameterFlowsView } from "./DiameterFlowsView";
 import { CallsView } from "./CallsView";
@@ -324,12 +325,32 @@ export default function SessionAnalyzer({
         </header>
 
         {mode === "overview" ? (
-          <ExecutiveOverview
-            overview={overview}
-            error={overviewError}
-            onOpenLadder={handleOpenLadder}
-            onOpenPacket={handleViewInDataMining}
-          />
+          <div className="space-y-4">
+            {/* 偵測到的會話放在總覽（2026-09-13 從 Data Mining 搬來）：「這份檔裡有誰」
+                是第一眼的問題，不該藏在封包清單上面。清單來自全母體，不必等總覽算完。
+                「在 Data Mining 過濾」會順便切過去 —— 留在總覽等於按了沒反應。 */}
+            <DiscoveredSessionsPanel
+              sessions={data.discoveredSessions}
+              identities={sessionIdentities}
+              baseEpoch={packetRows[0]?.epochMicroseconds ?? 0}
+              focusedSupi={focusedSupi}
+              onFilterSupi={(supi) => {
+                setFocusedSupi(supi);
+                setOnlySessionFilter(supi != null);
+                setMode("mining");
+              }}
+              onJumpToSession={(supi) => {
+                const frame = data.firstFrameBySupi[supi];
+                if (frame !== undefined) handleCorrelateSession(supi, frame);
+              }}
+            />
+            <ExecutiveOverview
+              overview={overview}
+              error={overviewError}
+              onOpenLadder={handleOpenLadder}
+              onOpenPacket={handleViewInDataMining}
+            />
+          </div>
         ) : mode === "calls" ? (
           <CallsView
             calls={calls}
@@ -370,7 +391,6 @@ export default function SessionAnalyzer({
           />
         ) : mode === "mining" ? (
           <DataMiningView
-            discoveredSessions={data.discoveredSessions}
             firstFrameBySupi={data.firstFrameBySupi}
             identities={sessionIdentities}
             identityKinds={data.identityKinds}

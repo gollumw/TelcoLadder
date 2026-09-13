@@ -21,7 +21,7 @@ const STATUS_META: Record<SessionStatus, { label: string; className: string }> =
   "mid-stream": { label: "Mid-stream", className: "border-signal-amber-border bg-signal-amber-bg text-signal-amber font-medium" },
 };
 
-// Home-view auto-detection surface. A collapsed summary bar avoids the
+// Overview auto-detection surface (moved from Data Mining on 2026-09-13). A collapsed summary bar avoids the
 // horizontal-chip-row overflow a wide session list would otherwise cause;
 // the full sortable card list lives in a modal, opened on demand.
 export function DiscoveredSessionsPanel({
