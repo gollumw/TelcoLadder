@@ -95,6 +95,8 @@ NOT_VISIBLE_FIELDS = {
     "narrowed", "auto_decode", "trace_sidecar", "only_n2",
     # 2026-09-06：分片算已解碼、ESP 是看不見的（加欄不升版）。
     "ip_fragments_reassembled", "ipsec_esp",
+    # 2026-09-13：已解碼訊息的前段 TCP 區段（加欄不升版）。
+    "tcp_segments_reassembled",
     # 2026-09-11：靠 SBI 轉述的 N2 隧道接回的段數與被 SUPI 否決的次數（加欄不升版）。
     "inferred_joins",
 }
@@ -283,7 +285,7 @@ def test_e2e_says_what_it_could_not_read(e2e) -> None:
     assert nv["sbi_streams_with_undecoded_headers"] > 0
     md = summary.render_markdown(doc)
     assert "6 NAS messages are ciphered" in md
-    assert "449 of 626 frames were not decoded" in md
+    assert "449 of 626 frames produced no message" in md
     assert "HPACK gap" in md
 
 
@@ -307,14 +309,26 @@ def test_undecoded_traffic_says_whether_decode_as_would_help(e2e, e2e_pcap) -> N
     import subprocess
     from telcoladder.adapters import display_filter as _claimed
     from telcoladder.tshark import find_tshark
-    oracle = subprocess.run(
-        [str(find_tshark().path), "-r", str(e2e_pcap), "-Y",
-         f"tcp.port==7777 && data && !({_claimed()})",
+    # 2026-09-13 起盤點帶著分析用的 decode-as 規則：7777 的 HTTP/2 dissector 認領了那些格，卻產不出訊息。
+    # 所以定義是「套同一組規則、支援的協定認得、沒產出訊息、也不是已解碼訊息的前段 TCP 區段」。
+    from telcoladder.adapters import default_decode_as
+    rules = [arg for rule in default_decode_as() for arg in ("-d", rule)]
+    messages = {m.frame for f in e2e.flows for m in f.messages}
+    claimed = subprocess.run(
+        [str(find_tshark().path), "-r", str(e2e_pcap), *rules, "-Y", f"tcp.port==7777 && ({_claimed()})",
          "-T", "fields", "-e", "frame.number"],
         capture_output=True, text=True, check=True, encoding="utf-8",
     ).stdout.split()
+    segments = subprocess.run(
+        [str(find_tshark().path), "-2", "-r", str(e2e_pcap), *rules, "-Y", "tcp.reassembled_in",
+         "-T", "fields", "-e", "frame.number", "-e", "tcp.reassembled_in"],
+        capture_output=True, text=True, check=True, encoding="utf-8",
+    ).stdout.splitlines()
+    pieces = {int(n) for n, into in (line.split("\t")[:2] for line in segments) if int(into.split(",")[0]) in messages}
+    oracle = {int(n) for n in claimed} - messages - pieces
     assert port_7777[0]["frames"] == len(oracle)
-    assert port_7777[0]["frames"] >= 212, "7777 的未解讀質量消失了 —— census 在漏報"
+    # 質量要在（版本間會浮動，不釘常數）：數百格的 HTTP/2 讀不出來，不能被算成別的東西而消失。
+    assert port_7777[0]["frames"] > 100, "7777 的未解讀質量消失了 —— census 在漏報"
     md = summary.render_markdown(doc)
     assert "7777" in md
     assert "change how you capture" in md

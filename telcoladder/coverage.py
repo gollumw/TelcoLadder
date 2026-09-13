@@ -38,7 +38,6 @@ SBI 埠不同 → 100% 落進 `data` → 無聲消失。
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -95,8 +94,6 @@ SCTP 與 UDP 上的訊令沒有重組問題、埠也由規範定死，實務上�
 「有流量但零產出」；真遇到了，仍然只有全域比率那條路會發現。
 """
 
-#: `-z io,phs` 每列長這樣：縮排 + 協定名 + `frames:N bytes:M`
-_PHS_LINE = re.compile(r"^(\s*)([\w.-]+)\s+frames:(\d+)\s+bytes:(\d+)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +114,10 @@ class UnclaimedConversation:
     `user_dlt` 底下是「整份檔的 link type 沒有對映」—— 兩者處置相反
     （前者加 decode-as，後者加 `--tshark-pref`）。沒有這個欄位，裸 Diameter
     匯出被講成「TCP payload 認不出來」，而檔裡一個 TCP 封包都沒有。"""
+
+    decoded_as: str | None = None
+    """那個埠已經被 decode-as 規則指到哪個協定（`http2`、`diameter`…）。沒有就是 None。
+    措辭要照協定講：HTTP/2 讀不出來是 HPACK 標頭表沒看到，Diameter 讀不出來是前段位元組不在檔裡。"""
 
     already_decoded: bool = False
     """這個埠**已經**被要求解成 HTTP/2 了，卻仍然是 `data`。
@@ -174,6 +175,18 @@ class Coverage:
     """擷取檔的 link type 是使用者自訂的 USER n（147 + n）時的值，由 `probe` 提供。
     用來把「怎麼辦」寫成一條可以直接貼的 `--tshark-pref`。"""
 
+    segments: int = 0
+    """已解碼訊息的**前段 TCP 區段**格數（`extract.segment_frames`）。與 `fragments` 同一個道理。"""
+
+    partial_messages: int = 0
+    """屬於支援的協定、但只有一則訊息的**片段**的格數：協定層在，訊息的其他位元組不在檔裡，所以什麼都讀不出來
+    （實測：Rf 串流缺了前段位元組，tshark 仍把那一段掛在 diameter 底下）。它們不會出現在未認領的盤點裡 ——
+    display filter 認得它們 —— 不另外數的話，說明加起來就少了一截。"""
+
+    orphan_fragments: int = 0
+    """**永遠組不起來**的 IP 分片格數：同一個 datagram 的其他分片不在這份擷取檔裡（擷取點過濾過、
+    或只抓到半程）。它們真的讀不到，但原因與「不支援的協定」完全不同 —— 要分開講。"""
+
     fragments: int = 0
     """已解碼訊息的**前段 IP 分片**格數（`extract.fragment_frames`）。
 
@@ -197,7 +210,7 @@ class Coverage:
         """真的沒解碼的格數：總數扣掉有產出的、再扣掉已解碼訊息的分片。"""
         if self.total is None:
             return None
-        return max(self.total - self.parsed - self.fragments, 0)
+        return max(self.total - self.parsed - self.fragments - self.segments, 0)
 
     @property
     def looks_n2_only(self) -> bool:
@@ -209,73 +222,27 @@ class Coverage:
         return bool(self.roles_found) and self.roles_found <= {"gNB", "AMF", "UE"}
 
 
-def _parse_phs(output: str) -> list[UnclaimedConversation]:
-    """讀 `-z io,phs` 的協定階層。
-
-    只取**葉節點** —— `tcp` 底下若有 `http2`，那些格已經被 http2 認領，
-    重複算會讓「未解讀」的數字灌水。做法是：一列的縮排若不深於下一列，
-    它就有子節點，跳過。
-    """
-    rows: list[tuple[int, str, int]] = []
-    for line in output.splitlines():
-        m = _PHS_LINE.match(line)
-        if m:
-            rows.append((len(m.group(1)), m.group(2), int(m.group(3))))
-
-    leaves: list[UnclaimedConversation] = []
-    #: 目前走到的祖先鏈：(縮排, 協定名)。縮排回退就彈出。
-    stack: list[tuple[int, str]] = []
-    for i, (indent, proto, frames) in enumerate(rows):
-        while stack and stack[-1][0] >= indent:
-            stack.pop()
-        has_child = i + 1 < len(rows) and rows[i + 1][0] > indent
-        if has_child:
-            stack.append((indent, proto))
-            continue
-        # **不再用格數門檻濾掉葉子。** 一份 4 格的匯出，4 格全在 `data` 底下 ——
-        # 濾掉它就回到「4 格未解碼」六個字。門檻搬到措辭層（`_worth_mentioning`）。
-        leaves.append(UnclaimedConversation(
-            protocol=proto, frames=frames,
-            ancestors=tuple(name for _indent, name in stack if name != "frame"),
-        ))
-    return leaves
-
-
-def _busiest_tcp_port(
-    tshark: Tshark, pcap: Path, display_filter: str, *, prefs: Sequence[str] = ()
-) -> int | None:
-    """未解碼流量集中在哪個埠。用來組建議指令。
-
-    取**出現最多次的那個埠**，且只在它明顯是伺服器側時才回傳 —— 客戶端的
-    臨時埠每條連線都不同，拿它組出來的建議指令對使用者沒有用。
-    判準：同一個埠出現在多條對話裡。
-    """
-    proc = tshark.run(
-        ["-r", str(pcap), *pref_args(prefs), "-Y", display_filter, "-T", "fields",
-         "-e", "tcp.srcport", "-e", "tcp.dstport"],
-        timeout=120,
-    )
-    if proc.returncode != 0:
-        return None
-
-    counts: dict[int, int] = {}
-    for line in proc.stdout.splitlines():
-        for value in line.split("\t"):
-            value = value.strip()
-            if value.isdigit():
-                counts[int(value)] = counts.get(int(value), 0) + 1
-    if not counts:
-        return None
-
-    port, seen = max(counts.items(), key=lambda kv: kv[1])
-    # 只出現一兩次的埠多半是臨時埠，建議它沒有意義。
-    return port if seen >= MIN_INTERESTING_FRAMES else None
-
-
 def _port_already_decoded(port: int, decode_as: tuple[str, ...]) -> bool:
     """這個埠是否已經在 decode-as 規則裡（預設的或使用者加的）。"""
+    return _decoded_as(port, decode_as) is not None
+
+
+def _decoded_as(port: int, decode_as: tuple[str, ...]) -> str | None:
+    """這個埠被 decode-as 規則指到哪個協定。後面的規則蓋前面的（tshark 同一個選擇器取最後一條）。"""
     needle = f"tcp.port=={port},"
-    return any(needle in rule.replace(" ", "") for rule in decode_as)
+    found = None
+    for rule in decode_as:
+        compact = rule.replace(" ", "")
+        if compact.startswith(needle):
+            found = compact[len(needle):]
+    return found
+
+
+def _decode_args(decode_as: tuple[str, ...]) -> list[str]:
+    out: list[str] = []
+    for rule in decode_as:
+        out += ["-d", rule]
+    return out
 
 
 def measure(
@@ -289,6 +256,9 @@ def measure(
     user_dlt: int | None = None,
     fragment_frames: int = 0,
     tshark: Tshark | None = None,
+    segment_frames: int = 0,
+    message_frames: "set[int] | frozenset[int] | None" = None,
+    piece_frames: "set[int] | frozenset[int]" = frozenset(),
 ) -> Coverage:
     """量這份擷取檔的覆蓋率。**便宜的那一半永遠跑，貴的那一半條件觸發。**
 
@@ -307,7 +277,7 @@ def measure(
 
     total = total_packets(pcap, tshark=tshark)
     base = Coverage(total=total, parsed=parsed_frames, roles_found=roles, user_dlt=user_dlt,
-                    fragments=fragment_frames)
+                    fragments=fragment_frames, segments=segment_frames)
 
     if total is None or total == 0 or base.ratio is None:
         return base
@@ -326,20 +296,57 @@ def measure(
     from telcoladder.adapters import display_filter as _claimed
 
     negated = f"!({_claimed()})"
-    # **filter 要放進 `-z` 參數裡，不能用 `-Y`。** `-z io,phs` 忽略 `-Y`，
-    # 算的是整個檔案的協定階層 —— 實測 5gc-e2e 會回報 626 格而不是未認領的
-    # 459 格，於是 http2/json/pfcp 這些「已經認領過」的協定全部混進來。
-    # 那會讓這個模組本身變成它要修的那種靜默錯誤。
-    # 這一趟要吃分析用的同一組 `-o`：USER DLT 的對映沒帶上，phs 會把整份檔
-    # 報成 `user_dlt` 一片未認領 —— 而分析明明已經全部解出來了。
-    # 「盤點時用了跟分析不同的參數」正是 CLAUDE.md §4 那張表裡的一列。
+    # 這一趟要吃分析用的同一組 `-o` 與 decode-as：USER DLT 的對映沒帶上，整份檔會被報成 `user_dlt`
+    # 一片未認領；decode-as 沒帶上，靠它解出來的 Rf（非標準埠）在這裡還是 `data`（2026-09-13 實測
+    # 47 格已解碼的訊息被列成「認不出來的 TCP 載荷」）。「盤點時用了跟分析不同的參數」正是
+    # CLAUDE.md §4 那張表裡的一列。
+    from telcoladder.adapters import default_decode_as
+
+    effective = tuple(default_decode_as()) + tuple(decode_as)
+    rules = _decode_args(effective)
+    # **逐格盤點，不用 `-z io,phs`。** phs 只給每個協定葉子的格數，已解碼訊息的分片與區段只能從
+    # 格數「扣」—— 而扣錯葉子時整份說明就錯位（2026-09-13 實測：TCP 區段被從 Rf 的 `data` 裡扣掉，
+    # 說明加起來 41 格、標題寫 45 格）。逐格盤點可以按格號跳過它們，每一格只落在一個原因裡。
     proc = tshark.run(
-        ["-r", str(pcap), *pref_args(prefs), "-q", "-z", f"io,phs,{negated}"], timeout=300
+        ["-r", str(pcap), *pref_args(prefs), *rules, "-Y", negated, "-T", "fields", "-E", "occurrence=f",
+         "-e", "frame.number", "-e", "frame.protocols", "-e", "tcp.srcport", "-e", "tcp.dstport",
+         "-e", "ip.flags.mf", "-e", "ip.frag_offset"],
+        timeout=300,
     )
     if proc.returncode != 0:
         return base
+    rows = [tuple((line.split("\t") + [""] * 6)[:6]) for line in proc.stdout.splitlines()]
+    unclaimed, orphans = _census(rows, skip=set(piece_frames), decode_as=effective)
 
-    unclaimed = _discount_fragments(_parse_phs(proc.stdout), fragment_frames)
+    partial = 0
+    if message_frames is not None:
+        # 支援的協定認得、卻沒產出訊息的格：扣掉有訊息的、扣掉已算成分片／區段的，剩下的就是訊息片段。
+        #
+        # **落在 decode-as 規則指定的埠上的，講成「那個埠已經在解，仍然讀不出來」**（`5gc-e2e` 的 7777：
+        # HTTP/2 的 HPACK 標頭表沒看到，dissector 認領了那些格卻產不出訊息）。處置是改擷取方式，不是加參數。
+        claimed = tshark.run(
+            ["-r", str(pcap), *pref_args(prefs), *rules, "-Y", _claimed(), "-T", "fields",
+             "-E", "occurrence=f", "-e", "frame.number", "-e", "tcp.srcport", "-e", "tcp.dstport"],
+            timeout=300,
+        )
+        if claimed.returncode == 0:
+            skip = set(message_frames) | set(piece_frames)
+            on_decoded_ports: dict[tuple[int, str], int] = {}
+            for line in claimed.stdout.splitlines():
+                number, *ports = (line.split("\t") + ["", ""])[:3]
+                if not number.isdigit() or int(number) in skip:
+                    continue
+                decoded_port = _decoded_port(ports, effective)
+                if decoded_port is None:
+                    partial += 1
+                else:
+                    on_decoded_ports[decoded_port] = on_decoded_ports.get(decoded_port, 0) + 1
+            unclaimed = _merge(unclaimed, [
+                UnclaimedConversation(protocol="data", frames=frames, port=port, already_decoded=True,
+                                      decoded_as=protocol, ancestors=("ip", "tcp"))
+                for (port, protocol), frames in on_decoded_ports.items()
+            ])
+
     esp_pairs = None
     if any(c.protocol == "esp" for c in unclaimed):
         # 幾對位址之間有 ESP —— 讀的人要知道看不見的是「一條 Gm」還是「整個網段」。
@@ -351,24 +358,6 @@ def measure(
         from telcoladder.probe import encap_type, user_dlt_of
 
         user_dlt = user_dlt_of(encap_type(pcap, tshark, prefs))
-    port = None
-    # 只有掛在 tcp 底下的 `data` 才值得去找埠 —— `user_dlt` 或 UDP 底下的
-    # 沒有 TCP 埠，問了也是白跑一趟，而且答案會被拿去組一條錯的建議。
-    if any(c.protocol == "data" and c.transport == "tcp" for c in unclaimed):
-        port = _busiest_tcp_port(tshark, pcap, f"{negated} && data", prefs=prefs)
-    if port is not None:
-        from telcoladder.adapters import default_decode_as
-
-        effective = tuple(default_decode_as()) + tuple(decode_as)
-        decoded = _port_already_decoded(port, effective)
-        unclaimed = [
-            UnclaimedConversation(
-                protocol=c.protocol, frames=c.frames, port=port,
-                already_decoded=decoded, ancestors=c.ancestors,
-            )
-            if c.protocol == "data" and c.transport == "tcp" else c
-            for c in unclaimed
-        ]
 
     return Coverage(
         total=total,
@@ -378,34 +367,103 @@ def measure(
         roles_found=roles,
         user_dlt=user_dlt,
         fragments=fragment_frames,
+        segments=segment_frames,
+        partial_messages=partial,
+        orphan_fragments=orphans,
         esp_pairs=esp_pairs,
     )
 
 
-def _discount_fragments(unclaimed: list[UnclaimedConversation], fragments: int) -> list[UnclaimedConversation]:
-    """把已解碼訊息的前段分片從 `ip → data` 的葉子裡扣掉。
+#: `frame.protocols` 裡跟「這一格是什麼」無關的節點。
+_CHAIN_NOISE = frozenset({"frame", "eth", "ethertype", "vlan", "sll", "raw"})
+#: 保留在祖先鏈裡的節點：措辭靠它們分辨 TCP／UDP 載荷、USER DLT、ESP。
+_CHAIN_KEEP = frozenset({"user_dlt", "ip", "ipv6", "esp", "tcp", "udp", "sctp"})
 
-    phs 只看得到「這一格 tshark 解到 `data` 為止」，分不出它是不明載荷還是
-    某則已解碼訊息的前半 —— 那件事只有抽取那一趟知道（重組的那一格列著
-    分片的格號）。扣的是**不掛在傳輸層底下**的 `data`（分片沒有 UDP 標頭）。
-    扣到零就整個拿掉：講「0 格是鏈路層載荷」沒有意義。
+
+def _decoded_port(ports: "list[str]", decode_as: tuple[str, ...]) -> tuple[int, str] | None:
+    """一格的兩個 TCP 埠裡，哪一個被 decode-as 規則指定了協定。**兩端都看** —— 客戶端的臨時埠不會在規則裡。"""
+    for value in ports:
+        if value.strip().isdigit():
+            protocol = _decoded_as(int(value), decode_as)
+            if protocol is not None:
+                return int(value), protocol
+    return None
+
+
+def _pick_port(counts: dict[int, int], decode_as: tuple[str, ...]) -> int | None:
+    """未解讀的 TCP 載荷集中在哪個埠。**平手時挑已經在解的那一端**，出現太少次的不算（臨時埠）。"""
+    if not counts:
+        return None
+    seen = max(counts.values())
+    tied = sorted(port for port, count in counts.items() if count == seen)
+    port = next((p for p in tied if _decoded_as(p, decode_as) is not None), tied[0])
+    return port if seen >= MIN_INTERESTING_FRAMES else None
+
+
+def _merge(base: list[UnclaimedConversation], extra: list[UnclaimedConversation]) -> list[UnclaimedConversation]:
+    """同一個 (協定, 傳輸層, 埠, 已解成) 的組合成一列。"""
+    merged: dict[tuple, UnclaimedConversation] = {}
+    for conv in (*base, *extra):
+        key = (conv.protocol, conv.transport, conv.under_user_dlt, conv.port, conv.decoded_as)
+        if key in merged:
+            old = merged[key]
+            conv = UnclaimedConversation(protocol=old.protocol, frames=old.frames + conv.frames, port=old.port,
+                                         already_decoded=old.already_decoded, ancestors=old.ancestors,
+                                         decoded_as=old.decoded_as)
+        merged[key] = conv
+    return list(merged.values())
+
+
+def _census(
+    rows: "list[tuple[str, ...]]", *, skip: "set[int]", decode_as: tuple[str, ...],
+) -> tuple[list[UnclaimedConversation], int]:
+    """逐格盤點沒產出訊息的格：每一格落在一個 (最內層協定, 祖先鏈) 裡。回傳 (各組, 組不起來的分片格數)。
+
+    `rows` 是 (格號, frame.protocols, tcp.srcport, tcp.dstport, ip.flags.mf, ip.frag_offset)。
+    `skip` 是已解碼訊息的分片與 TCP 區段 —— **按格號跳過**，不從某個葉子的格數裡扣。
+
+    * TCP 底下的 `data`：兩個埠有一個被 decode-as 規則指定了，就記那個埠與協定（已經在解、讀不出來）；
+      都沒有的集中到出現最多的埠（建議 `--decode-as`）。
+    * 不掛在傳輸層底下的 `data` 而且帶著分片旗標：組不起來的分片，另外數。
     """
-    if fragments <= 0:
-        return unclaimed
-    out: list[UnclaimedConversation] = []
-    left = fragments
-    for conv in unclaimed:
-        if conv.protocol == "data" and not conv.transport and not conv.under_user_dlt and left > 0:
-            taken = min(conv.frames, left)
-            left -= taken
-            if conv.frames - taken <= 0:
-                continue
-            conv = UnclaimedConversation(
-                protocol=conv.protocol, frames=conv.frames - taken, port=conv.port,
-                already_decoded=conv.already_decoded, ancestors=conv.ancestors,
-            )
-        out.append(conv)
-    return out
+    groups: dict[tuple, int] = {}
+    ancestors_of: dict[tuple, tuple[str, ...]] = {}
+    undecoded_ports: dict[int, int] = {}
+    orphans = 0
+    for number, protocols, sport, dport, mf, offset in rows:
+        if not number.isdigit() or int(number) in skip:
+            continue
+        chain = [name for name in protocols.split(":") if name and name not in _CHAIN_NOISE]
+        if not chain:
+            continue
+        leaf = chain[-1]
+        ancestors = tuple(name for name in chain[:-1] if name in _CHAIN_KEEP)
+        port, decoded = None, None
+        if leaf == "data" and "tcp" in ancestors:
+            found = _decoded_port([dport, sport], decode_as)
+            if found is not None:
+                port, decoded = found
+            else:
+                for value in (sport, dport):
+                    if value.strip().isdigit():
+                        undecoded_ports[int(value)] = undecoded_ports.get(int(value), 0) + 1
+        if leaf == "data" and not ({"tcp", "udp", "sctp", "user_dlt"} & set(ancestors)):
+            if str(mf).lower() in ("true", "1") or (offset.strip().isdigit() and int(offset) > 0):
+                orphans += 1
+        key = (leaf, ancestors, port, decoded)
+        groups[key] = groups.get(key, 0) + 1
+        ancestors_of[key] = ancestors
+
+    suggested = _pick_port(undecoded_ports, decode_as)
+    convs: list[UnclaimedConversation] = []
+    for (leaf, ancestors, port, decoded), frames in groups.items():
+        if leaf == "data" and "tcp" in ancestors and port is None and suggested is not None:
+            port = suggested
+        convs.append(UnclaimedConversation(
+            protocol=leaf, frames=frames, port=port, already_decoded=decoded is not None,
+            ancestors=ancestors, decoded_as=decoded,
+        ))
+    return _merge([], convs), orphans
 
 
 def _esp_address_pairs(tshark: Tshark, pcap: Path, *, prefs: Sequence[str] = ()) -> int | None:
@@ -477,13 +535,21 @@ def describe(coverage: Coverage) -> list[str]:
 
     pct = round(missed / coverage.total * 100)
     lines = [
-        _("ℹ This capture has {total} frames; I decoded {parsed}. The other {missed} ({pct}%) are not in a supported protocol.").format(total=coverage.total, parsed=coverage.parsed, missed=missed, pct=pct)
+        _("ℹ This capture has {total} frames; {parsed} produced messages. The other {missed} ({pct}%) did not - why, below.").format(total=coverage.total, parsed=coverage.parsed, missed=missed, pct=pct)
     ]
     if coverage.fragments:
         # 排在所有未認領流量之前：它解釋的是「為什麼解碼的格數比總數少那麼多」，
         # 而答案是「沒有少」。
         lines.append(
             _("  · {frames} frames are earlier IP fragments of messages that were reassembled and decoded - nothing is missing there.").format(frames=coverage.fragments)
+        )
+    if coverage.partial_messages:
+        lines.append(
+            _("  · {frames} frames belong to a supported protocol but hold only a piece of a message - the rest of its bytes are not in this capture, so nothing could be read from them.").format(frames=coverage.partial_messages)
+        )
+    if coverage.segments:
+        lines.append(
+            _("  · {frames} frames are earlier TCP segments of messages that were reassembled and decoded - nothing is missing there.").format(frames=coverage.segments)
         )
 
     for conv in worth[:3]:
@@ -519,6 +585,13 @@ def describe(coverage: Coverage) -> list[str]:
                 lines.append(
                     _("    If you know the payload protocol, pass it: telcoladder analyze <file> --tshark-pref '{pref}' (replace diameter with the protocol; the tool tries this itself when the first frames look like a supported protocol).").format(pref=example)
                 )
+        elif (conv.protocol == "data" and not conv.transport and not conv.under_user_dlt
+              and coverage.orphan_fragments >= conv.frames):
+            # 組不起來的分片：同一個 datagram 的其他分片不在檔裡。**不是協定問題，是擷取不完整** ——
+            # 講成「認不出來的載荷」會讓人去找一個不存在的 adapter。
+            lines.append(
+                _("  · {frames} frames are IP fragments whose other fragments are not in this capture, so those messages could not be reassembled - the capture is incomplete, not the protocol support.").format(frames=conv.frames)
+            )
         elif conv.protocol == "data" and conv.transport != "tcp":
             lines.append(
                 _("  · {frames} frames are {transport} payload that tshark could not identify.").format(
@@ -526,6 +599,14 @@ def describe(coverage: Coverage) -> list[str]:
                     # 協定名不翻譯；只有「鏈路層」是散文。
                     transport=conv.transport.upper() if conv.transport else _("link-layer"),
                 )
+            )
+        elif conv.protocol == "data" and conv.already_decoded and conv.decoded_as not in (None, "http2"):
+            # 已經在解成某個協定、卻讀不出來：不是「認不出來」，是位元組不在檔裡。下一行講處置。
+            lines.append(
+                _("  · {frames} frames are TCP payload on port {port} that could not be read.").format(frames=conv.frames, port=conv.port)
+            )
+            lines.append(
+                _("    That port is already being decoded as {protocol}, and these bytes still cannot be read - the capture is missing earlier bytes of those TCP streams (it was filtered, or started mid-stream). --decode-as will not help.").format(protocol=conv.decoded_as)
             )
         elif conv.protocol == "data":
             where = _(" (TCP port {port})").format(port=conv.port) if conv.port else ""
@@ -551,6 +632,20 @@ def describe(coverage: Coverage) -> list[str]:
             )
         else:
             lines.append(_("  · {frames} frames are {protocol}.").format(frames=conv.frames, protocol=conv.protocol))
+
+    # 逐條只列最大的三組；其餘的**格數要講**，否則原因加起來少了一截。
+    rest = worth[3:]
+    if rest:
+        lines.append(
+            _("  · {frames} more frames in {groups} smaller groups (see the packet list's protocol column).").format(frames=sum(c.frames for c in rest), groups=len(rest))
+        )
+    # 小檔裡不逐條提的傳輸層葉子（`_worth_mentioning`），**還是要算進去**：標題說「其餘 N 格沒有、原因如下」，
+    # 下面的原因加起來卻少了一截，讀的人會去找那個洞（2026-09-13 實測：45 格只解釋了 30 格）。
+    quiet = sum(c.frames for c in coverage.unclaimed if c.protocol in _TRANSPORT_ONLY and not _worth_mentioning(c, coverage.total))
+    if quiet:
+        lines.append(
+            _("  · {frames} frames are transport-layer pieces (TCP or SCTP) with nothing decoded above them - acknowledgements, keepalives, or segments of streams missing earlier bytes.").format(frames=quiet)
+        )
 
     if coverage.looks_n2_only:
         lines.append(

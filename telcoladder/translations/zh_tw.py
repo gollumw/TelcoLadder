@@ -220,6 +220,22 @@ CATALOG: dict[str, str] = {
         "{step}…（已 {elapsed}）",
     "{step} {percent}% · about {eta} left":
         "{step} {percent}%・約剩 {eta}",
+    "  · {frames} frames are earlier TCP segments of messages that were reassembled and decoded - nothing is missing there.":
+        "  · {frames} 格是已重組並解出的訊息的前段 TCP 區段 —— 那裡沒有漏掉任何東西。",
+    "{n} frames are earlier TCP segments of messages that were reassembled and decoded on their last segment - they are part of decoded messages, not missing signalling.":
+        "{n} 格是跨區段訊息的前段 TCP 區段，訊息在最後一段重組並解出 —— 它們是已解出訊息的一部分，不是漏掉的信令。",
+    "  · {frames} frames are IP fragments whose other fragments are not in this capture, so those messages could not be reassembled - the capture is incomplete, not the protocol support.":
+        "  · {frames} 格是 IP 分片，但同一個封包的其他分片不在這份擷取檔裡，所以組不回訊息 —— 缺的是擷取，不是協定支援。",
+    "    That port is already being decoded as {protocol}, and these bytes still cannot be read - the capture is missing earlier bytes of those TCP streams (it was filtered, or started mid-stream). --decode-as will not help.":
+        "    這個埠已經在解成 {protocol}，這些位元組仍然讀不出來 —— 這份擷取檔缺了那些 TCP 串流前段的位元組（擷取時過濾過，或從半途開始抓）。加 --decode-as 沒有幫助。",
+    "  · {frames} frames are transport-layer pieces (TCP or SCTP) with nothing decoded above them - acknowledgements, keepalives, or segments of streams missing earlier bytes.":
+        "  · {frames} 格是傳輸層的片段（TCP 或 SCTP），上面沒有解出任何東西 —— 確認封包、保活，或是缺了前段位元組的串流片段。",
+    "  · {frames} frames belong to a supported protocol but hold only a piece of a message - the rest of its bytes are not in this capture, so nothing could be read from them.":
+        "  · {frames} 格屬於支援的協定，但只是一則訊息的片段 —— 其餘的位元組不在這份擷取檔裡，所以讀不出任何東西。",
+    "  · {frames} frames are TCP payload on port {port} that could not be read.":
+        "  · {frames} 格是埠 {port} 上讀不出來的 TCP 載荷。",
+    "  · {frames} more frames in {groups} smaller groups (see the packet list's protocol column).":
+        "  · 另有 {frames} 格，分在 {groups} 個較小的組裡（見封包清單的協定欄）。",
     "Message count {before} → {after}. Add --no-auto-decode to turn this off.":
         "訊息數 {before} → {after}。不想要這個行為就加 --no-auto-decode。",
     "editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.":
@@ -228,8 +244,8 @@ CATALOG: dict[str, str] = {
         "切片沒成功（{error}），改用 display filter 過濾。",
 
     # ── coverage ───────────────────────────────────────────────────────
-    "ℹ This capture has {total} frames; I decoded {parsed}. The other {missed} ({pct}%) are not in a supported protocol.":
-        "ℹ 這份擷取檔共 {total} 格，我解讀了 {parsed} 格，其餘 {missed} 格（{pct}%）不在支援的協定裡。",
+    "ℹ This capture has {total} frames; {parsed} produced messages. The other {missed} ({pct}%) did not - why, below.":
+        "ℹ 這份擷取檔共 {total} 格，其中 {parsed} 格解出訊息；其餘 {missed} 格（{pct}%）沒有，原因如下。",
     " (TCP port {port})": "（TCP 埠 {port}）",
     "  · {frames} frames are TCP payload that tshark could not identify either{where}.":
         "  · {frames} 格是 tshark 也認不出來的 TCP 載荷{where}。",
@@ -544,8 +560,8 @@ CATALOG: dict[str, str] = {
         "{n} 則 NAS 訊息已加密，內容（包括任何 reject）讀不出來。",
     "{n} SUCIs are ECIES-protected; those subscribers' SUPI cannot be recovered from the wire.":
         "{n} 個 SUCI 受 ECIES 保護，那些訂戶的 SUPI 從線路上還原不出來。",
-    "{n} of {total} frames were not decoded into any supported protocol.":
-        "{total} 格中有 {n} 格沒有解成任何支援的協定。",
+    "{n} of {total} frames produced no message; the coverage notes below say why.":
+        "{total} 格裡有 {n} 格沒有解出訊息；原因見下方的覆蓋率說明。",
     "{n} HTTP/2 streams have headers tshark could not decode (HPACK gap); messages on them are invisible.":
         "{n} 條 HTTP/2 stream 的標頭 tshark 解不出來（HPACK 缺口），上面的訊息看不見。",
     "Everything decoded; nothing was narrowed or adjusted.": "全部解開了；沒有收窄，也沒有自動調整。",

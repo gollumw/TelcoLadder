@@ -694,6 +694,24 @@ capture: 169 TCP frames decoded as 2, all of SBI vanished along with
 **15 HTTP 404s**, and the tool reported "187 messages", looking
 perfectly normal.
 
+### Frames that produced no message (2026-09-13)
+
+The summary no longer says the rest is "not in a supported protocol". It gives each frame one reason,
+and the reasons add up to the headline:
+
+- **Earlier IP fragments or TCP segments of messages that were reassembled and decoded.** Nothing
+  is missing.
+- **IP fragments whose other fragments are not in the capture.** The capture is incomplete; the
+  protocol is supported.
+- **TCP payload on a port that is already decoded, yet unreadable.** Earlier bytes of that stream
+  were not captured, so `--decode-as` will not help.
+- **Protocols the tool has no adapter for.** These are named.
+- **Transport-layer pieces.** Acknowledgements, keepalives, and segments of streams missing earlier
+  bytes.
+
+Measured on a real VoLTE capture (kept out of the repository; numbers only): 45 of 309 frames
+produced no message, and none of them was an unsupported protocol.
+
 ### Waiting for a large file (2026-09-13)
 
 While a capture loads, the page shows which step is running. It gives a percent and an estimate of

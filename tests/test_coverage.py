@@ -215,36 +215,39 @@ def _conv(protocol: str, frames: int, *ancestors: str) -> UnclaimedConversation:
 
 
 def test_fragments_of_decoded_messages_are_not_missing_signalling():
-    """SIP over UDP 超過 MTU 就被 IP 分片；tshark 在最後一片解碼，前面幾片在 phs 裡是
-    `ip → data`。它們是已解碼訊息的前半 —— 講成「不在支援的協定裡」是在報一個
-    不存在的缺口。
+    """SIP over UDP 超過 MTU 就被 IP 分片；tshark 在最後一片解碼，前面幾片是 `ip → data`。
+    它們是已解碼訊息的前半 —— 講成「不在支援的協定裡」是在報一個不存在的缺口。
 
-    突變：`_discount_fragments` 直接回傳輸入 → 第二個斷言紅；`missed` 不扣分片 →
-    第一個斷言紅。
+    2026-09-13 起盤點逐格做：**按格號跳過**，不從葉子的格數裡扣（扣錯葉子時整份說明錯位）。
+    突變：`_census` 不看 `skip` → 第二個斷言紅；`missed` 不扣分片 → 第一個斷言紅。
     """
-    cov = Coverage(
-        total=300, parsed=100, scanned=True, fragments=142,
-        unclaimed=tuple(coverage_module._discount_fragments(
-            [_conv("data", 142), _conv("esp", 33), _conv("dns", 12, "eth", "ip", "udp")], 142)),
-    )
+    rows = [(str(n), "eth:ethertype:ip:data", "", "", "True", "0") for n in range(1, 143)]
+    rows += [(str(n), "eth:ethertype:ip:esp", "", "", "", "0") for n in range(200, 233)]
+    rows += [(str(n), "eth:ethertype:ip:udp:dns", "", "", "", "0") for n in range(300, 312)]
+    unclaimed, orphans = coverage_module._census(rows, skip=set(range(1, 143)), decode_as=())
+    cov = Coverage(total=300, parsed=100, scanned=True, fragments=142, unclaimed=tuple(unclaimed), orphan_fragments=orphans)
     assert cov.missed == 300 - 100 - 142
-    assert [c.protocol for c in cov.unclaimed] == ["esp", "dns"], "分片扣光了的 data 葉子要整個拿掉"
+    assert sorted(c.protocol for c in cov.unclaimed) == ["dns", "esp"], "已解碼訊息的分片不能出現在未解讀清單"
+    assert orphans == 0
     lines = describe(cov)
     assert "The other 58 (19%)" in lines[0], lines[0]
     assert any("142 frames are earlier IP fragments" in line and "nothing is missing" in line for line in lines)
 
 
-def test_fragments_only_partly_cover_the_data_leaf():
-    """分片比 `data` 葉子少時只扣一部分 —— 剩下的仍然是真的不明載荷。"""
-    (data,) = coverage_module._discount_fragments([_conv("data", 100)], 40)
-    assert data.frames == 60
+def test_fragments_that_belong_to_no_decoded_message_are_counted_as_orphans():
+    """跳過的只有已解碼訊息的分片；其餘帶分片旗標的 `ip → data` 是組不起來的分片，要另外數。"""
+    rows = [(str(n), "eth:ethertype:ip:data", "", "", "True", "0") for n in range(1, 101)]
+    (data,), orphans = coverage_module._census(rows, skip=set(range(1, 41)), decode_as=())
+    assert data.frames == 60 and orphans == 60
 
 
-def test_fragments_never_touch_transport_or_user_dlt_payload():
-    """分片沒有 UDP／TCP 標頭，所以只扣**不掛在傳輸層底下**的 `data`；
-    掛在 tcp 底下的與 USER DLT 底下的是別的東西，扣了會把真的缺口藏起來。"""
-    convs = [_conv("data", 50, "eth", "ip", "tcp"), _conv("data", 50, "user_dlt")]
-    assert coverage_module._discount_fragments(convs, 50) == convs
+def test_tcp_payload_and_user_dlt_payload_are_never_called_fragments():
+    """分片沒有 UDP／TCP 標頭；掛在 tcp 底下的與 USER DLT 底下的是別的東西。"""
+    rows = [(str(n), "eth:ethertype:ip:tcp:data", "40000", "3868", "", "0") for n in range(1, 51)]
+    rows += [(str(n), "user_dlt:data", "", "", "", "") for n in range(51, 101)]
+    unclaimed, orphans = coverage_module._census(rows, skip=set(), decode_as=())
+    assert orphans == 0
+    assert {(c.protocol, c.transport, c.under_user_dlt) for c in unclaimed} == {("data", "tcp", False), ("data", "", True)}
 
 
 def test_when_everything_undecoded_is_fragments_nothing_is_reported():
