@@ -476,6 +476,31 @@ Lanes are labelled `UE` and `P-CSCF` from three kinds of evidence, strongest fir
 A B2BUA, whether an application server or an SBG acting as P-CSCF, writes its **own** address in
 `Contact` when it opens a leg. The old rule therefore labelled core nodes as UE. On one real capture
 it labelled 11 core messages that way, and it swapped the P-CSCF and the callee.
+
+#### One lane per host, and naming hosts yourself (2026-09-13)
+
+Roles are decided per address **and port**: one address can play different elements on different
+ports. Lanes, however, are drawn **one per host**:
+
+- **All roles of one address share one lane**, named after all of them in call-flow order. A P-CSCF
+  that also controls H.248 is one `P-CSCF / MGC` lane. Its ports without a role join that lane too.
+- **Different hosts never share a lane.** When two addresses get the same automatic name, each lane
+  gets its address appended: `UE (192.0.2.10)` and `UE (192.0.2.20)` for caller and callee, or
+  `eNB (…)` for two base stations.
+- **Lane names are display only.** Reference points, IPsec ownership and ordering still use the
+  roles.
+
+A capture cannot tell that two addresses are one box. An SBG's access and core sides are the usual
+example. You can say so with a node map, a JSON object of address to node name:
+
+```json
+{"192.0.2.1": "SBG-01", "198.51.100.1": "SBG-01"}
+```
+
+Pass it with `--node-map PATH` to `analyze`, `summarize` or `serve`. Addresses mapped to the same
+name are drawn as one lane, and the summary says a node map was used. **It is read only from the
+path you give**: there is no default location, so the same capture draws the same way on any
+machine. The file names real addresses of your network, so keep it out of version control.
 ## 5. Five things to know when interpreting
 
 **1. Cause clauses are looked up, never AI-generated.** The

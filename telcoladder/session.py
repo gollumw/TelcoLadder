@@ -184,6 +184,9 @@ class Session:
     所以畫面上輸入框寫著過濾式、過濾卻已經不在了。沒有任何一層會說話。
     """
 
+    node_map: "NodeMap | None" = None
+    """`serve --node-map` 的節點對照表。沒給就是 None（`lanes.py`：不自動讀任何預設位置）。"""
+
     decode_as: tuple[str, ...] = ()
     """套給 tshark 的 `-d` 規則。**索引、解碼、原始位元組、display filter
     四條路徑都吃它** —— 四條用不同參數就是同一份檔的四個答案。
@@ -298,8 +301,10 @@ class Session:
 class SessionStore:
     """所有開著的工作階段。執行緒安全 —— `ThreadingHTTPServer` 是一請求一執行緒。"""
 
-    def __init__(self, idle_ttl: float = IDLE_TTL) -> None:
+    def __init__(self, idle_ttl: float = IDLE_TTL, node_map: "NodeMap | None" = None) -> None:
         self._sessions: dict[str, Session] = {}
+        #: `serve --node-map` 給的節點對照表，每個工作階段的解剖都吃同一份（`lanes.py`）。
+        self.node_map = node_map
         self._lock = threading.Lock()
         self._idle_ttl = idle_ttl
         self._stop = threading.Event()
@@ -329,6 +334,7 @@ class SessionStore:
                           # 7777 埠）都沒有生效 —— 那不是「還沒 probe」，
                           # 是純粹漏了。
                           user_decode_as=load_user_rules(),
+                          node_map=self.node_map,
                           decode_as=(*default_decode_as(), *load_user_rules()))
         with self._lock:
             self._sessions[session.sid] = session
@@ -537,7 +543,7 @@ def _index_into_as(session: Session, generation: int) -> None:
     # 使用者的規則要參與解剖本身，不能只影響封包清單 —— 否則訊息數、
     # 訂戶、梯形圖仍然是舊的，而清單看起來已經解開了。
     result = analyse(
-        session.pcap, decode_as=session.user_decode_as, wire=session.wire
+        session.pcap, decode_as=session.user_decode_as, wire=session.wire, node_map=session.node_map
     )
     with session.lock:
         if session.index_generation != generation:

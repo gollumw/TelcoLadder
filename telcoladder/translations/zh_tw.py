@@ -190,6 +190,18 @@ CATALOG: dict[str, str] = {
         "由 IPsec 保護的訊令判定：與 {param} 個對端走受保護連線的位址是網路側，它的每個對端是接取側（TS 33.203）",
     "its own address is in Contact together with a subscriber identity - used only because the IPsec evidence in this capture decided nothing":
         "它自己的位址連同訂戶身分寫在 Contact 裡 —— 只因為這份擷取檔的 IPsec 證據判不出任何角色才採用",
+    "Lane names for {n} addresses come from your node map ({path}).":
+        "有 {n} 個位址的泳道名取自你的節點對照表（{path}）。",
+    "{n} addresses play more than one role or had ports without one; each is drawn as a single lane named after all its roles.":
+        "有 {n} 個位址身兼多個角色、或有些埠判不出角色；每個位址都畫成一條泳道，名稱列出它全部的角色。",
+    "Cannot read the node map {path}: {error}":
+        "讀不到節點對照表 {path}：{error}",
+    "The node map {path} is not valid JSON: {error}":
+        "節點對照表 {path} 不是合法的 JSON：{error}",
+    'The node map {path} must be a JSON object of address to node name, e.g. {{"192.0.2.1": "SBG-01"}}.':
+        '節點對照表 {path} 必須是「位址 → 節點名」的 JSON 物件，例如 {{"192.0.2.1": "SBG-01"}}。',
+    'A JSON object of address to node name, e.g. {"192.0.2.1": "SBG-01"}. Addresses mapped to the same name are drawn as one lane. Read only from this path - never from a default location.':
+        '「位址 → 節點名」的 JSON 物件，例如 {"192.0.2.1": "SBG-01"}。對到同一個名字的位址畫成一條泳道。只從這個路徑讀 —— 不會自動讀任何預設位置。',
     "Message count {before} → {after}. Add --no-auto-decode to turn this off.":
         "訊息數 {before} → {after}。不想要這個行為就加 --no-auto-decode。",
     "editcap (ships with Wireshark) not found; filtering with a display filter instead - same answer, but tshark still reads the whole file.":

@@ -144,8 +144,11 @@ def _associations_from(msg: Message) -> list[SecurityAssociation]:
         if not raw:
             continue
         # 回述的那一份，SPI 屬於對端 —— 收方是這則訊息要送到的人。
-        receiver = msg.dst.label() if echoed else msg.src.label()
-        sender = msg.src.label() if echoed else msg.dst.label()
+        # **看角色，不看泳道名**：一台同時控制 H.248 的 P-CSCF 泳道叫 `P-CSCF / MGC`，
+        # 但這條 SA 的收方就是 P-CSCF（`lanes.py` 檔頭）。
+        src, dst = msg.src.role or msg.src.key, msg.dst.role or msg.dst.key
+        receiver = dst if echoed else src
+        sender = src if echoed else dst
         for line in raw.split("\n"):
             for mechanism in line.split(","):
                 params = _params(mechanism)
