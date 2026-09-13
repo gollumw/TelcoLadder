@@ -38,6 +38,7 @@
   "identity",
   "interfaces",
   "ipsec",
+  "lanes",
   "lifecycle",
   "mcp",
   "model",

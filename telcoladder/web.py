@@ -1230,6 +1230,7 @@ def make_server(
     idle_ttl: float = IDLE_TTL,
     viewer: bool = True,
     token: str | None = None,
+    node_map: "NodeMap | None" = None,
 ) -> ThreadingHTTPServer:
     """建好伺服器但不開始服務。測試靠這個拿到真的 socket。
 
@@ -1243,7 +1244,7 @@ def make_server(
     # 容易變成「關不掉還噴執行緒例外」（tshark.shutdown 才踩過同類問題）。
     server.daemon_threads = True
     server.lang = i18n.current()  # type: ignore[attr-defined]  —— handler 執行緒不繼承 contextvars
-    server.store = SessionStore(idle_ttl=idle_ttl) if viewer else None  # type: ignore[attr-defined]
+    server.store = SessionStore(idle_ttl=idle_ttl, node_map=node_map) if viewer else None  # type: ignore[attr-defined]
     server.token = token or None  # type: ignore[attr-defined]  —— 非迴圈位址綁定的門票（檔頭「安全」一節）
     return server
 
@@ -1316,13 +1317,14 @@ def serve(
     idle_ttl: float = IDLE_TTL,
     viewer: bool = True,
     token: str | None = None,
+    node_map: "NodeMap | None" = None,
 ) -> int:
     if not is_loopback(host) and not token:
         # **拒絕，不是警告。** 這台伺服器拿使用者給的路徑跑 tshark；開在區網上
         # 而沒有門票，等於把「讀任何檔」交給同網段的每一台機器。
         print(_('Refusing to bind {host}: this server runs tshark on paths it is handed. Off 127.0.0.1 it needs --token (or TELCOLADDER_TOKEN); with a token, only uploads are accepted.').format(host=host))
         return 2
-    server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer, token=token)
+    server = make_server(host, port, idle_ttl=idle_ttl, viewer=viewer, token=token, node_map=node_map)
     bound_host, bound_port = server.server_address[:2]
     print(_('TelcoLadder → http://{host}:{port}   (Ctrl-C to stop)').format(host=bound_host, port=bound_port))
     if token:

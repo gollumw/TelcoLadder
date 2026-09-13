@@ -192,9 +192,11 @@ def _render(
     messages.sort(key=lambda m: (m.abs_ts, m.ts, m.frame))
 
     seen: dict[str, Endpoint] = {}
+    addresses: dict[str, set[str]] = {}
     for msg in messages:
         for endpoint in (msg.src, msg.dst):
             seen.setdefault(endpoint.label(), endpoint)
+            addresses.setdefault(endpoint.label(), set()).add(endpoint.key)
     participants = []
     for label, endpoint in sorted(seen.items(), key=lambda kv: participant_rank(kv[1])):
         participant = {
@@ -204,7 +206,8 @@ def _render(
             # 該長得不一樣。
             "known": endpoint.role is not None,
             # 線路位址（裸匯出時是主機名本身）。泳道標題只有一行，位址放副標。
-            "address": endpoint.key,
+            # 節點對照表把好幾個位址畫成同一台時，副標列出全部（`lanes.py`）。
+            "address": ", ".join(sorted(addresses[label])),
         }
         if hosts is not None:
             # **主機名只在不含糊時給。** 中繼用過好幾個 Origin-Host（它替別人轉送），

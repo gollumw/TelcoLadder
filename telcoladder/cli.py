@@ -19,6 +19,7 @@ from telcoladder.prefilter import PrefilterError, TimeWindow
 from telcoladder.render_mermaid import DEFAULT_MAX_MESSAGES, render_all
 from telcoladder.session import IDLE_TTL
 from telcoladder import summary as summary_mod
+from telcoladder.lanes import NodeMapError, load_node_map
 from telcoladder.web import DEFAULT_HOST, DEFAULT_PORT, serve
 from telcoladder.tshark import TsharkNotFound, find_tshark
 
@@ -73,8 +74,14 @@ def _guarded_analyse(args: argparse.Namespace, **kwargs):
     是同一個壞掉的 `--since` 在一邊報錯、另一邊靜默吃掉。
     """
     try:
+        node_map = load_node_map(args.node_map)
+    except NodeMapError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 2
+    try:
         return analyse(
             args.pcap,
+            node_map=node_map,
             decode_as=args.decode_as or (),
             prefs=tuple(args.tshark_pref or ()),
             auto_decode=not args.no_auto_decode,
@@ -208,7 +215,13 @@ def _cmd_mcp(_args: argparse.Namespace) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        node_map = load_node_map(args.node_map)
+    except NodeMapError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 2
     return serve(
+        node_map=node_map,
         host=args.host,
         port=args.port,
         idle_ttl=args.idle_ttl,
@@ -266,6 +279,10 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tshark-pref", action="append", metavar=_("PREF"),
         help=_("A tshark preference passed as -o, verbatim, to every pass (extraction, probing, coverage). Example: 'uat:user_dlts:\"User 0 (DLT=147)\",\"diameter\",\"0\",\"\",\"0\",\"\"' for a capture whose link type is USER 0 and whose payload is raw Diameter. Repeatable."),
+    )
+    parser.add_argument(
+        "--node-map", type=Path, metavar="JSON",
+        help=_("A JSON object of address to node name, e.g. {\"192.0.2.1\": \"SBG-01\"}. Addresses mapped to the same name are drawn as one lane. Read only from this path - never from a default location."),
     )
     narrow = parser.add_argument_group(
         _("Narrowing the capture first (much faster on large files)"),
@@ -389,6 +406,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-viewer",
         action="store_true",
         help=_("Disable the interactive viewer entirely. The viewer keeps uploaded copies in the temp directory for a while; use this if you do not want that."),
+    )
+    serve_cmd.add_argument(
+        "--node-map", type=Path, metavar="JSON",
+        help=_("A JSON object of address to node name, e.g. {\"192.0.2.1\": \"SBG-01\"}. Addresses mapped to the same name are drawn as one lane. Read only from this path - never from a default location."),
     )
     serve_cmd.set_defaults(func=_cmd_serve)
 

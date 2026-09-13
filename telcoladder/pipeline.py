@@ -44,6 +44,7 @@ from telcoladder.model import (
     Flow,
     Message,
 )
+from telcoladder.lanes import LaneReport, NodeMap, assign_lanes
 from telcoladder.nf import apply_roles
 from telcoladder.packets import capture_duration
 from telcoladder.i18n import _
@@ -285,6 +286,9 @@ class Analysis:
     """有幾條流程的多個 SUPI **只靠** S-TMSI 或 GTPv2-C 交易鍵才接在一起（`correlate.supi_bridges`）。
     不是 0 代表那幾條流程可能是兩個人被接成一條 —— 要講出來（`summary.not_visible`）。"""
 
+    lanes: "LaneReport | None" = None
+    """泳道這一層做了什麼（同一台主機合成一條、節點對照表）。要講出來。"""
+
     decode_conflicts: tuple[PortConflict, ...] = ()
     """內建 decode-as 規則的埠上混著別的協定、沒有自動改的那些。**要講出來** —— 那些訊息
     沒被畫出來，而圖本身看不出少了什麼。"""
@@ -324,7 +328,8 @@ class Analysis:
         """工具為了讀懂這份檔**做了什麼**（`auto_decode`），以及**看到但沒做**的（`decode_conflicts`）。
         CLI、摘要與網頁都印這一份，順序固定：先做了的，再沒做的。"""
         lines = list(self.auto_decode.describe()) if self.auto_decode is not None else []
-        return lines + [conflict.describe() for conflict in self.decode_conflicts]
+        lines += [conflict.describe() for conflict in self.decode_conflicts]
+        return lines + (self.lanes.describe() if self.lanes is not None else [])
 
 def _extract(
     pcap: Path,
@@ -397,6 +402,7 @@ def analyse(
     auto_decode: bool = True,
     prefilter: Prefilter | None = None,
     prefs: Sequence[str] = (),
+    node_map: NodeMap | None = None,
 ) -> Analysis:
     """跑完整條管線。
 
@@ -455,7 +461,7 @@ def analyse(
             sliced or pcap, prefilter, capture_duration_s=duration,
             decode_as=decode_as, nas_from_ue=nas_from_ue, wire=wire,
             with_coverage=with_coverage, auto_decode=auto_decode,
-            sliced=sliced is not None, slice_note=slice_note, prefs=prefs,
+            sliced=sliced is not None, slice_note=slice_note, prefs=prefs, node_map=node_map,
         )
     finally:
         # 切片可能是客戶封包，一定要清。放 finally 而不是成功路徑末尾 ——
@@ -476,6 +482,7 @@ def _analyse_within(
     slice_note: str,
     capture_duration_s: float | None = None,
     prefs: Sequence[str] = (),
+    node_map: NodeMap | None = None,
 ) -> Analysis:
     """在（可能已切片的）`pcap` 上跑管線。切片的生命週期由 `analyse` 管。"""
     if wire:
@@ -615,6 +622,8 @@ def _analyse_within(
     # 沒有 IP 層的匯出：先把端點從協定的主機名補回來，角色推論才有東西可鍵。
     fill_hostless(messages)
     apply_roles(messages, nas_from_ue=nas_from_ue)
+    # 角色定案之後才命名泳道：一台主機一條（`lanes.py`）。角色本身不動。
+    lanes = assign_lanes(messages, node_map)
     annotate(messages)
     # 沒有觀測到釋放時這是恆等函式（`lifecycle.apply` 第一行就回頭），
     # 所以不含 release 的擷取檔行為逐位元組不變。
@@ -646,6 +655,7 @@ def _analyse_within(
         )
 
     return Analysis(
+        lanes=lanes,
         decode_conflicts=conflicts,
         flows=flows,
         capture_duration_s=capture_duration_s,

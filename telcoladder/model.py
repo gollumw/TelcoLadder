@@ -411,6 +411,9 @@ class Endpoint:
     """應用層講的主機名（Diameter Origin-Host）。只在沒有 IP 層時由
     `endpoints.fill_hostless` 填上；有 IP 的擷取檔一律 None —— 兩者都有時
     以 IP 為鍵，主機名只是顯示用的別名，這裡刻意不做那件事。"""
+    lane: str | None = None
+    """泳道名（`lanes.assign_lanes` 填）：一台主機一條，身兼多個角色時是 `P-CSCF / MGC`，
+    或使用者節點對照表的名字。**只影響顯示**（`label()`）；判斷一律看 `role`。"""
 
     @property
     def key(self) -> str:
@@ -418,14 +421,17 @@ class Endpoint:
         return self.ip or self.host or ""
 
     def label(self) -> str:
-        """畫圖時顯示的名字。推不出角色就老實顯示 IP（或主機名）—— 不猜（Rule 12）。"""
-        return self.role or self.key
+        """畫圖時顯示的名字：泳道名，其次角色，推不出角色就老實顯示 IP（或主機名）—— 不猜（Rule 12）。"""
+        return self.lane or self.role or self.key
 
     def with_role(self, role: str | None) -> Endpoint:
-        return Endpoint(ip=self.ip, port=self.port, role=role, host=self.host)
+        return Endpoint(ip=self.ip, port=self.port, role=role, host=self.host, lane=self.lane)
 
     def with_host(self, host: str | None) -> Endpoint:
-        return Endpoint(ip=self.ip, port=self.port, role=self.role, host=host)
+        return Endpoint(ip=self.ip, port=self.port, role=self.role, host=host, lane=self.lane)
+
+    def with_lane(self, lane: str | None) -> Endpoint:
+        return Endpoint(ip=self.ip, port=self.port, role=self.role, host=self.host, lane=lane)
 
 
 @dataclass(frozen=True, slots=True)
