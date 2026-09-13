@@ -33,7 +33,13 @@ from telcoladder.procedures import Procedure, segment
 #: 但語意變了：場景列的 `end_frame`／`messages`／`duration_s` 現在包含那次釋放，並帶著
 #: `release_initiator` 與 `release_cause`；原本的釋放列仍在，改標上 `folded_into`（所屬場景的
 #: `start_frame`）。**逐列加總 `messages` 的消費端要跳過帶 `folded_into` 的列**，否則重複計算。
-XDR_VERSION = 3
+#:
+#: **4（2026-09-13）：方向與觸發者從 kind 名稱移到欄位。** `procedure` 的值
+#: `handover-eps-to-5gs`／`handover-5gs-to-eps` → `handover`、`mobility-5gs-to-eps`／
+#: `mobility-eps-to-5gs` → `tau` 或 `context-transfer`、`service-request-network` →
+#: `service-request`，改由新欄位 `direction`／`trigger` 表達；`category` 的 `hss` →
+#: `subscriber-data`。過濾舊值的消費端會靜默拿到零列，所以升版。
+XDR_VERSION = 4
 
 
 def procedure_record(p: Procedure, folded_into: int | None = None) -> dict:
@@ -90,6 +96,9 @@ def procedure_record(p: Procedure, folded_into: int | None = None) -> dict:
         "family": p.family,
         "category": p.category,
         "registration_type": p.registration_type,
+        # 方向與觸發者（版本 4）：跨系統的換手／移動才有方向，service request 才有觸發者。
+        "direction": p.direction,
+        "trigger": p.trigger,
         # 折進某個場景的釋放：那個場景的 `start_frame`；其他列 null（版本 3，見 `XDR_VERSION`）。
         "folded_into": folded_into,
     }

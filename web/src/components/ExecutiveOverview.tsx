@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { t, useLang } from "../i18n";
 import { AlertTriangle, ArrowUpRight, Binary, CheckCircle2, EyeOff, Filter, LayoutList, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { procedureName } from "@/lib/procedureLabels";
 import type { Overview, OverviewCause, OverviewProcedure } from "@/data/source";
 
 /**
@@ -422,7 +423,7 @@ function ProcedureRow({
   return (
     <tr className="border-t border-border align-top">
       <td className="px-3 py-2 font-mono text-fg">
-        {p.kind}
+        {procedureName(p)}
         {p.pduSessionId && <span className="ml-1 text-fg-dim">#{p.pduSessionId}</span>}
       </td>
       {/* 沒有訂戶時退到端點，**不要只留一個破折號** —— 那一列會變成

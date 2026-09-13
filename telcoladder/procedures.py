@@ -212,7 +212,7 @@ KINDS: tuple[_Kind, ...] = (
     # 閒置模式的跨系統移動（N26 的 Context Request／Response／Acknowledge，TS 23.502）：
     # UE 在另一個系統做了 TAU 或註冊，新節點向舊節點要 context。方向看誰發的
     # （`_finish`：MME 發＝UE 去了 EPS，AMF 發＝UE 來了 5GS）。
-    _Kind("mobility-context-transfer", "Context Request", ("Context Acknowledge",), exact=True),
+    _Kind("context-transfer", "Context Request", ("Context Acknowledge",), exact=True),
     # 4G 的 TAU 與 Detach —— 與 5G 的 registration／deregistration 同形。
     _Kind("tau", "Tracking area update request",
           ("Tracking area update accept", "Tracking area update complete")),
@@ -222,7 +222,7 @@ KINDS: tuple[_Kind, ...] = (
     # **網路觸發的 service request 與 UE 觸發的是同一個 kind。** DDN（SGW 說「有下行資料」）
     # 或 Paging 開段，UE 其後送的 `Service request` 是同型 opener，照規則 ③ 併進同一段 ——
     # 分成兩段的話，畫面上會有一個「只有 Paging 的段」與一個「沒有前因的 service request」。
-    # 段名在 `_finish` 裡依視窗裡有沒有 DDN／Paging 改寫成 `service-request-network`。
+    # 觸發者在 `_finish` 裡依視窗裡有沒有 DDN／Paging 填成 `network`（`Procedure.trigger`）。
     _Kind("service-request", "Downlink Data Notification", ("Service accept", "InitialContextSetupResponse"),
           exact=True),
     _Kind("service-request", "Paging", ("Service accept", "InitialContextSetupResponse"), exact=True),
@@ -254,11 +254,26 @@ CANCEL_LABELS = ("Relocation Cancel", "HandoverCancel")
 #: `tests/test_procedure_taxonomy.py` 對過 —— 這裡只放號碼，名稱永遠從表來）。
 EPS_FALLBACK_CAUSE = ("ngap_radioNetwork", 36)
 
-#: kind → (family, category)。family 是世代（5g／4g／interworking／ims／diameter），
+#: kind → (family, category)。family 是世代（5g／4g／interworking／ims），
 #: category 是工程師問問題的單位（註冊、服務請求、會話、釋放、換手、fallback、
 #: 移動、通話）。`ue-context-release` 兩個世代同名，family 看視窗裡的協定
 #: （`_family_of`）。**查不到的 kind 是 ("other", "other")**，畫面上照樣列出來 ——
 #: 引擎加了新 kind 而這張表忘了，症狀是多一組「其他」，不是少一段。
+#: 類別（category）的固定詞彙 —— 4G 與 5G 共用，是工程師問問題的單位。**新場景先歸類別、
+#: 再命名 kind**；要動這張清單才需要改畫面，而 `tests/test_procedure_labels.py` 會擋。
+#: 兩條邊界寫在這裡免得漂移：`release` 只指**訊令連線**的釋放（session 的拆除留在
+#: `session`）；`subscriber-data` 是訂戶資料那一側主動來的事，不是網元名。
+CATEGORIES: tuple[str, ...] = (
+    "registration", "mobility", "handover", "service-request", "session",
+    "release", "subscriber-data", "call", "fallback", "other",
+)
+
+#: 屬性（2026-09-13）。**方向與觸發者不寫進 kind 名稱**：寫進名稱的話，每多一種換手
+#: （Xn、N2、X2）或移動就多一個 kind，面板跟著多一顆晶片。`trigger` 只在**同一個 kind
+#: 線路上真的分得出兩種可能**時才填 —— 一個 kind 永遠相同的屬性不帶資訊。
+DIRECTIONS: tuple[str, ...] = ("eps-to-5gs", "5gs-to-eps")
+TRIGGERS: tuple[str, ...] = ("ue", "network")
+
 TAXONOMY: dict[str, tuple[str, str]] = {
     "registration": ("5g", "registration"),
     "deregistration": ("5g", "registration"),
@@ -270,15 +285,13 @@ TAXONOMY: dict[str, tuple[str, str]] = {
     "detach": ("4g", "registration"),
     "tau": ("4g", "mobility"),
     "handover": ("5g", "handover"),
-    "handover-5gs-to-eps": ("interworking", "handover"),
-    "handover-eps-to-5gs": ("interworking", "handover"),
+    # 訊令連線的釋放。兩個世代同名，世代看視窗裡的協定（`_family_of`）。
+    "ue-context-release": ("5g", "release"),
     "eps-fallback": ("interworking", "fallback"),
-    "mobility-5gs-to-eps": ("interworking", "mobility"),
-    "mobility-eps-to-5gs": ("interworking", "mobility"),
-    "mobility-context-transfer": ("interworking", "mobility"),
-    # 4G 的場景（2026-09-12）。`service-request-network` 的世代看協定（下面的規則）——
-    # 5G 也有網路觸發的 service request（Paging 走 NGAP）。
-    "service-request-network": ("4g", "service-request"),
+    # 只看得到核網側交換的 Context Request 段；方向看誰發的（`_finish`）。**S10（MME 池內）
+    # 的 Context Request 也會被標成互通** —— 沒有任何擷取檔有 S10，沒資料的規則不寫。
+    "context-transfer": ("interworking", "mobility"),
+    # 4G 的場景（2026-09-12）。
     "dedicated-bearer-activation": ("4g", "session"),
     "dedicated-bearer-deactivation": ("4g", "session"),
     "bearer-modification": ("4g", "session"),
@@ -289,7 +302,7 @@ TAXONOMY: dict[str, tuple[str, str]] = {
 
 
 def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = False,
-               interfaces: tuple[str, ...] = ()) -> tuple[str, str]:
+               interfaces: tuple[str, ...] = (), direction: str | None = None) -> tuple[str, str]:
     """`TAXONOMY` 的查表，加上兩條看協定的規則：`ue-context-release` 與一般 `handover`
     在 4G 上是 S1AP 的，`diameter-*` 是動態命名的。"""
     if kind.startswith("hss-"):
@@ -305,17 +318,14 @@ def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = 
         # 判準是 `all`：一段裡只要混到 EPC 的腿就維持 4G。**寧可標得保守** ——
         # 標錯世代的症狀是使用者在 4G 那一段找不到他要的東西，而畫面看起來很正常。
         if interfaces and all(name in IMS_REFERENCE_POINTS for name in interfaces):
-            return ("ims", "hss")
-        return ("4g", "hss")
+            return ("ims", "subscriber-data")
+        return ("4g", "subscriber-data")
     if kind.startswith("sip-"):
         return ("ims", TAXONOMY.get(kind, ("ims", "other"))[1])
     family, category = TAXONOMY.get(kind, ("other", "other"))
     # `service-request` 兩個世代同名（NAS-5GS 與 NAS-EPS 都叫 `Service request`）—— 沒有這條，
     # 4G 的 Service request 會照表被歸成 5G。
-    if kind in ("ue-context-release", "handover", "service-request",
-                "service-request-network") or family == "other":
-        if kind == "ue-context-release":
-            category = "release"
+    if kind in ("ue-context-release", "handover", "service-request") or family == "other":
         # **只看接取與承載的協定決定世代。** Diameter 與 SGsAP 是跟著場景走的
         # （2026-09-12 起它們會落在視窗裡），拿它們判世代的話，一個「GTPv2-C ＋ 一則 S6a」
         # 的視窗兩條規則都不中，於是掉回 `TAXONOMY` 的預設值 5G —— 實測一份 MME trace：
@@ -329,6 +339,10 @@ def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = 
             # 只看到 Forward Relocation 那幾則：N26（對端是 AMF）還是 S10（MME 池內），
             # 線路提示裡有沒有 AMF 就分得出來 —— `gtpv2.py` 從 F-TEID 介面型別讀的。
             family = "interworking" if hints_name_an_amf else "4g"
+    # **有方向就是互通。** 方向是兩個系統之間的線路事實（HandoverType IE、誰來要 context），
+    # 所以它蓋過上面的協定規則 —— 一次 EPS→5GS 換手的視窗裡有 S1AP，照協定會被判成 4G。
+    if direction is not None:
+        family = "interworking"
     return family, category
 
 
@@ -421,6 +435,13 @@ class Procedure:
     這一段的 `messages`、`end_frame`、`duration` **已經包含**它們 —— 畫面與守恆律看這一段。
     xDR 另外為每一個輸出一列並標上 `folded_into`（`xdr.procedure_records`），讓算釋放的
     消費端仍數得到。**逐列加總 `messages` 要跳過帶 `folded_into` 的列**，否則重複計算。"""
+
+    direction: str | None = None
+    """方向（`DIRECTIONS`）：跨系統的換手與移動才有 —— `eps-to-5gs` 或 `5gs-to-eps`。
+    **有方向就是互通世代**（`_family_of`）。系統內的換手、一般的 TAU 一律 None。"""
+    trigger: str | None = None
+    """觸發者（`TRIGGERS`）：只有 `service-request` 填 —— `network`（DDN 或 Paging 起頭）或
+    `ue`。其他 kind 一律 None：線路上分不出兩種可能的屬性不填。"""
 
 
 def _own_label(msg: Message) -> str:
@@ -546,12 +567,14 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
 
     # 換手：方向來自開段訊息的 HandoverType（線路事實），KPI 是三個里程碑的間隔。
     kind_name = kind.name
+    direction: str | None = None
+    trigger: str | None = None
     ho_prep = ho_exec = None
     if kind.name == "handover":
         # 方向：視窗裡**任何一則**帶 HandoverType 的（來源側的 HandoverRequired、目標側的
-        # HandoverRequest 都帶）；一則都沒有就是一般換手。
+        # HandoverRequest 都帶）；一則都沒有就是系統內的一般換手（方向 None）。
         ho_type = next((m.detail["handover-type"] for m in window if "handover-type" in m.detail), "")
-        kind_name = _HANDOVER_KIND_BY_TYPE.get(ho_type, "handover")
+        direction = _DIRECTION_BY_HANDOVER_TYPE.get(ho_type)
         # 準備完成的里程碑：來源側是 HandoverCommand（`HandoverPreparationResponse`），
         # 目標側是 HandoverRequestAcknowledge（`HandoverResourceAllocationResponse`）。
         # 兩側都擷取到時（n26-handover），目標側的 Ack 會早於來源側的 Command —— 先找
@@ -570,19 +593,19 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         kind_name = "eps-fallback"
     elif kind.name == "tau" and any(_own_label(m) == "Context Request" for m in window):
         # 兩側都擷取到：eNB↔MME 的 TAU 與 MME↔AMF 的 context 交換是同一次移動。
-        kind_name = "mobility-5gs-to-eps"
-    elif kind.name == "service-request" and any(
-            _own_label(m).startswith(NETWORK_TRIGGERS) for m in window):
+        # 線路上那則 NAS 就是 tracking area update，所以名字不變；方向才是推出來的。
+        direction = "5gs-to-eps"
+    elif kind.name == "service-request":
         # DDN 或 Paging 起頭 —— 是網路要找這個 UE，不是 UE 自己要服務。排障的第一個分岔。
-        kind_name = "service-request-network"
-    elif kind.name == "mobility-context-transfer":
+        trigger = "network" if any(_own_label(m).startswith(NETWORK_TRIGGERS) for m in window) else "ue"
+    elif kind.name == "context-transfer":
         # 誰來要 context，UE 就是去了對方那邊。角色是 `nf.apply_roles` 判的線路事實；
-        # 判不出來就留通用名，不猜方向。
-        kind_name = {"MME": "mobility-5gs-to-eps", "AMF": "mobility-eps-to-5gs"}.get(
-            window[0].src.role or "", kind.name)
+        # 判不出來就不填方向，不猜。
+        direction = {"MME": "5gs-to-eps", "AMF": "eps-to-5gs"}.get(window[0].src.role or "")
     family, category = _family_of(
         kind_name, tuple(sorted({m.protocol for m in window})),
         hints_name_an_amf=any("=AMF" in m.detail.get(NF_ROLE_HINTS_KEY, "") for m in window),
+        direction=direction,
     )
 
     # **被取消的換手不是失敗的換手。** 來源側改變主意（或目標側沒有 context）時，線路上是
@@ -629,15 +652,17 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         registration_type=(
             window[0].detail.get("registration-type") if kind.name == "registration" else None
         ),
+        direction=direction,
+        trigger=trigger,
     )
 
 
-#: 換手段的名字，依開段訊息的 `handover-type`（adapter 從 HandoverType IE 讀的名稱）。
+#: 換手的方向，依開段訊息的 `handover-type`（adapter 從 HandoverType IE 讀的名稱）。
 #: 兩個世代的 IE 值不同（NGAP 的 `fivegs-to-eps` 是 1，S1AP 的是 6），名稱一樣 ——
-#: 所以鍵是名稱。查不到的（intra5gs、intralte…）就是一般的 `handover`。
-_HANDOVER_KIND_BY_TYPE = {
-    "fivegs-to-eps": "handover-5gs-to-eps",
-    "eps-to-5gs": "handover-eps-to-5gs",
+#: 所以鍵是名稱。查不到的（intra5gs、intralte…）是系統內換手：方向 None，kind 一樣是 `handover`。
+_DIRECTION_BY_HANDOVER_TYPE = {
+    "fivegs-to-eps": "5gs-to-eps",
+    "eps-to-5gs": "eps-to-5gs",
 }
 
 #: Diameter 的訊息在 `Message.detail` 上帶的兩把鑰匙。字串各寫一次就是等著漂移，
@@ -696,7 +721,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
     """**視窗之外的** Diameter 以 Session-Id 為單位切段，不用 NAS 那套視窗判定。
 
     2026-09-12 起這裡只收「不屬於任何場景」的那些（`segment_flow` 先讓視窗挑走）——
-    段名是 `hss-*`、世代是 4G、類別是 `hss`。
+    段名是 `hss-*`、世代是 4G 或 IMS、類別是 `subscriber-data`。
 
     ## 為什麼是 Session-Id
 
@@ -782,7 +807,7 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             protocols=tuple(sorted({m.protocol for m in window})),
             sequence=_match_sequence(failed),
             note=note,
-            # **世代與類別只有一份定義**（`_family_of`）。在這裡另寫一次 `("4g", "hss")`
+            # **世代與類別只有一份定義**（`_family_of`）。在這裡另寫一次 `("4g", "subscriber-data")`
             # 的話，那個函式裡的 `hss-` 分支就成了沒有人走的死碼 —— 而兩份定義遲早會漂。
             **dict(zip(("family", "category"),
                        _family_of(kind, tuple(sorted({m.protocol for m in window})),
@@ -1064,8 +1089,8 @@ def segment_flow(flow: Flow, *, capture_end: float) -> tuple[list[Procedure], li
             # （或 5G 側的行動更新註冊）開了窗、還沒收到 accept 時，MME／AMF 向對方要
             # context —— 那三則不是另一段，是這一段的中間；另開會把 TAU 切成
             # 「request 一段（incomplete）、accept 掉進別段」。純 AMF 側的 trace 沒有 NAS，
-            # Context Request 才自己開段（`mobility-context-transfer`）。
-            elif (active_kind is not None and opened.name == "mobility-context-transfer"
+            # Context Request 才自己開段（`context-transfer`）。
+            elif (active_kind is not None and opened.name == "context-transfer"
                     and active_kind.name in ("tau", "attach", "registration") and not _outcome_seen()):
                 window.append(msg)
                 last, last_pos = msg, pos
@@ -1129,4 +1154,4 @@ def segment(analysis: Analysis) -> tuple[list[Procedure], int]:
     return procedures, stray
 
 
-__all__ = ["KINDS", "Procedure", "QUIET_GAP", "capture_end", "segment", "segment_flow", "TAIL_SLACK"]
+__all__ = ["CATEGORIES", "DIRECTIONS", "KINDS", "Procedure", "QUIET_GAP", "capture_end", "segment", "segment_flow", "TAIL_SLACK", "TRIGGERS"]

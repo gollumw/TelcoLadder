@@ -88,6 +88,8 @@ _OURS = {
     "src/components/DiameterFlowsView.tsx",
     # 通話視圖（2026-09-08）—— 設計實驗場沒有這一面；它只排版後端 `/calls` 的事實。
     "src/components/CallsView.tsx",
+    # 程序的畫面名稱（2026-09-13）—— 梯形圖與總覽共用一張表；設計實驗場沒有這一層。
+    "src/lib/procedureLabels.ts",
 }
 
 

@@ -488,7 +488,7 @@ def test_procedures_are_cut_by_session_id(analysis) -> None:
     ]
     # 沒有「Diameter」這個世代了：每一段都歸在**某個世代**的 HSS 觸發底下，
     # 而世代看介面（下一條測試）。類別兩邊都是 `hss`。
-    assert {p.category for p in procedures} == {"hss"}
+    assert {p.category for p in procedures} == {"subscriber-data"}
     assert {p.family for p in procedures} == {"4g", "ims"}
     # 每一段都要指得回一個訂戶，而且失敗段要帶得出 cause。
     for p in procedures:
@@ -522,7 +522,7 @@ def test_the_cx_segments_are_ims_while_s6a_and_gx_stay_4g(analysis) -> None:
         "4g": {"hss-authentication-information", "hss-update-location", "hss-credit-control"},
     }
     # 類別不變：兩個世代都是「訂戶資料那一側的事」。
-    assert {proc.category for proc in procedures} == {"hss"}
+    assert {proc.category for proc in procedures} == {"subscriber-data"}
 
 
 def test_an_sh_exchange_outside_any_window_is_ims_too() -> None:
@@ -647,7 +647,7 @@ def test_diameter_inside_a_window_belongs_to_that_scenario() -> None:
     ])
     alone = {p.kind: p for p in segment_flow(outside, capture_end=6.0)[0]}
     assert set(alone) == {"registration", "hss-cancel-location"}
-    assert (alone["hss-cancel-location"].family, alone["hss-cancel-location"].category) == ("4g", "hss")
+    assert (alone["hss-cancel-location"].family, alone["hss-cancel-location"].category) == ("4g", "subscriber-data")
     assert not unassigned
 
 

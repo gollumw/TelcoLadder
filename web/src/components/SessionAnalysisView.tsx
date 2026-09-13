@@ -4,6 +4,7 @@ import { t, useLang } from "../i18n";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CATEGORY_LABEL, CATEGORY_ORDER, procedureName } from "@/lib/procedureLabels";
 import { ProtocolTree } from "./ProtocolTree";
 import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
 import type { CallFlowParticipant, CallFlowProcedure } from "@/data/source";
@@ -104,43 +105,7 @@ function inTab(tab: TelecomDomain, domain: TelecomDomain | undefined): boolean {
   return domain === tab || (domain !== undefined && (ALSO_IN_TAB[tab] ?? []).includes(domain));
 }
 
-//: 程序種類 → 畫面標籤。**查無此種類時原樣顯示引擎給的字串**
-//: （`PROCEDURE_LABEL[p.kind] ?? p.kind`）—— 引擎日後加 4G 的 attach /
-//: TAU 或 IMS 的 call setup 時，畫面不會靜默漏掉一段，只是標籤是英文的。
-const PROCEDURE_LABEL: Record<string, string> = {
-  registration: "Registration",
-  "pdu-session-establishment": "PDU establishment",
-  "pdu-session-release": "PDU release",
-  "service-request": "Service request",
-  deregistration: "Deregistration",
-  "ue-context-release": "Context release",
-  attach: "Attach (4G)",
-  handover: "Handover",
-  "handover-5gs-to-eps": "Handover 5GS→EPS",
-  "handover-eps-to-5gs": "Handover EPS→5GS",
-  "sip-register": "IMS registration",
-  "sip-call": "Call (SIP)",
-  "pdu-session-modification": "PDU modification",
-  "eps-fallback": "EPS fallback",
-  "mobility-5gs-to-eps": "5GS→EPS idle mobility",
-  "mobility-eps-to-5gs": "EPS→5GS idle mobility",
-  "mobility-context-transfer": "Context transfer (N26)",
-  tau: "TAU (4G)",
-  detach: "Detach (4G)",
-  // 4G 的場景（2026-09-12）。`hss-*` 是不屬於任何場景的 HSS 交換 —— 查無此值時原樣顯示
-  // （`hss-purge-ue` 之類），那是誠實的「引擎知道命令名，畫面還沒給它短標籤」。
-  "service-request-network": "Service request (network)",
-  "dedicated-bearer-activation": "Dedicated bearer setup",
-  "dedicated-bearer-deactivation": "Dedicated bearer release",
-  "bearer-modification": "Bearer modification",
-  "pdn-connection-release": "PDN connection release",
-  "hss-cancel-location": "HSS cancel location",
-  "hss-insert-subscriber-data": "Subscription data update",
-  "hss-delete-subscriber-data": "Subscription data removal",
-  "hss-update-location": "Location update (HSS)",
-  "hss-authentication-information": "Authentication vectors (HSS)",
-  "hss-notify": "Notify (HSS)",
-};
+//: 程序與類別的畫面標籤在 `@/lib/procedureLabels` —— 總覽也用同一張（2026-09-13）。
 
 //: 世代標籤（`procedures.TAXONOMY` 的 family）。5G／4G／IMS／Diameter 是專有名詞，不翻；
 //: 只有 interworking 與 other 走 `t()`。順序就是畫面上組的順序。
@@ -160,16 +125,18 @@ const REGISTRATION_TYPE_LABEL: Record<string, string> = {
   "disaster-roaming-initial-registration": "disaster roaming initial",
 };
 
-//: 同世代、同種類、同註冊型別、同結局的段是一組 —— 一份真實 AMF trace 的 163 段收成
-//: 7 組靠的就是它。**組是視圖，段是事實**：組只是把同形的段收在一起，點開仍是逐段晶片。
+//: 同世代、同**類別**的段是一組（2026-09-13 起）。結局與方向收在組裡，不再各自一顆晶片 ——
+//: 一份真實 MME trace 的面板原本有 21 顆，同一個行為因結局或方向不同被拆開，讀的人得自己歸類。
+//: **組是視圖，段是事實**：點開仍是逐段晶片，依 kind、方向、觸發與註冊型別分列。
 type ProcedureGroup = {
   key: string;
   family: string;
-  kind: string;
-  registrationType: string | null;
-  outcome: string;
+  category: string;
   members: CallFlowProcedure[];
 };
+
+//: 組的外框取組裡**最嚴重**的結局 —— 失敗要在沒點進去之前就看得出來，那是這條選擇列的重點。
+const OUTCOME_SEVERITY = ["failure", "incomplete", "cancelled", "ended-by-user", "success"];
 
 //: 未選中時的外框色 —— **結局要在沒點進去之前就看得出來**，那是這條
 //: 選擇列的重點:一眼掃過去知道哪一段掛了。
@@ -396,21 +363,22 @@ export function SessionAnalysisView({
   const groups = useMemo<ProcedureGroup[]>(() => {
     const byKey = new Map<string, ProcedureGroup>();
     for (const p of procedures) {
-      const key = `${p.family}|${p.kind}|${p.registrationType ?? ""}|${p.outcome}`;
+      const key = `${p.family}|${p.category}`;
       const found = byKey.get(key);
       if (found) found.members.push(p);
-      else byKey.set(key, { key, family: p.family, kind: p.kind, registrationType: p.registrationType, outcome: p.outcome, members: [p] });
+      else byKey.set(key, { key, family: p.family, category: p.category, members: [p] });
     }
-    const rank = (family: string) => {
-      const i = FAMILY_ORDER.indexOf(family);
-      return i < 0 ? FAMILY_ORDER.length : i;
+    const rank = (order: string[], value: string) => {
+      const i = order.indexOf(value);
+      return i < 0 ? order.length : i;
     };
-    // 世代 → 失敗優先 → 段數多的在前 → 先發生的在前。
+    const hasFailure = (g: ProcedureGroup) => Number(g.members.some((p) => p.outcome === "failure"));
+    // 世代 → 有失敗的優先 → 類別的固定順序 → 先發生的在前。類別順序固定，讀的人記得住位置。
     return [...byKey.values()].sort(
       (a, b) =>
-        rank(a.family) - rank(b.family)
-        || Number(b.outcome === "failure") - Number(a.outcome === "failure")
-        || b.members.length - a.members.length
+        rank(FAMILY_ORDER, a.family) - rank(FAMILY_ORDER, b.family)
+        || hasFailure(b) - hasFailure(a)
+        || rank(CATEGORY_ORDER, a.category) - rank(CATEGORY_ORDER, b.category)
         || a.members[0].startFrame - b.members[0].startFrame,
     );
   }, [procedures]);
@@ -443,7 +411,7 @@ export function SessionAnalysisView({
           : OUTCOME_STYLE[p.outcome],
       )}
     >
-      <span>{t(PROCEDURE_LABEL[p.kind] ?? p.kind)}</span>
+      <span>{procedureName(p)}</span>
       {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
       <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
       <span className="ml-1 tabular-nums opacity-60">{durationText(p.durationS)}</span>
@@ -688,7 +656,11 @@ export function SessionAnalysisView({
                   const failed = g.members.reduce((n, p) => n + p.failures, 0);
                   const causes = g.members.map((p) => p.cause).filter((c): c is string => Boolean(c));
                   const commonCause = causes.length > 0 && causes.every((c) => c === causes[0]) ? causes[0] : null;
-                  const regType = g.registrationType ? t(REGISTRATION_TYPE_LABEL[g.registrationType] ?? g.registrationType) : null;
+                  // 結局分布收在同一顆晶片裡（✗1 ✓14 ⊘7），依嚴重程度排；外框取最嚴重的那個。
+                  const counts = OUTCOME_SEVERITY
+                    .map((o) => [o, g.members.filter((p) => p.outcome === o).length] as const)
+                    .filter(([, n]) => n > 0);
+                  const worst = counts[0][0];
                   return (
                     <span key={g.key} className="inline-flex items-stretch">
                       <button
@@ -711,18 +683,20 @@ export function SessionAnalysisView({
                         className={cn(
                           "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
                           !single && "rounded-r-none",
-                          active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm" : OUTCOME_STYLE[g.outcome],
+                          active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm" : OUTCOME_STYLE[worst],
                         )}
                       >
                         <span className="opacity-60">{familyLabel(g.family)}</span>
                         <span className="mx-1 opacity-40">·</span>
-                        <span>{t(PROCEDURE_LABEL[g.kind] ?? g.kind)}</span>
-                        {regType && <span className="ml-1 opacity-70">({regType})</span>}
-                        <span className="ml-1.5 opacity-70">{OUTCOME_MARK[g.outcome]}</span>
-                        {single ? (
+                        {/* 單段的組直接叫那一段的名字（比類別具體）；多段才叫類別。 */}
+                        <span>{single ? procedureName(g.members[0]) : t(CATEGORY_LABEL[g.category] ?? g.category)}</span>
+                        {counts.map(([o, n]) => (
+                          <span key={o} className="ml-1.5 tabular-nums opacity-70">
+                            {OUTCOME_MARK[o]}{single ? "" : n}
+                          </span>
+                        ))}
+                        {single && (
                           <span className="ml-1 tabular-nums opacity-60">{durationText(g.members[0].durationS)}</span>
-                        ) : (
-                          <span className="ml-1 tabular-nums opacity-80">×{g.members.length}</span>
                         )}
                       </button>
                       {!single && (
@@ -740,7 +714,7 @@ export function SessionAnalysisView({
                           }
                           className={cn(
                             "rounded-r border border-l-0 px-1.5 text-[11px] transition-colors",
-                            active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan" : OUTCOME_STYLE[g.outcome],
+                            active ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan" : OUTCOME_STYLE[worst],
                           )}
                         >
                           {expanded ? "▾" : "▸"}
@@ -750,13 +724,29 @@ export function SessionAnalysisView({
                   );
                 })}
               </div>
-              {/* 展開的組：原本的逐段晶片，一組一列。 */}
-              {groups.filter((g) => g.members.length > 1 && expandedGroups.has(g.key)).map((g) => (
-                <div key={g.key} className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
-                  <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">{t(PROCEDURE_LABEL[g.kind] ?? g.kind)}</span>
-                  {g.members.map(segmentChip)}
-                </div>
-              ))}
+              {/* 展開的組：逐段晶片，**依 kind、方向、觸發與註冊型別分列** —— 同一個類別裡的
+                  「換手 EPS→5GS」與「系統內換手」要看得出是兩種。 */}
+              {groups.filter((g) => g.members.length > 1 && expandedGroups.has(g.key)).map((g) => {
+                const variants = new Map<string, CallFlowProcedure[]>();
+                for (const p of g.members) {
+                  const key = `${p.kind}|${p.direction ?? ""}|${p.trigger ?? ""}|${p.registrationType ?? ""}`;
+                  variants.set(key, [...(variants.get(key) ?? []), p]);
+                }
+                return [...variants.entries()].map(([key, members]) => {
+                  const first = members[0];
+                  const regType = first.registrationType
+                    ? t(REGISTRATION_TYPE_LABEL[first.registrationType] ?? first.registrationType)
+                    : null;
+                  return (
+                    <div key={`${g.key}|${key}`} className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
+                      <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
+                        {procedureName(first)}{regType ? ` (${regType})` : ""}
+                      </span>
+                      {members.map(segmentChip)}
+                    </div>
+                  );
+                });
+              })}
               {current?.cause && (
                 // **失敗要在段的層級講一次。** 箭頭上的 cause 只在那一列;
                 // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。

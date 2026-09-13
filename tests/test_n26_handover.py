@@ -15,7 +15,7 @@
   （介面型別 40），MME 說 `S10 MME GTP-C interface`（12）；沒有任何「誰有 NGAP 關聯」
   的推論。參考點 N26／N2／S1-MME／S11 因此查得出來。
 * **切段**：來源側的 HandoverRequired 開段，目標側的 HandoverNotify 收段，方向由
-  HandoverType IE 決定（`handover-5gs-to-eps`）；準備與執行兩段時延是三個里程碑
+  HandoverType IE 決定（`handover`，方向 `5gs-to-eps`）；準備與執行兩段時延是三個里程碑
   的間隔。目標 eNB 回 HandoverFailure 的那一次，段的結局是 failure、cause 是
   S1AP 表裡那一條。
 * **cause 的出處只印表裡有的。** S1AP 的表沒有條號，所以不印；NGAP 那一條印的是
@@ -23,7 +23,7 @@
 
 ## 這個檔證不了的事
 
-* 沒有 EPS→5GS 方向；`handover-eps-to-5gs` 這個名字在這裡沒有資料走過。
+* 沒有 EPS→5GS 方向；`eps-to-5gs` 這個方向在這裡沒有資料走過。
 * 透明容器（RRC 內容）刻意不在檔裡，S1AP／NGAP 每則只帶判讀需要的 IE。
 * 失敗那一次的位置：`blast_radius` 把它算在**來源側**的 TAC／cell（流程裡第一個
   位置事實），不是目標 cell —— 「換手失敗集中在哪個目標 cell」是另一個問題，
@@ -177,7 +177,8 @@ def test_handovers_are_segmented_with_direction_and_kpis(analysis) -> None:
     assert unassigned == 0
     handovers = {p.supi: p for p in procs if p.kind.startswith("handover")}
     assert set(handovers) == {SUPI_OK, SUPI_FAIL}
-    assert all(p.kind == "handover-5gs-to-eps" for p in handovers.values()), [p.kind for p in handovers.values()]
+    assert all((p.kind, p.direction) == ("handover", "5gs-to-eps") for p in handovers.values()), \
+        [(p.kind, p.direction) for p in handovers.values()]
 
     ok = handovers[SUPI_OK]
     assert ok.outcome == "success"

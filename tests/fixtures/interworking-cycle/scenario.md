@@ -23,8 +23,8 @@ HandoverRequest 出去）×20 —— **一段都沒切出來**；回 5G 之後�
 | 4–5 | PDUSessionResourceModifyRequest → Response（failed-to-modify，cause radioNetwork **#36**） | AMF↔gNB | `eps-fallback`，成功 |
 | 6–8 | UEContextReleaseRequest（#3）→ Command → Complete | gNB↔AMF | `ue-context-release`，無線側發起 |
 | 9, 13 | UplinkNASTransport（TAU request，帶 IMSI）／DownlinkNASTransport（TAU accept） | eNB↔MME | `tau`（4G），成功 |
-| 10–12 | Context Request（夾 TAU Request）→ Context Response → Context Acknowledge | MME↔AMF | `mobility-5gs-to-eps`，成功 |
-| 14–20 | Forward Relocation Request → HandoverRequest（eps-to-5gs）→ Ack → FR Response → HandoverNotify → FR Complete Notification → Ack | MME↔AMF↔gNB | `handover-eps-to-5gs`，成功；準備 20 ms、執行 80 ms |
+| 10–12 | Context Request（夾 TAU Request）→ Context Response → Context Acknowledge | MME↔AMF | `tau`，方向 `5gs-to-eps`，成功 |
+| 14–20 | Forward Relocation Request → HandoverRequest（eps-to-5gs）→ Ack → FR Response → HandoverNotify → FR Complete Notification → Ack | MME↔AMF↔gNB | `handover`，方向 `eps-to-5gs`，成功；準備 20 ms、執行 80 ms |
 | 21–22 | UplinkNASTransport（Registration request，**mobility registration updating**，5G-GUTI）→ Registration accept | gNB↔AMF | `registration`，mobility，成功 |
 | 23–41 | 同 4–22，最後以 **Registration reject（5GMM #11）** 收尾 | | `registration`，mobility，**失敗** |
 

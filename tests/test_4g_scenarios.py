@@ -54,7 +54,7 @@ def test_each_scenario_is_named_and_bounded(procedures) -> None:
     an engineer would name."""
     assert [(p.kind, p.outcome, p.start_frame, p.end_frame) for p in procedures] == [
         ("attach", "success", 1, 8),
-        ("service-request-network", "success", 9, 14),
+        ("service-request", "success", 9, 14),
         ("dedicated-bearer-activation", "success", 15, 18),
         ("bearer-modification", "success", 19, 22),
         ("dedicated-bearer-deactivation", "success", 23, 26),
@@ -62,6 +62,8 @@ def test_each_scenario_is_named_and_bounded(procedures) -> None:
         ("hss-cancel-location", "success", 30, 31),
         ("attach", "failure", 32, 34),
     ]
+    # 觸發者是屬性，不是名字（2026-09-13）：DDN／Paging 起頭的那一段是網路觸發。
+    assert [p.trigger for p in procedures if p.kind == "service-request"] == ["network"]
 
 
 def test_nothing_is_left_unassigned(analysis) -> None:
@@ -93,7 +95,7 @@ def test_an_hss_initiated_exchange_stands_alone(procedures) -> None:
     'Diameter' section. It is also the guard for the window closing after a cancelled handover:
     without that, this exchange is swallowed by the handover ten seconds earlier."""
     clr = _one(procedures, "hss-cancel-location")
-    assert (clr.family, clr.category, clr.start_frame, clr.end_frame) == ("4g", "hss", 30, 31)
+    assert (clr.family, clr.category, clr.start_frame, clr.end_frame) == ("4g", "subscriber-data", 30, 31)
 
 
 def test_a_cancelled_handover_is_not_a_failure(analysis, procedures) -> None:
@@ -104,12 +106,12 @@ def test_a_cancelled_handover_is_not_a_failure(analysis, procedures) -> None:
     assert doc["procedures"]["failure"] == 1, "only the attach with the unknown user is a failure"
 
 
-def test_a_service_request_with_no_paging_keeps_the_plain_name() -> None:
-    """The rename must come from the wire, not from the generation: a UE-triggered service request
-    stays `service-request`."""
+def test_a_service_request_with_no_paging_is_ue_triggered() -> None:
+    """The trigger must come from the wire, not from the generation: a service request with no
+    Paging or Downlink Data Notification in front of it is UE-triggered."""
     plain = analyse(UE_TRIGGERED)
-    kinds = {p.kind for p in segment(plain)[0]}
-    assert "service-request" in kinds and "service-request-network" not in kinds
+    triggers = {p.trigger for p in segment(plain)[0] if p.kind == "service-request"}
+    assert triggers == {"ue"}
 
 
 def test_a_message_that_rides_along_does_not_decide_the_generation() -> None:
