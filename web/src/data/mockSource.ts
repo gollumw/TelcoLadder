@@ -25,7 +25,7 @@ import { t } from "../i18n";
 import { mockData } from "@/lib/mock-data";
 import { computeDiscoveredSessions, matchesDisplayFilter } from "@/lib/utils";
 
-import type { Calls, DataSource, Ipsec, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
+import type { Calls, DataSource, LoadProgress, Ipsec, Dataset, DiameterFlows, Overview, OverviewCause, PacketPage } from "./source";
 
 export function mockSource(): DataSource {
   // 兩個條件分開存，語意與後端的 `filter_frames` / `identity_frames` 相同：
@@ -56,7 +56,7 @@ export function mockSource(): DataSource {
   return {
     label: "Built-in sample data", // App 渲染時 t()
 
-    async load(): Promise<Dataset> {
+    async load(_onProgress?: (progress: LoadProgress) => void): Promise<Dataset> {
       // 同步資料包成 Promise：介面統一成 async 是為了 apiSource，
       // 這裡沒有延遲，也刻意不假造延遲（假的載入動畫會讓人以為在等真的東西）。
       const page = await loadPacketPage(0, PAGE);

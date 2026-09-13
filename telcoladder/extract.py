@@ -112,6 +112,29 @@ def fragment_frames(frame: Frame) -> set[int]:
     return out
 
 
+def segment_frames(frame: Frame) -> set[int]:
+    """這一格若是 TCP 重組完成的那一格，回傳它由哪些格拼成（含自己）。
+
+    與 `fragment_frames` 同一件事，只是在 TCP 層：一則跨好幾個區段的訊息（SIP over TCP 的
+    INVITE、大的 Diameter），tshark 在最後一段解碼，前面的段在協定階層裡只到 `tcp`／`data`。
+    **它們不是漏掉的信令。** 實測一份真實 VoLTE 擷取：9 格這種區段被報成「不在支援的協定裡」。
+
+    ek 把清單放在 `tcp_tcp_segment`（實測在 layers 的最上層；也容忍放在 `tcp` 層裡）。
+    """
+    out: set[int] = set()
+    holders = [frame.layers, *_as_dict_list(frame.layers.get("tcp"))]
+    for holder in holders:
+        value = holder.get("tcp_tcp_segment") if isinstance(holder, dict) else None
+        for item in (value if isinstance(value, list) else [value]):
+            if item is None:
+                continue
+            try:
+                out.add(int(item))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def _as_dict_list(value: Any) -> list[dict[str, Any]]:
     if value is None:
         return []

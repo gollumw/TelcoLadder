@@ -857,6 +857,9 @@ form.path .opt {
 .qrow:last-child { border-bottom: none; }
 .qname { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qstate { color: var(--dim); white-space: nowrap; }
+/* Progress bar: the percent is computed on the server (viewer._step_progress); steps without a position draw no bar. */
+.qbar { display: block; height: 3px; background: var(--border); }
+.qbar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 
 .batch { width: 100%; border-collapse: collapse; font-size: 13px; }
 .batch th, .batch td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; }
@@ -1141,9 +1144,16 @@ def _home_page(token: str | None = None) -> str:
     el.className = 'qrow';
     el.innerHTML = '<span class="qname"></span><span class="qstate"></span>';
     el.querySelector('.qname').textContent = name;
+    var bar = document.createElement('span');
+    bar.className = 'qbar';
+    bar.hidden = true;
+    bar.innerHTML = '<i></i>';
     queue.appendChild(el);
+    queue.appendChild(bar);
     queue.hidden = false;
-    return el.querySelector('.qstate');
+    var state = el.querySelector('.qstate');
+    state.bar = bar;
+    return state;
   }}
 
   function upload(f) {{
@@ -1165,9 +1175,16 @@ def _home_page(token: str | None = None) -> str:
     return fetch('/api/' + sid + '/progress', {{ headers: headers() }})
       .then(function (r) {{ return r.json(); }})
       .then(function (j) {{
-        if (j.stage === 'done') {{ state.textContent = {done_json}; return; }}
-        if (j.stage === 'error') {{ state.textContent = j.error || 'error'; return; }}
-        state.textContent = {analysing_json};
+        if (j.stage === 'done') {{ state.textContent = {done_json}; state.bar.hidden = true; return; }}
+        if (j.stage === 'error') {{ state.textContent = j.error || 'error'; state.bar.hidden = true; return; }}
+        // Step, percent and time left are computed on the server (viewer._step_progress); this only draws them.
+        state.textContent = j.progress_text || {analysing_json};
+        if (j.percent === null || j.percent === undefined) {{
+          state.bar.hidden = true;
+        }} else {{
+          state.bar.hidden = false;
+          state.bar.firstChild.style.width = j.percent + '%';
+        }}
         return new Promise(function (res) {{ setTimeout(res, 400); }}).then(function () {{
           return settle(sid, state);
         }});

@@ -66,6 +66,7 @@ import {
   type Overview,
   type PacketPage,
   type ProtocolFilter,
+  LoadProgress,
 } from "./source";
 
 /** 後端 `/index` 的上限。要更多列得分頁，不是把這個數字調大。 */
@@ -132,14 +133,23 @@ interface IndexResponse {
  * 封包索引很快就好（實測 436 MB 約 50 秒），但關聯分析要更久（再 71 秒）。
  * `/flows` 在那之前回 `ready: false` —— **不假裝已有答案**，所以這裡等它。
  */
-async function waitForAnalysis(sid: string, signal?: AbortSignal): Promise<string[]> {
+async function waitForAnalysis(
+  sid: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: LoadProgress) => void,
+): Promise<string[]> {
   for (;;) {
     if (signal?.aborted) throw new NotConnectedError(t("Cancelled"));
     const progress = await getJson<{
       stage: string;
       error: string | null;
       auto_decode?: string[];
+      percent?: number | null;
+      progress_text?: string | null;
     }>(`/api/${sid}/progress`);
+    if (onProgress && progress.progress_text) {
+      onProgress({ text: progress.progress_text, percent: progress.percent ?? null });
+    }
     if (progress.stage === "error") {
       throw new NotConnectedError(progress.error ?? t("Dissection failed; reason unknown"));
     }
@@ -194,8 +204,8 @@ export function apiSource(sid: string | null): DataSource {
     notice:
       "Everything on this page is real data. Matrix cells marked 'Uncaptured / N/A' were genuinely not observed in this capture, not left unwired - every value you can see cites where it came from (which message, which frame).",
 
-    async load(): Promise<Dataset> {
-      const autoDecode = await waitForAnalysis(need());
+    async load(onProgress?: (progress: LoadProgress) => void): Promise<Dataset> {
+      const autoDecode = await waitForAnalysis(need(), undefined, onProgress);
 
       const [flows, identities, correlation] = await Promise.all([
         getJson<{

@@ -20,10 +20,12 @@
 
 from __future__ import annotations
 
+import time
+
 from importlib import resources
 
 from telcoladder import i18n
-from telcoladder.i18n import _
+from telcoladder.i18n import N_, _
 from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
 from telcoladder.identities import (
@@ -95,6 +97,59 @@ def static_body(name: str) -> tuple[bytes, str] | None:
     return _cache[name].encode("utf-8"), content_type
 
 
+#: 每一步給人看的名字。**只有 `index`、`extract`、`retry` 讀得出位置**，另兩步只能報經過秒數。
+_STEP_TEXT = {
+    "index": N_("Building the packet list"),
+    "probe": N_("Scanning the capture's shape"),
+    "extract": N_("Extracting signalling"),
+    "retry": N_("Re-reading with adjusted decoding"),
+    "coverage": N_("Measuring coverage"),
+}
+
+#: 百分比到這麼多、而且這一步跑了這麼久，才估剩餘時間。太早估的數字跳動很大，不如不給。
+_ETA_MIN_FRACTION = 0.05
+_ETA_MIN_ELAPSED_S = 1.0
+
+
+def _duration(seconds: float) -> str:
+    whole = max(int(round(seconds)), 0)
+    if whole < 60:
+        return _("{s} s").format(s=whole)
+    return _("{m} min {s} s").format(m=whole // 60, s=whole % 60)
+
+
+def _step_progress(p) -> dict:
+    """進度條要的東西，**只在伺服器算一次**：首頁佇列與介面的載入畫面都只畫這個結果。
+
+    * 百分比只在分母是真的時候給：分子是讀到的 frame 編號（索引步驟是已索引格數），分母是
+      `capinfos` 數出來的總格數。取不到總格數、或這一步讀不出位置，就是 None。
+    * 剩餘時間**只估目前這一步**，用這一步到現在的速度外推。解析會跑一到三趟，要不要重跑
+      得等第一趟跑完才知道 —— 整體還要多久沒有誠實的算法，所以不給（Rule 12）。
+    """
+    if p.stage not in ("index", "analyse") or p.step is None:
+        return {"step": p.step, "percent": None, "eta_s": None, "step_elapsed": None, "progress_text": None}
+    elapsed = time.monotonic() - p.step_started if p.step_started is not None else 0.0
+    position = p.indexed if p.step == "index" else p.step_position
+    fraction = min(position / p.total, 1.0) if position is not None and p.total else None
+    eta = None
+    if fraction is not None and fraction >= _ETA_MIN_FRACTION and elapsed >= _ETA_MIN_ELAPSED_S:
+        eta = elapsed * (1 - fraction) / fraction
+    name = _(_STEP_TEXT.get(p.step, p.step))
+    if fraction is None:
+        text = _("{step}… {elapsed} so far").format(step=name, elapsed=_duration(elapsed))
+    elif eta is None:
+        text = f"{name} {int(fraction * 100)}%"
+    else:
+        text = _("{step} {percent}% · about {eta} left").format(step=name, percent=int(fraction * 100), eta=_duration(eta))
+    return {
+        "step": p.step,
+        "percent": int(fraction * 100) if fraction is not None else None,
+        "eta_s": round(eta, 1) if eta is not None else None,
+        "step_elapsed": round(elapsed, 1),
+        "progress_text": text,
+    }
+
+
 def progress_json(session: Session) -> dict:
     with session.lock:
         p = session.progress
@@ -110,6 +165,7 @@ def progress_json(session: Session) -> dict:
             "truncated": p.truncated,
             "error": p.error,
             "elapsed": round(p.elapsed, 2),
+            **_step_progress(p),
             # **工具為了讀懂這份檔自己多做了什麼，一定要說出來。**
             # `AutoDecode` 這個物件存在的唯一理由就是這個（pipeline.py）——
             # 自動調整解碼方式而不告訴使用者，等於讓他無法反駁工具的判斷。

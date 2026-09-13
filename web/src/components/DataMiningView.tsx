@@ -3,11 +3,10 @@
 import { t, useLang } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Filter, Link2, Search } from "lucide-react";
-import { cn, findSupiByTarget, formatTimeOffset, type DiscoveredSession } from "@/lib/utils";
+import { cn, findSupiByTarget, formatTimeOffset } from "@/lib/utils";
 import type { DecodeAsState, PacketPage } from "@/data/source";
 import { DecodeAsPanel } from "./DecodeAsPanel";
 import { ProtocolTree } from "./ProtocolTree";
-import { DiscoveredSessionsPanel } from "./DiscoveredSessionsPanel";
 import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
 import type { IdentityKind, ProtocolFilter } from "@/data/source";
 
@@ -38,10 +37,10 @@ const ROW_H = 22;
 const OVERSCAN = 10;
 const VIEWPORT_H = 288; // = Tailwind 的 max-h-72
 
-// Data Mining is the home view: the full packet universe (母體), with a
-// Discovered Sessions drawer surfacing every user found in it, a precise
-// identity search (left) separate from protocol-syntax filtering (right),
-// and a per-row "Correlate Session" action that drills into Session Analysis.
+// Data Mining is the full packet universe (母體): a precise identity search
+// (left) separate from protocol-syntax filtering (right), and a per-row
+// "Correlate Session" action that drills into Session Analysis. The
+// Discovered Sessions drawer lives on the Overview since 2026-09-13.
 /** 這條 SPI 屬於誰。**查不到就照實說「沒有註冊宣告過」** —— 那通常代表
  *  註冊發生在擷取開始之前，是關於這份檔的事實，不是解析失敗。 */
 function ipsecLabel(spi: number, ipsec: import("@/data/source").Ipsec | null): string {
@@ -61,7 +60,6 @@ function ipsecTitle(spi: number, ipsec: import("@/data/source").Ipsec | null): s
 }
 
 export function DataMiningView({
-  discoveredSessions,
   firstFrameBySupi,
   identities,
   identityKinds,
@@ -93,8 +91,6 @@ export function DataMiningView({
 }: {
   /** Gm 上談成的 SA。null＝還沒取到；ESP 那幾列會退回只顯示 SPI。 */
   ipsec: import("@/data/source").Ipsec | null;
-  /** 全母體的訂戶清單。**不是**由封包視窗聚合來的 —— 見 `source.ts`。 */
-  discoveredSessions: DiscoveredSession[];
   firstFrameBySupi: Record<string, number>;
   identities: SessionIdentity[];
   /** 這份擷取檔真的有的身分類別，含每個值屬於哪個訂戶。見 `source.ts`。 */
@@ -221,18 +217,6 @@ export function DataMiningView({
 
   return (
     <div className="space-y-3">
-      <DiscoveredSessionsPanel
-        sessions={discoveredSessions}
-        identities={identities}
-        baseEpoch={baseEpoch}
-        focusedSupi={focusedSupi}
-        onFilterSupi={(supi) => {
-          onFocusSupi(supi);
-          onOnlySessionFilterChange(supi != null);
-        }}
-        onJumpToSession={jumpTo}
-      />
-
       {/* Dual-track filter bar */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Left: Telecom Target Filter — precise identity search */}
@@ -414,7 +398,20 @@ export function DataMiningView({
           className="max-h-72 overflow-y-auto"
           style={{ height: VIEWPORT_H }}
         >
-          <table className="w-full text-left text-[11px]">
+          {/* **欄寬固定（table-fixed）。** 自動版面讓最長的一格決定欄寬：一列 ESP 的
+              SA 說明就把 Protocol 撐成半個畫面，Info 被擠到剩幾個字。現在 Info 拿剩下的
+              寬度，每一格超出就截斷、滑過去看全文。 */}
+          <table className="w-full table-fixed text-left text-[11px]">
+            <colgroup>
+              <col className="w-14" />
+              <col className="w-24" />
+              <col className="w-[17%]" />
+              <col className="w-[17%]" />
+              <col className="w-[11%]" />
+              <col className="w-14" />
+              <col />
+              <col className="w-12" />
+            </colgroup>
             <thead className="sticky top-0 bg-surface-1 border-b border-border">
               <tr className="text-fg-dim font-mono">
                 <th className="px-2 py-1.5 font-medium">No.</th>
@@ -464,19 +461,19 @@ export function DataMiningView({
                               : "hover:bg-surface-hover",
                     )}
                   >
-                    <td className="px-2 py-1 text-fg-dim">
+                    <td className="truncate px-2 py-1 text-fg-dim">
                       {isFocusedSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-signal-mint align-middle" title={t("Belongs to the focused session")} />}
                       {isKnownOtherSession && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-signal-cyan align-middle" title={t("Belongs to another known session")} />}
                       {p.frameNumber}
                     </td>
-                    <td className="px-2 py-1 text-fg-dim">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
-                    <td className="px-2 py-1 text-fg-muted">
+                    <td className="truncate px-2 py-1 text-fg-dim">{formatTimeOffset(p.epochMicroseconds, baseEpoch)}</td>
+                    <td className="truncate px-2 py-1 text-fg-muted">
                       <EndpointCell ip={p.srcIp} port={p.srcPort} nf={nfMap[`${p.srcIp}:${p.srcPort}`] ?? nfMap[p.srcIp]} />
                     </td>
-                    <td className="px-2 py-1 text-fg-muted">
+                    <td className="truncate px-2 py-1 text-fg-muted">
                       <EndpointCell ip={p.dstIp} port={p.dstPort} nf={nfMap[`${p.dstIp}:${p.dstPort}`] ?? nfMap[p.dstIp]} />
                     </td>
-                    <td className="px-2 py-1 text-signal-cyan-fg font-medium">
+                    <td className="truncate px-2 py-1 text-signal-cyan-fg font-medium" title={p.protocol}>
                       {p.protocol}
                       {/* **這一格是某則訊息的前半。** tshark 對非最後一片只報 IPv4 ——
                           那是它的實話，但讀的人會把它當成無關的 IP 流量，而一份
@@ -498,8 +495,8 @@ export function DataMiningView({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-fg-dim">{p.length}</td>
-                    <td className="max-w-[240px] truncate px-2 py-1 text-fg-muted">
+                    <td className="truncate px-2 py-1 text-fg-dim">{p.length}</td>
+                    <td className="truncate px-2 py-1 text-fg-muted" title={p.info}>
                       <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", STATUS_DOT[p.status])} />
                       {p.info}
                     </td>

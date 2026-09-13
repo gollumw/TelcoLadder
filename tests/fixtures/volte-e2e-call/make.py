@@ -431,14 +431,38 @@ def diameter() -> list[Packet]:
     lost_request, orphan = _rf_acr(f"{HOST[TAS]};2;304", TEL_OTHER, OTHER_ICID, 0, 0x7304)
     rf.lose(TAS, len(lost_request))
     out.append(rf.send(5.094, CDF, orphan))
+    # 缺了前段位元組的 Rf 片段：每筆 ACR 的前半沒被抓到，只剩後半。**10 格**：覆蓋率要湊到
+    # 值得指名埠的格數才會講「那個埠已經在解 Diameter，缺的是擷取」（`coverage.MIN_INTERESTING_FRAMES`）。
+    for i in range(10):
+        request, _answer = _rf_acr(f"{HOST[TAS]};2;{400 + i}", TEL_OTHER, OTHER_ICID, 0, 0x7400 + i)
+        rf.lose(TAS, len(request) // 2)
+        out.append(rf.send(5.096 + i * 0.001, TAS, request[len(request) // 2:]))
     out += _sh_udr(sh, 8.000, f"{HOST[TAS]};1;104", TEL_B, 0x7104)          # 負對照：通話結束之後
     return out
+
+
+def orphan_fragment(t: float) -> Packet:
+    """一個 UDP datagram 的**第一片** IP 分片，另一片不在檔裡 —— 永遠組不起來。
+
+    真實樣本上 27 格是這個形狀（擷取點過濾過）。它不是不支援的協定，是擷取不完整。
+    """
+    body = _g.sip_message(f"OPTIONS sip:{DOMAIN} SIP/2.0",
+                          [("Via", f"SIP/2.0/UDP {SCSCF}:{SIP_PORT};branch=z9hG4bKorphan"),
+                           ("Call-ID", "orphan-fragment@198.51.100.20"), ("CSeq", "1 OPTIONS")],
+                          "x" * 1600)
+    datagram = _g.udp_datagram(SIP_PORT, SIP_PORT, body)
+    chunk = datagram[:1480]
+    header = struct.pack("!BBHHHBBH", 0x45, 0, 20 + len(chunk), 0x0C0D, 0x2000, 64, 17, 0)
+    header += _ip_bytes(SCSCF) + _ip_bytes(PCSCF)
+    header = header[:10] + struct.pack("!H", _d.checksum(header)) + header[12:]
+    return (t, b"\x02\x00\x00\x00\x00\x02\x02\x00\x00\x00\x00\x01\x08\x00" + header + chunk)
 
 
 def build() -> list[Packet]:
     packets = sip_call() + h248() + diameter()
     packets += _enum(0.070, 0x4E01, TEL_B)       # 被叫號碼的 ENUM
     packets += _enum(0.310, 0x4E02, TEL_OTHER)   # 負對照：別的門號
+    packets.append(orphan_fragment(5.500))        # 覆蓋率：組不起來的分片
     packets.sort(key=lambda p: p[0])
     return packets
 

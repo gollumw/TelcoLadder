@@ -17,6 +17,7 @@ import {
   currentSid,
   wantsApiSource,
   type DataSource,
+  type LoadProgress,
   type Dataset,
   type CallFlow,
   type DecodeAsState,
@@ -49,6 +50,8 @@ export default function App() {
   const lang = useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [source] = useState<DataSource>(pickSource);
   const [data, setData] = useState<Dataset | null>(null);
+  //: 解析進行中的進度（伺服器算好的文字與百分比）。null＝還沒拿到第一筆。
+  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
   const [error, setError] = useState<Error | null>(null);
   // 已取到的解碼樹。放在這裡而不是元件裡，是為了讓元件維持
   // 「吃資料、不取資料」—— 它只會呼叫一個注入進去的函式，不知道有 HTTP。
@@ -106,7 +109,9 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     source
-      .load()
+      .load((progress) => {
+        if (!cancelled) setLoadProgress(progress);
+      })
       .then((loaded) => {
         if (cancelled) return;
         setData(loaded);
@@ -414,9 +419,19 @@ export default function App() {
   if (!data || !packets) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas">
-        <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <Loader2 className="h-4 w-4 animate-spin text-signal-cyan" />
-          {t("Loading {label}…", { label: t(source.label) })}
+        <div className="w-80 max-w-[90vw] space-y-2">
+          <div className="flex items-center gap-2 text-sm text-fg-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-signal-cyan" />
+            {/* 伺服器算好的步驟與進度（`viewer._step_progress`）。還沒拿到就是原本那句。 */}
+            {loadProgress?.text ?? t("Loading {label}…", { label: t(source.label) })}
+          </div>
+          {loadProgress?.percent != null && (
+            <div className="h-1.5 overflow-hidden rounded bg-surface-2" role="progressbar"
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadProgress.percent}>
+              <div className="h-full bg-signal-cyan transition-[width] duration-300"
+                style={{ width: `${loadProgress.percent}%` }} />
+            </div>
+          )}
         </div>
       </div>
     );
