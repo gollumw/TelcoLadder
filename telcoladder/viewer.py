@@ -624,7 +624,7 @@ def overview_json(session: Session) -> dict:
 def callflow_json(
     session: Session, supi: str | None = None, *,
     identity: "IdKey | None" = None, flow_ids: "list[int] | None" = None,
-    diameter: str | None = None, call: str | None = None,
+    diameter: str | None = None, call: str | None = None, full: bool = False,
 ) -> dict:
     """一個訂戶的**逐訊息**時序資料 —— 梯形圖要的東西。
 
@@ -654,7 +654,7 @@ def callflow_json(
     # 而症狀是「畫面上看到的跟 agent 講的不一樣」。
     if call is not None:
         # 第五條入口：**一通電話**（`/calls` 表上那一列）。同一段渲染。
-        result = call_events(analysis, call, wire=session.wire)
+        result = call_events(analysis, call, wire=session.wire, full=full)
     elif diameter is not None:
         # 第四條入口：**一條 Diameter 流程**（`/diameter-flows` 表上那一列）。
         # 同一段渲染、同一種 JSON —— DRA 視圖不另養一份梯形圖。

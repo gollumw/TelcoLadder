@@ -66,7 +66,9 @@ export default function App() {
   /** 通話清單（全母體，後端算）。null＝還沒取；進通話視圖才取。 */
   const [calls, setCalls] = useState<Calls | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
+  //: 鍵是 `把手|sip` 或 `把手|full` —— 同一通電話的兩種梯形圖各自快取。
   const [callLadderByHandle, setCallLadderByHandle] = useState<Record<string, CallFlow | null>>({});
+  const [callLadderKey, setCallLadderKey] = useState<string | null>(null);
   const [callHandle, setCallHandle] = useState<string | null>(null);
   /** Diameter 流程表（全母體，後端算）。null＝還沒取；進 Diameter 視圖才取。 */
   const [diameterFlows, setDiameterFlows] = useState<DiameterFlows | null>(null);
@@ -323,15 +325,17 @@ export default function App() {
   }, [source]);
 
   const requestCallLadder = useCallback(
-    (handle: string) => {
+    (handle: string, full: boolean) => {
+      const key = `${handle}|${full ? "full" : "sip"}`;
       setCallHandle(handle);
+      setCallLadderKey(key);
       setCallLadderByHandle((current) => {
-        if (handle in current) return current;
+        if (key in current) return current;
         void source
-          .loadCallLadder(handle)
-          .then((flow) => setCallLadderByHandle((c) => ({ ...c, [handle]: flow })))
-          .catch(() => setCallLadderByHandle((c) => ({ ...c, [handle]: null })));
-        return { ...current, [handle]: null };
+          .loadCallLadder(handle, full)
+          .then((flow) => setCallLadderByHandle((c) => ({ ...c, [key]: flow })))
+          .catch(() => setCallLadderByHandle((c) => ({ ...c, [key]: null })));
+        return { ...current, [key]: null };
       });
     },
     [source],
@@ -485,7 +489,7 @@ export default function App() {
         calls={calls}
         callsError={callsError}
         onRequestCalls={requestCalls}
-        callLadder={callHandle ? (callLadderByHandle[callHandle] ?? null) : null}
+        callLadder={callHandle && callLadderKey ? (callLadderByHandle[callLadderKey] ?? null) : null}
         onRequestCallLadder={requestCallLadder}
         diameterFlows={diameterFlows}
         diameterFlowsError={diameterFlowsError}

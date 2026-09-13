@@ -228,6 +228,8 @@ export interface CallFlow {
   wire: boolean;
   /** 這份擷取檔裡有、但接不到這位訂戶身上的領域。 */
   uncorrelatedDomains: TelecomDomain[];
+  /** 只在通話梯形圖上有：這一次是不是完整端到端、多接了幾則、哪幾格沒有依據接上。 */
+  endToEnd?: { full: boolean; related: Record<string, number>; unattributedFrames: number[] };
 }
 
 // ── Gm 的 IPsec（2026-09-08）──────────────────────────────────────────
@@ -314,6 +316,16 @@ export interface CallRow {
   startTs: number;
   durationS: number;
   note: string;
+  /** B2BUA 每換一次 Call-ID 就是一腿；ICID 相同而且時間重疊的腿是同一通。 */
+  legs: number;
+  icid: string | null;
+  /** 比對 HSS／計費用的**國際**號碼（不含 `+`）。本地形式不補國碼，所以可能是 null。 */
+  callerNumber: string | null;
+  calleeNumber: string | null;
+  /** 完整端到端會多接上幾則（H.248／Diameter／ENUM）。梯形圖預設不含。 */
+  related: { megaco: number; diameter: number; enum: number } | null;
+  /** 通話期間沒有依據接上任何人的 Diameter（多半是請求沒被抓到的答覆）。 */
+  unattributed: number | null;
 }
 
 export interface Calls {
@@ -623,7 +635,7 @@ export interface DataSource {
   loadIpsec(): Promise<Ipsec>;
 
   /** 一通電話的梯形圖（`/callflow?call=c:N`）。與 `loadCallFlow` 同一種 `CallFlow`。 */
-  loadCallLadder(handle: string): Promise<CallFlow>;
+  loadCallLadder(handle: string, full?: boolean): Promise<CallFlow>;
 
   loadDiameterFlows(): Promise<DiameterFlows>;
 

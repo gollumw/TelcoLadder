@@ -84,7 +84,8 @@ export default function SessionAnalyzer({
   onRequestCalls: () => void;
   /** 目前打開那一通的梯形圖。null＝還沒取到。 */
   callLadder: import("@/data/source").CallFlow | null;
-  onRequestCallLadder: (handle: string) => void;
+  /** `full`：完整端到端（H.248／Diameter／ENUM）。預設只有 SIP。 */
+  onRequestCallLadder: (handle: string, full: boolean) => void;
   /** Diameter 流程表（`/diameter-flows`，全母體）。null＝還沒取。 */
   diameterFlows: import("@/data/source").DiameterFlows | null;
   diameterFlowsError: string | null;
@@ -141,9 +142,11 @@ export default function SessionAnalyzer({
   useEffect(() => {
     if (mode === "calls" && calls === null && !callsError) onRequestCalls();
   }, [mode, calls, callsError, onRequestCalls]);
+  //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按（2026-09-13 使用者裁定）。
+  const [callFull, setCallFull] = useState(false);
   useEffect(() => {
-    if (mode === "calls" && callHandle) onRequestCallLadder(callHandle);
-  }, [mode, callHandle, onRequestCallLadder]);
+    if (mode === "calls" && callHandle) onRequestCallLadder(callHandle, callFull);
+  }, [mode, callHandle, callFull, onRequestCallLadder]);
 
   //: Diameter 視圖：進來才取表；點了一條才取那條的梯形圖。
   const [diameterHandle, setDiameterHandle] = useState<string | null>(null);
@@ -332,8 +335,13 @@ export default function SessionAnalyzer({
             calls={calls}
             error={callsError}
             selected={callHandle}
-            onSelect={setCallHandle}
+            onSelect={(handle) => {
+              setCallHandle(handle);
+              setCallFull(false);
+            }}
             callFlow={callLadder}
+            fullEndToEnd={callFull}
+            onToggleFullEndToEnd={() => setCallFull((v) => !v)}
             correlationEntries={correlationEntries}
             rawPackets={rawPackets}
             identities={sessionIdentities}

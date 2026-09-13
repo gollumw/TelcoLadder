@@ -352,20 +352,24 @@ export function apiSource(sid: string | null): DataSource {
       };
     },
 
-    async loadCallLadder(handle: string): Promise<CallFlow> {
+    async loadCallLadder(handle: string, full = false): Promise<CallFlow> {
       const body = await getJson<{
         wire: boolean;
         domains_uncorrelated: TelecomDomain[];
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
-      }>(`/api/${need()}/callflow?call=${encodeURIComponent(handle)}`);
+        end_to_end?: { full: boolean; related: Record<string, number>; unattributed_frames: number[] };
+      }>(`/api/${need()}/callflow?call=${encodeURIComponent(handle)}${full ? "&full=1" : ""}`);
       return {
         wire: body.wire,
         uncorrelatedDomains: body.domains_uncorrelated ?? [],
         participants: body.participants ?? [],
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+        endToEnd: body.end_to_end
+          ? { full: body.end_to_end.full, related: body.end_to_end.related, unattributedFrames: body.end_to_end.unattributed_frames ?? [] }
+          : undefined,
       };
     },
 
@@ -637,6 +641,12 @@ interface CallJson {
   start_ts: number;
   duration_s: number;
   note: string;
+  legs?: number;
+  icid?: string | null;
+  caller_number?: string | null;
+  callee_number?: string | null;
+  related?: { megaco: number; diameter: number; enum: number } | null;
+  unattributed?: number | null;
 }
 
 interface CallsJson {
@@ -683,6 +693,12 @@ function toCalls(body: CallsJson): Calls {
       startTs: c.start_ts,
       durationS: c.duration_s,
       note: c.note ?? "",
+      legs: c.legs ?? 1,
+      icid: c.icid ?? null,
+      callerNumber: c.caller_number ?? null,
+      calleeNumber: c.callee_number ?? null,
+      related: c.related ?? null,
+      unattributed: c.unattributed ?? null,
     })),
   };
 }

@@ -187,7 +187,7 @@ export function mockSource(): DataSource {
       return { present: false, associations: [], espTotal: 0, unmatchedSpis: [], unmatchedFrames: 0 };
     },
 
-    async loadCallLadder(handle: string) {
+    async loadCallLadder(handle: string, _full?: boolean) {
       throw new Error(t("Sample data has no call {handle}.", { handle }));
     },
 

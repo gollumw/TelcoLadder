@@ -431,6 +431,35 @@ At a core capture point one SIP message is seen on every leg it crosses
 observation; `failures` counts each failure once — the same rule as the
 Diameter End-to-End Id.
 
+
+#### One call, several legs, and the full end-to-end ladder (2026-09-13)
+
+An application server acting as a B2BUA starts a new SIP dialog, with a new Call-ID, for each side
+of the call it relays. Those dialogs are the **legs** of one call. The *Calls* view merges legs
+that carry the same charging ID (`icid-value` in `P-Charging-Vector`) **and** overlap in time.
+The time check matters because some servers reuse an ICID. A call with no ICID stays one row per
+dialog, as before.
+
+A call's ladder opens with **SIP only**, which is the same message count as its row in the table.
+**Full end-to-end** adds the other signalling for that call, and only where the wire gives a
+reason to:
+
+| Protocol | Joined to the call when |
+|---|---|
+| H.248 | its media endpoint is one the call's SDP names, or it shares an H.248 context or transaction with one that does |
+| Rf (charging) | its `IMS-Charging-Identifier` is the call's ICID; answers follow by Session-Id |
+| Sh / Cx / ENUM | its flow carries the caller's or callee's **international** number, **and** the message falls inside the call's time span |
+
+Diameter seen during the call that carries no subscriber identity at all is **counted, not
+attached**. Typically these are answers whose requests are not in the capture, because the capture
+point did not see those TCP bytes. The view lists their frame numbers. Other numbers' lookups in the
+same seconds stay out.
+
+Measured on a real network-element capture (kept out of the repository; numbers only): 1 call,
+5 legs, 117 SIP messages; full end-to-end adds 8 H.248, 60 Diameter and 4 ENUM messages; 32 other
+numbers' Diameter messages in the same seconds stay out; 10 are counted as unattributed; 2 Cx answers
+carry an IMSI-derived identity that no number in the call can be matched to, so they are neither
+attached nor counted as unattributed.
 ## 5. Five things to know when interpreting
 
 **1. Cause clauses are looked up, never AI-generated.** The

@@ -50,11 +50,12 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from telcoladder.i18n import _
+from telcoladder.identity import international_msisdn
 from telcoladder.identity import msisdn_of as _msisdn_of
-from telcoladder.model import Message
+from telcoladder.model import IdKind, Message
 from telcoladder.pipeline import Analysis
 from telcoladder.procedures import Procedure, capture_end, segment_flow
 
@@ -77,8 +78,15 @@ msisdn_of = _msisdn_of
 class Call:
     index: int
     procedure: Procedure
+    """**發起那一腿**（最早開始的那一段）。結局、KPI、誰掛的都從它讀 —— 那是主叫看到的通話。"""
     messages: list[Message]
+    """這通電話**每一腿**的 SIP 訊息，依 frame 排序。"""
     flow_id: int
+    legs: list[Procedure] = field(default_factory=list)
+    """每一腿各一段（B2BUA 每換一次 Call-ID 就是一腿）。沒有 ICID 的通話只有自己那一腿。"""
+    icid: str | None = None
+    """把各腿串起來的 ICID（`P-Charging-Vector`）。沒有就是 None，那時一腿就是一通。"""
+    flow_ids: list[int] = field(default_factory=list)
 
     @property
     def handle(self) -> str:
@@ -136,27 +144,172 @@ def build(analysis: Analysis) -> list[Call]:
     **段是 `segment_flow` 切的，不是這裡切的。** 這一層只負責挑出 `sip-call`
     那些段，並把段對應的訊息撿回來 —— 兩份切段規則會漂移，而漂移的症狀是
     「同一通電話在兩個畫面上長度不一樣」。
+
+    ## 一通電話、好幾腿（2026-09-13）
+
+    AS 當 B2BUA 時會換 Call-ID，於是一通電話在 SIP 上是好幾個 dialog。真實樣本上
+    5 條腿、一個 ICID，原本在通話清單上是 5 列 —— 使用者看到的是 5 通電話。
+    **ICID 相同、而且時間重疊的腿**合成一通。只看 ICID 不看時間的話，某些 AS 會重用
+    ICID（轉接、會議），兩通不相干的電話就會併成一列，而那一列看起來完全合理。
+
+    沒有 ICID 的腿維持一腿一通 —— 那是既有的行為，不猜。
     """
     end = capture_end(analysis)
-    calls: list[Call] = []
+    legs: list[tuple[Procedure, list[Message], int, str | None]] = []
     for flow_id, flow in enumerate(analysis.flows):
         procedures, _unassigned = segment_flow(flow, capture_end=end)
         for proc in procedures:
             if proc.kind != CALL_KIND:
                 continue
-            # 段只帶邊界（start_frame / end_frame），訊息要自己撿回來。
-            window = [
+            # 段只帶邊界（start_frame / end_frame），訊息要自己撿回來。**還要比 Call-ID**：
+            # 同一條流程裡兩個 dialog 的 frame 會交錯（B2BUA 的兩腿、或同一個人的兩通電話），
+            # 只看 frame 範圍的話，一腿會把另一腿的訊息也撿進來 —— 實測踩過：兩腿各自的時間窗
+            # 因此永遠「重疊」，於是重用 ICID 的另一通被併進來。與 `procedures._fold_releases`
+            # 「看位置不看 frame 號」同一族的陷阱。
+            in_range = [
                 m for m in flow.messages
                 if m.protocol == SIP and proc.start_frame <= m.frame <= proc.end_frame
             ]
+            opener = next((m for m in in_range if m.frame == proc.start_frame and _dialog_of(m)), None)
+            dialog = _dialog_of(opener) if opener is not None else None
+            window = [m for m in in_range if _dialog_of(m) == dialog] if dialog else in_range
             if not window:
                 continue
-            calls.append(Call(index=0, procedure=proc, messages=window, flow_id=flow_id))
+            icid = next((m.detail["icid"] for m in window if m.detail.get("icid")), None)
+            legs.append((proc, window, flow_id, icid))
+
+    legs.sort(key=lambda leg: (leg[0].start_frame, leg[2]))
+    calls: list[Call] = []
+    for proc, window, flow_id, icid in legs:
+        first_ts, last_ts = min(m.ts for m in window), max(m.ts for m in window)
+        target = None
+        if icid is not None:
+            for call in calls:
+                if call.icid == icid and first_ts <= max(m.ts for m in call.messages) \
+                        and last_ts >= min(m.ts for m in call.messages):
+                    target = call
+                    break
+        if target is None:
+            calls.append(Call(index=0, procedure=proc, messages=list(window), flow_id=flow_id,
+                              legs=[proc], icid=icid, flow_ids=[flow_id]))
+            continue
+        target.legs.append(proc)
+        seen = {id(m) for m in target.messages}
+        target.messages = sorted(target.messages + [m for m in window if id(m) not in seen],
+                                 key=lambda m: m.frame)
+        if flow_id not in target.flow_ids:
+            target.flow_ids.append(flow_id)
 
     calls.sort(key=lambda c: c.procedure.start_frame)
     for i, call in enumerate(calls):
         call.index = i
     return calls
+
+
+def _dialog_of(msg: Message) -> object | None:
+    """這則訊息屬於哪個 dialog —— 與 `procedures._sip_segments` 分組用的是同一把（排序後第一個 Call-ID 鍵）。"""
+    call_ids = sorted(k for k in msg.identity_keys if k[0] is IdKind.SIP_CALL_ID)
+    return call_ids[0] if call_ids else None
+
+
+def caller_number(call: "Call") -> str | None:
+    """主叫的**國際形式**號碼（不含 `+`）—— 網路斷言的優先，其次 `From`。拿來比對 HSS／計費。"""
+    asserted, _frame = asserted_of(call)
+    invite = call.invite
+    return international_msisdn(asserted) or international_msisdn(_uri_of(invite, "From"))
+
+
+def callee_number(call: "Call") -> str | None:
+    """被叫的**國際形式**號碼（不含 `+`）。
+
+    主叫撥的常是本地形式，國際形式要到號碼正規化之後才出現：先看**任何一腿** INVITE 的
+    `Request-URI`，再看對 INVITE 的回應裡網路斷言的身分（被叫那一側的 P-CSCF 插的）。
+    都沒有就是 None —— 不補國碼（使用者裁定 2026-09-13）。
+    """
+    for msg in call.messages:
+        if msg.label == "INVITE":
+            number = international_msisdn(msg.detail.get("Request-URI"))
+            if number:
+                return number
+    for msg in call.messages:
+        if msg.detail.get("cseq-method") == "INVITE" and msg.label[:1].isdigit():
+            number = international_msisdn(msg.detail.get("P-Asserted-Identity"))
+            if number and number != caller_number(call):
+                return number
+    return None
+
+
+#: 端到端視圖會加進來的協定。
+RELATED_PROTOCOLS = ("megaco", "diameter", "enum")
+
+
+@dataclass(slots=True)
+class EndToEnd:
+    """一通電話的完整端到端：SIP 各腿，加上**有依據**接上的 H.248、Diameter、ENUM。"""
+
+    messages: list[Message]
+    related: dict[str, int]
+    """非 SIP 協定各接上了幾則。"""
+    unattributed: list[Message]
+    """通話期間出現、但**沒有依據**接到任何人身上的 Diameter（多半是請求沒被抓到的答覆）。"""
+
+
+def end_to_end(analysis: Analysis, call: Call) -> EndToEnd:
+    """把這通電話的其他協定接上來。**每一條都要有線路上的依據**，時間只是第二個條件：
+
+    * **H.248**：這通電話的 SDP 媒體端點 → 帶同一個端點的 H.248 → 它的 context 與交易。
+      與 `identity.media_endpoint` 同一座橋，只是在這裡順著 context 走完。
+    * **Rf**：`IMS-Charging-Identifier` 等於這通電話的 ICID 的請求，加上同一個 Session-Id 的答覆。
+      ICID 是精確的，所以不看時間。
+    * **Sh／Cx／ENUM**：流程帶著主叫或被叫的國際號碼（`MSISDN` 鍵），**而且**訊息落在通話期間。
+      只看號碼的話，同一個人一小時後的另一次查詢也會被畫進這通電話。
+    * **未歸屬**：通話期間的 Diameter，所在流程沒有任何訂戶鍵 —— 真實樣本上那是請求不在
+      擷取檔裡的答覆（TCP 串流只抓到 1.4–28% 的位元組）。**不接，但數出來**。
+    """
+    start = min(m.ts for m in call.messages)
+    stop = max(m.ts for m in call.messages)
+    included: dict[int, Message] = {id(m): m for m in call.messages}
+
+    # H.248：順著媒體端點與 context 走到不動為止。
+    chain = {k for m in call.messages for k in m.identity_keys if k[0] is IdKind.MEDIA_ENDPOINT}
+    h248 = [m for f in analysis.flows for m in f.messages if m.protocol == "megaco"]
+    followed = (IdKind.MEDIA_ENDPOINT, IdKind.H248_CONTEXT, IdKind.H248_TRANSACTION)
+    grew = bool(chain)
+    while grew:
+        grew = False
+        for msg in h248:
+            if id(msg) not in included and msg.identity_keys & chain:
+                included[id(msg)] = msg
+                chain |= {k for k in msg.identity_keys if k[0] in followed}
+                grew = True
+
+    # Rf：ICID 精確比對，答覆靠 Session-Id 跟上。
+    if call.icid:
+        diameter = [m for f in analysis.flows for m in f.messages if m.protocol == "diameter"]
+        sessions = {m.detail.get("session-id") for m in diameter if m.detail.get("icid") == call.icid}
+        sessions.discard(None)
+        for msg in diameter:
+            if msg.detail.get("session-id") in sessions:
+                included[id(msg)] = msg
+
+    # Sh／Cx／ENUM：號碼 ∧ 時間。
+    numbers = {n for n in (caller_number(call), callee_number(call)) if n}
+    unattributed: list[Message] = []
+    for flow in analysis.flows:
+        owned = any(kind is IdKind.MSISDN and value in numbers for kind, value in flow.identity_keys)
+        anonymous = not any(kind.is_subscriber for kind, _value in flow.identity_keys)
+        for msg in flow.messages:
+            if msg.protocol not in ("diameter", "enum") or not start <= msg.ts <= stop:
+                continue
+            if owned:
+                included[id(msg)] = msg
+            elif anonymous and id(msg) not in included and msg.detail.get("session-id"):
+                unattributed.append(msg)
+
+    messages = sorted(included.values(), key=lambda m: (m.frame, m.ts))
+    related = {p: sum(1 for m in messages if m.protocol == p) for p in RELATED_PROTOCOLS}
+    return EndToEnd(messages=messages, related=related,
+                    unattributed=sorted(unattributed, key=lambda m: m.frame))
 
 
 def parse_handle(handle: str, calls: list[Call]) -> Call:
@@ -172,7 +325,7 @@ def parse_handle(handle: str, calls: list[Call]) -> Call:
     return calls[index]
 
 
-def call_json(call: Call) -> dict:
+def call_json(call: Call, analysis: Analysis | None = None) -> dict:
     """一通電話。**兩端都講，但只有主叫那端是關聯鍵**（見檔頭）。"""
     proc = call.procedure
     invite = call.invite
@@ -194,6 +347,7 @@ def call_json(call: Call) -> dict:
     else:
         number_source, number_frame = None, None
     first, last = call.messages[0], call.messages[-1]
+    e2e = end_to_end(analysis, call) if analysis is not None else None
     return {
         "id": call.handle,
         "flow_id": call.flow_id,
@@ -219,10 +373,19 @@ def call_json(call: Call) -> dict:
         "answer_s": proc.answer_s,
         "talk_s": proc.talk_s,
         "released_by": proc.released_by,
-        "messages": proc.messages,
-        "failures": proc.failures,
-        "start_frame": proc.start_frame,
-        "end_frame": proc.end_frame,
+        # 每一腿的原始觀測數加總（各腿的 Call-ID 不同，去重不會重疊）。
+        "messages": sum(leg.messages for leg in call.legs) if call.legs else proc.messages,
+        "failures": sum(leg.failures for leg in call.legs) if call.legs else proc.failures,
+        "start_frame": min(leg.start_frame for leg in call.legs) if call.legs else proc.start_frame,
+        "end_frame": max(leg.end_frame for leg in call.legs) if call.legs else proc.end_frame,
+        "legs": max(len(call.legs), 1),
+        "icid": call.icid,
+        # 比對 HSS／計費用的國際號碼（不含 `+`）。與上面顯示用的 `*_msisdn` 分開：那個可以是本地形式。
+        "caller_number": caller_number(call),
+        "callee_number": callee_number(call),
+        # 端到端視圖會多接上幾則（`end_to_end`）。**梯形圖預設不含**，所以與 `messages` 分開數。
+        "related": e2e.related if e2e else None,
+        "unattributed": len(e2e.unattributed) if e2e else None,
         "start_ts": first.ts,
         "abs_start": first.abs_ts,
         "duration_s": round(last.ts - first.ts, 6),
@@ -239,7 +402,7 @@ def calls_json(analysis: Analysis) -> dict:
     """
     calls = build(analysis)
     sip_messages = [m for f in analysis.flows for m in f.messages if m.protocol == SIP]
-    entries = [call_json(c) for c in calls]
+    entries = [call_json(c, analysis) for c in calls]
     answered = [e for e in entries if e["outcome"] == "success"]
     return {
         "present": bool(sip_messages),
@@ -258,6 +421,7 @@ def calls_json(analysis: Analysis) -> dict:
 
 
 __all__ = [
-    "CALL_KIND", "HANDLE_PREFIX", "Call",
-    "build", "call_json", "calls_json", "msisdn_of", "parse_handle",
+    "CALL_KIND", "HANDLE_PREFIX", "RELATED_PROTOCOLS", "Call", "EndToEnd",
+    "build", "call_json", "callee_number", "caller_number", "calls_json", "end_to_end", "msisdn_of",
+    "parse_handle",
 ]
