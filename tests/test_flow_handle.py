@@ -166,12 +166,15 @@ def test_select_accepts_the_same_handle(session) -> None:
 
 
 def test_both_routes_parse_the_handle_through_one_function() -> None:
-    """`web.py` 的兩條路由必須走同一個 `_flow_handle` —— 各寫一次就會漂，
-    而漂的症狀正是上一條在守的東西。"""
+    """`web.py` 用流程把手的路由必須走同一個 `_flow_handle` —— 各寫一次就會漂，
+    而漂的症狀正是上一條在守的東西。
+
+    三條：`/callflow`、`/select`、`/mermaid`（2026-09-14，複製 Mermaid 要與梯形圖打開同一組流程）。
+    新增一條就改這個數字 —— 那個動作本身就是在說「它也走同一個解析」。"""
     import re
 
     source = (Path(__file__).resolve().parents[1] / "telcoladder" / "web.py").read_text(encoding="utf-8")
     assert source.count("def _flow_handle") == 1
     users = re.findall(r"self\._flow_handle\(", source)
-    assert len(users) == 2, f"應該恰好兩條路由在用它，得到 {len(users)}"
+    assert len(users) == 3, f"應該恰好三條路由在用它，得到 {len(users)}"
     assert source.count("parse_flow_handle(") == 1, "把手解析只能有一個呼叫點"

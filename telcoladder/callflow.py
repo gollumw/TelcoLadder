@@ -350,6 +350,8 @@ def _render(
             "cause": p.cause,
             "first_failure": p.first_failure,
             "pdu_session_id": p.pdu_session_id,
+            # 2026-09-14：晶片上直接顯示的 DNN／APN（`procedures._single_dnn`）。
+            "dnn": p.dnn,
             "start_frame": p.start_frame,
             "end_frame": p.end_frame,
             "messages": p.messages,

@@ -417,6 +417,15 @@ export function apiSource(sid: string | null): DataSource {
       };
     },
 
+    async loadMermaid(supi: string): Promise<string> {
+      // 文字由後端用 CLI 的同一個 `render_all` 產生 —— 瀏覽器不另寫一套 Mermaid。
+      const body = await getJson<{ text?: string; error?: string }>(supi.includes(":")
+        ? `/api/${need()}/mermaid?identity=${encodeURIComponent(supi)}`
+        : `/api/${need()}/mermaid?supi=${encodeURIComponent(supi)}`);
+      if (body.error || body.text === undefined) throw new Error(body.error ?? "no text");
+      return body.text;
+    },
+
     async loadOverview(): Promise<Overview> {
       // 整份檔的首屏事實，後端對全母體算（`telcoladder/overview.py`）。
       // 這裡只翻欄位名，不算任何數字 —— 算了就是第二份會漂移的判斷。

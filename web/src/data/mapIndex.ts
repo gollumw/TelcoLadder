@@ -302,6 +302,7 @@ export interface CallFlowProcedureJson {
   // 2026-09-13：方向與觸發者從 kind 名稱移成欄位。
   direction?: string | null;
   trigger?: string | null;
+  dnn?: string | null;
 }
 
 export function toCallFlowProcedure(p: CallFlowProcedureJson) {
@@ -323,6 +324,7 @@ export function toCallFlowProcedure(p: CallFlowProcedureJson) {
     registrationType: p.registration_type ?? null,
     direction: p.direction ?? null,
     trigger: p.trigger ?? null,
+    dnn: p.dnn ?? null,
   };
 }
 
@@ -606,6 +608,13 @@ export interface OverviewJson {
     sequence: { causes: number[]; frames: number[]; says: string } | null;
     display_filter: string | null;
   }>;
+  scenario_summary?: Array<{
+    key: string; kind: string; family: string | null; category: string | null;
+    direction: string | null; trigger: string | null;
+    total: number; success: number; failure: number; incomplete: number; ended_by_user: number; cancelled: number;
+    top_cause: string | null; sample_frame: number; subscriber_ref: OverviewRefJson | null;
+  }>;
+  failures_display_filter?: string | null;
 }
 
 interface OverviewPeerJson {
@@ -694,5 +703,15 @@ export function toOverview(body: OverviewJson): Overview {
       sequence: p.sequence ? { ...p.sequence, says: plain(p.sequence.says) } : null,
       displayFilter: p.display_filter ?? null,
     })),
+    scenarioSummary: (body.scenario_summary ?? []).map((r) => ({
+      key: r.key, kind: r.kind, family: r.family, category: r.category,
+      direction: r.direction, trigger: r.trigger,
+      total: r.total, success: r.success, failure: r.failure, incomplete: r.incomplete,
+      endedByUser: r.ended_by_user, cancelled: r.cancelled,
+      topCause: r.top_cause === null ? null : plain(r.top_cause),
+      sampleFrame: r.sample_frame,
+      subscriber: r.subscriber_ref ? refToSubscriber(r.subscriber_ref) : null,
+    })),
+    failuresDisplayFilter: body.failures_display_filter ?? null,
   };
 }

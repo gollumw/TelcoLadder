@@ -213,6 +213,8 @@ export interface CallFlowProcedure {
   direction?: string | null;
   /** 觸發者（`procedures.TRIGGERS`）：只有 service request 有（`ue`／`network`），其餘 null。 */
   trigger?: string | null;
+  /** 線路上唯一的 DNN／APN。沒帶或不唯一是 null。 */
+  dnn?: string | null;
 }
 
 /** 一個訂戶的梯形圖資料。 */
@@ -555,6 +557,30 @@ export interface Overview {
   notVisible: OverviewNotVisible;
   causes: OverviewCause[];
   failedProcedures: OverviewProcedure[];
+  /** 場景盤點：同一種程序一列，結局逐項計數（後端 `overview._scenario_rows`）。有失敗的排前。 */
+  scenarioSummary: OverviewScenario[];
+  /** 封包清單「只看失敗訊息」的 filter（frame 編號）。沒有失敗是 null。 */
+  failuresDisplayFilter: string | null;
+}
+
+export interface OverviewScenario {
+  key: string;
+  kind: string;
+  family: string | null;
+  category: string | null;
+  direction: string | null;
+  trigger: string | null;
+  total: number;
+  success: number;
+  failure: number;
+  incomplete: number;
+  endedByUser: number;
+  cancelled: number;
+  /** 最常見的終端 cause —— 引擎給的原句。沒有失敗是 null。 */
+  topCause: string | null;
+  /** 「看時序圖」要落的那一格：第一次失敗的段，沒失敗就是第一段。 */
+  sampleFrame: number;
+  subscriber: OverviewSubscriberRef | null;
 }
 
 /** 一條生效中的 decode-as 規則。`origin` 決定畫面上怎麼標、能不能刪。 */
@@ -632,6 +658,8 @@ export interface DataSource {
    * 可能有幾十萬則，一個訂戶通常是幾十到幾百則。
    */
   loadCallFlow(supi: string): Promise<CallFlow>;
+  /** 一個訂戶的 Mermaid 文字（`/mermaid`，與 CLI `analyze -o flow.mmd` 同一個繪製）。範例資料沒有。 */
+  loadMermaid?(supi: string): Promise<string>;
 
   /**
    * Diameter 流程表：整份檔以 Session-Id／peer 對為單位、逐跳配好。**每個來源

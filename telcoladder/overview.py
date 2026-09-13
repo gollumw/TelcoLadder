@@ -183,11 +183,15 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
     end = capture_end(analysis)
     outcomes = {"success": 0, "failure": 0, "incomplete": 0, "ended-by-user": 0, "cancelled": 0}
     failed_procedures: list[dict] = []
+    # 場景盤點（2026-09-14）：同一種程序一列，結局逐項計數。**與 `outcomes` 同一個迴圈、同一批段**
+    # —— 兩邊分開數的話，盤點表的總和與上面的程序數對不起來，而沒有一層會報錯。
+    scenarios: "OrderedDict[str, dict]" = OrderedDict()
     for flow_id, flow in enumerate(analysis.flows):
         segments, _unassigned = segment_flow(flow, capture_end=end)
         owner = owner_of_flow.get(flow_id)
         for p in segments:
             outcomes[p.outcome] += 1
+            _count_scenario(scenarios, p, owner)
             if p.outcome != "failure":
                 continue
             record = procedure_record(p)
@@ -226,6 +230,7 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
         # 用**工作階段表逐訂戶的同一條規則**，不是這裡新編一條。
         verdict, _reason = _light(failures_total, retrans, unanswered)
 
+    all_failure_frames = sorted({frame for card in causes for frame in card["frames"]})
     return {
         "verdict": verdict,
         "subscribers": {
@@ -240,7 +245,49 @@ def build_overview(analysis: Analysis, table: FlowTable) -> dict:
         "not_visible": not_visible(analysis),
         "causes": causes,
         "failed_procedures": failed_procedures,
+        "scenario_summary": _scenario_rows(scenarios),
+        # 封包清單「只看失敗訊息」那顆鈕的 filter。**只用 frame 編號**（`packets.frame_filter`），
+        # 協定欄位的比對會撈到別人的封包。沒有失敗就是 null —— 不給一顆按了沒東西的鈕。
+        "failures_display_filter": frame_filter(all_failure_frames) if all_failure_frames else None,
     }
+
+
+def _count_scenario(scenarios: "OrderedDict[str, dict]", p, owner: SubscriberRow | None) -> None:
+    """一段程序計進它那一列。鍵是 kind＋世代＋方向＋觸發 —— 與梯形圖晶片分列的鍵同一組屬性。"""
+    key = "|".join((p.family or "", p.kind, p.direction or "", p.trigger or ""))
+    row = scenarios.get(key)
+    if row is None:
+        row = scenarios[key] = {
+            "key": key, "kind": p.kind, "family": p.family, "category": p.category,
+            "direction": p.direction, "trigger": p.trigger,
+            "total": 0, "success": 0, "failure": 0, "incomplete": 0, "ended_by_user": 0, "cancelled": 0,
+            "_causes": {}, "sample_frame": p.start_frame,
+            "subscriber_ref": _subscriber_ref(owner) if owner is not None else None,
+            "_sample_is_failure": False,
+        }
+    row["total"] += 1
+    row[p.outcome.replace("-", "_")] += 1
+    if p.outcome == "failure":
+        if p.cause:
+            row["_causes"][p.cause] = row["_causes"].get(p.cause, 0) + 1
+        # 「看時序圖」要落在**第一次失敗**上 —— 那才是這一列要人去看的東西。
+        if not row["_sample_is_failure"]:
+            row["_sample_is_failure"] = True
+            row["sample_frame"] = p.start_frame
+            row["subscriber_ref"] = _subscriber_ref(owner) if owner is not None else None
+
+
+def _scenario_rows(scenarios: "OrderedDict[str, dict]") -> list[dict]:
+    rows = []
+    for row in scenarios.values():
+        causes = row.pop("_causes")
+        row.pop("_sample_is_failure")
+        # 最常見的終端 cause，**原文就是引擎給的那一句**（cause 表查到的名稱），不另組規格引用字串。
+        row["top_cause"] = max(sorted(causes), key=causes.__getitem__) if causes else None
+        rows.append(row)
+    # 有失敗的排前面；同數依總數、再依鍵 —— 穩定、可重現。
+    rows.sort(key=lambda r: (-r["failure"], -r["incomplete"], -r["total"], r["key"]))
+    return rows
 
 
 __all__ = ["build_overview"]

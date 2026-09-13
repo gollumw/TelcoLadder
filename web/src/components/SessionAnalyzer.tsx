@@ -61,6 +61,7 @@ export default function SessionAnalyzer({
   onApplyDecodeAs,
   treeByFrame,
   decodeNote,
+  onLoadMermaid,
   onRequestTree,
 }: {
   data: Dataset;
@@ -109,14 +110,21 @@ export default function SessionAnalyzer({
   onRequestTree?: (frame: number) => void;
   /** 解碼樹少做了什麼（後端 `/decode` 的 note），原樣往下傳給 Data Mining。 */
   decodeNote?: string | null;
+  /** 一個訂戶的 Mermaid 文字（後端產生）。沒有就不顯示「複製 Mermaid」。 */
+  onLoadMermaid?: (supi: string) => Promise<string>;
 }) {
   const lang = useLang();
   const theme = useTheme();
   const tz = useTzOffset();
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
+  //: 這份檔真的有哪些協定（引擎供應的快篩清單）。**純 Diameter** 的擷取（DRA／HSS 側常見）直接落在
+  //: Diameter 流程 —— 那才是這種檔要回答的問題（使用者裁定 2026-09-14）。訂戶梯形圖分頁保留：純 Diameter
+  //: 的檔也有訂戶層級的梯形圖；「通話」在沒有 SIP 時停用並說明，而不是隱藏。
+  const isPureDiameter = data.protocolFilters.length > 0 && data.protocolFilters.every((p) => p.name === "diameter");
+  const hasSip = data.protocolFilters.some((p) => p.name === "sip");
   // 總覽是家。封包清單仍然是資料母體，但它是第三層 —— 從總覽或梯形圖下鑽進去。
-  const [mode, setMode] = useState<Mode>("overview");
+  const [mode, setMode] = useState<Mode>(() => (isPureDiameter ? "diameter" : "overview"));
   const [focusedSupi, setFocusedSupi] = useState<string | null>(null);
   const [displayFilter, setDisplayFilter] = useState("");
   const [onlySessionFilter, setOnlySessionFilter] = useState(false);
@@ -144,8 +152,8 @@ export default function SessionAnalyzer({
   const [callHandle, setCallHandle] = useState<string | null>(null);
   useEffect(() => {
     // 總覽的會話抽屜也列通話（2026-09-14），所以總覽一開就取 —— 與通話頁共用同一份快取。
-    if ((mode === "calls" || mode === "overview") && calls === null && !callsError) onRequestCalls();
-  }, [mode, calls, callsError, onRequestCalls]);
+    if (hasSip && (mode === "calls" || mode === "overview") && calls === null && !callsError) onRequestCalls();
+  }, [hasSip, mode, calls, callsError, onRequestCalls]);
   //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按（2026-09-13 使用者裁定）。
   const [callFull, setCallFull] = useState(false);
   useEffect(() => {
@@ -267,7 +275,7 @@ export default function SessionAnalyzer({
                 )}
               >
                 <Binary className="h-3.5 w-3.5" />
-                {t("Data Mining (Wireshark view)")}
+                {t("Packets")}
               </button>
               <button
                 type="button"
@@ -278,18 +286,20 @@ export default function SessionAnalyzer({
                 )}
               >
                 <LayoutList className="h-3.5 w-3.5" />
-                {t("Call Flow Ladder")}
+                {t("Call Flows")}
               </button>
               <button
                 type="button"
                 onClick={() => setMode("calls")}
+                disabled={!hasSip}
+                title={hasSip ? undefined : t("This capture has no SIP, so there are no calls to list")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                   mode === "calls" ? "bg-signal-cyan-bg text-signal-cyan border border-signal-cyan-border shadow-sm" : "text-fg-dim hover:text-fg-muted",
                 )}
               >
                 <PhoneCall className="h-3.5 w-3.5" />
-                {t("Calls")}
+                {t("Calls (VoLTE/VoWiFi)")}
               </button>
               <button
                 type="button"
@@ -300,7 +310,7 @@ export default function SessionAnalyzer({
                 )}
               >
                 <Network className="h-3.5 w-3.5" />
-                {t("Diameter Flows")}
+                {t("Diameter")}
               </button>
             </div>
           </div>
@@ -347,7 +357,7 @@ export default function SessionAnalyzer({
             </label>
             <DiscoveredSessionsPanel
               sessions={data.discoveredSessions}
-              calls={calls?.calls ?? null}
+              calls={hasSip ? (calls?.calls ?? null) : []}
               identities={sessionIdentities}
               baseEpoch={packetRows[0]?.epochMicroseconds ?? 0}
               focusedSupi={focusedSupi}
@@ -436,6 +446,7 @@ export default function SessionAnalyzer({
             onRequestTree={onRequestTree}
             onCorrelateSession={handleCorrelateSession}
             ipsec={ipsec}
+            failuresFilter={overview?.failuresDisplayFilter ?? null}
           />
         ) : (
           <SessionAnalysisView
@@ -455,6 +466,7 @@ export default function SessionAnalyzer({
             onRequestTree={onRequestTree}
             onBackToDataMining={handleBackToDataMining}
             onViewInDataMining={handleViewInDataMining}
+            onLoadMermaid={onLoadMermaid && focusedSupi ? () => onLoadMermaid(focusedSupi) : undefined}
           />
         )}
       </div>

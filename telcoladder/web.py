@@ -87,6 +87,7 @@ from telcoladder.viewer import (
     app_page,
     bytes_json,
     callflow_json,
+    mermaid_json,
     correlation_json,
     decode_as_json,
     decode_json,
@@ -446,6 +447,20 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
                 return
             payload = callflow_json(session, supi or None, identity=identity, flow_ids=flow_ids)
+            status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
+            self._send_json(payload, status)
+        elif not post and action == "mermaid":
+            # 與 `/callflow` 同一組訂戶把手（supi／identity／flows:），同一個 400 規則。
+            supi = (query.get("supi") or [""])[0]
+            identity_text = (query.get("identity") or [""])[0]
+            flow_ids = self._flow_handle(session, identity_text)
+            if flow_ids is _INVALID:
+                return
+            identity = parse_identity(identity_text) if identity_text and flow_ids is None else None
+            if not supi and identity is None and flow_ids is None:
+                self._send_json({"error": _('Missing supi parameter.')}, HTTPStatus.BAD_REQUEST)
+                return
+            payload = mermaid_json(session, supi or None, identity=identity, flow_ids=flow_ids)
             status = HTTPStatus.BAD_REQUEST if "error" in payload else HTTPStatus.OK
             self._send_json(payload, status)
         elif not post and action == "correlation":

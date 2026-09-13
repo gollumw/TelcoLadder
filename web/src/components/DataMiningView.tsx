@@ -88,7 +88,10 @@ export function DataMiningView({
   onRequestTree,
   onCorrelateSession,
   ipsec,
+  failuresFilter,
 }: {
+  /** 「只看失敗訊息」的 filter（總覽算好的 frame 編號）。null＝沒有失敗或總覽還沒好，不顯示那顆鈕。 */
+  failuresFilter?: string | null;
   /** Gm 上談成的 SA。null＝還沒取到；ESP 那幾列會退回只顯示 SPI。 */
   ipsec: import("@/data/source").Ipsec | null;
   firstFrameBySupi: Record<string, number>;
@@ -307,6 +310,24 @@ export function DataMiningView({
                 {qf.label}
               </button>
             ))}
+            {/* 協定鈕由引擎依這份檔供應；這一顆也是 —— 格號來自總覽的失敗卡片，不是寫死的欄位名。 */}
+            {failuresFilter && (
+              <button
+                type="button"
+                onClick={() => {
+                  onDisplayFilterChange(failuresFilter);
+                  onApplyDisplayFilter(failuresFilter);
+                }}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                  displayFilter === failuresFilter
+                    ? "border-signal-red-border bg-signal-red-bg text-signal-red"
+                    : "border-border bg-surface-2 text-fg-dim hover:border-signal-red-border hover:text-signal-red",
+                )}
+              >
+                {t("Failure messages only")}
+              </button>
+            )}
             <label className="ml-1 flex items-center gap-1.5 text-[11px] text-fg-dim">
               <input
                 type="checkbox"
