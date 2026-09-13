@@ -338,7 +338,7 @@ export function CallsView({
         </span>
       </div>
       <p className="mt-1 text-[11px] text-fg-dim">
-        {t("One row per INVITE dialog (Call-ID, RFC 3261 §8.1.1.4). The caller's number comes from the network's P-Asserted-Identity where there is one, otherwise from an address that says it carries a number - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed. Each number says which of the two it came from.")}
+        {t("One row per call: INVITE dialogs (Call-ID, RFC 3261 §8.1.1.4) that share a charging ID (ICID) and overlap in time are the legs of one call. The caller's number comes from the network's P-Asserted-Identity where there is one, otherwise from an address that says it carries a number - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed. Each number says which of the two it came from.")}
       </p>
 
       <button

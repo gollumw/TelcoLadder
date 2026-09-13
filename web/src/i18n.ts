@@ -428,7 +428,7 @@ const zh_TW: Record<string, string> = {
   "{n} calls · {a} answered": "{n} 通 · {a} 通接通",
   "{n} ended by a party": "{n} 通由一方結束",
   "{n} incomplete": "{n} 通未完成",
-  "One row per INVITE dialog (Call-ID, RFC 3261 §8.1.1.4). The caller's number comes from the network's P-Asserted-Identity where there is one, otherwise from an address that says it carries a number - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed. Each number says which of the two it came from.": "一個 INVITE dialog 一列（Call-ID，RFC 3261 §8.1.1.4）。**主叫的號碼優先取網路斷言的 P-Asserted-Identity**，沒有才取位址自己宣告是電話號碼的那一個 —— IMSI 推導的 IMPU 帶著一串數字卻不是撥得通的號碼，所以留白而不是猜一個。每個號碼都標明它是哪一種來的。",
+  "One row per call: INVITE dialogs (Call-ID, RFC 3261 §8.1.1.4) that share a charging ID (ICID) and overlap in time are the legs of one call. The caller's number comes from the network's P-Asserted-Identity where there is one, otherwise from an address that says it carries a number - an IMSI-derived IMPU has digits but is not a dialable number, so it stays blank rather than being guessed. Each number says which of the two it came from.": "一通電話一列：共用同一個計費識別碼（ICID）而且時間重疊的 INVITE dialog（Call-ID，RFC 3261 §8.1.1.4）是同一通電話的各腿。**主叫的號碼優先取網路斷言的 P-Asserted-Identity**，沒有才取位址自己宣告是電話號碼的那一個 —— IMSI 推導的 IMPU 帶著一串數字卻不是撥得通的號碼，所以留白而不是猜一個。每個號碼都標明它是哪一種來的。",
   "Failed or incomplete only": "只看失敗或未完成",
   "Caller": "主叫",
   "Callee": "被叫",
