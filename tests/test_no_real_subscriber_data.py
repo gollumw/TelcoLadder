@@ -680,6 +680,12 @@ _INVENTED_NUMBERS: dict[str, str] = {
     # 上面那個不同號** —— 「終端說的不算數」那條規則要有資料可以踩，兩者同號
     # 的話那條測試永遠通過。
     "15550102": "NANP documentation range 555-01xx, the handset's unverified claim",
+    # `tests/fixtures/volte-e2e-call/make.py`：主叫、被叫、負對照的「別的門號」。
+    # 同一個 NANP 555-01xx 虛構段，前面補一個區碼只為了長得像完整的國際號碼
+    # （那份 fixture 要守的是「國際形式才比對」）。尾碼 0111／0122／0133 看得出是編的。
+    "12025550111": "NANP fictional 555-01xx, volte-e2e-call caller",
+    "12025550122": "NANP fictional 555-01xx, volte-e2e-call callee",
+    "12025550133": "NANP fictional 555-01xx, volte-e2e-call negative control",
 }
 
 

@@ -645,9 +645,21 @@ Three things worth knowing:
   numbers and unclaimed payload are both observable facts. The tool
   states its basis precisely so you can rebut it.
 - **Trial and error cannot hurt you.** The rerun is **adopted only when
-  the message count genuinely increases**; a wrongly guessed port
-  decodes nothing, the whole rerun is discarded, and you never even see
-  a hint.
+  the message count genuinely increases and no protocol loses a single
+  message**; a wrongly guessed port decodes nothing, the whole rerun is
+  discarded, and you never even see a hint.
+- **The pre-scan looks at the payload, not only at the port.** An
+  unclaimed port whose connections start with a Diameter header or a SIP
+  start line is decoded as that protocol, not guessed as HTTP/2. A port
+  that has a built-in rule (7777 is SBI's) is re-decoded only when *every*
+  sampled connection on it is recognisably something else — measured on a
+  real VoLTE capture, where 7777 was the P-CSCF's IPsec-protected port and
+  the caller's whole SIP leg had disappeared as HTTP/2. A port that mixes
+  the two keeps the built-in rule, and the summary says how to override it.
+- **NULL-encrypted IPsec is opened.** Gm between UE and P-CSCF may be
+  integrity-protected only. When tshark's ESP NULL heuristic finds a
+  readable layer inside, the analysis turns it on and says so; encrypted
+  ESP stays opaque and nothing changes.
 - **The cost is one extra scan.** Clean captures pay about half a pass;
   NE traces take three. `--no-auto-decode` skips it — but then an NE
   trace decodes only NGAP.

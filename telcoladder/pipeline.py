@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,7 +48,7 @@ from telcoladder.nf import apply_roles
 from telcoladder.packets import capture_duration
 from telcoladder.i18n import _
 from telcoladder.prefilter import Narrowing, TimeWindow, combine, narrow_to_identity
-from telcoladder.probe import CaptureShape, inspect
+from telcoladder.probe import ESP_NULL_PREF, CaptureShape, inspect, rule_port
 from telcoladder.slicer import SliceError, discard, slice_capture
 from telcoladder.wireview import collapse
 
@@ -155,6 +156,13 @@ class AutoDecode:
     user_dlt_dissector: str | None = None
     """前幾格的裸位元組被認成哪個協定，並據此加了對映。"""
 
+    overridden: tuple[str, ...] = ()
+    """`decode_as` 裡**蓋掉內建規則**的那幾條（見 `probe.CaptureShape.overrides`）。
+    與一般的補充規則分開講：蓋掉內建預設是一個比「補一個沒人認領的埠」更大的判斷。"""
+
+    esp_readable_frames: int = 0
+    """採用了 ESP null 啟發式時，看得到內容的 ESP 格數。沒採用就是 0。"""
+
     def describe(self) -> list[str]:
         """給人看的說明。每則都要講**依據**，不能只講結論。"""
         lines: list[str] = []
@@ -162,12 +170,28 @@ class AutoDecode:
             lines.append(
                 _("{n} transport directions in this capture have TCP sequence numbers that never advance - this is a trace exported by a network element, not a wire capture. tshark would treat those packets as retransmissions and skip them; sequence analysis was disabled and the capture re-read.").format(n=self.synthetic_directions)
             )
-        if self.decode_as:
-            ports = ", ".join(
-                rule.split("==")[1].split(",")[0] for rule in self.decode_as
-            )
+        by_protocol: dict[str, list[str]] = {}
+        for rule in self.decode_as:
+            if rule not in self.overridden:
+                by_protocol.setdefault(rule.rsplit(",", 1)[-1], []).append(str(rule_port(rule)))
+        for protocol, ports in by_protocol.items():
+            if protocol == "http2":
+                lines.append(
+                    _("TCP port(s) {ports} carry payload no dissector claimed; decoding as HTTP/2 yields SBI messages, so it was included.").format(ports=", ".join(ports))
+                )
+            else:
+                lines.append(
+                    _("TCP port(s) {ports} carry payload no dissector claimed; the payload is recognisably {protocol}, so it was decoded as {protocol}.").format(ports=", ".join(ports), protocol=protocol)
+                )
+        builtin = {rule_port(rule): rule.rsplit(",", 1)[-1] for rule in default_decode_as()}
+        for rule in self.overridden:
+            port = rule_port(rule)
             lines.append(
-                _("TCP port(s) {ports} carry payload no dissector claimed; decoding as HTTP/2 yields SBI messages, so it was included.").format(ports=ports)
+                _("TCP port {port} is a built-in {default} port, but every connection on it carries {protocol}; it was decoded as {protocol} instead.").format(port=port, default=builtin.get(port, "?"), protocol=rule.rsplit(",", 1)[-1])
+            )
+        if self.esp_readable_frames:
+            lines.append(
+                _("{n} IPsec ESP frames are not encrypted (NULL encryption, recognised by tshark's heuristic - the security association that set this up is not necessarily in this capture), so their contents were decoded.").format(n=self.esp_readable_frames)
             )
         if self.user_dlt is not None and self.user_dlt_dissector:
             lines.append(
@@ -177,6 +201,19 @@ class AutoDecode:
             _("Message count {before} → {after}. Add --no-auto-decode to turn this off.").format(before=self.messages_before, after=self.messages_after)
         )
         return lines
+
+
+@dataclass(frozen=True, slots=True)
+class PortConflict:
+    """內建規則的埠上混著別的協定 —— **沒有自動改，但要講出來**（`probe.CaptureShape.conflicts`）。"""
+
+    port: int
+    default: str
+    found: tuple[str, ...]
+
+    def describe(self) -> str:
+        found = ", ".join(self.found)
+        return _("TCP port {port} is a built-in {default} port, but some connections on it carry {found}; the built-in decoding was kept, so the {found} messages on that port are not shown. If that port carries only {found}, re-run with --decode-as tcp.port=={port},{first}.").format(port=self.port, default=self.default, found=found, first=self.found[0])
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +285,10 @@ class Analysis:
     """有幾條流程的多個 SUPI **只靠** S-TMSI 或 GTPv2-C 交易鍵才接在一起（`correlate.supi_bridges`）。
     不是 0 代表那幾條流程可能是兩個人被接成一條 —— 要講出來（`summary.not_visible`）。"""
 
+    decode_conflicts: tuple[PortConflict, ...] = ()
+    """內建 decode-as 規則的埠上混著別的協定、沒有自動改的那些。**要講出來** —— 那些訊息
+    沒被畫出來，而圖本身看不出少了什麼。"""
+
     quote_joins: int = 0
     """有幾次合併是**靠轉述鍵**接起來的（SBI 轉述的 N2 隧道，見 `model.Quote`）。
     那是推論，不是兩段共用同一把自己的鍵 —— 所以要講出來（`summary.not_visible`）。"""
@@ -277,6 +318,13 @@ class Analysis:
     def failure_count(self) -> int:
         return sum(1 for f in self.flows for m in f.messages if m.is_failure)
 
+
+
+    def decoding_notes(self) -> list[str]:
+        """工具為了讀懂這份檔**做了什麼**（`auto_decode`），以及**看到但沒做**的（`decode_conflicts`）。
+        CLI、摘要與網頁都印這一份，順序固定：先做了的，再沒做的。"""
+        lines = list(self.auto_decode.describe()) if self.auto_decode is not None else []
+        return lines + [conflict.describe() for conflict in self.decode_conflicts]
 
 def _extract(
     pcap: Path,
@@ -325,12 +373,18 @@ def _extract(
 
 
 def _port_of(rule: str) -> int | None:
-    """`tcp.port==8080,http2` → 8080。不是埠選擇器就回 None（不過濾它）。"""
-    selector = rule.rsplit(",", 1)[0]
-    field, _unused, value = selector.partition("==")
-    if not field.endswith(".port") or not value.isdigit():
-        return None
-    return int(value)
+    """`tcp.port==8080,http2` → 8080。不是埠選擇器就回 None（不過濾它）。實作只有 `probe.rule_port` 一份。"""
+    return rule_port(rule)
+
+
+def _lost_protocols(before: Sequence[Message], after: Sequence[Message]) -> tuple[str, ...]:
+    """重跑之後**變少**的協定。
+
+    「總數增加」擋不住一種錯：把一個埠從 A 改解成 B，B 多出來的比 A 少掉的多。
+    混著 SBI 與 SIP 的 7777 就是那樣 —— 總數變多，SBI 整片消失，而圖照樣畫得出來。
+    """
+    was, now = Counter(m.protocol for m in before), Counter(m.protocol for m in after)
+    return tuple(sorted(protocol for protocol, count in was.items() if now[protocol] < count))
 
 
 def analyse(
@@ -459,8 +513,13 @@ def _analyse_within(
 
     adjustment: AutoDecode | None = None
     shape: CaptureShape | None = None
+    conflicts: tuple[PortConflict, ...] = ()
     if auto_decode:
-        shape = inspect(pcap, prefs=prefs)
+        builtin = default_decode_as()
+        shape = inspect(
+            pcap, prefs=prefs,
+            watch_ports=[port for port in map(rule_port, builtin) if port is not None],
+        )
         # 候選來自兩處：這份檔裡實際偵測到的未認領埠，**以及隨程式出貨的
         # 已驗證經驗**（`data/decode-as.yaml`）。
         #
@@ -483,7 +542,9 @@ def _analyse_within(
             for r in load_shipped_rules()
             if _port_of(r.rule) is None or _port_of(r.rule) in present
         )
-        candidates = (*shape.suggested_decode_as(), *shipped)
+        # 內建規則的埠上**每一條**連線都是別的協定 → 改解（`probe.CaptureShape.overrides`）。
+        overrides = tuple(rule for rule in shape.overrides(builtin) if rule not in blocked)
+        candidates = (*shape.suggested_decode_as(), *overrides, *shipped)
         extra = tuple(
             dict.fromkeys(
                 rule for rule in candidates if rule not in rules and rule not in blocked
@@ -493,35 +554,56 @@ def _analyse_within(
         # 那是純粹白跑一趟 tshark。`5gc-e2e` 正是這個情況：它唯一的未認領埠
         # 7777 本來就在預設 DECODE_AS 裡（那 212 格是擷取起點太晚，加參數
         # 救不回來，見 coverage.py）。
-        # USER DLT 的載荷對映與 decode-as 走同一條路：候選 → 重跑 → 只在訊息數
-        # 增加時採用。第一趟在這種檔上是 0 則（tshark 一個 dissector 都不掛），
-        # 所以任何解得出東西的對映都會被採用，解不出的會被整個丟掉。
-        extra_prefs = shape.suggested_prefs()
-        if extra or shape.synthetic_seq or extra_prefs:
+        # USER DLT 的載荷對映與 ESP 的 null 啟發式與 decode-as 走同一條路：候選 → 重跑 →
+        # 只在訊息數增加時採用。
+        extra_prefs = tuple(pref for pref in shape.suggested_prefs() if pref not in prefs)
+        attempts = [extra]
+        if any(rule in overrides for rule in extra):
+            # 改解內建埠讓某個協定變少時，**退一步只試其餘的** —— 不讓一個埠的
+            # 誤判拖垮其他確定有用的調整（例如 ESP 解碼）。
+            attempts.append(tuple(rule for rule in extra if rule not in overrides))
+        rejected: tuple[str, ...] = ()
+        for attempt in attempts:
+            if not (attempt or shape.synthetic_seq or extra_prefs):
+                break
             # 使用者自己給的規則永遠排最後 —— tshark 同一個選擇器取最後一條。
-            retry_rules = (*default_decode_as(), *extra, *decode_as)
+            retry_rules = (*builtin, *attempt, *decode_as)
             retried, retry_ciphered, retry_suci, retry_undecoded, retry_fragments = _extract(
                 pcap, retry_rules, relax_seq=shape.synthetic_seq,
                 prefs=(*extra_prefs, *prefs), display_filter=effective_filter,
             )
-            # **採用條件只有一條：訊息數必須嚴格增加。** 猜錯的 decode-as
-            # 解不出東西，關錯的序號分析也不會憑空生出訊息 —— 兩者都會在
-            # 這裡被整個丟掉，使用者不會看到任何提示。這就是「寧可多試」
-            # 之所以安全的原因（見 probe.py）。
-            if len(retried) > len(messages):
+            # **採用條件：訊息數嚴格增加，而且沒有任何協定變少。** 猜錯的 decode-as
+            # 解不出東西，關錯的序號分析也不會憑空生出訊息 —— 兩者都會在這裡被整個
+            # 丟掉。後半句擋的是「改解一個埠，多的比少的多」（`_lost_protocols`）。
+            if len(retried) > len(messages) and not _lost_protocols(messages, retried):
                 adjustment = AutoDecode(
                     relaxed_seq=shape.synthetic_seq,
                     synthetic_directions=shape.synthetic_directions,
-                    decode_as=extra,
+                    decode_as=attempt,
                     messages_before=len(messages),
                     messages_after=len(retried),
                     prefs=extra_prefs,
-                    user_dlt=shape.user_dlt if extra_prefs else None,
-                    user_dlt_dissector=shape.payload_dissector if extra_prefs else None,
+                    user_dlt=shape.user_dlt if shape.suggested_prefs() and shape.payload_dissector else None,
+                    user_dlt_dissector=shape.payload_dissector if shape.user_dlt is not None else None,
+                    overridden=tuple(rule for rule in attempt if rule in overrides),
+                    esp_readable_frames=shape.esp_readable_frames if ESP_NULL_PREF in extra_prefs else 0,
                 )
                 messages, ciphered, protected_suci, sbi_undecoded, fragments = (
                     retried, retry_ciphered, retry_suci, retry_undecoded, retry_fragments
                 )
+                break
+            rejected = tuple(rule for rule in attempt if rule in overrides)
+        # 沒改的衝突要講出來：混著別的協定的內建埠，以及改了會讓某個協定變少而退回的那些。
+        adopted = set(adjustment.overridden) if adjustment else set()
+        found: dict[int, tuple[str, str, tuple[str, ...]]] = {
+            port: (port, default, others) for port, default, others in shape.conflicts(builtin)
+        }
+        builtin_protocol = {rule_port(rule): rule.rsplit(",", 1)[-1] for rule in builtin}
+        for rule in rejected:
+            port = rule_port(rule)
+            if rule not in adopted and port is not None:
+                found.setdefault(port, (port, builtin_protocol.get(port, "?"), (rule.rsplit(",", 1)[-1],)))
+        conflicts = tuple(PortConflict(port, default, others) for port, default, others in sorted(found.values()))
 
     # TS 32.423 XML trace：檔案自己寫著每則訊息的對端型別、FQDN 與 IMSI，tshark
     # 全部丟掉。先撿回來再推角色 —— 但 `<msg>` 數與 frame 數不相等就整份不套。
@@ -564,6 +646,7 @@ def _analyse_within(
         )
 
     return Analysis(
+        decode_conflicts=conflicts,
         flows=flows,
         capture_duration_s=capture_duration_s,
         ciphered=ciphered,

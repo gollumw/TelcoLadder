@@ -194,7 +194,8 @@ def _not_visible(analysis: Analysis) -> dict:
         # 與 auto_decode 同一族：工具替使用者做了什麼判斷，要講出來、要能回頭查。
         "inferred_joins": _inferred_joins(analysis),
         "narrowed": list(analysis.prefilter.describe()) if analysis.prefilter else [],
-        "auto_decode": list(analysis.auto_decode.describe()) if analysis.auto_decode else [],
+        # 做了的調整與**看到但沒做**的埠衝突（`Analysis.decoding_notes`）—— 後者不講，那些訊息就靜默消失。
+        "auto_decode": analysis.decoding_notes(),
         # TS 32.423 XML trace 的旁路事實（角色、FQDN、逐則 IMSI）。與 auto_decode 同一族：
         # 「我為了看到它做了什麼」。不是那種檔就是空 list。
         "trace_sidecar": list(analysis.trace_sidecar.describe()) if analysis.trace_sidecar else [],

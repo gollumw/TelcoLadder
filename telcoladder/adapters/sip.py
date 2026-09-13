@@ -33,6 +33,7 @@ adapter 不必自己想辦法找區塊。
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from telcoladder.adapters.carrier import dig
@@ -87,6 +88,23 @@ _FIRST_FAILURE_CODE = 400
 
 #: 從這個狀態碼起給 `CauseRef`（3xx 起：重導也值得一句出處）。
 _FIRST_CAUSE_CODE = 300
+
+
+#: SIP 的起始列（RFC 3261 §7.1／§7.2）：`METHOD Request-URI SIP/2.0` 或 `SIP/2.0 NNN 原因`，
+#: 以 CRLF 結尾。**只看起始列**：TCP 上一則訊息常被拆成好幾個區段，第一段之後的
+#: 區段沒有起始列，那些格子這裡一律不認領 —— 不認領不等於否認。
+_START_LINE = re.compile(rb"^(?:[A-Z]+ \S+ SIP/2\.0|SIP/2\.0 [1-6][0-9]{2} [^\r\n]*)\r\n")
+
+
+def sniff(payload: bytes) -> bool:
+    """這段位元組是不是一則 SIP 訊息的開頭？
+
+    `probe` 拿它判斷一個埠上跑的是不是 SIP —— 那個埠可能沒有人認領（非標準埠），
+    也可能被內建規則指到別的協定（SBI 的 7777 剛好也是 Gm SA 常見的保護埠）。
+    判準刻意收窄到起始列的完整形狀：只看「開頭是英文字」的話，HTTP/1.1 的
+    `GET / HTTP/1.1` 也會被認成 SIP。
+    """
+    return bool(_START_LINE.match(payload))
 
 
 def _reason(block: dict[str, Any]) -> tuple[CauseRef | None, str, str]:
