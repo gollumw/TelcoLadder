@@ -47,6 +47,7 @@ from telcoladder.procedures import capture_end
 from telcoladder.session import Session
 from telcoladder.calls import calls_json as calls_json_for
 from telcoladder import ipsec as ipsecmod
+from telcoladder import activity as activitymod
 from telcoladder.diameterflows import flows_json as diameter_flows_json_for
 from telcoladder.callflow import SLOW_GAP, call_events, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
 from telcoladder.nf import resolve_roles_with_basis, role_contradictions
@@ -561,6 +562,19 @@ def _row_json(row, analysis) -> dict:
     }
 
 
+def _activity_for(session: Session, analysis, table: FlowTable) -> list:
+    """訂戶分組，每個 session 算一次。**要逐流程切段又建一次通話清單**，每次 `/flows` 都重算的話，
+    大檔上每按一次篩選就重跑一遍。以 `table` 為鍵：表換了（重跑解碼）就重算。"""
+    with session.lock:
+        cached = session.activity
+    if isinstance(cached, tuple) and cached[0] is table:
+        return cached[1]
+    result = activitymod.classify(analysis, table)
+    with session.lock:
+        session.activity = (table, result)
+    return result
+
+
 def flows_json(
     session: Session, *, since: float | None = None, until: float | None = None
 ) -> dict:
@@ -592,9 +606,10 @@ def flows_json(
         return False
 
     filtering = table.abs_time_available and (since is not None or until is not None)
+    activities = _activity_for(session, analysis, table)
     subscribers = []
     matched = 0
-    for sub in table.subscribers:
+    for sub, activity in zip(table.subscribers, activities):
         rows = [r for r in sub.sessions if (not filtering or in_window(r))]
         matched += len(rows)
         if not rows:
@@ -610,6 +625,10 @@ def flows_json(
                 if sub.identity is not None else None
             ),
             "grouped": sub.grouped,
+            # 抽屜的分組（`activity.ACTIVITIES`）與宣告過的接取。見 `telcoladder/activity.py`。
+            "activity": activity.kind,
+            "access": list(activity.access),
+            "calls": list(activity.calls),
             "start": min(r.start for r in rows),
             "end": max(r.end for r in rows),
             "messages": sum(r.messages for r in rows),

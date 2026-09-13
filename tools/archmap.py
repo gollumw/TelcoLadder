@@ -78,7 +78,7 @@ LAYERS: list[tuple[str, str, str, tuple[str, ...]]] = [
     )),
     ("L4", "語意", "把關聯結果變成人看得懂的單位", (
         "procedures", "pdusession", "identities", "flowtable", "callflow",
-        "diameterflows", "calls", "ipsec", "timers",
+        "diameterflows", "calls", "activity", "ipsec", "timers",
     )),
     ("L5", "出口", "三條交集為零的呈現路徑", (
         "render_mermaid", "summary", "xdr", "viewer", "overview",

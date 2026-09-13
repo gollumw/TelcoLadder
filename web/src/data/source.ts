@@ -314,7 +314,13 @@ export interface CallRow {
   startFrame: number;
   endFrame: number;
   startTs: number;
+  /** 第一則與最後一則 SIP 的絕對時間（epoch 秒）。**0 是「沒有絕對時間」的哨兵值。** */
+  absStart: number;
+  absEnd: number;
   durationS: number;
+  /** 兩端各自宣告的接取（`volte`／`vonr`／`vowifi`）。沒宣告是 null，不猜。 */
+  callerAccess: string | null;
+  calleeAccess: string | null;
   note: string;
   /** B2BUA 每換一次 Call-ID 就是一腿；ICID 相同而且時間重疊的腿是同一通。 */
   legs: number;

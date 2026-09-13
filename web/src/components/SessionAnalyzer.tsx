@@ -141,7 +141,8 @@ export default function SessionAnalyzer({
   //: 通話視圖：進來才取清單；點了一通才取那通的梯形圖。
   const [callHandle, setCallHandle] = useState<string | null>(null);
   useEffect(() => {
-    if (mode === "calls" && calls === null && !callsError) onRequestCalls();
+    // 總覽的會話抽屜也列通話（2026-09-14），所以總覽一開就取 —— 與通話頁共用同一份快取。
+    if ((mode === "calls" || mode === "overview") && calls === null && !callsError) onRequestCalls();
   }, [mode, calls, callsError, onRequestCalls]);
   //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按（2026-09-13 使用者裁定）。
   const [callFull, setCallFull] = useState(false);
@@ -331,6 +332,7 @@ export default function SessionAnalyzer({
                 「在 Data Mining 過濾」會順便切過去 —— 留在總覽等於按了沒反應。 */}
             <DiscoveredSessionsPanel
               sessions={data.discoveredSessions}
+              calls={calls?.calls ?? null}
               identities={sessionIdentities}
               baseEpoch={packetRows[0]?.epochMicroseconds ?? 0}
               focusedSupi={focusedSupi}

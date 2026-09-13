@@ -2,10 +2,12 @@
 
 import { t, useLang } from "../i18n";
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Filter, Radar, X } from "lucide-react";
-import { cn, deriveSessionStatus, formatTimeOffset } from "@/lib/utils";
+import { AlertTriangle, ArrowUpRight, Filter, PhoneCall, Radar, X } from "lucide-react";
+import { clockFromEpoch, cn, deriveSessionStatus, formatTimeOffset } from "@/lib/utils";
 import type { DiscoveredSession } from "@/lib/utils";
+import type { CallRow } from "@/data/source";
 import type { SessionIdentity, SessionStatus } from "@/lib/types";
+import { OUTCOME_MARK, OUTCOME_STYLE, isProblemCall, shortParty } from "./CallsView";
 
 type SortMode = "packetCount" | "firstSeen" | "errorFirst";
 
@@ -21,11 +23,33 @@ const STATUS_META: Record<SessionStatus, { label: string; className: string }> =
   "mid-stream": { label: "Mid-stream", className: "border-signal-amber-border bg-signal-amber-bg text-signal-amber font-medium" },
 };
 
+//: 分組（2026-09-14，使用者裁定四類）。順序與後端 `activity.ACTIVITIES` 相同，電話排最前。
+//: **分類由後端決定**（`telcoladder/activity.py`）—— 瀏覽器只持有一頁封包，自己判會隨載入改變。
+const ACTIVITY_ORDER = ["call", "ims", "session", "flows"] as const;
+const ACTIVITY_LABEL: Record<string, string> = {
+  call: "Voice calls (VoLTE / VoWiFi)",
+  ims: "IMS registration and lookups",
+  session: "General sessions (4G/5G)",
+  flows: "Unattributed",
+};
+
+//: 接取是線路宣告的品牌名，兩種語言寫法相同，不進翻譯表。
+const ACCESS_LABEL: Record<string, string> = { volte: "VoLTE", vonr: "VoNR", vowifi: "VoWiFi" };
+
+/** 一通電話的時間：有絕對時間印 UTC 時刻，沒有就印相對秒數 —— 不編一個時刻。 */
+function callSpan(c: CallRow): string {
+  const start = clockFromEpoch(c.absStart);
+  const end = clockFromEpoch(c.absEnd);
+  if (start && end) return `${start.replace(" UTC", "")} → ${end}`;
+  return `T+${c.startTs.toFixed(3)}s → T+${(c.startTs + c.durationS).toFixed(3)}s`;
+}
+
 // Overview auto-detection surface (moved from Data Mining on 2026-09-13). A collapsed summary bar avoids the
 // horizontal-chip-row overflow a wide session list would otherwise cause;
 // the full sortable card list lives in a modal, opened on demand.
 export function DiscoveredSessionsPanel({
   sessions,
+  calls,
   identities,
   baseEpoch,
   focusedSupi,
@@ -33,6 +57,8 @@ export function DiscoveredSessionsPanel({
   onJumpToSession,
 }: {
   sessions: DiscoveredSession[];
+  /** 整份擷取檔的通話（`/calls`）。null＝還沒取到，電話卡片先不列通話。 */
+  calls: CallRow[] | null;
   identities: SessionIdentity[];
   baseEpoch: number;
   focusedSupi: string | null;
@@ -45,6 +71,8 @@ export function DiscoveredSessionsPanel({
 
   const identityBySupi = useMemo(() => new Map(identities.map((i) => [i.supi, i])), [identities]);
   const errorCount = sessions.filter((s) => s.hasError).length;
+  const callById = useMemo(() => new Map((calls ?? []).map((c) => [c.id, c])), [calls]);
+  const countOf = (activity: string) => sessions.filter((s) => s.activity === activity).length;
 
   const sortedSessions = useMemo(() => {
     const list = [...sessions];
@@ -65,6 +93,11 @@ export function DiscoveredSessionsPanel({
         <span className="text-xs text-fg-muted font-mono">
           {t("Detected ")}<span className="font-semibold text-fg">{sessions.length}</span>{t(" active session(s)")}
           {errorCount > 0 && <span className="text-signal-red font-medium">{t(" ({n} with anomalies)", { n: errorCount })}</span>}
+        </span>
+        <span className="text-[11px] text-fg-dim font-mono">
+          {t("{call} call · {ims} IMS · {session} general · {flows} unattributed", {
+            call: countOf("call"), ims: countOf("ims"), session: countOf("session"), flows: countOf("flows"),
+          })}
         </span>
         {focusedSupi && (
           <span className="ml-1 rounded-full border border-signal-mint-border bg-signal-mint-bg px-2 py-0.5 font-mono text-[11px] text-signal-mint">
@@ -105,7 +138,17 @@ export function DiscoveredSessionsPanel({
 
             <div className="max-h-[60vh] space-y-2 overflow-y-auto p-3">
               {sortedSessions.length === 0 && <p className="py-6 text-center text-xs text-fg-dim">{t("No session matches")}</p>}
-              {sortedSessions.map((s) => {
+              {ACTIVITY_ORDER.map((activity) => {
+                const group = sortedSessions.filter((s) => s.activity === activity);
+                if (group.length === 0) return null;
+                return (
+                  <section key={activity} className="space-y-2">
+                    <h3 className="flex items-center gap-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-fg-dim">
+                      {activity === "call" && <PhoneCall className="h-3.5 w-3.5 text-signal-cyan" />}
+                      {t(ACTIVITY_LABEL[activity])}
+                      <span className="font-mono font-normal">{group.length}</span>
+                    </h3>
+              {group.map((s) => {
                 const identity = identityBySupi.get(s.supi);
                 const status = deriveSessionStatus(s.hasError, identity?.captureStatus ?? "complete");
                 const meta = STATUS_META[status];
@@ -123,6 +166,11 @@ export function DiscoveredSessionsPanel({
                         <p className="flex items-center gap-1.5 font-mono text-xs text-fg font-medium">
                           {s.hasError && <AlertTriangle className="h-3.5 w-3.5 text-signal-red" />}
                           {s.label}
+                          {s.access.map((a) => (
+                            <span key={a} title={t("Access declared on the wire (P-Access-Network-Info)")} className="rounded-full border border-signal-cyan-border bg-signal-cyan-bg px-1.5 py-px text-[10px] font-medium text-signal-cyan">
+                              {ACCESS_LABEL[a] ?? a}
+                            </span>
+                          ))}
                         </p>
                         {/* 沒有 SUPI 的訂戶（多數 Service request 流量）：說明為什麼只有暫時身分，
                             而不是印一行永遠是 N/A 的 5G-GUTI（T-GUTI-UI）。
@@ -158,6 +206,42 @@ export function DiscoveredSessionsPanel({
                         <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", meta.className)}>{meta.label}</span>
                       )}
                     </div>
+                    {s.activity === "call" && (
+                      // 這個訂戶參與的每一通電話：有問題的排前面，標紅。**時間是 UTC** —— 見 `clockFromEpoch`。
+                      <ul className="mt-2 space-y-1 font-mono text-[11px]">
+                        {calls === null && <li className="text-fg-dim">{t("Loading…")}</li>}
+                        {s.callIds
+                          .map((id) => callById.get(id))
+                          .filter((c): c is CallRow => c !== undefined)
+                          .sort((a, b) => Number(isProblemCall(b)) - Number(isProblemCall(a)) || a.startFrame - b.startFrame)
+                          .map((c) => (
+                            <li
+                              key={c.id}
+                              className={cn(
+                                "flex flex-wrap items-baseline gap-x-2 rounded px-1.5 py-0.5",
+                                isProblemCall(c) ? "bg-signal-red-bg text-signal-red-fg" : "bg-surface-1 text-fg-muted",
+                              )}
+                            >
+                              <span className={OUTCOME_STYLE[c.outcome]}>{OUTCOME_MARK[c.outcome]}</span>
+                              <span className="text-fg">
+                                {shortParty(c.caller, c.callerMsisdn)}
+                                {c.callerAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.callerAccess] ?? c.callerAccess}</span>}
+                                {" → "}
+                                {shortParty(c.callee, c.calleeMsisdn)}
+                                {c.calleeAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.calleeAccess] ?? c.calleeAccess}</span>}
+                              </span>
+                              <span className="text-fg-dim" title={t("Times are UTC, so every machine shows the same instant")}>{callSpan(c)}</span>
+                              {c.finalStatus !== null && <span>{c.finalStatus}</span>}
+                              {c.cause && <span className="text-signal-red">{c.cause}</span>}
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                    {(s.activity === "call" || s.activity === "ims") && s.access.length === 0 && (
+                      <p className="mt-1 text-[11px] text-fg-dim">
+                        {t("The SIP requests carry no P-Access-Network-Info, so VoLTE and VoWiFi cannot be told apart")}
+                      </p>
+                    )}
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -183,6 +267,9 @@ export function DiscoveredSessionsPanel({
                       </button>
                     </div>
                   </div>
+                );
+              })}
+                  </section>
                 );
               })}
             </div>

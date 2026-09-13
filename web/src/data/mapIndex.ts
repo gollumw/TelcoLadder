@@ -152,6 +152,12 @@ export interface FlowSubscriber {
   title: string;
   identity?: FlowIdentity | null;
   grouped: boolean;
+  /** 抽屜分組（後端 `activity.ACTIVITIES`）：`call`／`ims`／`session`／`flows`。舊後端沒有這欄。 */
+  activity?: string;
+  /** 這個訂戶自己的 SIP 請求宣告過的接取（`volte`／`vonr`／`vowifi`）。沒宣告是空陣列。 */
+  access?: string[];
+  /** 它參與的通話把手（`c:N`，與 `/calls` 同一組）。 */
+  calls?: string[];
   /** 這個訂戶最早那則訊息的絕對時間（epoch 秒）。
    *  **0.0 是哨兵值，代表沒有絕對時間** —— 不是 1970 年。 */
   start: number;
@@ -242,6 +248,9 @@ export function subscribersToSessions(
       supi: handle,
       label: subscriberLabel(sub),
       identityKind: sub.identity?.kind ?? (sub.grouped ? "supi" : "flows"),
+      activity: sub.activity ?? (sub.grouped ? "session" : "flows"),
+      access: sub.access ?? [],
+      callIds: sub.calls ?? [],
       hasSupi: handleIsSupi(handle),
       packetCount: frames.size,
       hasError,

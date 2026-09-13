@@ -649,7 +649,11 @@ interface CallJson {
   start_frame: number;
   end_frame: number;
   start_ts: number;
+  abs_start?: number;
+  abs_end?: number;
   duration_s: number;
+  caller_access?: string | null;
+  callee_access?: string | null;
   note: string;
   legs?: number;
   icid?: string | null;
@@ -701,7 +705,11 @@ function toCalls(body: CallsJson): Calls {
       startFrame: c.start_frame,
       endFrame: c.end_frame,
       startTs: c.start_ts,
+      absStart: c.abs_start ?? 0,
+      absEnd: c.abs_end ?? 0,
       durationS: c.duration_s,
+      callerAccess: c.caller_access ?? null,
+      calleeAccess: c.callee_access ?? null,
       note: c.note ?? "",
       legs: c.legs ?? 1,
       icid: c.icid ?? null,

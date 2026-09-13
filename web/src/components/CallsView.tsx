@@ -3,7 +3,7 @@
 import { t, useLang } from "../i18n";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowUpRight, Loader2, PhoneCall, PhoneMissed } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { clockFromEpoch, cn } from "@/lib/utils";
 import type { CallFlow, CallRow, Calls } from "@/data/source";
 import type { CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity } from "@/lib/types";
 import { SessionAnalysisView } from "./SessionAnalysisView";
@@ -23,7 +23,7 @@ import { SessionAnalysisView } from "./SessionAnalysisView";
  * 保留下來的事實。畫面上兩端並列不代表兩端都能拿來歸戶。
  */
 
-const OUTCOME_STYLE: Record<CallRow["outcome"], string> = {
+export const OUTCOME_STYLE: Record<CallRow["outcome"], string> = {
   success: "text-signal-mint",
   failure: "text-signal-red font-semibold",
   incomplete: "text-signal-amber",
@@ -32,7 +32,7 @@ const OUTCOME_STYLE: Record<CallRow["outcome"], string> = {
   cancelled: "text-fg-muted",
 };
 
-const OUTCOME_MARK: Record<CallRow["outcome"], string> = {
+export const OUTCOME_MARK: Record<CallRow["outcome"], string> = {
   success: "✓",
   failure: "✗",
   incomplete: "⋯",
@@ -41,6 +41,19 @@ const OUTCOME_MARK: Record<CallRow["outcome"], string> = {
   "ended-by-user": "○",
   cancelled: "⊘",
 };
+
+/** 有問題的通話：失敗或未完成。與「只看失敗或未完成」那顆鈕同一個判準 —— 忙線、拒接不算，網路沒壞。 */
+export function isProblemCall(c: CallRow): boolean {
+  return c.outcome === "failure" || c.outcome === "incomplete";
+}
+
+//: 接取是線路宣告的品牌名，兩種語言寫法相同。
+const ACCESS_LABEL: Record<string, string> = { volte: "VoLTE", vonr: "VoNR", vowifi: "VoWiFi" };
+
+/** 開始或結束的時刻：有絕對時間印 UTC，沒有就印相對秒數。 */
+function callTime(abs: number, rel: number): string {
+  return clockFromEpoch(abs) ?? `T+${rel.toFixed(3)}s`;
+}
 
 /** 誰掛的。**明確對應，不用 `t(row.releasedBy)`** —— 動態的鍵靜態掃描看不到，
  *  於是 `tests/test_web_assets.py` 會把那兩條翻譯判成沒人用而刪掉，
@@ -59,7 +72,7 @@ function fmtSeconds(value: number | null): string {
 }
 
 /** 位址太長時只留看得懂的那一段：門號優先，其次 user part。 */
-function shortParty(uri: string | null, msisdn: string | null): string {
+export function shortParty(uri: string | null, msisdn: string | null): string {
   if (msisdn) return msisdn;
   if (!uri) return "—";
   const inner = uri.includes("<") ? uri.slice(uri.indexOf("<") + 1, uri.indexOf(">")) : uri;
@@ -108,7 +121,9 @@ export function CallsView({
 
   const rows = useMemo(() => {
     const list = calls?.calls ?? [];
-    return onlyProblems ? list.filter((c) => c.outcome === "failure" || c.outcome === "incomplete") : list;
+    // 有問題的排最前（使用者裁定 2026-09-14），其餘照發生順序。`sort` 是穩定的，同類保持原順序。
+    const ordered = [...list].sort((a, b) => Number(isProblemCall(b)) - Number(isProblemCall(a)));
+    return onlyProblems ? ordered.filter(isProblemCall) : ordered;
   }, [calls, onlyProblems]);
 
   const current = useMemo(
@@ -189,6 +204,9 @@ export function CallsView({
               {OUTCOME_MARK[current.outcome]} {t(current.outcome)}
             </span>
           </h2>
+          <p className="mt-1 font-mono text-[11px] text-fg-dim" title={t("Times are UTC, so every machine shows the same instant")}>
+            {t("Start")} {callTime(current.absStart, current.startTs)} · {t("End")} {callTime(current.absEnd, current.startTs + current.durationS)}
+          </p>
           {current.cause && <p className="mt-1 text-xs text-signal-red">⚠ {current.cause}</p>}
           {current.note && <p className="mt-1 text-xs text-fg-dim">{current.note}</p>}
 
@@ -323,6 +341,7 @@ export function CallsView({
 
   // ── 清單 ──
   const totals = calls.totals;
+  const problemCount = calls.calls.filter(isProblemCall).length;
   return (
     <section className="rounded-lg border border-border bg-surface-1 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -335,6 +354,7 @@ export function CallsView({
           {totals.endedByUser > 0 && <span className="ml-2">{t("{n} ended by a party", { n: totals.endedByUser })}</span>}
           {totals.failed > 0 && <span className="ml-2 text-signal-red">{t("{n} failed", { n: totals.failed })}</span>}
           {totals.incomplete > 0 && <span className="ml-2 text-signal-amber">{t("{n} incomplete", { n: totals.incomplete })}</span>}
+          {problemCount > 0 && <span className="ml-2 font-semibold text-signal-red">{t("{n} call(s) with problems, listed first", { n: problemCount })}</span>}
         </span>
       </div>
       <p className="mt-1 text-[11px] text-fg-dim">
@@ -358,6 +378,8 @@ export function CallsView({
         <table className="w-full text-left text-[11px]">
           <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-dim">
             <tr>
+              <th className="px-2 py-1.5 font-medium" title={t("Times are UTC, so every machine shows the same instant")}>{t("Start")}</th>
+              <th className="px-2 py-1.5 font-medium">{t("End")}</th>
               <th className="px-2 py-1.5 font-medium">{t("Caller")}</th>
               <th className="px-2 py-1.5 font-medium">{t("Callee")}</th>
               <th className="px-2 py-1.5 font-medium">{t("Outcome")}</th>
@@ -372,7 +394,7 @@ export function CallsView({
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-2 py-6 text-center text-fg-dim">
+                <td colSpan={11} className="px-2 py-6 text-center text-fg-dim">
                   {t("No call matches the current filter ({n} in the capture).", { n: calls.calls.length })}
                 </td>
               </tr>
@@ -386,11 +408,15 @@ export function CallsView({
                 )}
                 onClick={() => onSelect(c.id)}
               >
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absStart, c.startTs)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono tabular-nums text-fg-muted">{callTime(c.absEnd, c.startTs + c.durationS)}</td>
                 <td className="px-2 py-1.5 font-mono text-fg" title={c.caller ?? undefined}>
                   {shortParty(c.caller, c.callerMsisdn)}
+                  {c.callerAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.callerAccess] ?? c.callerAccess}</span>}
                 </td>
                 <td className="px-2 py-1.5 font-mono text-fg" title={c.callee ?? undefined}>
                   {shortParty(c.callee, c.calleeMsisdn)}
+                  {c.calleeAccess && <span className="ml-1 text-signal-cyan">{ACCESS_LABEL[c.calleeAccess] ?? c.calleeAccess}</span>}
                 </td>
                 <td className={cn("px-2 py-1.5", OUTCOME_STYLE[c.outcome])}>
                   {OUTCOME_MARK[c.outcome]} {t(c.outcome)}

@@ -97,6 +97,12 @@ export interface DiscoveredSession {
   /** 給人看的名字：`001010…` 或 `5G-S-TMSI 1-0-0a1b2c3d`。 */
   label: string;
   identityKind: string;
+  /** 分組：`call`（電話觸發）／`ims`（IMS 註冊與查詢）／`session`（一般）／`flows`（未歸戶）。 */
+  activity: string;
+  /** 線路宣告過的接取。空＝沒宣告，**不是** 4G/5G 數據。 */
+  access: string[];
+  /** 它參與的通話（`CallRow.id`）。後端決定 —— 被叫那一側的號碼鍵流程也在內。 */
+  callIds: string[];
   hasSupi: boolean;
   packetCount: number;
   hasError: boolean;
@@ -115,8 +121,18 @@ export function computeDiscoveredSessions(packets: RawPacket[]): DiscoveredSessi
     bySupi.set(p.correlatedSupi, entry);
   }
   return Array.from(bySupi.entries()).map(([supi, v]) => ({
-    supi, label: supi, identityKind: "supi", hasSupi: true, ...v,
+    supi, label: supi, identityKind: "supi", activity: "session", access: [], callIds: [], hasSupi: true, ...v,
   }));
+}
+
+/**
+ * epoch 秒 → `HH:MM:SS.mmm UTC`。**固定用 UTC，不用瀏覽器時區** —— 同一份擷取檔在兩台機器上
+ * 必須印出同一個時刻，因為它會被貼進工單（與介面語言不看系統語系同一個理由）。
+ * 0 是「沒有絕對時間」的哨兵值，回 null 讓呼叫端改顯示相對秒數。
+ */
+export function clockFromEpoch(epoch: number): string | null {
+  if (!epoch || !Number.isFinite(epoch)) return null;
+  return `${new Date(Math.floor(epoch * 1000)).toISOString().slice(11, 23)} UTC`;
 }
 
 /** A session with no Registration ever captured is "mid-stream" regardless of error state; otherwise error beats connected. */

@@ -401,6 +401,29 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### Who made a call, who only registered (2026-09-14)
+
+The Overview's **Discovered Sessions** drawer groups subscribers into four:
+
+| Group | What puts a subscriber there |
+|---|---|
+| Voice calls (VoLTE / VoWiFi) | one of its flows is a leg of a call, or its number is a call's caller or callee (international form) |
+| IMS registration and lookups | no call, but IMS procedures (SIP registration, Cx/Sh) or SIP messages |
+| General sessions (4G/5G) | everything else with a subscriber identity: attach, PDN/PDU, mobility |
+| Unattributed | messages with no subscriber identity to join on |
+
+A call card lists every call that subscriber took part in: caller → callee,
+start and end time, final status and cause; failed or incomplete calls come
+first, in red. **Times are UTC**, so the same capture shows the same instant on
+any machine. The Calls page has the same Start and End columns and lists
+problem calls first.
+
+**VoLTE, VoNR and VoWiFi come only from the wire**: the access type in
+`P-Access-Network-Info`. A subscriber is tagged from the requests it sent
+itself; a call's callee from the responses to its INVITE. When the SIP carries
+no such header the drawer says so - nothing is inferred from GTP RAT types or
+ePDG addresses.
+
 ### Calls (SIP) are procedures too
 
 Since 2026-09-06 a SIP dialog is one procedure: `sip-call` for an INVITE
