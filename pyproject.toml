@@ -1,6 +1,6 @@
 [project]
 name = "telcoladder"
-version = "0.2.0"
+version = "0.3.0"
 description = "Turn telecom signalling captures into Mermaid sequence diagrams — 5G core, 4G/EPC and IMS on one timeline."
 readme = "README.md"
 requires-python = ">=3.11"
