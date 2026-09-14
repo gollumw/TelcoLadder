@@ -4,6 +4,7 @@ import { getLang, setLang, t, useLang } from "../i18n";
 import { useEffect, useState } from "react";
 import { Activity, FolderOpen, LayoutList, LayoutDashboard, Binary, Moon, Network, PhoneCall, Sun } from "lucide-react";
 import { setTheme, useTheme } from "../theme";
+import { TZ_OFFSETS, formatTzOffset, setTzOffset, useTzOffset } from "../timezone";
 import { cn } from "@/lib/utils";
 import { currentToken, type Dataset, type PacketPage } from "@/data/source";
 import type { RawPacket } from "@/lib/types";
@@ -111,6 +112,7 @@ export default function SessionAnalyzer({
 }) {
   const lang = useLang();
   const theme = useTheme();
+  const tz = useTzOffset();
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   // 總覽是家。封包清單仍然是資料母體，但它是第三層 —— 從總覽或梯形圖下鑽進去。
@@ -141,7 +143,8 @@ export default function SessionAnalyzer({
   //: 通話視圖：進來才取清單；點了一通才取那通的梯形圖。
   const [callHandle, setCallHandle] = useState<string | null>(null);
   useEffect(() => {
-    if (mode === "calls" && calls === null && !callsError) onRequestCalls();
+    // 總覽的會話抽屜也列通話（2026-09-14），所以總覽一開就取 —— 與通話頁共用同一份快取。
+    if ((mode === "calls" || mode === "overview") && calls === null && !callsError) onRequestCalls();
   }, [mode, calls, callsError, onRequestCalls]);
   //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按（2026-09-13 使用者裁定）。
   const [callFull, setCallFull] = useState(false);
@@ -329,8 +332,22 @@ export default function SessionAnalyzer({
             {/* 偵測到的會話放在總覽（2026-09-13 從 Data Mining 搬來）：「這份檔裡有誰」
                 是第一眼的問題，不該藏在封包清單上面。清單來自全母體，不必等總覽算完。
                 「在 Data Mining 過濾」會順便切過去 —— 留在總覽等於按了沒反應。 */}
+            {/* 時區（2026-09-14）：通話起訖用哪個時區印。預設 UTC —— 見 `timezone.ts`。 */}
+            <label className="flex items-center justify-end gap-2 text-[11px] text-fg-dim" title={t("Call start and end times are shown in this time zone. UTC by default, so a pasted time means the same instant on every machine.")}>
+              {t("Time zone")}
+              <select
+                value={tz}
+                onChange={(e) => setTzOffset(Number(e.target.value))}
+                className="rounded border border-border bg-surface-2 px-2 py-1 font-mono text-[11px] text-fg-muted focus:border-signal-cyan focus:outline-none"
+              >
+                {TZ_OFFSETS.map((m) => (
+                  <option key={m} value={m}>{formatTzOffset(m)}</option>
+                ))}
+              </select>
+            </label>
             <DiscoveredSessionsPanel
               sessions={data.discoveredSessions}
+              calls={calls?.calls ?? null}
               identities={sessionIdentities}
               baseEpoch={packetRows[0]?.epochMicroseconds ?? 0}
               focusedSupi={focusedSupi}

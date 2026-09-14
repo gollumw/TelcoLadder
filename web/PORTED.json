@@ -13,12 +13,12 @@
   "diverged": {
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "7b282c1f60cd291a253c6e78679e1b39b8c2566a42173b631bddb71892193b60",
+      "current_sha256": "71c9d4fabb39c9cf52fcacdaabe894e3f1cb5cab5a4fc2b7a12e1f299d43acc7",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）；2026-09-11：模式按鈕依使用順序排（總覽 → Data Mining → 梯形圖／通話／Diameter）；Bytes 面板拿掉後 `bytesByFrame`／`onRequestBytes` 兩個 prop 一併移除。；2026-09-13：通話梯形圖的「只有 SIP／完整端到端」切換狀態（開一通電話一律從只有 SIP 開始）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
       "reason": "Phase 2 把靜態 import 換成 prop；Phase 3 再往下傳封包視窗、兩個過濾條件與懶載入的 hex／解碼樹。 2026-09-07：第四個模式 `diameter`（DRA 視圖），懶取 `/diameter-flows` 與單條流程的梯形圖。",
-      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）；2026-09-05 漸進式揭露：三層模式（overview / flow / mining），總覽是家；`ExecutiveOverview` 的一鍵跳轉走與封包清單「Correlate」同一條路（`handleCorrelateSession`）；2026-09-05 拿掉兩個從沙盒帶進來、從沒接上的假控制項：「上傳 PCAP／重新關聯」按鈕（整個處理函式只有 setTimeout，轉完假圈圈就打勾說已重新關聯 N 個封包）與時間範圍下拉（timeRange 只被自己讀寫，預設「最近 1 小時」等於宣稱數字只涵蓋那一小時）。換成一顆「開另一份擷取檔」，導回首頁那個真的入口。；2026-09-13 偵測到的會話面板改在總覽渲染；「在 Data Mining 過濾」順便切到 Data Mining"
+      "why": "2026-08-28 主題切換鈕（theme.ts，與首頁共用 storage key）；2026-08-30 封包清單 Source/Destination 標網元角色（EndpointCell，nfMap＋依據 tooltip）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-05 解碼樹底下顯示後端的 `note`（兩趟分析跑不起來、退回單趟）；2026-09-05 漸進式揭露：三層模式（overview / flow / mining），總覽是家；`ExecutiveOverview` 的一鍵跳轉走與封包清單「Correlate」同一條路（`handleCorrelateSession`）；2026-09-05 拿掉兩個從沙盒帶進來、從沒接上的假控制項：「上傳 PCAP／重新關聯」按鈕（整個處理函式只有 setTimeout，轉完假圈圈就打勾說已重新關聯 N 個封包）與時間範圍下拉（timeRange 只被自己讀寫，預設「最近 1 小時」等於宣稱數字只涵蓋那一小時）。換成一顆「開另一份擷取檔」，導回首頁那個真的入口。；2026-09-13 偵測到的會話面板改在總覽渲染；「在 Data Mining 過濾」順便切到 Data Mining；2026-09-14 總覽一開就取 `/calls`，傳給會話抽屜；2026-09-14 通話時刻改用總覽選的時區（預設 UTC，`timezone.ts`）"
     },
     "src/lib/types.ts": {
       "original_sha256": "191d40f6de4b14907998e48d8276248e56a3386039902992a844c868f249123d",
@@ -58,10 +58,10 @@
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
-      "current_sha256": "3006ebbe095488ab5a5bafea7d0532f4e61893a29046db12f54b375c7f2c7acb",
+      "current_sha256": "5e454e683b88a7d7017cfc608de98b0b51b526e11c4eef733868073ae5608655",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。",
       "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。",
-      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-06 未歸戶那一列換一句說明 —— 對它說「SUPI 藏在加密訊息裡」是假話，它根本不是一個人；2026-09-13 從 Data Mining 搬到總覽（只改註解，行為未變）"
+      "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-06 未歸戶那一列換一句說明 —— 對它說「SUPI 藏在加密訊息裡」是假話，它根本不是一個人；2026-09-13 從 Data Mining 搬到總覽（只改註解，行為未變）；2026-09-14 依後端分組（語音通話／IMS 註冊與查詢／一般 session／未歸戶）分段，訂戶旁標線路宣告的接取（VoLTE／VoNR／VoWiFi），電話卡片列出它參與的每一通（主叫→被叫、UTC 起訖、結局，有問題的排前標紅）；2026-09-14 通話時刻改用總覽選的時區（預設 UTC，`timezone.ts`）；2026-09-14 cause 只在有問題的通話標紅"
     },
     "src/components/ProtocolTree.tsx": {
       "original_sha256": "2b205144451a72ef6aa25a5973a89ca9432fa0bc4cc2b2701c555968d74dec97",
@@ -71,12 +71,12 @@
     },
     "src/lib/utils.ts": {
       "original_sha256": "cc8a7ee3c58eb426b4c33072a580ab9a71eb822d30980c8e88dfa9478203f59e",
-      "current_sha256": "9d49215af119c814ade39595dfd3bf8f76155072d3ffbda43d9c439f0db8b6ae",
+      "current_sha256": "cb9e7bdf9fae6d222b8cbdf9c8784324b545889bef226a59f743871ebc6c5e13",
       "since": "2026-08-23",
       "what_changed": "findSupiByTarget 從 5G 專屬的 switch（SUPI/MSISDN/IMEI/GUTI）改成吃引擎給的身分類別清單",
       "why_it_is_ok": "原本那個 switch 認得的四種都是 5G 的，於是 Diameter 的 IMPI／IMPU／Session-Id 抽得出來卻搜不到 —— 硬寫的清單不會自己知道有人加了協定。改成由 `Dataset.identityKinds` 供應，並且「一個值對到兩個以上訂戶時不挑一個」（那代表關聯把兩個人併了，挑一個會把錯誤藏成正常畫面）。",
       "reason": "Diameter adapter 落地（2026-08-23）",
-      "why": "2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）"
+      "why": "2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-14 DiscoveredSession 多 activity／access／callIds；`clockFromEpoch` 固定印 UTC；2026-09-14 通話時刻改用總覽選的時區（預設 UTC，`timezone.ts`）"
     }
   },
   "all_diverged_note": "2026-08-23：`files` 空了 —— 九個移植檔全部有意分岔，最後一個是 `lib/utils.ts`（身分搜尋改吃引擎給的類別清單，因為 Diameter 的 IMPI／IMPU／Session-Id 在 5G 專屬的 switch 底下搜不到）。後果講明白：從此沒有任何一個檔還與 TelcoShark-Sandbox 逐位元組相同，所以**畫面差異不能再歸因於建置管線** —— 那個對照基準沒了。`diverged` 的雜湊紀律因此變成唯一的防線，一個都不能鬆。"

@@ -212,6 +212,41 @@ def _dialog_of(msg: Message) -> object | None:
     return call_ids[0] if call_ids else None
 
 
+#: 語音接取的三種（2026-09-14）。放在核心而不是 SIP adapter：adapter 只記線路上的 token（`detail["access-type"]`），
+#: 怎麼歸成 VoLTE／VoWiFi 是呈現層的判斷 —— 核心指名 import adapter 是這個專案刻意沒有的耦合（`tools/archmap.py`）。
+#:只認 access-type 的前綴 —— 其餘值（ADSL、DOCSIS……）不是行動語音，回 None。
+ACCESS_KINDS: tuple[str, ...] = ("volte", "vonr", "vowifi")
+
+
+def access_kind(access_type: str | None) -> str | None:
+    """`P-Access-Network-Info` 的 access-type → `volte`／`vonr`／`vowifi`。認不得或沒有就是 None。"""
+    token = (access_type or "").strip().upper()
+    if token.startswith("3GPP-E-UTRAN"):
+        return "volte"
+    if token.startswith("3GPP-NR"):
+        return "vonr"
+    if token.startswith(("IEEE-802.11", "3GPP-WLAN")):
+        return "vowifi"
+    return None
+
+
+def party_access(call: "Call", *, caller: bool) -> str | None:
+    """一端宣告的接取（`P-Access-Network-Info`）。主叫看 INVITE，被叫看對 INVITE 的回應。
+
+    只看這兩種訊息：BYE、PRACK 兩端都可能送，拿它們就分不出是誰的宣告。
+    """
+    for msg in call.messages:
+        if caller and msg.label == "INVITE":
+            kind = access_kind(msg.detail.get("access-type"))
+        elif not caller and msg.detail.get("cseq-method") == "INVITE" and msg.label[:1].isdigit():
+            kind = access_kind(msg.detail.get("access-type"))
+        else:
+            continue
+        if kind:
+            return kind
+    return None
+
+
 def caller_number(call: "Call") -> str | None:
     """主叫的**國際形式**號碼（不含 `+`）—— 網路斷言的優先，其次 `From`。拿來比對 HSS／計費。"""
     asserted, _frame = asserted_of(call)
@@ -388,7 +423,12 @@ def call_json(call: Call, analysis: Analysis | None = None) -> dict:
         "unattributed": len(e2e.unattributed) if e2e else None,
         "start_ts": first.ts,
         "abs_start": first.abs_ts,
+        # 最後一則 SIP 的絕對時間。0.0 是「沒有絕對時間」的哨兵值，與 `abs_start` 同一個約定。
+        "abs_end": last.abs_ts,
         "duration_s": round(last.ts - first.ts, 6),
+        # 兩端各自宣告的接取（`volte`／`vonr`／`vowifi`）。沒宣告是 null，不猜。
+        "caller_access": party_access(call, caller=True),
+        "callee_access": party_access(call, caller=False),
         "note": proc.note,
     }
 

@@ -2,6 +2,7 @@
  "modules": [
   "__init__",
   "__main__",
+  "activity",
   "adapters",
   "adapters.carrier",
   "adapters.diameter",

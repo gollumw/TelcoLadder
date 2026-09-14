@@ -259,6 +259,8 @@ class Session:
     只快取表格；單條流程的逐跳明細不快取（它已限縮在一條流程）。"""
 
     calls: object | None = field(default=None, repr=False)
+    #: 訂戶分組（`activity.classify`），與 `table` 對齊。與語言無關，所以不按語言分。
+    activity: object | None = field(default=None, repr=False)
     """通話清單（`calls.calls_json`）的快取，**按語言分**（dict）——
     與 `diameter_flows` 同一個理由：cause 白話與但書是用當下語言選出來的。"""
 

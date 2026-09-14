@@ -369,6 +369,12 @@ def parse(frame: Frame) -> list[Message]:
         privacy = first(block.get("sip_sip_Privacy"))
         if privacy:
             detail["Privacy"] = str(privacy)
+        # **接取網路**（`P-Access-Network-Info` 的 access-type，UE 宣告、P-CSCF 往核心轉送）。
+        # VoLTE 與 VoWiFi 只有這裡分得開。取原始標頭的第一個 token，不讀 tshark 拆好的
+        # `access-type` 子欄位 —— 不保證每個版本都拆。沒有這個標頭就不填，不從別處推。
+        access_network = first(block.get("sip_sip_P-Access-Network-Info"))
+        if access_network:
+            detail["access-type"] = str(access_network).split(";")[0].strip()
         # **Gm 上的 IPsec SA**（RFC 3329 的 Security-Client／Server／Verify，
         # 3GPP TS 33.203 的 `ipsec-3gpp`）。這裡只交線路事實：原始標頭字串。
         #

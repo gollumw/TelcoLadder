@@ -206,6 +206,9 @@ class Leg:
                 headers.append(("Contact", f"<sip:{PCSCF}:{SIP_PORT}>"))
             else:
                 headers.append(("Contact", f"<sip:{TAS}:{SIP_PORT}>"))
+            # 主叫在 LTE 上：UE-A 宣告的接取網路，P-CSCF 往核心照轉。B2BUA 開的那一腿不帶。
+            if self is LEG_A:
+                headers.append(("P-Access-Network-Info", "3GPP-E-UTRAN-FDD"))
             body = body_by_hop[i] if body_by_hop else ""
             if body:
                 headers.append(("Content-Type", "application/sdp"))
@@ -226,6 +229,9 @@ class Leg:
             headers = self._headers(src, cseq, method, to_tag=to_tag, asserted=claim, extra=[])
             if src == UE_B:
                 headers.append(("Contact", f"<sip:{IMSI_B}@{UE_B}:{SIP_PORT}>"))
+            # 被叫在 Wi-Fi 上：UE-B 回應裡宣告的接取網路沿路轉回（逐跳自己回的 100 Trying 不帶）。
+            if self is LEG_B and not per_hop:
+                headers.append(("P-Access-Network-Info", "IEEE-802.11"))
             body = body_by_hop[i] if body_by_hop else ""
             if body:
                 headers.append(("Content-Type", "application/sdp"))

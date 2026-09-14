@@ -26,6 +26,8 @@
 
 通話的結局：主叫在振鈴時取消（CANCEL → 487 → ACK），與真實樣本相同。
 
+接取（2026-09-14）：主叫那一腿的請求帶 `P-Access-Network-Info: 3GPP-E-UTRAN-FDD`（LTE），被叫那一腿的回應帶 `IEEE-802.11`（Wi-Fi）；B2BUA 開的那一腿請求與逐跳的 100 Trying 不帶。主叫的 SIP 流程裡因此同時有兩種值 —— 訂戶的接取只能看它自己送出的請求。
+
 ## 它守的是什麼
 
 1. **ESP null 啟發式**：ESP 尾端帶 12 位元組的 ICV（填零，不是真的 MAC）。沒有 ICV 的 ESP
