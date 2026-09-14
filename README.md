@@ -88,9 +88,14 @@ rather than shown as an IP, with the evidence for that name on hover.
 | A bare cause number and a trip to the spec | 775 causes with the specification named, plain language and field root causes; clauses where a person checked them |
 | RAN and core blaming each other for a dropped context | Every UE context release marked **requested by the RAN** or **ordered by the core** — a wire fact, not an opinion |
 | A procedure that stalls for no visible reason | The gap named when it matches a NAS timer's default (T3560, T3460 …), and failures counted by TAC, cell, DNN and core element |
+| VoLTE Gm signalling hidden inside IPsec ESP | NULL-encrypted ESP is detected and decoded, so the SIP and SDP inside join the subscriber's ladder. ESP that is really encrypted stays unreadable and is counted, not guessed |
+| A B2BUA (an AS, or an SBC that keeps the charging ID) changes the Call-ID, so one call shows up as unrelated dialogs | Legs that share a charging ID (ICID) and overlap in time are one call, end to end — H.248, HSS, charging and ENUM attached only where evidence ties them to that call |
 | Customer captures that must never leave the building | A command on your machine: no network listener beyond `127.0.0.1`, no telemetry, no cloud, no model |
 
-## Thirty seconds, four ways in
+## Quickstart: five ways in
+
+> **Windows without Python?** Skip `pip` and jump to
+> [4. Windows, no install](#windows-no-install) — the only prerequisite is Wireshark.
 
 ```bash
 # 1. CLI — one page of deterministic facts, Markdown or JSON
@@ -104,6 +109,24 @@ telcoladder serve                                   # http://127.0.0.1:3005
 claude mcp add telcoladder -- telcoladder mcp
 ```
 
+<a id="windows-no-install"></a>
+**4. Windows, no install.** A standalone executable in a portable zip, built by
+CI from the tagged source. Nothing is installed and no registry key is written;
+it needs Wireshark 4.0 or newer on the machine, nothing else.
+
+1. **Download and unzip.** Get `TelcoLadder-Windows-x64.zip` (about 10 MB) from
+   the [Releases](https://github.com/gollumw/TelcoLadder/releases) page.
+2. **Double-click `check-environment.cmd`.** It finds `tshark.exe` in
+   Wireshark's default install location under Program Files — or wherever
+   `TELCOLADDER_TSHARK` points — and checks the dissectors.
+3. **Run it from that folder.**
+   ```bat
+   telcoladder.exe summarize capture.pcapng
+   telcoladder.exe serve
+   ```
+   `serve` listens on `http://127.0.0.1:3005`: open it in your browser, drop a
+   capture (up to 1 GB), or paste a path for anything larger.
+
 **5. Hand a capture to someone else.** `telcoladder anonymize in.pcap out.pcap`
 rewrites subscriber identities, addresses, hostnames, PLMN and cell identifiers
 into keyed pseudonyms of the *same length* — TBCD, ASCII, JSON and HPACK-Huffman
@@ -113,12 +136,6 @@ pipeline to the same procedures, roles and failures; only the names differ.
 Same key, same pseudonyms across captures; the key is printed once and never
 written down. Compressed HTTP/2 bodies cannot be rewritten in place and are
 refused unless `--blank-opaque-bodies`.
-
-**4. Windows, no install.** Download `TelcoLadder-Windows-x64.zip` from the
-[Releases](https://github.com/gollumw/TelcoLadder/releases) page — a standalone
-executable in a portable zip, built by CI from the tagged source. Unzip,
-run `check-environment.cmd`, and use `telcoladder.exe` from that folder. It
-needs Wireshark 4.0 or newer on the machine, nothing else.
 
 Requires Python 3.11+ and `tshark` (Wireshark 4.0 or newer) for the `pip`
 route. Neither the macOS nor the Windows installer puts `tshark` on your `PATH`;
@@ -260,22 +277,38 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
 - **A fully transparent SCP** that sends no `3gpp-Sbi-Target-apiRoot` is
   indistinguishable from the endpoint and falls back to an unlabelled IP. The
   correct failure direction, and a real gap.
-- **Diameter covers seven interfaces** with roles and curated causes; the rest
-  decode and show their Application-Id with no role inference. The fixture is
-  written from RFC 6733, not captured: no SCTP, no reassembly, invented timing.
-- **SIP proxies are not yet told apart** (`Via` is recorded, Mw and ISC are
-  unlabelled); H.248 gets neutral `MGC` / `MGW` roles and no reference point,
+- **Diameter covers seven interfaces** with roles and curated causes (S6a/S6d,
+  Cx/Dx, Sh, Rx, Gx, SWx, S6b); the rest — Rf included — decode and show their
+  Application-Id with no role inference. Every Diameter fixture is written from
+  RFC 6733, not captured: TCP only, no SCTP, invented timing.
+- **SIP alone does not name the core proxies.** The UE and the P-CSCF come from
+  Gm itself — the security-agreement headers, or which address holds IPsec
+  associations with several peers, falling back to a `Contact` that carries a
+  subscriber identity; an I-CSCF, S-CSCF or AS is named only when its Cx or Sh
+  exchange is in the same capture. Gm is the only SIP
+  reference point labelled — Mw and ISC are not, because no capture here has
+  verified them. H.248 gets neutral `MGC` / `MGW` roles and no reference point,
   because the protocol alone cannot say whether it is Iq, Mn or Mp.
-- **Only 7 of the 21 cause tables cite a clause.** The other 14 name the
+- **Calls and numbers join only on evidence.** B2BUA legs become one call only
+  when they share a charging ID (ICID) and overlap in time — a B2BUA or SBC
+  that replaces the ICID leaves separate rows. A number joins HSS, charging and
+  ENUM records only in international form; a local-form number is never
+  completed with a guessed country code. VoLTE, VoNR and VoWiFi are shown only
+  where `P-Access-Network-Info` declares them; without that header the access
+  is reported as not declared.
+- **Only 9 of the 21 cause tables cite a clause.** The other 12 name the
   specification and stop. An absent clause is better than a wrong one.
 - **The 4G, IMS and handover fixtures are written byte by byte** with `tshark`
   as the oracle: exact about the protocol, silent about any real deployment.
-  Each `scenario.md` lists what its fixture cannot prove. There is no EPS → 5GS
-  handover fixture yet, and no UE radio capability parsing.
+  Each `scenario.md` lists what its fixture cannot prove. UE radio capability
+  is not parsed: the NR and LTE RRC containers are skipped during extraction
+  because dissecting them is slow, and stay readable in the per-frame decode
+  tree.
 - **NAS after Security Mode Command is encrypted** and its content is
-  invisible; the packets still appear as their NGAP carrier. GTP-U joins the
-  subscriber but carries no throughput or loss KPIs; there is no RTP adapter;
-  ISUP and CAMEL are recognised but not read.
+  invisible; the packets still appear as their NGAP carrier. The same holds for
+  IPsec ESP on Gm: only NULL-encrypted ESP is read, and encrypted ESP is counted
+  as unreadable. GTP-U joins the subscriber but carries no throughput or loss
+  KPIs; there is no RTP adapter; ISUP and CAMEL are recognised but not read.
 - **Joins through a tunnel an SBI message quotes are inferences.** They bind by
   direction, inside a time window, never across a release, and never where they
   would give one flow two SUPIs; the summary counts each one. What remains: a
