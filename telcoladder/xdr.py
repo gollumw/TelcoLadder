@@ -57,6 +57,8 @@ def procedure_record(p: Procedure, folded_into: int | None = None) -> dict:
         "cause": p.cause,
         "first_failure": p.first_failure,
         "pdu_session_id": p.pdu_session_id,
+        # 線路上唯一的 DNN／APN（2026-09-14）。加欄不升版（檔頭規則 ②）。
+        "dnn": p.dnn,
         "start_frame": p.start_frame,
         "end_frame": p.end_frame,
         "messages": p.messages,

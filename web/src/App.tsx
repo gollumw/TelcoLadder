@@ -519,6 +519,7 @@ export default function App() {
         treeByFrame={treeByFrame}
         decodeNote={decodeNote}
         onRequestTree={source.loadDecodeTree ? requestTree : undefined}
+        onLoadMermaid={source.loadMermaid ? (supi: string) => source.loadMermaid!(supi) : undefined}
       />
     </>
   );

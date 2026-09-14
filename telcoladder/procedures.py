@@ -422,6 +422,9 @@ class Procedure:
     #: 世代與類別（`TAXONOMY`／`_family_of`）：畫面把 97 顆晶片收成十來組靠的就是它。
     family: str | None = None
     category: str | None = None
+    #: 這一段在線路上帶的 DNN（5G，`pdusession.DNN`）或 APN（4G GTPv2）。只有**一個**值時才填；
+    #: 沒帶、或同一段裡出現兩個不同值就是 None —— 挑一個就是猜（2026-09-14，晶片上直接顯示）。
+    dnn: str | None = None
     #: 5G 註冊的型別（TS 24.501 的 5GS registration type，名稱來自 tshark 的值表）：
     #: `initial-registration`／`mobility-registration-updating`／…；非註冊段 null。
     #: 「回 5G 之後的行動更新註冊 20 次全失敗」與「初始註冊失敗」是兩種不同的故障。
@@ -519,6 +522,12 @@ def _flow_supi(flow: Flow) -> str | None:
 def _flow_subscriber(flow: Flow) -> str | None:
     key = subscriber_identity(flow.identity_keys)
     return identity_label(key) if key is not None else None
+
+
+def _single_dnn(window: list[Message]) -> str | None:
+    """段裡唯一的 DNN／APN。鍵與 adapter 寫的相同（NAS-5GS 的 `dnn`、GTPv2 的 `APN`）。"""
+    values = {m.detail.get("dnn") or m.detail.get("APN") for m in window} - {None}
+    return next(iter(values)) if len(values) == 1 else None
 
 
 def _finish(kind: _Kind, window: list[Message], supi: str | None,
@@ -638,6 +647,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         sequence=_match_sequence(failures),
         # 誰先開口的：請求開的是無線側，Command 開的是核網。
         release_initiator=release_opener.detail[RELEASE_INITIATOR_KEY] if release_opener else None,
+        dnn=_single_dnn(window),
         # 那則釋放帶的 Cause IE。通話段的 `release_cause` 另由 SIP 路徑填（`_sip_segments`）。
         release_cause=release_opener.cause if release_opener is not None else None,
         timer=timer_hint.timer.name if timer_hint else None,

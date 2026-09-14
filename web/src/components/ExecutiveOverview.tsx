@@ -5,7 +5,7 @@ import { t, useLang } from "../i18n";
 import { AlertTriangle, ArrowUpRight, Binary, CheckCircle2, EyeOff, Filter, LayoutList, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { procedureName } from "@/lib/procedureLabels";
-import type { Overview, OverviewCause, OverviewProcedure } from "@/data/source";
+import type { Overview, OverviewCause, OverviewProcedure, OverviewScenario } from "@/data/source";
 
 /**
  * 首屏總覽 —— 給第一眼看這份檔的人：健不健康、誰失敗、為什麼、依據哪條。
@@ -143,6 +143,9 @@ export function ExecutiveOverview({
         />
       </section>
 
+      {/* 場景盤點：這份檔裡發生了哪幾種程序、各自的結局。每個數字都是後端同一個迴圈數的（見 `overview._count_scenario`）。 */}
+      {overview.scenarioSummary.length > 0 && <ScenarioBreakdown rows={overview.scenarioSummary} onOpenLadder={onOpenLadder} />}
+
       {/* 失敗，依 cause 歸卡 */}
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-fg">
@@ -220,6 +223,61 @@ export function ExecutiveOverview({
         )}
       </section>
     </div>
+  );
+}
+
+function ScenarioBreakdown({ rows, onOpenLadder }: { rows: OverviewScenario[]; onOpenLadder: (handle: string, frame: number) => void }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold text-fg">
+        {t("Scenario breakdown")}
+        <span className="ml-2 text-xs font-normal text-fg-dim">{t("{n} kind(s) of procedure", { n: rows.length })}</span>
+      </h3>
+      <div className="overflow-x-auto rounded-lg border border-border bg-surface-1">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-surface-2 text-[11px] uppercase tracking-wide text-fg-dim">
+            <tr>
+              <th className="px-3 py-2 font-medium">{t("Scenario")}</th>
+              <th className="px-3 py-2 text-right font-medium">{t("Total")}</th>
+              <th className="px-3 py-2 text-right font-medium">{t("Succeeded")}</th>
+              <th className="px-3 py-2 text-right font-medium">{t("Failed")}</th>
+              <th className="px-3 py-2 text-right font-medium" title={t("Incomplete, ended by a party, or cancelled")}>{t("Other outcomes")}</th>
+              <th className="px-3 py-2 font-medium">{t("Most common cause")}</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const other = r.incomplete + r.endedByUser + r.cancelled;
+              return (
+                <tr key={r.key} className={cn("border-t border-border", r.failure > 0 && "bg-signal-red-bg/30")}>
+                  <td className="px-3 py-2 text-fg">{procedureName(r)}</td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-fg-muted">{r.total}</td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-signal-mint">{r.success}</td>
+                  <td className={cn("px-3 py-2 text-right font-mono tabular-nums", r.failure > 0 ? "font-semibold text-signal-red" : "text-fg-dim")}>{r.failure}</td>
+                  <td className={cn("px-3 py-2 text-right font-mono tabular-nums", r.incomplete > 0 ? "text-signal-amber" : "text-fg-dim")}>{other}</td>
+                  <td className="max-w-[28rem] truncate px-3 py-2 text-fg-muted" title={r.topCause ?? undefined}>{r.topCause ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    {r.subscriber ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenLadder(r.subscriber!.handle, r.sampleFrame)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap text-signal-cyan hover:underline"
+                      >
+                        {r.failure > 0 ? t("Open the first failure") : t("Open ladder")}
+                        <ArrowUpRight className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      <span className="text-fg-dim">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

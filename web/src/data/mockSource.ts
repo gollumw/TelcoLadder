@@ -153,6 +153,9 @@ export function mockSource(): DataSource {
         notVisible: { cipheredNas: 0, protectedSuci: 0, framesNotDecoded: 0, onlyN2: false, undecodedTraffic: [], notes: [] },
         causes: Array.from(byCause.values()),
         failedProcedures: [],
+        // 範例資料沒有切段與失敗卡片，場景盤點與失敗過濾就是空的 —— 不編。
+        scenarioSummary: [],
+        failuresDisplayFilter: null,
       };
     },
 

@@ -401,6 +401,27 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### Reading a capture at a glance (2026-09-14)
+
+- **Tabs**: Overview · Packets · Call Flows · Calls (VoLTE/VoWiFi) · Diameter.
+  A capture with only Diameter opens on **Diameter**; a capture with no SIP
+  keeps the Calls tab visible but disabled, with the reason on hover.
+- **Scenario breakdown** (Overview): one row per kind of procedure with its
+  total, succeeded, failed and other outcomes, and the most common cause as the
+  engine states it. Rows with failures come first; "Open the first failure"
+  jumps to that subscriber's ladder at that segment. The rows add up to the
+  procedure count above them.
+- **Segment chips** show the DNN/APN when the segment carries exactly one, and
+  a failed segment's cause directly on the chip. In an expanded group the
+  failed segments come first.
+- **Copy Mermaid** on the ladder copies the same text as
+  `telcoladder analyze -o flow.mmd` for that subscriber - it is produced by the
+  same renderer on the server, not redrawn in the browser. **Export SVG**
+  downloads the ladder as drawn, with its colours written into the file.
+- **Failure messages only** (Packets) applies a filter of the exact frames on
+  the Overview's failure cards. Protocol buttons stay supplied by the capture
+  itself - a fixed list would show buttons for protocols the file does not have.
+
 ### Who made a call, who only registered (2026-09-14)
 
 The Overview's **Discovered Sessions** drawer groups subscribers into four:

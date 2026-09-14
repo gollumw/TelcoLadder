@@ -2,7 +2,7 @@
 
 import { t, useLang } from "../i18n";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
+import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, Copy, Download, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CATEGORY_LABEL, CATEGORY_ORDER, procedureName } from "@/lib/procedureLabels";
 import { ProtocolTree } from "./ProtocolTree";
@@ -244,6 +244,7 @@ export function SessionAnalysisView({
   onBackToDataMining,
   onViewInDataMining,
   backLabel,
+  onLoadMermaid,
 }: {
   supi: string | null;
   /** `supi` 給人看的形式（沒有 SUPI 的訂戶是 `5G-S-TMSI …`）。 */
@@ -273,6 +274,8 @@ export function SessionAnalysisView({
   onSelectFrame: (frame: number) => void;
   onBackToDataMining: () => void;
   onViewInDataMining: (frame: number) => void;
+  /** 這個訂戶的 Mermaid 文字（後端用 CLI 同一個繪製產生）。沒有就不顯示「複製 Mermaid」。 */
+  onLoadMermaid?: () => Promise<string>;
 }) {
   useLang(); // 換語言時重新渲染 —— t() 讀的是模組層級的狀態
   const [domain, setDomain] = useState<TelecomDomain | "ALL">("ALL");
@@ -298,6 +301,78 @@ export function SessionAnalysisView({
   //: 結束的那一下點擊要吃掉（`onClickCapture`），不然放開時會誤選手指下的事件。
   const drag = useRef({ active: false, moved: false, x: 0, y: 0, left: 0, top: 0 });
   const [dragging, setDragging] = useState(false);
+  //: 「複製 Mermaid」的結果提示，**來自剪貼簿寫入的結果**。滑鼠離開按鈕就收回 —— 不用計時器
+  //: 收（`tests/test_web_assets.py`：計時器推動的狀態只會讓畫面宣稱做完了）。null＝還沒按。
+  const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
+  //: 剪貼簿被拒時改把文字攤出來讓人自己複製。**瀏覽器拒絕寫剪貼簿是真實情況**：嵌入式瀏覽器
+  //: 預設拒絕（實測 `clipboard-write: denied`），`serve --host` 對外監聽時也不是安全環境、根本沒有這個 API。
+  //: 那時只回「複製失敗」等於沒給東西。null＝不需要攤出來。
+  const [mermaidText, setMermaidText] = useState<string | null>(null);
+  const mermaidBoxRef = useRef<HTMLTextAreaElement>(null);
+
+  async function copyMermaid() {
+    if (!onLoadMermaid) return;
+    let text: string;
+    try {
+      text = await onLoadMermaid();
+    } catch {
+      setCopyState("failed");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState("copied");
+      setMermaidText(null);
+      return;
+    } catch {
+      // 退一步：舊的 execCommand 在部分拒絕 Clipboard API 的環境仍可用。
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(area);
+      setCopyState(ok ? "copied" : "failed");
+      // 兩條路都失敗：把文字攤在工具列下面、全選好，按 Cmd/Ctrl+C 就是自己複製。
+      setMermaidText(ok ? null : text);
+    }
+  }
+
+  useEffect(() => {
+    // 攤出來的那一刻就全選 —— 使用者只剩按複製鍵這一步。
+    if (mermaidText !== null) mermaidBoxRef.current?.select();
+  }, [mermaidText]);
+
+  /** 匯出畫面上的梯形圖。顏色是 CSS 變數（`style={{…}}`），離開頁面就解不出來 ——
+   *  所以逐元素把算好的顏色與字型寫回屬性，匯出的檔在任何檢視器裡都長得一樣。 */
+  function exportSvg() {
+    const svgs = Array.from(ladderBoxRef.current?.querySelectorAll("svg") ?? []);
+    const source = svgs.sort((a, b) => b.querySelectorAll("*").length - a.querySelectorAll("*").length)[0];
+    if (!source) return;
+    const clone = source.cloneNode(true) as SVGSVGElement;
+    const from = [source, ...Array.from(source.querySelectorAll("*"))];
+    const to = [clone, ...Array.from(clone.querySelectorAll("*"))];
+    from.forEach((el, i) => {
+      const cs = getComputedStyle(el);
+      const target = to[i] as SVGElement;
+      for (const prop of ["fill", "stroke", "stroke-width", "stroke-dasharray", "opacity", "font-size", "font-family", "font-weight"]) {
+        const value = cs.getPropertyValue(prop);
+        if (value) target.setAttribute(prop, value);
+      }
+      target.removeAttribute("style");
+    });
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ladder-${(subscriberLabel ?? supi ?? "flow").replace(/[^\w.-]+/g, "_")}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   const onLadderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const box = ladderBoxRef.current;
     if (e.button !== 0 || !box) return;
@@ -414,7 +489,12 @@ export function SessionAnalysisView({
     >
       <span>{procedureName(p)}</span>
       {p.pduSessionId && <span className="ml-1 opacity-70">#{p.pduSessionId}</span>}
+      {p.dnn && <span className="ml-1 opacity-70">({p.dnn})</span>}
       <span className="ml-1.5 opacity-70">{OUTCOME_MARK[p.outcome]}</span>
+      {/* 失敗的 cause 直接寫在晶片上（2026-09-14）—— 不必滑過去才看得到。太長就截斷，全文仍在 title。 */}
+      {p.outcome === "failure" && p.cause && (
+        <span className="ml-1 inline-block max-w-[16rem] truncate align-bottom">{p.cause}</span>
+      )}
       <span className="ml-1 tabular-nums opacity-60">{durationText(p.durationS)}</span>
     </button>
   );
@@ -586,6 +666,27 @@ export function SessionAnalysisView({
               >
                 <ZoomIn className="h-3.5 w-3.5" />
               </button>
+              {onLoadMermaid && (
+                <button
+                  type="button"
+                  onClick={() => void copyMermaid()}
+                  onMouseLeave={() => setCopyState(null)}
+                  title={t("Same text as telcoladder analyze -o flow.mmd for this subscriber")}
+                  className="ml-1 inline-flex items-center gap-1 rounded border border-border bg-surface-2 px-2 py-1 text-[11px] font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  {copyState === "copied" ? t("Copied!") : copyState === "failed" ? t("Copy failed") : t("Copy Mermaid")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={exportSvg}
+                title={t("Download the ladder as it is drawn now")}
+                className="inline-flex items-center gap-1 rounded border border-border bg-surface-2 px-2 py-1 text-[11px] font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {t("Export SVG")}
+              </button>
               <span className="ml-1 hidden text-[11px] text-fg-dim lg:inline">
                 {expanded ? (
                   t("Inspector docked below")
@@ -600,6 +701,22 @@ export function SessionAnalysisView({
               </span>
             </div>
           </div>
+          {mermaidText !== null && (
+            <div className="mb-2 rounded border border-signal-amber-border bg-signal-amber-bg p-2">
+              <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-signal-amber-fg">
+                <span>{t("This browser refused clipboard access. The Mermaid text is selected below - press Cmd/Ctrl+C.")}</span>
+                <button type="button" onClick={() => setMermaidText(null)} className="rounded px-1.5 text-fg-dim hover:text-fg">
+                  {t("Close")}
+                </button>
+              </div>
+              <textarea
+                ref={mermaidBoxRef}
+                readOnly
+                value={mermaidText}
+                className="h-40 w-full resize-y rounded border border-border bg-surface-1 p-2 font-mono text-[11px] text-fg"
+              />
+            </div>
+          )}
 
           {/* **模式必須講出來。** wire 模式下 SBI 夾帶的 NAS 會畫成
               AMF→SCP→SMF（那是它實際走的路），不知道模式的人會以為工具
@@ -699,6 +816,13 @@ export function SessionAnalysisView({
                         {single && (
                           <span className="ml-1 tabular-nums opacity-60">{durationText(g.members[0].durationS)}</span>
                         )}
+                        {/* 失敗的 cause 寫在晶片表面（2026-09-14）：單段就是那一段的 cause；多段只在每一次失敗
+                            都是同一個 cause 時才寫 —— 不同的 cause 挑一個寫出來就是在猜，那時留在展開後的逐段晶片上。 */}
+                        {(single ? g.members[0].outcome === "failure" && g.members[0].cause : failed > 0 && commonCause) && (
+                          <span className="ml-1.5 inline-block max-w-[16rem] truncate align-bottom">
+                            {single ? g.members[0].cause : commonCause}
+                          </span>
+                        )}
                       </button>
                       {!single && (
                         <button
@@ -743,7 +867,8 @@ export function SessionAnalysisView({
                       <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
                         {procedureName(first)}{regType ? ` (${regType})` : ""}
                       </span>
-                      {members.map(segmentChip)}
+                      {/* 失敗的段排最前面，其餘照發生順序（`sort` 穩定）。 */}
+                      {[...members].sort((a, b) => Number(b.outcome === "failure") - Number(a.outcome === "failure")).map(segmentChip)}
                     </div>
                   );
                 });

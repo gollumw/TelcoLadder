@@ -28,6 +28,7 @@ from telcoladder import i18n
 from telcoladder.i18n import N_, _
 from telcoladder.decode import decode_frames, window_around
 from telcoladder.framebytes import frame_bytes
+from telcoladder.identities import find_flows
 from telcoladder.identities import (
     FLOW_HANDLE_PREFIX,
     availability,
@@ -48,6 +49,7 @@ from telcoladder.session import Session
 from telcoladder.calls import calls_json as calls_json_for
 from telcoladder import ipsec as ipsecmod
 from telcoladder import activity as activitymod
+from telcoladder.render_mermaid import render_all
 from telcoladder.diameterflows import flows_json as diameter_flows_json_for
 from telcoladder.callflow import SLOW_GAP, call_events, diameter_events, events  # noqa: F401 —— SLOW_GAP re-export
 from telcoladder.nf import resolve_roles_with_basis, role_contradictions
@@ -741,6 +743,36 @@ def callflow_json(
     if "error" in result:
         return result
     return {"ready": True, **result}
+
+
+def mermaid_json(
+    session: Session, supi: str | None = None, *,
+    identity: "IdKey | None" = None, flow_ids: "list[int] | None" = None,
+) -> dict:
+    """`/api/<sid>/mermaid`：一個訂戶的 Mermaid 時序圖文字（梯形圖的「複製 Mermaid」）。
+
+    **不在瀏覽器裡另寫一套。** 這裡呼叫的是 CLI `telcoladder analyze -o flow.mmd` 用的同一個
+    `render_all`，並用同一種方式接起來 —— 每種判斷只准一套繪製實作（CLAUDE.md），兩套會漂移。
+    訂戶的流程與 `/callflow` 用同一組把手找（`find_flows`／流程位置）。
+    """
+    with session.lock:
+        analysis = session.analysis
+    if analysis is None:
+        return {"ready": False, "text": ""}
+    if flow_ids is not None:
+        flows = [analysis.flows[i] for i in flow_ids]
+    else:
+        key = identity if identity is not None else (IdKind.SUPI, supi or "")
+        flows = find_flows(analysis, key[0], key[1])
+    if not flows:
+        return {"error": _('No flow corresponds to this subscriber: {supi}').format(supi=supi or (key[1] if key else ""))}
+    results = render_all(flows)
+    return {
+        "ready": True,
+        "text": "\n".join(r.text for r in results),
+        "shown": sum(r.shown for r in results),
+        "total": sum(r.total for r in results),
+    }
 
 
 def _ipsec_for(session: Session) -> "ipsecmod.IpsecView | None":
