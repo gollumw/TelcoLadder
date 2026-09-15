@@ -15,6 +15,7 @@ from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
+from telcoladder.lanes import lane_group
 from telcoladder.model import (
     IDENTITY_SOURCE_KEY, RELEASE_INITIATOR_KEY, Endpoint, IdKind, IdKey, Message,
 )
@@ -208,6 +209,9 @@ def _render(
             # 線路位址（裸匯出時是主機名本身）。泳道標題只有一行，位址放副標。
             # 節點對照表把好幾個位址畫成同一台時，副標列出全部（`lanes.py`）。
             "address": ", ".join(sorted(addresses[label])),
+            # 瀏覽器預設的收合組（`lanes.lane_group`）：核網同名網元的多個位址同一組，手機與基地台
+            # 一台一組。**只影響顯示** —— 泳道 id、事件順序、角色都不因它改變。
+            "group": lane_group(endpoint),
         }
         if hosts is not None:
             # **主機名只在不含糊時給。** 中繼用過好幾個 Origin-Host（它替別人轉送），

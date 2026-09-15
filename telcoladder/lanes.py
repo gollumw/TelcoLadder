@@ -40,6 +40,11 @@ from telcoladder.nf import PARTICIPANT_ORDER, UE_ROLE
 #: 一個位址身兼好幾個角色時，泳道名裡的分隔。
 ROLE_SEPARATOR = " / "
 
+#: **無線側的角色永遠一台一組。** 瀏覽器預設把核網同名網元的多個位址收成一條泳道（使用者裁定
+#: 2026-09-15：一份真實 AMF 側 trace 上 AMF 有 11 個位址、30 條泳道），但手機與基地台不收 ——
+#: 主叫與被叫、換手的來源與目標 gNB 收在同一條，就看不出誰送了什麼。
+RADIO_ROLES: frozenset[str] = frozenset({UE_ROLE, "gNB", "eNB"})
+
 
 class NodeMapError(ValueError):
     """對照表讀不懂。訊息本身就是修法。"""
@@ -153,4 +158,21 @@ def assign_lanes(messages: list[Message], node_map: NodeMap | None = None) -> La
     return LaneReport(node_map=node_map.path if node_map is not None else None, mapped=mapped, merged=merged)
 
 
-__all__ = ["LaneReport", "NodeMap", "NodeMapError", "ROLE_SEPARATOR", "assign_lanes", "load_node_map"]
+def lane_group(endpoint) -> str:
+    """這個端點在瀏覽器裡預設收進哪一組。**只影響顯示**：泳道、角色、CLI 與 Mermaid 都不變。
+
+    * 無線側角色（`RADIO_ROLES`）與推不出角色的裸位址：自己一組 —— 就是它的泳道名。
+    * 核網角色：泳道名去掉 `assign_lanes` 為了區分同名主機而加的 ` (<位址>)`。兩個位址都叫
+      `AMF (…)` 時兩條泳道收成 `AMF` 一組；身兼多角的 `P-CSCF / MGC` 與同名的另一台也同組。
+    * 節點對照表的名字：本來就是使用者說的同一台，組名就是那個名字。
+
+    一個地方算，前端不自己剝字串 —— 剝錯的樣子是兩個不同網元收在一起，而且圖看起來很合理。
+    """
+    label = endpoint.label()
+    if endpoint.role is None or endpoint.role in RADIO_ROLES:
+        return label
+    suffix = f" ({endpoint.key})"
+    return label[: -len(suffix)] if label.endswith(suffix) else label
+
+
+__all__ = ["LaneReport", "NodeMap", "NodeMapError", "RADIO_ROLES", "ROLE_SEPARATOR", "assign_lanes", "lane_group", "load_node_map"]

@@ -401,6 +401,20 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### One lane per network function (2026-09-15)
+
+A core network function seen on several addresses — an AMF pool, an MME or
+SMF with separate interfaces — is drawn as **one lane** in the browser, named
+`AMF ×11`. Click the lane name to show each address as its own lane, click any
+of them to fold it back, or use **Expand all network functions**. A message
+between two addresses of the same function is drawn as a loop on that lane,
+with both addresses on hover.
+
+UEs and base stations are never folded: a call's caller and callee, and a
+handover's source and target gNB, stay on separate lanes. Folding changes only
+where arrows are drawn — the order of messages never changes — and the CLI,
+Mermaid and xDR output keep one lane per host.
+
 ### Reading a capture at a glance (2026-09-14)
 
 - **Tabs**: Overview · Packets · Call Flows · Calls (VoLTE/VoWiFi) · Diameter.

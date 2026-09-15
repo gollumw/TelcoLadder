@@ -182,6 +182,9 @@ export interface CallFlowParticipant {
    *  而猜錯的樣子是 DRA 那條泳道與 MME 合併、圖看起來完全合理。 */
   host?: string | null;
   ambiguous?: boolean;
+  /** 預設收合組（後端 `lanes.lane_group`）：核網同名網元的多個位址同一組，手機與基地台一台一組。
+   *  **只影響顯示** —— 泳道 id 與事件的 from/to 仍是一台一條。舊後端沒有這欄時一條一組。 */
+  group?: string;
 }
 
 /** 一段程序 —— 一次註冊、一次 PDU 建立。xDR 的一列。
