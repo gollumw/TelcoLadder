@@ -454,6 +454,7 @@ export default function SessionAnalyzer({
             subscriberLabel={data.discoveredSessions.find((s) => s.supi === focusedSupi)?.label}
             callFlowEvents={callFlow?.events ?? callFlowEvents}
             procedures={callFlow?.procedures ?? []}
+            connections={callFlow?.connections ?? []}
             participants={callFlow?.participants ?? []}
             ladderIsWireView={callFlow?.wire ?? false}
             uncorrelatedDomains={callFlow?.uncorrelatedDomains ?? []}

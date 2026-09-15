@@ -92,6 +92,9 @@ export interface CallFlowEvent {
   /** 這則訊息屬於哪一段程序（那一段的 `startFrame`，後端 `callflow._render` 依成員算）。
    *  null＝不屬於任何一段；**鍵不存在**＝舊後端，畫面退回依格號範圍判斷。 */
   procedureStart?: number | null;
+  /** 第幾次無線連線（後端 `connections.py`：InitialUEMessage 到釋放完成）。兩次連線之間的訊息是 null；
+   *  **鍵不存在**＝這份擷取沒有 N2／S1 連線可切。 */
+  connection?: number | null;
   messageName: string;
   interfaceName: string; // N1/N2/N4/N11/N12/N3 — kept for ladder labeling alongside domain
   /** 判不出來就是 undefined。**不預設塞 ACCESS_N1_N2** ——

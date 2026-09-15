@@ -15,6 +15,7 @@ from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
+from telcoladder.connections import radio_connections
 from telcoladder.lanes import lane_group
 from telcoladder.model import (
     IDENTITY_SOURCE_KEY, RELEASE_INITIATOR_KEY, Endpoint, IdKind, IdKey, Message,
@@ -228,6 +229,10 @@ def _render(
     for p in procedures:
         for member in getattr(p, "members", ()):
             owner.setdefault(id(member), p.start_frame)
+    # **一次無線連線一段**（`connections.py`）：InitialUEMessage 到釋放完成。事件帶第幾次連線；兩次連線
+    # 之間的訊息（下一次的起因）是 null。沒有任何連線（沒有 N2／S1 的擷取）時整個鍵不送。
+    connections = radio_connections(messages)
+    connection_of = {id(m): c.index for c in connections for m in c.members}
 
     events = []
     for index, msg in enumerate(messages):
@@ -253,6 +258,8 @@ def _render(
         }
         if owner:
             event["procedure"] = owner.get(id(msg))
+        if connections:
+            event["connection"] = connection_of.get(id(msg))
         if msg.is_failure:
             # cause 的解釋一律來自 `data/causes/*.yaml` 的靜態查表（CLAUDE.md §2.3）。
             #
@@ -396,6 +403,20 @@ def _render(
         # 不知道模式，會以為工具把 NAS 解錯了。所以由畫面講出來。
         "wire": wire,
         "participants": participants,
+        # 一次次無線連線，與這次連線裡**有訊息落在其中**的程序種類（依開始的先後，不重複）。**看成員重疊，
+        # 不看程序從哪一格開始**：網路觸發的 Service request 從 Paging 開段，Paging 在 InitialUEMessage 之前 ——
+        # 只看開始格的話，那次連線的晶片會寫「沒有程序」（實測真實 AMF 側 trace 的第 2、3 次連線）。
+        "connections": [
+            {
+                "index": c.index, "start_frame": c.start_frame, "end_frame": c.end_frame,
+                "messages": c.messages, "released": c.released,
+                "kinds": list(dict.fromkeys(
+                    p.kind for p in sorted(procedures, key=lambda p: p.start_frame)
+                    if any(connection_of.get(id(m)) == c.index for m in getattr(p, "members", ()))
+                )),
+            }
+            for c in connections
+        ],
         "events": events,
     }
 

@@ -222,6 +222,18 @@ export interface CallFlowProcedure {
   initiatorSide?: string | null;
 }
 
+/** 一次無線連線：基地台發起的 InitialUEMessage 到釋放完成（後端 `connections.py`）。 */
+export interface RadioConnection {
+  index: number;
+  startFrame: number;
+  endFrame: number;
+  messages: number;
+  /** false＝擷取裡沒看到這次連線的釋放完成。 */
+  released: boolean;
+  /** 這次連線裡開頭的程序種類，依先後、不重複。 */
+  kinds: string[];
+}
+
 /** 一個訂戶的梯形圖資料。 */
 export interface CallFlow {
   events: CallFlowEvent[];
@@ -237,6 +249,8 @@ export interface CallFlow {
   uncorrelatedDomains: TelecomDomain[];
   /** 只在通話梯形圖上有：這一次是不是完整端到端、多接了幾則、哪幾格沒有依據接上。 */
   endToEnd?: { full: boolean; related: Record<string, number>; unattributedFrames: number[] };
+  /** 一次次無線連線。沒有 N2／S1 連線的擷取是空陣列。 */
+  connections?: RadioConnection[];
 }
 
 // ── Gm 的 IPsec（2026-09-08）──────────────────────────────────────────

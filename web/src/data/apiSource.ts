@@ -43,6 +43,8 @@ import {
   type PduSessionJson,
   rowToPacket,
   subscribersToSessions,
+  toRadioConnection,
+  type RadioConnectionJson,
   toProtocolNodes,
   type DecodeNodeJson,
   type FlowSubscriber,
@@ -320,6 +322,7 @@ export function apiSource(sid: string | null): DataSource {
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
+        connections?: RadioConnectionJson[];
       }>(supi.includes(":")
         ? `/api/${need()}/callflow?identity=${encodeURIComponent(supi)}`
         : `/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
@@ -329,6 +332,7 @@ export function apiSource(sid: string | null): DataSource {
         participants: body.participants ?? [],
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+        connections: (body.connections ?? []).map(toRadioConnection),
       };
     },
 
@@ -369,6 +373,7 @@ export function apiSource(sid: string | null): DataSource {
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
+        connections?: RadioConnectionJson[];
         end_to_end?: { full: boolean; related: Record<string, number>; unattributed_frames: number[] };
       }>(`/api/${need()}/callflow?call=${encodeURIComponent(handle)}${full ? "&full=1" : ""}`);
       return {
@@ -377,6 +382,7 @@ export function apiSource(sid: string | null): DataSource {
         participants: body.participants ?? [],
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+        connections: (body.connections ?? []).map(toRadioConnection),
         endToEnd: body.end_to_end
           ? { full: body.end_to_end.full, related: body.end_to_end.related, unattributedFrames: body.end_to_end.unattributed_frames ?? [] }
           : undefined,
@@ -406,6 +412,7 @@ export function apiSource(sid: string | null): DataSource {
         participants: CallFlowParticipant[];
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
+        connections?: RadioConnectionJson[];
       }>(`/api/${need()}/callflow?diameter=${encodeURIComponent(handle)}`);
       return {
         wire: body.wire,
@@ -414,6 +421,7 @@ export function apiSource(sid: string | null): DataSource {
         // 事件的 `supi` 欄位放把手：`SessionAnalysisView` 用它把事件篩到「這一條」。
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
+        connections: (body.connections ?? []).map(toRadioConnection),
       };
     },
 

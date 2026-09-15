@@ -362,6 +362,7 @@ export interface CallFlowEventJson {
   slow?: boolean;
   /** 這則訊息屬於哪一段（段的 `start_frame`）；不屬於任何一段是 null。 */
   procedure?: number | null;
+  connection?: number | null;
   /** Diameter 的逐則路由事實（`callflow._render`）。只有 Diameter 事件有。 */
   origin_host?: string;
   destination_host?: string;
@@ -413,6 +414,7 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     ...(event.delta !== undefined ? { deltaSeconds: event.delta } : {}),
     ...(event.slow !== undefined ? { slow: event.slow } : {}),
     ...(event.procedure !== undefined ? { procedureStart: event.procedure } : {}),
+    ...(event.connection !== undefined ? { connection: event.connection } : {}),
     ...(event.origin_host ? { originHost: event.origin_host } : {}),
     ...(event.destination_host ? { destinationHost: event.destination_host } : {}),
     ...(event.hop_by_hop_id ? { hopByHopId: event.hop_by_hop_id } : {}),
@@ -719,4 +721,18 @@ export function toOverview(body: OverviewJson): Overview {
     })),
     failuresDisplayFilter: body.failures_display_filter ?? null,
   };
+}
+
+/** `/callflow` 的 `connections`。 */
+export interface RadioConnectionJson {
+  index: number;
+  start_frame: number;
+  end_frame: number;
+  messages: number;
+  released: boolean;
+  kinds: string[];
+}
+
+export function toRadioConnection(c: RadioConnectionJson) {
+  return { index: c.index, startFrame: c.start_frame, endFrame: c.end_frame, messages: c.messages, released: c.released, kinds: c.kinds ?? [] };
 }

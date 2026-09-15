@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { CATEGORY_LABEL, CATEGORY_ORDER, procedureName } from "@/lib/procedureLabels";
 import { ProtocolTree } from "./ProtocolTree";
 import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
-import type { CallFlowParticipant, CallFlowProcedure } from "@/data/source";
+import type { CallFlowParticipant, CallFlowProcedure, RadioConnection } from "@/data/source";
 
 /**
  * 泳道**樣式**表。注意這不是泳道清單 —— 清單由資料決定。
@@ -235,6 +235,7 @@ export function SessionAnalysisView({
   subscriberLabel,
   callFlowEvents,
   procedures,
+  connections = [],
   participants,
   ladderIsWireView,
   uncorrelatedDomains,
@@ -260,6 +261,8 @@ export function SessionAnalysisView({
   /** 這個訂戶的程序段（`telcoladder/procedures.py`）。空陣列＝未切段
    *  （範例資料就是空的 —— 切段是引擎對真實訊息序列的判讀）。 */
   procedures: CallFlowProcedure[];
+  /** 一次次無線連線（`/callflow` 的 `connections`）。沒有就不顯示「依無線連線」。 */
+  connections?: RadioConnection[];
   /** 這張圖有哪些參與者，**已依 `nf.PARTICIPANT_ORDER` 排好**。
    *  由後端給是刻意的 —— 讓前端自己湊網元順序等於兩邊各維護一份，一定漂移。 */
   participants: CallFlowParticipant[];
@@ -309,7 +312,9 @@ export function SessionAnalysisView({
   //: trace 上 30 條泳道收成 7 條。只收核網 —— 後端的組已經讓手機與基地台一台一組。
   const [expandedNfs, setExpandedNfs] = useState<Set<string>>(() => new Set());
   //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網，使用者裁定 2026-09-15）。
-  const [panelAxis, setPanelAxis] = useState<"category" | "side">("category");
+  const [panelAxis, setPanelAxis] = useState<"category" | "side" | "connection">("category");
+  //: 選中的無線連線（`RadioConnection.index`）。與段、組互斥 —— 選了別的就清掉。
+  const [activeConnection, setActiveConnection] = useState<number | null>(null);
   //: 選了一段時，同一段時間裡**不屬於這段**的訊息要不要淡色顯示。預設不顯示 —— 只聚焦這一次行為。
   const [showInterleaved, setShowInterleaved] = useState(false);
   //: 「複製 Mermaid」的結果提示，**來自剪貼簿寫入的結果**。滑鼠離開按鈕就收回 —— 不用計時器
@@ -518,7 +523,13 @@ export function SessionAnalysisView({
   const inRange = (e: CallFlowEvent, p: CallFlowProcedure) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame;
   const belongs = (e: CallFlowEvent, p: CallFlowProcedure) =>
     e.procedureStart !== undefined ? e.procedureStart === p.startFrame : inRange(e, p);
+  const currentConnection = connections.find((c) => c.index === activeConnection) ?? null;
+  useEffect(() => {
+    if (activeProcedure !== null || activeGroup !== null) setActiveConnection(null);
+  }, [activeProcedure, activeGroup]);
   const scoped = (events: CallFlowEvent[]) => {
+    // **一次無線連線**：只看這一次連線自己的訊息（後端依邊界標好的 `connection`）。
+    if (currentConnection) return events.filter((e) => e.connection === currentConnection.index);
     const picked = current ? [current] : currentGroup ? currentGroup.members : null;
     if (!picked) return events;
     return events.filter((e) => picked.some((p) => (showInterleaved ? inRange(e, p) : belongs(e, p))));
@@ -537,7 +548,7 @@ export function SessionAnalysisView({
     let events = scoped(supiEvents);
     events = domain === "ALL" ? events : events.filter((e) => inTab(domain, e.domain));
     return onlyAnomalies ? events.filter((e) => e.status === "ERROR" || e.slow) : events;
-  }, [supiEvents, domain, current, currentGroup, onlyAnomalies, showInterleaved]);
+  }, [supiEvents, domain, current, currentGroup, onlyAnomalies, showInterleaved, currentConnection]);
 
   //: 開關藏掉了幾則 —— 要講，不然圖上的空白像「這段沒有訊息」。
   const hiddenByAnomalyFilter = useMemo(() => {
@@ -545,7 +556,7 @@ export function SessionAnalysisView({
     let events = scoped(supiEvents);
     if (domain !== "ALL") events = events.filter((e) => inTab(domain, e.domain));
     return events.length - filteredEvents.length;
-  }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents, showInterleaved]);
+  }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents, showInterleaved, currentConnection]);
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
@@ -825,7 +836,13 @@ export function SessionAnalysisView({
                 <span className="font-medium text-fg-muted">{t("Procedures")}</span>
                 <span>{t("{n} segment(s)", { n: procedures.length })}</span>
                 <span className="ml-auto inline-flex overflow-hidden rounded border border-border text-[11px]">
-                  {([["category", t("By scenario")], ["side", t("By who started it")]] as const).map(([axis, label]) => (
+                  {(
+                    [
+                      ["category", t("By scenario")],
+                      ["side", t("By who started it")],
+                      ...(connections.length > 0 ? [["connection", t("By radio connection")] as const] : []),
+                    ] as ReadonlyArray<readonly ["category" | "side" | "connection", string]>
+                  ).map(([axis, label]) => (
                     <button
                       key={axis}
                       type="button"
@@ -844,7 +861,7 @@ export function SessionAnalysisView({
               <div className="flex flex-wrap gap-1">
                 <button
                   type="button"
-                  onClick={() => { setActiveProcedure(null); setActiveGroup(null); }}
+                  onClick={() => { setActiveProcedure(null); setActiveGroup(null); setActiveConnection(null); }}
                   className={cn(
                     "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
                     // **看 `current` 不看 `activeProcedure`** —— 兩者在換訂戶時會分家:
@@ -857,7 +874,7 @@ export function SessionAnalysisView({
                     // state 跟著沒了（實測換人後正確亮「全部」）。但那是**副作用**，
                     // 不是保證:哪天在這個畫面裡加一個訂戶切換器（NSA 有），
                     // 它就會靜默壞掉。看推導出來的 `current` 則與 unmount 無關。
-                    current === null && currentGroup === null
+                    current === null && currentGroup === null && currentConnection === null
                       ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
                       : "border-border bg-surface-2 text-fg-dim hover:border-border-focus hover:text-fg-muted",
                   )}
@@ -948,6 +965,38 @@ export function SessionAnalysisView({
               </div>
               {/* 展開的組：逐段晶片，**依 kind、方向、觸發與註冊型別分列** —— 同一個類別裡的
                   「換手 EPS→5GS」與「系統內換手」要看得出是兩種。 */}
+              {/* 依無線連線：每一次基地台發起的連線一顆晶片 —— 從 InitialUEMessage 到釋放完成，裡面做了哪些事一眼看完。 */}
+              {panelAxis === "connection" && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
+                  <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
+                    {t("Radio connections")} · {connections.length}
+                  </span>
+                  {connections.map((c) => (
+                    <button
+                      key={c.index}
+                      type="button"
+                      onClick={() => {
+                        setActiveProcedure(null);
+                        setActiveGroup(null);
+                        setActiveConnection(c.index);
+                      }}
+                      title={t("Frames {a}–{b}. From the InitialUEMessage the base station sent to the release completion.", { a: c.startFrame, b: c.endFrame })}
+                      className={cn(
+                        "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
+                        currentConnection?.index === c.index
+                          ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
+                          : "border-border bg-surface-2 text-fg-muted hover:border-border-focus",
+                      )}
+                    >
+                      <span className="tabular-nums">#{c.index}</span>
+                      <span className="mx-1 opacity-40">·</span>
+                      <span>{c.kinds.length > 0 ? c.kinds.map((k) => procedureName({ kind: k })).join("、") : t("no procedure")}</span>
+                      <span className="ml-1.5 tabular-nums opacity-60">{t("{n} msgs", { n: c.messages })}</span>
+                      {!c.released && <span className="ml-1 text-signal-amber">{t("no release seen")}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* 依觸發側：每一次行為一顆晶片，依發生順序排。無線側＝手機或基地台開的段；核網＝其他。 */}
               {panelAxis === "side" &&
                 ([["radio", t("Radio side (UE, base station)")], ["core", t("Core network")], [null, t("Starter not identified")]] as const).map(([side, label]) => {
@@ -986,6 +1035,11 @@ export function SessionAnalysisView({
                   );
                 });
               })}
+              {currentConnection && (
+                <p className="mt-2 text-[11px] text-fg-dim">
+                  {t("Showing only radio connection #{n}: {m} message(s). Messages between two connections, such as the Paging that starts the next one, belong to none.", { n: currentConnection.index, m: currentConnection.messages })}
+                </p>
+              )}
               {(current || currentGroup) && (
                 // 聚焦的是**這幾段自己的訊息**。範圍裡還有別的訊息時講出來，並給一個淡色顯示的開關。
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-fg-dim">

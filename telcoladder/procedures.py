@@ -536,9 +536,37 @@ def _flow_subscriber(flow: Flow) -> str | None:
 INITIATOR_SIDES: tuple[str, ...] = ("radio", "core")
 
 
+#: 依規格**只能由手機送出**的 NAS 請求（TS 24.501／24.301 的訊息方向）。開段那一列夾帶它時，這一段是
+#: 手機發起的 —— 即使那一列是核網送的（SBI 夾帶的 PDU session establishment request 是 AMF 轉給
+#: SMF，看得到的第一則就是 AMF→SMF）。實測一份真實 AMF 側 trace：手機的上行 NAS 加密，PDU 建立
+#: 因此被標成核網觸發（使用者裁定 2026-09-15 修正）。
+UE_ORIGINATED_NAS: tuple[str, ...] = (
+    "Registration request", "Service request", "Deregistration request (UE originating)",
+    "PDU session establishment request", "PDU session modification request", "PDU session release request",
+    "Attach request", "Tracking area update request", "Extended service request",
+    "PDN connectivity request", "PDN disconnect request",
+    "Bearer resource allocation request", "Bearer resource modification request",
+)
+#: 標籤本身就說是網路發起的。
+NETWORK_ORIGINATED_NAS: tuple[str, ...] = ("Deregistration request (UE terminated)",)
+#: 兩個方向都有的 NAS（4G 的 Detach request）：看夾帶它的那一列是誰送的 —— 基地台上行轉送就是手機
+#: 發起，MME 下行送出就是網路發起（使用者裁定 2026-09-15：納入，依方向判）。
+BY_SENDER_NAS: tuple[str, ...] = ("Detach request",)
+
+
 def _initiator_side(opener: Message | None) -> str | None:
-    """開段訊息的送出者在哪一側。角色是 `nf.apply_roles` 判好的線路事實；判不出就是 None。"""
-    role = opener.src.role if opener is not None else None
+    """誰開的這一段。先看開段那一列夾帶的 NAS 請求說了什麼方向，說不出來才看送出者的角色
+    （`nf.apply_roles` 判好的線路事實）；角色也判不出就是 None。"""
+    if opener is None:
+        return None
+    for part in (p.strip() for p in opener.label.split(CARRIED_JOINER)):
+        if part.startswith(NETWORK_ORIGINATED_NAS):
+            return "core"
+        if part.startswith(BY_SENDER_NAS):
+            break
+        if part.startswith(UE_ORIGINATED_NAS):
+            return "radio"
+    role = opener.src.role
     if role is None:
         return None
     return "radio" if role in RADIO_ROLES else "core"
