@@ -13,6 +13,15 @@
 * `ipsec.py` 改回看泳道名 → 「角色不因泳道名改變」紅。
 * 對照表的名字不採用 → 「對照表」紅。
 * `with_role` 不帶 `lane` → 「泳道名活過角色重設」紅。
+
+## 收合組（2026-09-15）
+
+瀏覽器預設把**核網**同名網元的多個位址收成一條（一份真實 AMF 側 trace：AMF 11 個位址、30 條泳道
+收成 7 條）；手機與基地台一台一組。組只影響顯示，泳道 id 與事件的 from/to 不變。突變：
+
+* `lane_group` 一律回泳道名（不剝位址）→ 「一個核網網元多個位址是一組」紅。
+* `RADIO_ROLES` 拿掉 gNB → 「兩台基地台兩組」紅。
+* 事件的 from/to 改填組名 → 「組不改泳道與事件」紅。
 """
 
 from __future__ import annotations
@@ -149,3 +158,53 @@ def test_the_cli_takes_the_node_map_and_refuses_a_broken_one(tmp_path) -> None:
     broken = tmp_path / "broken.json"
     broken.write_text("{", encoding="utf-8")
     assert run("--node-map", str(broken)).returncode == 2
+
+
+# ── 收合組（2026-09-15）──────────────────────────────────────────────────
+
+POOL = FIXTURES / "5gc-amf-pool" / "capture.pcap"
+
+
+def _all_flows(analysis) -> dict:
+    return events(analysis, flow_ids=list(range(len(analysis.flows))))
+
+
+def test_a_core_nf_on_several_addresses_is_one_group() -> None:
+    ladder = _all_flows(analyse(POOL, with_coverage=False))
+    groups = {p["id"]: p["group"] for p in ladder["participants"]}
+    # 今天：兩個位址各一條泳道（不同主機不共用）……
+    assert groups["AMF (198.51.100.10)"] == groups["AMF (198.51.100.11)"] == "AMF"
+
+
+def test_two_base_stations_are_two_groups() -> None:
+    ladder = _all_flows(analyse(POOL, with_coverage=False))
+    gnb = {p["id"]: p["group"] for p in ladder["participants"] if p["id"].startswith("gNB")}
+    assert len(gnb) == 2 and len(set(gnb.values())) == 2, gnb
+
+
+def test_the_caller_and_callee_ue_are_two_groups(analysis) -> None:
+    ladder = call_events(analysis, "c:0", full=True)
+    ue = {p["id"]: p["group"] for p in ladder["participants"] if p["id"].startswith("UE")}
+    assert len(ue) == 2 and len(set(ue.values())) == 2, ue
+
+
+def test_a_bare_address_is_its_own_group(analysis) -> None:
+    ladder = call_events(analysis, "c:0", full=True)
+    bare = [p for p in ladder["participants"] if not p["known"]]
+    assert all(p["group"] == p["id"] for p in bare)
+
+
+def test_the_node_map_name_is_the_group() -> None:
+    mapped = analyse(CAPTURE, with_coverage=False, node_map=NodeMap(path=Path("map.json"), names={PCSCF: "SBG-01", SCSCF: "SBG-01"}))
+    ladder = call_events(mapped, "c:0", full=True)
+    sbg = [p for p in ladder["participants"] if p["id"] == "SBG-01"]
+    assert sbg and sbg[0]["group"] == "SBG-01"
+
+
+def test_grouping_changes_no_lane_id_or_event() -> None:
+    """組只給瀏覽器用：泳道 id 仍是一台一條，事件的 from/to 仍指向那一條。"""
+    ladder = _all_flows(analyse(POOL, with_coverage=False))
+    ids = {p["id"] for p in ladder["participants"]}
+    assert {"AMF (198.51.100.10)", "AMF (198.51.100.11)"} <= ids
+    assert all(e["from"] in ids and e["to"] in ids for e in ladder["events"])
+    assert [e["frame"] for e in ladder["events"]] == sorted(e["frame"] for e in ladder["events"])

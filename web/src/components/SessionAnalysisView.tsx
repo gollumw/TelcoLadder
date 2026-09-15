@@ -41,6 +41,10 @@ const UNKNOWN_FALLBACK = { icon: HelpCircle, hex: "var(--lane-unknown)", text: "
 interface Lane {
   id: string;
   label: string;
+  /** 這條泳道屬於哪個收合組，而那一組有兩條以上（`CallFlowParticipant.group`）。一條一組時不填。 */
+  group?: string;
+  /** true＝這條是整組收起來的那一條（`AMF ×11`）；false／未填＝一台主機一條。 */
+  collapsed?: boolean;
   /** 副標：主機名（短形）或位址。與 `label` 相同時不畫。 */
   sub?: string;
   /** 滑過泳道標題時的完整說明（完整主機名、或「中繼，轉送多個 Origin-Host」）。 */
@@ -301,6 +305,9 @@ export function SessionAnalysisView({
   //: 結束的那一下點擊要吃掉（`onClickCapture`），不然放開時會誤選手指下的事件。
   const drag = useRef({ active: false, moved: false, x: 0, y: 0, left: 0, top: 0 });
   const [dragging, setDragging] = useState(false);
+  //: 展開成一台一條的網元（組名）。**預設全部收合**（使用者裁定 2026-09-15）：一份真實 AMF 側
+  //: trace 上 30 條泳道收成 7 條。只收核網 —— 後端的組已經讓手機與基地台一台一組。
+  const [expandedNfs, setExpandedNfs] = useState<Set<string>>(() => new Set());
   //: 「複製 Mermaid」的結果提示，**來自剪貼簿寫入的結果**。滑鼠離開按鈕就收回 —— 不用計時器
   //: 收（`tests/test_web_assets.py`：計時器推動的狀態只會讓畫面宣稱做完了）。null＝還沒按。
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
@@ -531,24 +538,77 @@ export function SessionAnalysisView({
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
-  const allLanes = useMemo(
-    () => participants.map((p) => laneFor(p)),
-    [participants],
+  //: 收合：同組的參與者畫成一條，排在那一組**第一個成員**原本的位置 —— 參與者順序是後端依
+  //: `nf.PARTICIPANT_ORDER` 排好的，收合只併不排。事件順序完全不動（`filteredEvents` 不經過這裡）。
+  const groupMembers = useMemo(() => {
+    const m = new Map<string, CallFlowParticipant[]>();
+    for (const p of participants) {
+      const g = p.group ?? p.id;
+      m.set(g, [...(m.get(g) ?? []), p]);
+    }
+    return m;
+  }, [participants]);
+  const collapsibleGroups = useMemo(
+    () => [...groupMembers.entries()].filter(([, members]) => members.length > 1).map(([g]) => g),
+    [groupMembers],
   );
+  const { allLanes, nodeToLane } = useMemo(() => {
+    const lanes: Lane[] = [];
+    const map = new Map<string, string>();
+    const byGroup = new Map<string, Lane>();
+    for (const p of participants) {
+      const g = p.group ?? p.id;
+      const members = groupMembers.get(g) ?? [p];
+      if (members.length < 2 || expandedNfs.has(g)) {
+        const lane: Lane = { ...laneFor(p), ...(members.length > 1 ? { group: g } : {}) };
+        lanes.push(lane);
+        map.set(p.id, lane.id);
+        continue;
+      }
+      let lane = byGroup.get(g);
+      if (!lane) {
+        const base = laneFor(p);
+        const style = LANE_STYLE[g];
+        lane = {
+          ...base,
+          ...(style ?? {}),
+          id: `nf:${g}`,
+          label: `${g} ×${members.length}`,
+          sub: undefined,
+          title: members.map((m) => m.address ?? m.id).join(", "),
+          group: g,
+          collapsed: true,
+        };
+        byGroup.set(g, lane);
+        lanes.push(lane);
+      }
+      map.set(p.id, lane.id);
+    }
+    return { allLanes: lanes, nodeToLane: map };
+  }, [participants, groupMembers, expandedNfs]);
+  //: 事件的 from/to 是一台主機一條的泳道 id；畫的時候換成它目前所在的那一條。
+  const laneOf = (node: string) => nodeToLane.get(node) ?? node;
+  const toggleNf = (group: string) =>
+    setExpandedNfs((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
   const activeLanes = useMemo(() => {
     if (filteredEvents.length === 0) return allLanes;
     const ids = new Set<string>();
     filteredEvents.forEach((e) => {
-      ids.add(e.fromNode);
-      ids.add(e.toNode);
+      ids.add(nodeToLane.get(e.fromNode) ?? e.fromNode);
+      ids.add(nodeToLane.get(e.toNode) ?? e.toNode);
     });
     return allLanes.filter((l) => ids.has(l.id));
-  }, [filteredEvents, allLanes]);
+  }, [filteredEvents, allLanes, nodeToLane]);
 
   // 兩端有一邊排不進泳道的事件。理論上不該發生（泳道就是從事件推出來的），
   // 但**如果發生了要說出來**而不是把箭頭畫到第一條線上。
   const undrawable = filteredEvents.filter(
-    (e) => laneX(activeLanes, e.fromNode) === null || laneX(activeLanes, e.toNode) === null,
+    (e) => laneX(activeLanes, laneOf(e.fromNode)) === null || laneX(activeLanes, laneOf(e.toNode)) === null,
   ).length;
 
   const selectedEvent = filteredEvents.find((e) => e.frameNumber === selectedFrame) ?? filteredEvents[0] ?? null;
@@ -687,6 +747,16 @@ export function SessionAnalysisView({
                 <Download className="h-3.5 w-3.5" />
                 {t("Export SVG")}
               </button>
+              {collapsibleGroups.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedNfs(expandedNfs.size > 0 ? new Set() : new Set(collapsibleGroups))}
+                  title={t("Network functions on several addresses are drawn as one lane; click a lane name to show its addresses")}
+                  className="inline-flex items-center gap-1 rounded border border-border bg-surface-2 px-2 py-1 text-[11px] font-medium text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+                >
+                  {expandedNfs.size > 0 ? t("Collapse network functions") : t("Expand all network functions")}
+                </button>
+              )}
               <span className="ml-1 hidden text-[11px] text-fg-dim lg:inline">
                 {expanded ? (
                   t("Inspector docked below")
@@ -1008,10 +1078,21 @@ export function SessionAnalysisView({
                 <rect x={0} y={0} width={width} height={HEADER_H} style={{ fill: "rgb(var(--surface-1))" }} />
                 {activeLanes.map((lane, i) => {
                   const x = LANE_MARGIN + i * LANE_GAP;
+                  // 屬於多位址網元的泳道可以點：收合的那條點了展開，展開後任一條點了收回。
+                  const group = lane.group;
+                  const hint = group
+                    ? lane.collapsed
+                      ? t("{n} addresses - click to show each: {list}", { n: groupMembers.get(group)?.length ?? 0, list: lane.title ?? "" })
+                      : t("Click to draw {nf} as one lane again", { nf: group })
+                    : lane.title;
                   return (
-                    <g key={lane.id}>
-                      {lane.title && <title>{lane.title}</title>}
-                      <text x={x} y={lane.sub ? 20 : 24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace">
+                    <g
+                      key={lane.id}
+                      onClick={group ? () => toggleNf(group) : undefined}
+                      className={group ? "cursor-pointer" : undefined}
+                    >
+                      {hint && <title>{hint}</title>}
+                      <text x={x} y={lane.sub ? 20 : 24} textAnchor="middle" style={{ fill: lane.hex }} fontSize={13} fontWeight={600} fontFamily="ui-monospace, monospace" textDecoration={group ? "underline dotted" : undefined}>
                         {lane.label}
                       </text>
                       {/* 副標：主機名或位址。放在標題與生命線起點之間。 */}
@@ -1098,16 +1179,22 @@ export function SessionAnalysisView({
 
                 {filteredEvents.map((event, i) => {
                   const y = TOP_PAD + (i + rowOffset) * ROW_HEIGHT;
-                  const fromX = laneX(activeLanes, event.fromNode);
-                  const toX = laneX(activeLanes, event.toNode);
+                  const fromLane = laneOf(event.fromNode);
+                  const toLane = laneOf(event.toNode);
+                  const fromX = laneX(activeLanes, fromLane);
+                  const toX = laneX(activeLanes, toLane);
                   // 排不進泳道就**不畫**。畫在 0 號泳道會變成一支指向 UE 的
                   // 假箭頭，而上面的 `undrawable` 會把它算進去並顯示出來。
                   if (fromX === null || toX === null) return null;
+                  //: 兩端收在同一條泳道（同一個網元的兩個位址，或對照表說是同一台）：畫成回到自己的弧線，
+                  //: 字放右邊。原本會畫成長度零的線，箭頭與字疊在生命線上。
+                  const selfLoop = fromLane === toLane;
+                  const labelX = selfLoop ? fromX + 34 : (fromX + toX) / 2;
                   const isSelected = event.frameNumber === selectedEvent?.frameNumber;
                   const isError = event.status === "ERROR";
                   const lineColor = isError
                     ? ERROR_HEX
-                    : (activeLanes.find((l) => l.id === event.toNode)?.hex ?? UNKNOWN_FALLBACK.hex);
+                    : (activeLanes.find((l) => l.id === toLane)?.hex ?? UNKNOWN_FALLBACK.hex);
 
                   return (
                     <g
@@ -1123,24 +1210,36 @@ export function SessionAnalysisView({
                       <rect
                         x={Math.min(fromX, toX) - 6}
                         y={y - 18}
-                        width={Math.max(Math.abs(toX - fromX) + 12, 20)}
+                        width={selfLoop ? 200 : Math.max(Math.abs(toX - fromX) + 12, 20)}
                         height={isError ? 30 : 20}
                         style={{ fill: isError ? ERROR_BG : isSelected ? "var(--ladder-selected-bg)" : "transparent" }}
                         rx={4}
                       />
-                      <line
-                        x1={fromX}
-                        y1={y}
-                        x2={toX}
-                        y2={y}
-                        style={{ stroke: lineColor }}
-                        strokeWidth={isError ? 3 : isSelected ? 2.5 : 1.5}
-                        markerEnd={isError ? "url(#arrow-error)" : `url(#${markerId(event.toNode)})`}
-                      />
+                      {selfLoop ? (
+                        <path
+                          d={`M ${fromX} ${y - 6} h 26 v 12 h -24`}
+                          fill="none"
+                          style={{ stroke: lineColor }}
+                          strokeWidth={isError ? 3 : isSelected ? 2.5 : 1.5}
+                          markerEnd={isError ? "url(#arrow-error)" : `url(#${markerId(toLane)})`}
+                        >
+                          <title>{t("Within {nf}: {from} → {to}", { nf: activeLanes.find((l) => l.id === toLane)?.group ?? toLane, from: event.fromNode, to: event.toNode })}</title>
+                        </path>
+                      ) : (
+                        <line
+                          x1={fromX}
+                          y1={y}
+                          x2={toX}
+                          y2={y}
+                          style={{ stroke: lineColor }}
+                          strokeWidth={isError ? 3 : isSelected ? 2.5 : 1.5}
+                          markerEnd={isError ? "url(#arrow-error)" : `url(#${markerId(toLane)})`}
+                        />
+                      )}
                       <text
-                        x={(fromX + toX) / 2}
+                        x={labelX}
                         y={y - 4}
-                        textAnchor="middle"
+                        textAnchor={selfLoop ? "start" : "middle"}
                         fontSize={11}
                         fontWeight={isError ? 700 : 400}
                         style={{ fill: isError ? "var(--ladder-error-label)" : isSelected ? "var(--ladder-label-selected)" : "var(--ladder-label)" }}
@@ -1151,14 +1250,14 @@ export function SessionAnalysisView({
                           event.messageName,
                           Math.max(
                             Math.floor(
-                              (2 * Math.min((fromX + toX) / 2, width - (fromX + toX) / 2) - 16) / 6.9,
+                              (selfLoop ? width - labelX - 16 : 2 * Math.min((fromX + toX) / 2, width - (fromX + toX) / 2) - 16) / 6.9,
                             ),
                             18,
                           ),
                         )}
                       </text>
                       {isError && event.causeText && (
-                        <text x={(fromX + toX) / 2} y={y + 11} textAnchor="middle" fontSize={10} style={{ fill: "var(--ladder-error-sub)" }} fontWeight={600} className="select-none font-mono">
+                        <text x={labelX} y={y + 11} textAnchor={selfLoop ? "start" : "middle"} fontSize={10} style={{ fill: "var(--ladder-error-sub)" }} fontWeight={600} className="select-none font-mono">
                           ⚠ {event.causeText}
                         </text>
                       )}
