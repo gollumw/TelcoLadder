@@ -401,6 +401,27 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### One radio connection at a time (2026-09-16)
+
+**By radio connection** is a third way to group the procedure panel. Each chip
+is one connection: from the InitialUEMessage the base station sent to the
+release completion after it (`UEContextReleaseResponse` on NGAP,
+`UEContextReleaseComplete` on S1AP). The chip lists the procedures that start
+inside it — for example *#1 · Registration, PDU session establishment · 53 msgs* —
+and selecting it shows only that connection's messages, core-side SBI included.
+
+A connection whose release is not in the capture stops just before the next
+InitialUEMessage and is marked *no release seen*. Messages between two
+connections, such as the Paging and the SMF notification that start the next
+one, belong to neither.
+
+The side of a segment now also reads the NAS request it opens with: a request
+only a UE can send (registration, service, PDU session establishment,
+modification or release, attach, TAU, PDN connectivity …) is radio side even
+when the core relays it. A deregistration says its direction in its name; a 4G
+Detach request is radio side when the base station carries it up and core when
+the MME sends it down.
+
 ### Who started it, and only that conversation (2026-09-15)
 
 The procedure panel on the ladder has two ways to group segments:
