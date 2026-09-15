@@ -59,6 +59,8 @@ def procedure_record(p: Procedure, folded_into: int | None = None) -> dict:
         "pdu_session_id": p.pdu_session_id,
         # 線路上唯一的 DNN／APN（2026-09-14）。加欄不升版（檔頭規則 ②）。
         "dnn": p.dnn,
+        # 誰開的這一段：`radio`／`core`，判不出 null（2026-09-15）。加欄不升版。
+        "initiator_side": p.initiator_side,
         "start_frame": p.start_frame,
         "end_frame": p.end_frame,
         "messages": p.messages,

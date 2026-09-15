@@ -222,6 +222,13 @@ def _render(
                 participant["ambiguous"] = info["ambiguous"]
         participants.append(participant)
 
+    # **每則訊息屬於哪一段**：依段的成員（`Procedure.members`），不依格號範圍。沒有任何段帶成員時
+    # （舊的建構路徑）整個鍵不送，畫面退回範圍 —— 送一堆 null 會讓「選一段」變成一片空白。
+    owner: dict[int, int] = {}
+    for p in procedures:
+        for member in getattr(p, "members", ()):
+            owner.setdefault(id(member), p.start_frame)
+
     events = []
     for index, msg in enumerate(messages):
         event = {
@@ -244,6 +251,8 @@ def _render(
             "domain": _DOMAIN_BY_PROTOCOL.get(msg.protocol),
             "status": "ERROR" if msg.is_failure else "SUCCESS",
         }
+        if owner:
+            event["procedure"] = owner.get(id(msg))
         if msg.is_failure:
             # cause 的解釋一律來自 `data/causes/*.yaml` 的靜態查表（CLAUDE.md §2.3）。
             #
@@ -370,6 +379,8 @@ def _render(
             # 原本寫在名字裡的資訊（「EPS→5GS」、「網路觸發」）。
             "direction": p.direction,
             "trigger": p.trigger,
+            # 2026-09-15：誰開的這一段（無線側／核網），程序面板的第二種分組。
+            "initiator_side": getattr(p, "initiator_side", None),
         }
         for p in procedures
     ]

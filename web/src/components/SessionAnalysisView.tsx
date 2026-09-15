@@ -308,6 +308,10 @@ export function SessionAnalysisView({
   //: 展開成一台一條的網元（組名）。**預設全部收合**（使用者裁定 2026-09-15）：一份真實 AMF 側
   //: trace 上 30 條泳道收成 7 條。只收核網 —— 後端的組已經讓手機與基地台一台一組。
   const [expandedNfs, setExpandedNfs] = useState<Set<string>>(() => new Set());
+  //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網，使用者裁定 2026-09-15）。
+  const [panelAxis, setPanelAxis] = useState<"category" | "side">("category");
+  //: 選了一段時，同一段時間裡**不屬於這段**的訊息要不要淡色顯示。預設不顯示 —— 只聚焦這一次行為。
+  const [showInterleaved, setShowInterleaved] = useState(false);
   //: 「複製 Mermaid」的結果提示，**來自剪貼簿寫入的結果**。滑鼠離開按鈕就收回 —— 不用計時器
   //: 收（`tests/test_web_assets.py`：計時器推動的狀態只會讓畫面宣稱做完了）。null＝還沒按。
   const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
@@ -508,33 +512,40 @@ export function SessionAnalysisView({
   const familyLabel = (family: string) =>
     FAMILY_LABEL[family] ?? (family === "interworking" ? t("4G/5G interworking") : family === "other" ? t("Other") : family);
 
+  //: **一則訊息屬於哪一段看成員，不看格號範圍**（2026-09-15）。同一段時間裡同一個訂戶的其他訊息
+  //: （另一個 PDU session、Diameter、交錯的程序）落在範圍內，照範圍過濾就混進來 —— 讀的人以為
+  //: 「選了還是全部展開」。後端沒給成員（舊後端）才退回範圍。
+  const inRange = (e: CallFlowEvent, p: CallFlowProcedure) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame;
+  const belongs = (e: CallFlowEvent, p: CallFlowProcedure) =>
+    e.procedureStart !== undefined ? e.procedureStart === p.startFrame : inRange(e, p);
+  const scoped = (events: CallFlowEvent[]) => {
+    const picked = current ? [current] : currentGroup ? currentGroup.members : null;
+    if (!picked) return events;
+    return events.filter((e) => picked.some((p) => (showInterleaved ? inRange(e, p) : belongs(e, p))));
+  };
+  //: 範圍裡有、但不屬於選中那幾段的訊息數 —— 隱藏了要講出來。
+  const interleavedCount = useMemo(() => {
+    const picked = current ? [current] : currentGroup ? currentGroup.members : null;
+    if (!picked) return 0;
+    return supiEvents.filter((e) => picked.some((p) => inRange(e, p)) && !picked.some((p) => belongs(e, p))).length;
+  }, [supiEvents, current, currentGroup]);
+
   const filteredEvents = useMemo(() => {
     // **程序先於 Domain。** 選了程序就是「只看這一段」，Domain 是那一段
     // 之內的再過濾 —— 反過來（Domain 先）在畫面上是同一個結果，但語意
     // 不同:程序是範圍，Domain 是視角。
-    let events = supiEvents;
-    if (current) {
-      events = events.filter(
-        (e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame,
-      );
-    } else if (currentGroup) {
-      // 一組＝那些段的 frame 範圍的聯集。
-      const ranges = currentGroup.members;
-      events = events.filter((e) => ranges.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
-    }
+    let events = scoped(supiEvents);
     events = domain === "ALL" ? events : events.filter((e) => inTab(domain, e.domain));
     return onlyAnomalies ? events.filter((e) => e.status === "ERROR" || e.slow) : events;
-  }, [supiEvents, domain, current, currentGroup, onlyAnomalies]);
+  }, [supiEvents, domain, current, currentGroup, onlyAnomalies, showInterleaved]);
 
   //: 開關藏掉了幾則 —— 要講，不然圖上的空白像「這段沒有訊息」。
   const hiddenByAnomalyFilter = useMemo(() => {
     if (!onlyAnomalies) return 0;
-    let events = supiEvents;
-    if (current) events = events.filter((e) => e.frameNumber >= current.startFrame && e.frameNumber <= current.endFrame);
-    else if (currentGroup) events = events.filter((e) => currentGroup.members.some((p) => e.frameNumber >= p.startFrame && e.frameNumber <= p.endFrame));
+    let events = scoped(supiEvents);
     if (domain !== "ALL") events = events.filter((e) => inTab(domain, e.domain));
     return events.length - filteredEvents.length;
-  }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents]);
+  }, [onlyAnomalies, supiEvents, current, currentGroup, domain, filteredEvents, showInterleaved]);
 
   // 泳道 = 這批事件實際碰到的參與者，順序沿用後端排好的。
   // **切 Domain 時泳道會動態增減**，因為 filteredEvents 變了。
@@ -813,6 +824,22 @@ export function SessionAnalysisView({
               <div className="mb-1.5 flex items-center gap-2 text-[11px] text-fg-dim">
                 <span className="font-medium text-fg-muted">{t("Procedures")}</span>
                 <span>{t("{n} segment(s)", { n: procedures.length })}</span>
+                <span className="ml-auto inline-flex overflow-hidden rounded border border-border text-[11px]">
+                  {([["category", t("By scenario")], ["side", t("By who started it")]] as const).map(([axis, label]) => (
+                    <button
+                      key={axis}
+                      type="button"
+                      aria-pressed={panelAxis === axis}
+                      onClick={() => setPanelAxis(axis)}
+                      className={cn(
+                        "px-2 py-0.5 transition-colors",
+                        panelAxis === axis ? "bg-signal-cyan-bg text-signal-cyan" : "bg-surface-2 text-fg-dim hover:text-fg-muted",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
               </div>
               <div className="flex flex-wrap gap-1">
                 <button
@@ -837,7 +864,7 @@ export function SessionAnalysisView({
                 >
                   {t("All ({n} events)", { n: supiEvents.length })}
                 </button>
-                {groups.map((g) => {
+                {panelAxis === "category" && groups.map((g) => {
                   const single = g.members.length === 1;
                   const expanded = expandedGroups.has(g.key);
                   const active = single ? current?.startFrame === g.members[0].startFrame : currentGroup?.key === g.key;
@@ -921,7 +948,23 @@ export function SessionAnalysisView({
               </div>
               {/* 展開的組：逐段晶片，**依 kind、方向、觸發與註冊型別分列** —— 同一個類別裡的
                   「換手 EPS→5GS」與「系統內換手」要看得出是兩種。 */}
-              {groups.filter((g) => g.members.length > 1 && expandedGroups.has(g.key)).map((g) => {
+              {/* 依觸發側：每一次行為一顆晶片，依發生順序排。無線側＝手機或基地台開的段；核網＝其他。 */}
+              {panelAxis === "side" &&
+                ([["radio", t("Radio side (UE, base station)")], ["core", t("Core network")], [null, t("Starter not identified")]] as const).map(([side, label]) => {
+                  const members = procedures
+                    .filter((p) => (p.initiatorSide ?? null) === side)
+                    .sort((a, b) => a.startFrame - b.startFrame);
+                  if (members.length === 0) return null;
+                  return (
+                    <div key={String(side)} className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
+                      <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
+                        {label} · {members.length}
+                      </span>
+                      {members.map(segmentChip)}
+                    </div>
+                  );
+                })}
+              {panelAxis === "category" && groups.filter((g) => g.members.length > 1 && expandedGroups.has(g.key)).map((g) => {
                 const variants = new Map<string, CallFlowProcedure[]>();
                 for (const p of g.members) {
                   const key = `${p.kind}|${p.direction ?? ""}|${p.trigger ?? ""}|${p.registrationType ?? ""}`;
@@ -943,6 +986,22 @@ export function SessionAnalysisView({
                   );
                 });
               })}
+              {(current || currentGroup) && (
+                // 聚焦的是**這幾段自己的訊息**。範圍裡還有別的訊息時講出來，並給一個淡色顯示的開關。
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-fg-dim">
+                  <span>
+                    {t("Showing only this segment's own messages: {n}", {
+                      n: supiEvents.filter((e) => (current ? [current] : currentGroup!.members).some((p) => belongs(e, p))).length,
+                    })}
+                  </span>
+                  {interleavedCount > 0 && (
+                    <label className="inline-flex items-center gap-1">
+                      <input type="checkbox" checked={showInterleaved} onChange={(e) => setShowInterleaved(e.target.checked)} className="h-3 w-3 accent-signal-cyan" />
+                      {t("Show {n} other message(s) from the same time, dimmed", { n: interleavedCount })}
+                    </label>
+                  )}
+                </p>
+              )}
               {current?.cause && (
                 // **失敗要在段的層級講一次。** 箭頭上的 cause 只在那一列;
                 // 選了這一段就該一眼知道它為什麼掛，不必自己找哪支箭是紅的。
@@ -1201,7 +1260,11 @@ export function SessionAnalysisView({
                       key={event.id}
                       data-frame={event.frameNumber}
                       className="cursor-pointer"
-                      opacity={isSelected || isError ? 1 : 0.85}
+                      opacity={
+                        showInterleaved && (current || currentGroup) && !(current ? [current] : currentGroup!.members).some((p) => belongs(event, p))
+                          ? 0.3
+                          : isSelected || isError ? 1 : 0.85
+                      }
                       onClick={() => onSelectFrame(event.frameNumber)}
                       onMouseEnter={(e) => setHover({ frame: event.frameNumber, x: e.clientX, y: e.clientY })}
                       onMouseMove={(e) => setHover({ frame: event.frameNumber, x: e.clientX, y: e.clientY })}
