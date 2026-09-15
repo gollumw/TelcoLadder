@@ -1,12 +1,15 @@
 "use client";
 
 import { t, useLang } from "../i18n";
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, Copy, Download, type LucideIcon } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Smartphone, RadioTower, ShieldCheck, KeyRound, GitBranch, Router, Boxes, HelpCircle, ExternalLink, ArrowLeft, ZoomIn, ZoomOut, Copy, Download, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CATEGORY_LABEL, CATEGORY_ORDER, procedureName } from "@/lib/procedureLabels";
+import { CHAIN_STEP_LABEL, INTENT_LABEL, LATENCY_LABEL } from "@/lib/behaviorLabels";
+import { isSlow, useKpiThresholds } from "@/lib/kpiThresholds";
+import { SettingsModal } from "./SettingsModal";
 import { ProtocolTree } from "./ProtocolTree";
-import type { CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
+import type { BehaviorRecord, CallFlowEvent, CorrelationEntry, ProtocolNode, RawPacket, SessionIdentity, TelecomDomain } from "@/lib/types";
 import type { CallFlowParticipant, CallFlowProcedure, RadioConnection } from "@/data/source";
 
 /**
@@ -236,6 +239,7 @@ export function SessionAnalysisView({
   callFlowEvents,
   procedures,
   connections = [],
+  behaviors = [],
   participants,
   ladderIsWireView,
   uncorrelatedDomains,
@@ -263,6 +267,8 @@ export function SessionAnalysisView({
   procedures: CallFlowProcedure[];
   /** 一次次無線連線（`/callflow` 的 `connections`）。沒有就不顯示「依無線連線」。 */
   connections?: RadioConnection[];
+  /** 行為膠囊（`/callflow` 的 `behaviors`）：意圖、結局、時延拆解、失敗的前置鏈。沒有就不顯示卡片與燈號。 */
+  behaviors?: BehaviorRecord[];
   /** 這張圖有哪些參與者，**已依 `nf.PARTICIPANT_ORDER` 排好**。
    *  由後端給是刻意的 —— 讓前端自己湊網元順序等於兩邊各維護一份，一定漂移。 */
   participants: CallFlowParticipant[];
@@ -315,6 +321,12 @@ export function SessionAnalysisView({
   const [panelAxis, setPanelAxis] = useState<"category" | "side" | "connection">("category");
   //: 選中的無線連線（`RadioConnection.index`）。與段、組互斥 —— 選了別的就清掉。
   const [activeConnection, setActiveConnection] = useState<number | null>(null);
+  //: ⚙️ KPI 閾值設定面板（`SettingsModal`）。
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  //: 程序面板「只看失敗與過慢」：只列有問題的段與連線。梯形圖本身不受影響 —— 那是「只看異常」的工作。
+  const [onlyProblems, setOnlyProblems] = useState(false);
+  //: 使用者設的「過慢」閾值（存在瀏覽器）。後端只給每筆行為要比的數字（`kpi`）。
+  const thresholds = useKpiThresholds();
   //: 選了一段時，同一段時間裡**不屬於這段**的訊息要不要淡色顯示。預設不顯示 —— 只聚焦這一次行為。
   const [showInterleaved, setShowInterleaved] = useState(false);
   //: 「複製 Mermaid」的結果提示，**來自剪貼簿寫入的結果**。滑鼠離開按鈕就收回 —— 不用計時器
@@ -446,6 +458,16 @@ export function SessionAnalysisView({
     [supiEvents],
   );
 
+  //: 行為膠囊依開始格號查（後端 `behavior.py` 一段一筆）。慢不慢在這裡依使用者設的閾值判。
+  const recordByStart = useMemo(() => new Map(behaviors.map((r) => [r.startFrame, r])), [behaviors]);
+  const recordSlow = (r: BehaviorRecord | null | undefined) => Boolean(r && isSlow(r.kpi, thresholds));
+  const procedureIsProblem = (p: CallFlowProcedure) => p.outcome === "failure" || recordSlow(recordByStart.get(p.startFrame));
+  const visibleProcedures = onlyProblems ? procedures.filter(procedureIsProblem) : procedures;
+  const intentName = (r: BehaviorRecord) => t(INTENT_LABEL[r.intentLabel] ?? r.intentLabel);
+  //: 膠囊燈號：失敗紅；過慢、未完成、被取消黃；成功綠；沒有任何行為灰。
+  const lamp = (outcome: string | null | undefined, slow: boolean) =>
+    outcome === "failure" ? "🔴" : slow || outcome === "incomplete" || outcome === "cancelled" ? "🟡" : outcome ? "🟢" : "⚪";
+
   //: 選中的那一段。`startFrame` 當識別碼 —— 一個訂戶不可能有兩段同時開始。
   const current = useMemo(
     () => procedures.find((p) => p.startFrame === activeProcedure) ?? null,
@@ -454,7 +476,7 @@ export function SessionAnalysisView({
 
   const groups = useMemo<ProcedureGroup[]>(() => {
     const byKey = new Map<string, ProcedureGroup>();
-    for (const p of procedures) {
+    for (const p of visibleProcedures) {
       const key = `${p.family}|${p.category}`;
       const found = byKey.get(key);
       if (found) found.members.push(p);
@@ -473,7 +495,7 @@ export function SessionAnalysisView({
         || rank(CATEGORY_ORDER, a.category) - rank(CATEGORY_ORDER, b.category)
         || a.members[0].startFrame - b.members[0].startFrame,
     );
-  }, [procedures]);
+  }, [visibleProcedures]);
   //: 看推導出來的 `currentGroup`（與 `current` 同一個理由：換訂戶時 key 可能不在新的組裡）。
   const currentGroup = useMemo(() => groups.find((g) => g.key === activeGroup) ?? null, [groups, activeGroup]);
   const durationText = (s: number) => (s < 1 ? `${Math.round(s * 1000)}ms` : `${s.toFixed(2)}s`);
@@ -512,6 +534,7 @@ export function SessionAnalysisView({
         <span className="ml-1 inline-block max-w-[16rem] truncate align-bottom">{p.cause}</span>
       )}
       <span className="ml-1 tabular-nums opacity-60">{durationText(p.durationS)}</span>
+      {recordSlow(recordByStart.get(p.startFrame)) && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")}</span>}
     </button>
   );
   const familyLabel = (family: string) =>
@@ -524,6 +547,8 @@ export function SessionAnalysisView({
   const belongs = (e: CallFlowEvent, p: CallFlowProcedure) =>
     e.procedureStart !== undefined ? e.procedureStart === p.startFrame : inRange(e, p);
   const currentConnection = connections.find((c) => c.index === activeConnection) ?? null;
+  const connectionSlow = (c: RadioConnection) => behaviors.some((r) => r.connection === c.index && recordSlow(r));
+  const visibleConnections = onlyProblems ? connections.filter((c) => c.outcome === "failure" || connectionSlow(c)) : connections;
   useEffect(() => {
     if (activeProcedure !== null || activeGroup !== null) setActiveConnection(null);
   }, [activeProcedure, activeGroup]);
@@ -634,6 +659,20 @@ export function SessionAnalysisView({
   ).length;
 
   const selectedEvent = filteredEvents.find((e) => e.frameNumber === selectedFrame) ?? filteredEvents[0] ?? null;
+
+  //: 右側兩張卡（前置鏈、時延拆解）看哪一筆行為：選了段就是那一段；選了連線就是那次連線裡第一筆失敗或過慢的；
+  //: 否則是選中事件所屬、失敗或過慢（或帶換手／通話時延）的那一筆。都沒有就不顯示 —— 不挑一筆看起來像樣的。
+  const focusRecord: BehaviorRecord | null = (() => {
+    if (current) return recordByStart.get(current.startFrame) ?? null;
+    const frame = selectedEvent?.frameNumber ?? null;
+    const pool = currentConnection
+      ? behaviors.filter((r) => r.connection === currentConnection.index)
+      : frame === null ? [] : behaviors.filter((r) => r.memberFrames.includes(frame));
+    return pool.find((r) => r.outcome === "failure") ?? pool.find((r) => recordSlow(r))
+      ?? (currentConnection ? null : pool.find((r) => Object.keys(r.latencyBreakdown).some((k) => k !== "registration_s")) ?? null);
+  })();
+  const focusLatency = focusRecord ? Object.entries(focusRecord.latencyBreakdown) : [];
+  const focusLimit = focusRecord?.kpi ? (thresholds as unknown as Record<string, number>)[focusRecord.kpi.threshold] : undefined;
   const selectedPacket = selectedEvent ? rawPackets.find((p) => p.frameNumber === selectedEvent.frameNumber) ?? null : null;
 
   // 解碼樹優先用資料自帶的（mock 有），沒有才看懶載入結果。**依事件的 frame 編號要，
@@ -655,7 +694,7 @@ export function SessionAnalysisView({
   useEffect(() => {
     if (selectedFrame === null) return;
     const row = ladderBoxRef.current?.querySelector<SVGGElement>(`g[data-frame="${selectedFrame}"]`);
-    row?.scrollIntoView({ block: "center", inline: "nearest" });
+    row?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
   }, [selectedFrame, filteredEvents]);
   const hoveredPacket = hover ? rawPackets.find((p) => p.frameNumber === hover.frame) ?? null : null;
 
@@ -699,6 +738,7 @@ export function SessionAnalysisView({
 
   return (
     <div className="space-y-4">
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
         <span className="font-mono text-xs text-fg-dim">
@@ -769,6 +809,15 @@ export function SessionAnalysisView({
                 <Download className="h-3.5 w-3.5" />
                 {t("Export SVG")}
               </button>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                title={t("KPI thresholds")}
+                aria-label={t("KPI thresholds")}
+                className="rounded border border-border bg-surface-2 p-1 text-fg-muted hover:border-signal-cyan hover:text-signal-cyan transition-colors"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
               {collapsibleGroups.length > 0 && (
                 <button
                   type="button"
@@ -835,7 +884,22 @@ export function SessionAnalysisView({
               <div className="mb-1.5 flex items-center gap-2 text-[11px] text-fg-dim">
                 <span className="font-medium text-fg-muted">{t("Procedures")}</span>
                 <span>{t("{n} segment(s)", { n: procedures.length })}</span>
-                <span className="ml-auto inline-flex overflow-hidden rounded border border-border text-[11px]">
+                {behaviors.length > 0 && (
+                  <button
+                    type="button"
+                    aria-pressed={onlyProblems}
+                    onClick={() => setOnlyProblems((v) => !v)}
+                    className={cn(
+                      "ml-auto rounded border px-2 py-0.5 transition-colors",
+                      onlyProblems
+                        ? "border-signal-red-border bg-signal-red-bg text-signal-red"
+                        : "border-border bg-surface-2 text-fg-dim hover:text-fg-muted",
+                    )}
+                  >
+                    {t("Failed & slow only")}
+                  </button>
+                )}
+                <span className={cn("inline-flex overflow-hidden rounded border border-border text-[11px]", behaviors.length === 0 && "ml-auto")}>
                   {(
                     [
                       ["category", t("By scenario")],
@@ -930,6 +994,9 @@ export function SessionAnalysisView({
                         {single && (
                           <span className="ml-1 tabular-nums opacity-60">{durationText(g.members[0].durationS)}</span>
                         )}
+                        {g.members.some((p) => recordSlow(recordByStart.get(p.startFrame))) && (
+                          <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")}</span>
+                        )}
                         {/* 失敗的 cause 寫在晶片表面（2026-09-14）：單段就是那一段的 cause；多段只在每一次失敗
                             都是同一個 cause 時才寫 —— 不同的 cause 挑一個寫出來就是在猜，那時留在展開後的逐段晶片上。 */}
                         {(single ? g.members[0].outcome === "failure" && g.members[0].cause : failed > 0 && commonCause) && (
@@ -969,9 +1036,9 @@ export function SessionAnalysisView({
               {panelAxis === "connection" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
                   <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
-                    {t("Radio connections")} · {connections.length}
+                    {t("Radio connections")} · {visibleConnections.length}
                   </span>
-                  {connections.map((c) => (
+                  {visibleConnections.map((c) => (
                     <button
                       key={c.index}
                       type="button"
@@ -988,9 +1055,22 @@ export function SessionAnalysisView({
                           : "border-border bg-surface-2 text-fg-muted hover:border-border-focus",
                       )}
                     >
+                      {/* 膠囊：[燈號] #n 意圖 · 結果或 cause · 耗時。意圖是這次連線第一筆行為的；結果取最嚴重的。 */}
+                      {behaviors.length > 0 && <span className="mr-1">{lamp(c.outcome, connectionSlow(c))}</span>}
                       <span className="tabular-nums">#{c.index}</span>
                       <span className="mx-1 opacity-40">·</span>
-                      <span>{c.kinds.length > 0 ? c.kinds.map((k) => procedureName({ kind: k })).join("、") : t("no procedure")}</span>
+                      <span>
+                        {c.intentLabel
+                          ? t(INTENT_LABEL[c.intentLabel] ?? c.intentLabel)
+                          : c.kinds.length > 0 ? c.kinds.map((k) => procedureName({ kind: k })).join("、") : t("no procedure")}
+                      </span>
+                      {c.outcome === "failure" && c.cause ? (
+                        <span className="ml-1 inline-block max-w-[14rem] truncate align-bottom text-signal-red">{c.cause}</span>
+                      ) : c.outcome ? (
+                        <span className="ml-1 opacity-70">{t(c.outcome)}</span>
+                      ) : null}
+                      {behaviors.length > 0 && <span className="ml-1 tabular-nums opacity-60">{durationText(c.durationS)}</span>}
+                      {connectionSlow(c) && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")}</span>}
                       <span className="ml-1.5 tabular-nums opacity-60">{t("{n} msgs", { n: c.messages })}</span>
                       {!c.released && <span className="ml-1 text-signal-amber">{t("no release seen")}</span>}
                     </button>
@@ -1000,7 +1080,7 @@ export function SessionAnalysisView({
               {/* 依觸發側：每一次行為一顆晶片，依發生順序排。無線側＝手機或基地台開的段；核網＝其他。 */}
               {panelAxis === "side" &&
                 ([["radio", t("Radio side (UE, base station)")], ["core", t("Core network")], [null, t("Starter not identified")]] as const).map(([side, label]) => {
-                  const members = procedures
+                  const members = visibleProcedures
                     .filter((p) => (p.initiatorSide ?? null) === side)
                     .sort((a, b) => a.startFrame - b.startFrame);
                   if (members.length === 0) return null;
@@ -1438,6 +1518,79 @@ export function SessionAnalysisView({
               </button>
             )}
           </div>
+          {/* **失敗前發生了什麼**：開段 → 核網轉折點 → 第一則失敗 → 最後一則失敗。點一個節點，梯形圖捲到那一格。 */}
+          {focusRecord && focusRecord.causalChain.length > 0 && (
+            <div className="mb-3 rounded border border-signal-red-border bg-signal-red-bg p-2 text-[11px]">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-signal-red">{t("What led to this failure")} · {intentName(focusRecord)}</span>
+                <button
+                  type="button"
+                  onClick={() => onSelectFrame(focusRecord.causalChain[0].frame)}
+                  className="rounded border border-border bg-surface-1 px-2 py-0.5 text-fg-muted hover:border-signal-cyan hover:text-signal-cyan"
+                >
+                  {t("Rewind to the start")}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {focusRecord.causalChain.map((node, i) => (
+                  <Fragment key={`${node.step}-${node.frame}`}>
+                    {i > 0 && <span className="text-fg-dim">➔</span>}
+                    <button
+                      type="button"
+                      onClick={() => onSelectFrame(node.frame)}
+                      title={[
+                        t(CHAIN_STEP_LABEL[node.step] ?? node.step),
+                        node.label,
+                        `${node.roleFrom} → ${node.roleTo}`,
+                        ...Object.entries(node.keyParameters).map(([k, v]) => `${k}: ${v}`),
+                      ].join("\n")}
+                      className={cn(
+                        "rounded border px-1.5 py-0.5 font-mono",
+                        selectedEvent?.frameNumber === node.frame
+                          ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan"
+                          : "border-border bg-surface-1 text-fg-muted hover:border-signal-cyan",
+                      )}
+                    >
+                      {node.step.endsWith("failure") ? "💥" : "📍"} #{node.frame} {shortenLabel(node.label, 30)}
+                    </button>
+                  </Fragment>
+                ))}
+              </div>
+              <p className="mt-1.5 text-fg-dim">
+                {t("Order within the same segment, not proven causation: the capture shows timing, not why a network function decided.")}
+              </p>
+            </div>
+          )}
+          {/* **時延拆解**：只列量到的里程碑。超過使用者設的閾值就標過慢（⚙️ 可調）。 */}
+          {focusRecord && focusLatency.length > 0 && (
+            <div className="mb-3 rounded border border-border bg-surface-2 p-2 text-[11px]">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-fg-muted">{t("Latency breakdown")} · {intentName(focusRecord)}</span>
+                {focusRecord.kpi && focusLimit !== undefined && (
+                  <span className={cn("tabular-nums", recordSlow(focusRecord) ? "font-semibold text-signal-amber" : "text-fg-dim")}>
+                    {recordSlow(focusRecord) ? `${t("SLOW")} ` : ""}{durationText(focusRecord.kpi.value)} / {focusLimit}s
+                  </span>
+                )}
+              </div>
+              {focusLatency.map(([key, value]) => {
+                const widest = Math.max(...focusLatency.map(([, v]) => v), 0.001);
+                return (
+                  <div key={key} className="mb-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-fg-dim">{t(LATENCY_LABEL[key] ?? key)}</span>
+                      <span className="tabular-nums text-fg">{durationText(value)}</span>
+                    </div>
+                    <div className="h-1.5 rounded bg-surface-1">
+                      <div
+                        className={cn("h-1.5 rounded", recordSlow(focusRecord) ? "bg-signal-amber" : "bg-signal-cyan")}
+                        style={{ width: `${Math.max(2, (value / widest) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="rounded border border-border bg-surface-2 p-3">
             {/* **事件的事實與封包的事實要分開把關。**
                 `selectedPacket` 來自 `rawPackets`，那是封包清單的**載入視窗**

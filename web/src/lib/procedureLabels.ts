@@ -24,6 +24,7 @@ export const PROCEDURE_LABEL: Record<string, string> = {
   handover: "Handover",
   "ue-context-release": "Context release",
   "eps-fallback": "EPS fallback",
+  csfb: "CS fallback (4G)",
   "context-transfer": "Context transfer (N26)",
   "dedicated-bearer-activation": "Dedicated bearer setup",
   "dedicated-bearer-deactivation": "Dedicated bearer release",

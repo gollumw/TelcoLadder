@@ -44,6 +44,7 @@ import {
   rowToPacket,
   subscribersToSessions,
   toRadioConnection,
+  toBehaviorRecord,
   type RadioConnectionJson,
   toProtocolNodes,
   type DecodeNodeJson,
@@ -323,6 +324,7 @@ export function apiSource(sid: string | null): DataSource {
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
         connections?: RadioConnectionJson[];
+        behaviors?: Parameters<typeof toBehaviorRecord>[0][];
       }>(supi.includes(":")
         ? `/api/${need()}/callflow?identity=${encodeURIComponent(supi)}`
         : `/api/${need()}/callflow?supi=${encodeURIComponent(supi)}`);
@@ -333,6 +335,7 @@ export function apiSource(sid: string | null): DataSource {
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, supi)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
         connections: (body.connections ?? []).map(toRadioConnection),
+        behaviors: (body.behaviors ?? []).map(toBehaviorRecord),
       };
     },
 
@@ -374,6 +377,7 @@ export function apiSource(sid: string | null): DataSource {
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
         connections?: RadioConnectionJson[];
+        behaviors?: Parameters<typeof toBehaviorRecord>[0][];
         end_to_end?: { full: boolean; related: Record<string, number>; unattributed_frames: number[] };
       }>(`/api/${need()}/callflow?call=${encodeURIComponent(handle)}${full ? "&full=1" : ""}`);
       return {
@@ -383,6 +387,7 @@ export function apiSource(sid: string | null): DataSource {
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
         connections: (body.connections ?? []).map(toRadioConnection),
+        behaviors: (body.behaviors ?? []).map(toBehaviorRecord),
         endToEnd: body.end_to_end
           ? { full: body.end_to_end.full, related: body.end_to_end.related, unattributedFrames: body.end_to_end.unattributed_frames ?? [] }
           : undefined,
@@ -413,6 +418,7 @@ export function apiSource(sid: string | null): DataSource {
         events: CallFlowEventJson[];
         procedures?: CallFlowProcedureJson[];
         connections?: RadioConnectionJson[];
+        behaviors?: Parameters<typeof toBehaviorRecord>[0][];
       }>(`/api/${need()}/callflow?diameter=${encodeURIComponent(handle)}`);
       return {
         wire: body.wire,
@@ -422,6 +428,7 @@ export function apiSource(sid: string | null): DataSource {
         events: (body.events ?? []).map((e) => toCallFlowEvent(e, handle)),
         procedures: (body.procedures ?? []).map(toCallFlowProcedure),
         connections: (body.connections ?? []).map(toRadioConnection),
+        behaviors: (body.behaviors ?? []).map(toBehaviorRecord),
       };
     },
 

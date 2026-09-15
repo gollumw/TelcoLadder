@@ -243,6 +243,7 @@ export function DiameterFlowsView({
             backLabel={t("Back to the Diameter flow list")}
             callFlowEvents={callFlow.events}
             procedures={callFlow.procedures}
+            behaviors={callFlow.behaviors ?? []}
             participants={callFlow.participants}
             ladderIsWireView={callFlow.wire}
             uncorrelatedDomains={callFlow.uncorrelatedDomains}

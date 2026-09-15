@@ -318,6 +318,7 @@ export function CallsView({
             backLabel={t("Back to the call list")}
             callFlowEvents={callFlow.events}
             procedures={callFlow.procedures}
+            behaviors={callFlow.behaviors ?? []}
             participants={callFlow.participants}
             ladderIsWireView={callFlow.wire}
             uncorrelatedDomains={callFlow.uncorrelatedDomains}

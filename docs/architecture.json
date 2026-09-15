@@ -19,6 +19,7 @@
   "adapters.sgsap",
   "adapters.sip",
   "anonymize",
+  "behavior",
   "callflow",
   "calls",
   "causes",
