@@ -419,6 +419,20 @@ first request to its completion — not everything that happened in the same
 frames. When other messages from the same subscriber fall inside that time, the
 panel says how many and offers to show them dimmed.
 
+### Lane order (2026-09-15)
+
+Lanes run from the radio side on the left to IMS on the right, and a network
+function that is not in the capture is not drawn:
+
+- **Radio side**: UE, gNB, eNB.
+- **5G core**: AMF, SMF, then AUSF, UDM, UDR, PCF, BSF, NSSF, NRF, SCP, CHF,
+  SMSF, NEF — the user plane, UPF, last.
+- **4G core**: MME, DRA, SLF, HSS, AAA, SGW, PGW, PCEF, PCRF — then MSC/VLR.
+  There is one HSS lane; IMS Cx and Sh exchanges are drawn to it as well.
+- **IMS**: P-CSCF (with the AF), I-CSCF, S-CSCF, ENUM, AS, MGC, MGW.
+
+The same order is used by the CLI, Mermaid and the summary.
+
 ### One lane per network function (2026-09-15)
 
 A core network function seen on several addresses — an AMF pool, an MME or
