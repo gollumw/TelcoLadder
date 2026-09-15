@@ -806,25 +806,26 @@ DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
 #: 依首次出現順序。這只是呈現偏好，不影響任何判定。
 PARTICIPANT_ORDER = (
-    # 5G 核網（既有順序不動）
-    "UE", "gNB", "AMF", "SCP", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF",
-    "NRF", "SMF", "UPF", "CHF", "SMSF", "NEF",
-    # 4G EPC 控制面（T3，2026-08-23）。`MME` 原本在下面 Diameter 那組，
-    # 移上來與 `eNB` 相鄰 —— 它在 S1-MME 上是接取側的對端，在 S6a 上才是
-    # HSS 的對端，而**一份混合擷取檔裡兩種都會出現**；跟著接取側排，
-    # UE → eNB → MME → SGW → PGW 才讀得下去。
-    "eNB", "MME", "SGW", "PGW",
-    # SGs 的對端（2026-09-12）：CS 那一側，排在 EPC 之後。
+    # **無線側在最左，核網依世代往右，IMS 在最右**（使用者裁定 2026-09-15）。沒出現的網元不畫，
+    # 所以這張表只決定「出現了的誰排在誰左邊」。梯形圖、CLI、Mermaid、摘要都用這一份。
+    #
+    # 無線側：手機、5G 基地台、4G 基地台。一份混合擷取檔裡兩種基地台都貼著 UE。
+    "UE", "gNB", "eNB",
+    # 5G 核網：AMF → SMF 在前（接取與會話的兩個控制點），其後是訂戶資料、策略與服務框架，
+    # **使用者面 UPF 在 5G 最右** —— 讀信令的人先看控制面。
+    "AMF", "SMF", "AUSF", "UDM", "UDR", "PCF", "BSF", "NSSF", "NRF", "SCP", "CHF", "SMSF", "NEF",
+    "UPF",
+    # 4G 核網：MME → HSS → SGW → PGW（使用者給的順序）。DRA 是 MME 與 HSS 之間的 Diameter 中繼，
+    # 夾在兩者之間；SLF 是 HSS 前面的 redirect agent；3GPP AAA 是 HSS 的 SWx 對端。PCEF 與 PGW
+    # 是同一個網元家族（`ROLE_FAMILIES`），PCRF 是它的 Gx 對端。
+    # **HSS 只有一條**：IMS 的 Cx／Sh 也畫到這一條 —— 同一個 HSS 服務兩個世代，拆成兩條會讓人
+    # 以為是兩台。
+    "MME", "DRA", "SLF", "HSS", "AAA", "SGW", "PGW", "PCEF", "PCRF",
+    # SGs 的對端：CS 那一側，排在 EPC 之後、IMS 之前。
     "MSC/VLR",
-    # Diameter：中繼 → IMS → 訂戶資料 → 策略（2026-08-23）
-    # IMS：接取側的 P-CSCF 排在兩個查詢用的 CSCF 之前（訊令的實際順序）。
-    # Rx 的 AF 貼著 P-CSCF（兩者可能是同一台，但不一定）；Sh 的 AS 在 S-CSCF 之後；
-    # 3GPP AAA 貼著 HSS（SWx 的對端）。
-    # SLF（Cx／Sh 的 redirect agent，2026-09-06）貼在 HSS 前面：查詢先到它，
-    # 再被指到 HSS。MGC／MGW 是 H.248 的兩端（Iq／Mn／Mp 分不出來，故用中性名）。
-    # ENUM（2026-09-13）貼著 S-CSCF：號碼翻成路由位址是 S-CSCF／AS 在呼叫建立時問的。
-    "DRA", "P-CSCF", "AF", "I-CSCF", "S-CSCF", "ENUM", "AS", "SLF", "HSS", "AAA", "PCEF", "PCRF",
-    "MGC", "MGW",
+    # IMS 在最右：接取側的 P-CSCF（Rx 的 AF 貼著它）→ 查詢用的 I/S-CSCF → ENUM → AS →
+    # H.248 的兩端（Iq／Mn／Mp 分不出來，故用中性名 MGC／MGW）。
+    "P-CSCF", "AF", "I-CSCF", "S-CSCF", "ENUM", "AS", "MGC", "MGW",
 )
 
 

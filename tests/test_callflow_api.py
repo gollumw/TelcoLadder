@@ -331,3 +331,19 @@ def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
     # 不是翻譯（見 `causes.annotate` 與 test_causes 的跨語言快取那條）。
     assert failed[0]["cause"] and "Protocol error" in failed[0]["cause"]
     assert failed[0]["first_failure"] and "out of sync" in failed[0]["first_failure"]
+
+
+def test_the_participant_order_runs_from_radio_to_ims() -> None:
+    """無線側在最左、核網依世代往右、IMS 在最右（使用者裁定 2026-09-15）。
+    突變：把 eNB 放回 MME 前面、或 HSS 放回 IMS 那組、或 UPF 放回 SMF 後面 → 紅。"""
+    order = PARTICIPANT_ORDER
+    pos = order.index
+    radio = ("UE", "gNB", "eNB")
+    fiveg = ("AMF", "SMF", "AUSF", "UDM", "PCF", "NRF", "UPF")
+    fourg = ("MME", "DRA", "HSS", "SGW", "PGW", "PCRF")
+    ims = ("P-CSCF", "I-CSCF", "S-CSCF", "AS", "MGC", "MGW")
+    assert max(map(pos, radio)) < min(map(pos, fiveg)) < max(map(pos, fiveg)) < min(map(pos, fourg))
+    assert max(map(pos, fourg)) < pos("MSC/VLR") < min(map(pos, ims))
+    assert pos("AMF") < pos("SMF") < pos("AUSF") and max(pos(r) for r in fiveg if r != "UPF") < pos("UPF")
+    assert pos("MME") < pos("DRA") < pos("HSS") < pos("SGW") < pos("PGW")
+    assert len(set(order)) == len(order), "a role listed twice would silently use its first position"
