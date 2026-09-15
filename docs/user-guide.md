@@ -401,6 +401,24 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### Who started it, and only that conversation (2026-09-15)
+
+The procedure panel on the ladder has two ways to group segments:
+**By scenario** (registration, handover, session …) and **By who started it**:
+
+- **Radio side (UE, base station)** — the first message came from the UE or a
+  gNB/eNB: a registration, a PDU session or TAU request, a UE-started service
+  request, a gNB's HandoverRequired, a release the base station asked for.
+- **Core network** — anything else: Paging or a Downlink Data Notification, a
+  release command, bearer setup, Diameter, a call leg the core sends to the UE.
+- A segment whose first sender has no role is listed as not identified; it is
+  not guessed.
+
+Selecting a segment shows **only that segment's own messages** — from its
+first request to its completion — not everything that happened in the same
+frames. When other messages from the same subscriber fall inside that time, the
+panel says how many and offers to show them dimmed.
+
 ### One lane per network function (2026-09-15)
 
 A core network function seen on several addresses — an AMF pool, an MME or

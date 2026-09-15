@@ -293,6 +293,8 @@ PROCEDURE_FIELDS = {
     "protocols", "note",
     # 2026-09-14：段裡唯一的 DNN（5G）／APN（4G）；沒帶或不唯一是 null。加欄不升版。
     "dnn",
+    # 2026-09-15：誰開的這一段（radio／core）；判不出 null。加欄不升版。
+    "initiator_side",
     # 2026-09-06：依序出現的 cause 命中 cause 表的順序規則時填，否則 null。
     # **加欄不升版**（xdr 檔頭規則）—— 既有的 jq 一個都不會壞，而少了它，
     # 這個工具唯一講得出「這代表什麼」的地方就出不了 xDR。

@@ -303,6 +303,7 @@ export interface CallFlowProcedureJson {
   direction?: string | null;
   trigger?: string | null;
   dnn?: string | null;
+  initiator_side?: string | null;
 }
 
 export function toCallFlowProcedure(p: CallFlowProcedureJson) {
@@ -325,6 +326,7 @@ export function toCallFlowProcedure(p: CallFlowProcedureJson) {
     direction: p.direction ?? null,
     trigger: p.trigger ?? null,
     dnn: p.dnn ?? null,
+    initiatorSide: p.initiator_side ?? null,
   };
 }
 
@@ -358,6 +360,8 @@ export interface CallFlowEventJson {
   delta?: number;
   /** 間隔超過 `viewer.SLOW_GAP`。 */
   slow?: boolean;
+  /** 這則訊息屬於哪一段（段的 `start_frame`）；不屬於任何一段是 null。 */
+  procedure?: number | null;
   /** Diameter 的逐則路由事實（`callflow._render`）。只有 Diameter 事件有。 */
   origin_host?: string;
   destination_host?: string;
@@ -408,6 +412,7 @@ export function toCallFlowEvent(event: CallFlowEventJson, supi: string): CallFlo
     ...(event.rrc_establishment_cause ? { rrcEstablishmentCause: event.rrc_establishment_cause } : {}),
     ...(event.delta !== undefined ? { deltaSeconds: event.delta } : {}),
     ...(event.slow !== undefined ? { slow: event.slow } : {}),
+    ...(event.procedure !== undefined ? { procedureStart: event.procedure } : {}),
     ...(event.origin_host ? { originHost: event.origin_host } : {}),
     ...(event.destination_host ? { destinationHost: event.destination_host } : {}),
     ...(event.hop_by_hop_id ? { hopByHopId: event.hop_by_hop_id } : {}),

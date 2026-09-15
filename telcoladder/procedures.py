@@ -122,6 +122,7 @@ from telcoladder import timers
 from telcoladder.i18n import _
 from telcoladder.identities import identity_label
 from telcoladder.interfaces import IMS_REFERENCE_POINTS
+from telcoladder.lanes import RADIO_ROLES
 from telcoladder.causes import is_user_outcome
 from telcoladder.model import ( NF_ROLE_HINTS_KEY,
     RELEASE_INITIATOR_KEY, CauseRef, Flow, IdKind, Message, subscriber_identity, SequenceRef,
@@ -445,6 +446,13 @@ class Procedure:
     trigger: str | None = None
     """觸發者（`TRIGGERS`）：只有 `service-request` 填 —— `network`（DDN 或 Paging 起頭）或
     `ue`。其他 kind 一律 None：線路上分不出兩種可能的屬性不填。"""
+    initiator_side: str | None = None
+    """誰開的這一段（`INITIATOR_SIDES`）：開段訊息的送出者是手機或基地台 → `radio`，其他角色 →
+    `core`；送出者角色判不出 → None（不猜）。使用者裁定 2026-09-15：只分無線側（含手機）與核網 ——
+    換手的 HandoverRequired 是 gNB 送的，所以算無線側；Paging／DDN 開的 service request 算核網。"""
+    members: "tuple[Message, ...]" = field(default=(), repr=False, compare=False)
+    """這一段自己的訊息（含折進來的釋放）。畫面「只看這一段」靠它，**不靠格號範圍** —— 同一個
+    訂戶同一段時間的其他訊息落在範圍內，照範圍過濾就混進來。不進 xDR（那是物件，不是事實）。"""
 
 
 def _own_label(msg: Message) -> str:
@@ -522,6 +530,18 @@ def _flow_supi(flow: Flow) -> str | None:
 def _flow_subscriber(flow: Flow) -> str | None:
     key = subscriber_identity(flow.identity_keys)
     return identity_label(key) if key is not None else None
+
+
+#: `Procedure.initiator_side` 的固定詞彙。
+INITIATOR_SIDES: tuple[str, ...] = ("radio", "core")
+
+
+def _initiator_side(opener: Message | None) -> str | None:
+    """開段訊息的送出者在哪一側。角色是 `nf.apply_roles` 判好的線路事實；判不出就是 None。"""
+    role = opener.src.role if opener is not None else None
+    if role is None:
+        return None
+    return "radio" if role in RADIO_ROLES else "core"
 
 
 def _single_dnn(window: list[Message]) -> str | None:
@@ -648,6 +668,8 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
         # 誰先開口的：請求開的是無線側，Command 開的是核網。
         release_initiator=release_opener.detail[RELEASE_INITIATOR_KEY] if release_opener else None,
         dnn=_single_dnn(window),
+        initiator_side=_initiator_side(window[0]),
+        members=tuple(window),
         # 那則釋放帶的 Cause IE。通話段的 `release_cause` 另由 SIP 路徑填（`_sip_segments`）。
         release_cause=release_opener.cause if release_opener is not None else None,
         timer=timer_hint.timer.name if timer_hint else None,
@@ -817,6 +839,8 @@ def _diameter_segments(messages: list[Message], supi: str | None,
             protocols=tuple(sorted({m.protocol for m in window})),
             sequence=_match_sequence(failed),
             note=note,
+            initiator_side=_initiator_side(requests[0] if requests else window[0]),
+            members=tuple(window),
             # **世代與類別只有一份定義**（`_family_of`）。在這裡另寫一次 `("4g", "subscriber-data")`
             # 的話，那個函式裡的 `hss-` 分支就成了沒有人走的死碼 —— 而兩份定義遲早會漂。
             **dict(zip(("family", "category"),
@@ -967,6 +991,10 @@ def _sip_segments(messages: list[Message], supi: str | None,
             released_by=released_by,
             release_cause=release_cause,
             final_status=final_status,
+            # SIP 的一段以第一則**請求**為開段（回應可能先被抓到）：UE 發的 INVITE 算無線側，
+            # 核網送往 UE 的被叫腿算核網（使用者裁定 2026-09-15）。
+            initiator_side=_initiator_side(requests[0] if requests else window[0]),
+            members=tuple(window),
         ))
     return procedures, unassigned
 
@@ -1164,4 +1192,4 @@ def segment(analysis: Analysis) -> tuple[list[Procedure], int]:
     return procedures, stray
 
 
-__all__ = ["CATEGORIES", "DIRECTIONS", "KINDS", "Procedure", "QUIET_GAP", "capture_end", "segment", "segment_flow", "TAIL_SLACK", "TRIGGERS"]
+__all__ = ["CATEGORIES", "DIRECTIONS", "INITIATOR_SIDES", "KINDS", "Procedure", "QUIET_GAP", "capture_end", "segment", "segment_flow", "TAIL_SLACK", "TRIGGERS"]

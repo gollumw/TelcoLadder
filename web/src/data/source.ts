@@ -218,6 +218,8 @@ export interface CallFlowProcedure {
   trigger?: string | null;
   /** 線路上唯一的 DNN／APN。沒帶或不唯一是 null。 */
   dnn?: string | null;
+  /** 誰開的這一段（後端 `procedures` 看開段訊息的送出者）：`radio`（手機或基地台）／`core`；判不出是 null。 */
+  initiatorSide?: string | null;
 }
 
 /** 一個訂戶的梯形圖資料。 */
