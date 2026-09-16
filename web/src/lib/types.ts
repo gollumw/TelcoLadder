@@ -222,3 +222,49 @@ export interface MockDataset {
   correlationEntries: CorrelationEntry[];
   rawPackets: RawPacket[];
 }
+
+// ── 行為膠囊（2026-09-16，後端 `telcoladder/behavior.py`）──────────────────
+
+/** 失敗前置鏈的一個節點。**同一段裡的先後，不是證實的因果。** */
+export interface CausalNode {
+  /** `origin`／`turning-point`／`first-failure`／`failure`。 */
+  step: string;
+  frame: number;
+  label: string;
+  roleFrom: string;
+  roleTo: string;
+  /** adapter 已讀出的非識別碼欄位（DNN、註冊型別、cause…）。不含 IMSI／SUPI／門號。 */
+  keyParameters: Record<string, string>;
+}
+
+/** 一段程序重新編碼成與網元無關的行為契約。 */
+export interface BehaviorRecord {
+  id: string;
+  /** 六類之一：registration／service-request／handover／voice／session／release。 */
+  category: string;
+  intentLabel: string;
+  kind: string;
+  family: string | null;
+  direction: string | null;
+  initiatorSide: string | null;
+  outcome: string;
+  cause: string | null;
+  startFrame: number;
+  endFrame: number;
+  durationS: number;
+  /** 只放量到的秒數；沒量到的鍵不存在。 */
+  latencyBreakdown: Record<string, number>;
+  /** 拿哪個閾值比、比哪個數字。慢不慢由畫面依使用者的閾值判（`kpiThresholds.ts`）。 */
+  kpi: { threshold: string; value: number } | null;
+  /** 只有失敗的行為有。 */
+  causalChain: CausalNode[];
+  memberFrames: number[];
+  connection: number | null;
+}
+
+/** 「過慢」的閾值（秒），存在瀏覽器。 */
+export interface KpiThresholds {
+  handover: number;
+  volte_pdd: number;
+  registration: number;
+}

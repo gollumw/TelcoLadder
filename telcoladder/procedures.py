@@ -241,6 +241,15 @@ KINDS: tuple[_Kind, ...] = (
     # 同 kind 表示它與還開著的那次換手會合併（規則 ③），不會把一次換手切成兩段。
     _Kind("handover", "HandoverCancel", ("HandoverCancelResponse",), exact=True),
     _Kind("handover", "Relocation Cancel Request", ("Relocation Cancel Response",), exact=True),
+    # **Path Switch 是換手的尾巴，不是一次新連線**（2026-09-16）。Xn（NGAP）或 X2（S1AP）換手之後，
+    # 目標基地台替**已經連著的**手機向核網要求改路徑 —— 所以它開一段 `handover`，不開無線連線
+    # （`connections.py` 只認 InitialUEMessage）。逐字相等：`PathSwitchRequestResponse` 以它為前綴。
+    # **沒有任何 fixture 有 Path Switch**，規則由 `tests/test_behavior.py` 的合成訊息守。
+    _Kind("handover", "PathSwitchRequest", ("PathSwitchRequestResponse",), exact=True),
+    # **CS fallback**（2026-09-16）：4G 手機要打或接 CS 電話時送 Extended service request，eNB 以
+    # UEContextModification（連線中）或 InitialContextSetup（閒置）把它送去 2G/3G。**沒有任何 fixture
+    # 有 CSFB 通話**（`4g-sgs-location-update` 只有位置更新），規則由合成訊息守。
+    _Kind("csfb", "Extended service request", ("UEContextModificationResponse", "InitialContextSetupResponse")),
     # PDN 連線釋放（S11 的 Delete Session）—— detach 或核網釋放的承載腿。
     _Kind("pdn-connection-release", "Delete Session Request", ("Delete Session Response",), exact=True),
 )
@@ -289,6 +298,7 @@ TAXONOMY: dict[str, tuple[str, str]] = {
     # 訊令連線的釋放。兩個世代同名，世代看視窗裡的協定（`_family_of`）。
     "ue-context-release": ("5g", "release"),
     "eps-fallback": ("interworking", "fallback"),
+    "csfb": ("4g", "fallback"),
     # 只看得到核網側交換的 Context Request 段；方向看誰發的（`_finish`）。**S10（MME 池內）
     # 的 Context Request 也會被標成互通** —— 沒有任何擷取檔有 S10，沒資料的規則不寫。
     "context-transfer": ("interworking", "mobility"),

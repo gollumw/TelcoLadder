@@ -91,6 +91,10 @@ _OURS = {
     "src/components/CallsView.tsx",
     # 程序的畫面名稱（2026-09-13）—— 梯形圖與總覽共用一張表；設計實驗場沒有這一層。
     "src/lib/procedureLabels.ts",
+    # 行為膠囊（2026-09-16）：意圖／時延的畫面名稱、「過慢」閾值與它的設定面板。設計實驗場沒有這一層。
+    "src/lib/behaviorLabels.ts",
+    "src/lib/kpiThresholds.ts",
+    "src/components/SettingsModal.tsx",
 }
 
 

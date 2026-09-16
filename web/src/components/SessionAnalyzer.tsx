@@ -455,6 +455,7 @@ export default function SessionAnalyzer({
             callFlowEvents={callFlow?.events ?? callFlowEvents}
             procedures={callFlow?.procedures ?? []}
             connections={callFlow?.connections ?? []}
+            behaviors={callFlow?.behaviors ?? []}
             participants={callFlow?.participants ?? []}
             ladderIsWireView={callFlow?.wire ?? false}
             uncorrelatedDomains={callFlow?.uncorrelatedDomains ?? []}

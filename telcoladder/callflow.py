@@ -15,6 +15,7 @@ from telcoladder.causes import lookup
 from telcoladder.i18n import _
 from telcoladder.identities import find_flows
 from telcoladder.interfaces import reference_point
+from telcoladder.behavior import DEFAULT_KPI_THRESHOLDS, behavior_records, connection_summary
 from telcoladder.connections import radio_connections
 from telcoladder.lanes import lane_group
 from telcoladder.model import (
@@ -392,6 +393,9 @@ def _render(
         for p in procedures
     ]
     procedure_rows.sort(key=lambda p: p["start_frame"])
+    # **行為膠囊**（`behavior.py`，2026-09-16）：同一批程序重新編碼成與網元無關的契約 —— 意圖、結局、
+    # 時延拆解、失敗的前置鏈。不新增推論；慢不慢由畫面依使用者設的閾值判（`kpi` 只說拿什麼比）。
+    records = behavior_records(procedures, messages, connection_of)
 
     return {
         "supi": supi,
@@ -410,6 +414,8 @@ def _render(
             {
                 "index": c.index, "start_frame": c.start_frame, "end_frame": c.end_frame,
                 "messages": c.messages, "released": c.released,
+                # 膠囊的意圖、結局（連線裡最嚴重的）、第一筆失敗的 cause、耗時（`behavior.connection_summary`）。
+                **connection_summary(c, records),
                 "kinds": list(dict.fromkeys(
                     p.kind for p in sorted(procedures, key=lambda p: p.start_frame)
                     if any(connection_of.get(id(m)) == c.index for m in getattr(p, "members", ()))
@@ -417,6 +423,8 @@ def _render(
             }
             for c in connections
         ],
+        "behaviors": [r.to_json() for r in records],
+        "kpi_defaults": dict(DEFAULT_KPI_THRESHOLDS),
         "events": events,
     }
 

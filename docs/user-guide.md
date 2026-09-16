@@ -401,6 +401,40 @@ protocol that carried it:
   called it off, the network did not break. On the same MME trace six handovers
   changed from "failed" to "cancelled".
 
+### Behavior capsules, slowness and what led to a failure (2026-09-16)
+
+Each radio connection chip now reads as a capsule:
+**[lamp] #n · intent · result or cause · time**. The lamp is red when any
+behavior in the connection failed, amber when one was slow, incomplete or
+cancelled, green otherwise. The intent is the first behavior's —
+*initial registration*, *paged service request*, *inter-system handover (N26)*,
+*inter-MME handover (S10)*, *path switch (Xn/X2)*, *VoLTE call*, *EPS fallback*,
+*CS fallback*, *IMS session* or *internet session*, *released by the RAN* or
+*by the core*. **Failed & slow only** hides everything else in the panel.
+
+**Slow** is judged in your browser against thresholds you set with the ⚙️
+button on the ladder (defaults: handover 1.5 s, VoLTE post-dial delay 3.0 s,
+registration 1.0 s). They are saved in this browser only; changing them
+recolours the capsules without re-reading the capture. A handover is measured
+as preparation plus execution, a call by its post-dial delay (INVITE to the
+first 180/183), a registration by its duration — and only when it succeeded,
+because a failed registration's duration is usually a timer waiting.
+
+Select a failed or slow behavior and the inspector shows two cards:
+
+- **Latency breakdown** — the milestones that were measured: preparation and
+  execution for a handover; post-dial delay, time to answer and a Cx
+  Multimedia-Auth round trip inside the call; registration time.
+- **What led to this failure** — the request that opened the segment, the last
+  message a core function sent before the first failure, the first failure and
+  the final one. Click a step to jump the ladder there, or **Rewind to the
+  start**. This is the order of messages within one segment, not proven
+  causation: a capture shows timing, not why a network function decided.
+
+S10 inter-MME handover, the Xn/X2 path switch, CS fallback and the Cx delay are
+written from message names and tested only on synthetic messages — no capture
+in this repository contains them.
+
 ### One radio connection at a time (2026-09-16)
 
 **By radio connection** is a third way to group the procedure panel. Each chip

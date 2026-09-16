@@ -232,6 +232,11 @@ export interface RadioConnection {
   released: boolean;
   /** 這次連線裡開頭的程序種類，依先後、不重複。 */
   kinds: string[];
+  /** 膠囊的意圖（第一筆行為的）、結局（最嚴重的）、第一筆失敗的 cause。沒有行為時是 null。 */
+  intentLabel: string | null;
+  outcome: string | null;
+  cause: string | null;
+  durationS: number;
 }
 
 /** 一個訂戶的梯形圖資料。 */
@@ -251,6 +256,8 @@ export interface CallFlow {
   endToEnd?: { full: boolean; related: Record<string, number>; unattributedFrames: number[] };
   /** 一次次無線連線。沒有 N2／S1 連線的擷取是空陣列。 */
   connections?: RadioConnection[];
+  /** 行為膠囊（後端 `behavior.py`）：意圖、結局、時延拆解、失敗的前置鏈。 */
+  behaviors?: import("@/lib/types").BehaviorRecord[];
 }
 
 // ── Gm 的 IPsec（2026-09-08）──────────────────────────────────────────

@@ -281,6 +281,11 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
   Cx/Dx, Sh, Rx, Gx, SWx, S6b); the rest — Rf included — decode and show their
   Application-Id with no role inference. Every Diameter fixture is written from
   RFC 6733, not captured: TCP only, no SCTP, invented timing.
+- **Four behavior rules have no capture behind them.** S10 inter-MME handover,
+  the Xn/X2 path switch, CS fallback and the Cx authentication delay inside a
+  call are written from message names and covered only by synthetic tests; how
+  they read a real capture is unmeasured. The chain shown before a failure is the
+  order of messages within one segment, not proven causation.
 - **SIP alone does not name the core proxies.** The UE and the P-CSCF come from
   Gm itself — the security-agreement headers, or which address holds IPsec
   associations with several peers, falling back to a `Contact` that carries a

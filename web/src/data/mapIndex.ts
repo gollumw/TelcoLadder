@@ -731,8 +731,58 @@ export interface RadioConnectionJson {
   messages: number;
   released: boolean;
   kinds: string[];
+  intent_label?: string | null;
+  outcome?: string | null;
+  cause?: string | null;
+  duration_s?: number;
 }
 
 export function toRadioConnection(c: RadioConnectionJson) {
-  return { index: c.index, startFrame: c.start_frame, endFrame: c.end_frame, messages: c.messages, released: c.released, kinds: c.kinds ?? [] };
+  return {
+    index: c.index, startFrame: c.start_frame, endFrame: c.end_frame, messages: c.messages, released: c.released, kinds: c.kinds ?? [],
+    intentLabel: c.intent_label ?? null, outcome: c.outcome ?? null, cause: c.cause ?? null, durationS: c.duration_s ?? 0,
+  };
+}
+
+/** `/callflow` 的 `behaviors`（`telcoladder/behavior.py`）。 */
+export interface CausalNodeJson {
+  step: string;
+  frame: number;
+  label: string;
+  role_from: string;
+  role_to: string;
+  key_parameters: Record<string, string>;
+}
+
+export interface BehaviorRecordJson {
+  id: string;
+  category: string;
+  intent_label: string;
+  kind: string;
+  family: string | null;
+  direction: string | null;
+  initiator_side: string | null;
+  outcome: string;
+  cause: string | null;
+  start_frame: number;
+  end_frame: number;
+  duration_s: number;
+  latency_breakdown: Record<string, number>;
+  kpi: { threshold: string; value: number } | null;
+  causal_chain: CausalNodeJson[];
+  member_frames: number[];
+  connection: number | null;
+}
+
+export function toBehaviorRecord(r: BehaviorRecordJson): import("@/lib/types").BehaviorRecord {
+  return {
+    id: r.id, category: r.category, intentLabel: r.intent_label, kind: r.kind, family: r.family,
+    direction: r.direction, initiatorSide: r.initiator_side, outcome: r.outcome, cause: r.cause,
+    startFrame: r.start_frame, endFrame: r.end_frame, durationS: r.duration_s,
+    latencyBreakdown: r.latency_breakdown ?? {}, kpi: r.kpi ?? null,
+    causalChain: (r.causal_chain ?? []).map((n) => ({
+      step: n.step, frame: n.frame, label: n.label, roleFrom: n.role_from, roleTo: n.role_to, keyParameters: n.key_parameters ?? {},
+    })),
+    memberFrames: r.member_frames ?? [], connection: r.connection ?? null,
+  };
 }
