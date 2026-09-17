@@ -5,4 +5,4 @@ Phase 2 主攻 IMS（SIP / Diameter / GTP）—— 協定以 adapter 形式插�
 核心資料模型 (`telcoladder.model`) 已預留跨協定的身分關聯欄位。
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
