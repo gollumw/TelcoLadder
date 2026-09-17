@@ -586,6 +586,7 @@ const zh_TW: Record<string, string> = {
   "What led to this failure": "失敗前發生了什麼",
   "Rewind to the start": "倒帶到發起點",
   "Latency breakdown": "時延拆解",
+  "{n} connection(s) in this group": "這一組有 {n} 次連線",
   "Order within the same segment, not proven causation: the capture shows timing, not why a network function decided.":
     "這是同一段裡的先後，不是證實的因果：擷取檔看得到時序，看不到網元為什麼這樣決定。",
 };

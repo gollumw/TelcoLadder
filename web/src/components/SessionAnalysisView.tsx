@@ -549,6 +549,90 @@ export function SessionAnalysisView({
   const currentConnection = connections.find((c) => c.index === activeConnection) ?? null;
   const connectionSlow = (c: RadioConnection) => behaviors.some((r) => r.connection === c.index && recordSlow(r));
   const visibleConnections = onlyProblems ? connections.filter((c) => c.outcome === "failure" || connectionSlow(c)) : connections;
+
+  //: **子分類：同一種行為意圖收成一顆晶片**（使用者裁定 2026-09-17）。一份真實 AMF 側 trace 在「依觸發側」
+  //: 排出 20 顆、「依無線連線」排出 18 顆一模一樣的晶片，讀的人要自己一顆顆看哪個有問題。收起來之後，
+  //: **有問題的那一組預設就是展開的** —— 摺疊是為了讓失敗與過慢跳出來，不是把它們一起藏起來。
+  const intentOf = (p: CallFlowProcedure) => recordByStart.get(p.startFrame)?.intentLabel ?? p.kind;
+  const intentText = (intent: string, fallbackKind: string) =>
+    INTENT_LABEL[intent] ? t(INTENT_LABEL[intent]) : procedureName({ kind: fallbackKind });
+  const groupByKey = <T,>(items: T[], key: (x: T) => string): [string, T[]][] => {
+    const map = new Map<string, T[]>();
+    for (const item of items) map.set(key(item), [...(map.get(key(item)) ?? []), item]);
+    return [...map.entries()];
+  };
+  //: 展開狀態是**相對於預設**的：有問題的組預設展開，點一下收起；沒問題的組預設收起，點一下展開。
+  //: 存「被點過的組」而不是「展開的組」—— 否則閾值一改，原本自動展開的組會停在使用者沒選過的狀態。
+  const toggleGroup = (key: string) =>
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const isExpanded = (key: string, auto: boolean) => auto !== expandedGroups.has(key);
+  //: 子分類的晶片：意圖 · 幾次 · 結局分布 · 過慢幾次。**點它只管展開收合** —— 選哪一段仍然是點裡面那一顆，
+  //: 兩件事混在同一顆按鈕上會讓「我只是想看看」變成「我改了畫面範圍」。
+  const subGroupChip = (key: string, label: string, list: CallFlowProcedure[], problem: boolean) => {
+    const counts = OUTCOME_SEVERITY
+      .map((o) => [o, list.filter((p) => p.outcome === o).length] as const)
+      .filter(([, n]) => n > 0);
+    const slow = list.filter((p) => recordSlow(recordByStart.get(p.startFrame))).length;
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={() => toggleGroup(key)}
+        title={t("{n} segment(s) in this group", { n: list.length })}
+        className={cn("rounded border px-2 py-1 text-[11px] font-medium transition-colors", OUTCOME_STYLE[counts[0][0]])}
+      >
+        <span>{label}</span>
+        <span className="ml-1 tabular-nums opacity-70">×{list.length}</span>
+        {counts.map(([o, n]) => (
+          <span key={o} className="ml-1.5 tabular-nums opacity-70">{OUTCOME_MARK[o]}{n}</span>
+        ))}
+        {slow > 0 && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")} {slow}</span>}
+        <span className="ml-1 opacity-60">{isExpanded(key, problem) ? "▾" : "▸"}</span>
+      </button>
+    );
+  };
+  //: 一次連線的膠囊：[燈號] #n 意圖 · 結果或 cause · 耗時。意圖是這次連線第一筆行為的；結果取最嚴重的。
+  const connectionChip = (c: RadioConnection) => (
+    <button
+      key={c.index}
+      type="button"
+      onClick={() => {
+        setActiveProcedure(null);
+        setActiveGroup(null);
+        setActiveConnection(c.index);
+      }}
+      title={t("Frames {a}–{b}. From the InitialUEMessage the base station sent to the release completion.", { a: c.startFrame, b: c.endFrame })}
+      className={cn(
+        "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
+        currentConnection?.index === c.index
+          ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
+          : "border-border bg-surface-2 text-fg-muted hover:border-border-focus",
+      )}
+    >
+      {behaviors.length > 0 && <span className="mr-1">{lamp(c.outcome, connectionSlow(c))}</span>}
+      <span className="tabular-nums">#{c.index}</span>
+      <span className="mx-1 opacity-40">·</span>
+      <span>
+        {c.intentLabel
+          ? t(INTENT_LABEL[c.intentLabel] ?? c.intentLabel)
+          : c.kinds.length > 0 ? c.kinds.map((k) => procedureName({ kind: k })).join("、") : t("no procedure")}
+      </span>
+      {c.outcome === "failure" && c.cause ? (
+        <span className="ml-1 inline-block max-w-[14rem] truncate align-bottom text-signal-red">{c.cause}</span>
+      ) : c.outcome ? (
+        <span className="ml-1 opacity-70">{t(c.outcome)}</span>
+      ) : null}
+      {behaviors.length > 0 && <span className="ml-1 tabular-nums opacity-60">{durationText(c.durationS)}</span>}
+      {connectionSlow(c) && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")}</span>}
+      <span className="ml-1.5 tabular-nums opacity-60">{t("{n} msgs", { n: c.messages })}</span>
+      {!c.released && <span className="ml-1 text-signal-amber">{t("no release seen")}</span>}
+    </button>
+  );
   useEffect(() => {
     if (activeProcedure !== null || activeGroup !== null) setActiveConnection(null);
   }, [activeProcedure, activeGroup]);
@@ -1033,63 +1117,102 @@ export function SessionAnalysisView({
               {/* 展開的組：逐段晶片，**依 kind、方向、觸發與註冊型別分列** —— 同一個類別裡的
                   「換手 EPS→5GS」與「系統內換手」要看得出是兩種。 */}
               {/* 依無線連線：每一次基地台發起的連線一顆晶片 —— 從 InitialUEMessage 到釋放完成，裡面做了哪些事一眼看完。 */}
-              {panelAxis === "connection" && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
-                  <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
-                    {t("Radio connections")} · {visibleConnections.length}
-                  </span>
-                  {visibleConnections.map((c) => (
-                    <button
-                      key={c.index}
-                      type="button"
-                      onClick={() => {
-                        setActiveProcedure(null);
-                        setActiveGroup(null);
-                        setActiveConnection(c.index);
-                      }}
-                      title={t("Frames {a}–{b}. From the InitialUEMessage the base station sent to the release completion.", { a: c.startFrame, b: c.endFrame })}
-                      className={cn(
-                        "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
-                        currentConnection?.index === c.index
-                          ? "border-signal-cyan-border bg-signal-cyan-bg text-signal-cyan shadow-sm"
-                          : "border-border bg-surface-2 text-fg-muted hover:border-border-focus",
-                      )}
-                    >
-                      {/* 膠囊：[燈號] #n 意圖 · 結果或 cause · 耗時。意圖是這次連線第一筆行為的；結果取最嚴重的。 */}
-                      {behaviors.length > 0 && <span className="mr-1">{lamp(c.outcome, connectionSlow(c))}</span>}
-                      <span className="tabular-nums">#{c.index}</span>
-                      <span className="mx-1 opacity-40">·</span>
-                      <span>
-                        {c.intentLabel
-                          ? t(INTENT_LABEL[c.intentLabel] ?? c.intentLabel)
-                          : c.kinds.length > 0 ? c.kinds.map((k) => procedureName({ kind: k })).join("、") : t("no procedure")}
+              {panelAxis === "connection" && (() => {
+                // 同一種意圖的連線收成一顆子分類晶片（「被呼叫的服務請求 ×10 ✓10」），展開才逐次列出。
+                // 有失敗、過慢或沒看到釋放的那一組預設展開，並排在最前面。
+                const subs = groupByKey(visibleConnections, (c) => c.intentLabel ?? "")
+                  .map(([intent, list]) => ({
+                    intent,
+                    list,
+                    key: `conn:${intent}`,
+                    problem: list.some((c) => c.outcome === "failure" || connectionSlow(c) || !c.released),
+                  }))
+                  .sort((a, b) => Number(b.problem) - Number(a.problem) || a.list[0].index - b.list[0].index);
+                return (
+                  <div className="mt-1.5 border-l-2 border-border pl-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
+                        {t("Radio connections")} · {visibleConnections.length}
                       </span>
-                      {c.outcome === "failure" && c.cause ? (
-                        <span className="ml-1 inline-block max-w-[14rem] truncate align-bottom text-signal-red">{c.cause}</span>
-                      ) : c.outcome ? (
-                        <span className="ml-1 opacity-70">{t(c.outcome)}</span>
-                      ) : null}
-                      {behaviors.length > 0 && <span className="ml-1 tabular-nums opacity-60">{durationText(c.durationS)}</span>}
-                      {connectionSlow(c) && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")}</span>}
-                      <span className="ml-1.5 tabular-nums opacity-60">{t("{n} msgs", { n: c.messages })}</span>
-                      {!c.released && <span className="ml-1 text-signal-amber">{t("no release seen")}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* 依觸發側：每一次行為一顆晶片，依發生順序排。無線側＝手機或基地台開的段；核網＝其他。 */}
+                      {subs.map((s) => {
+                        const outcomes = OUTCOME_SEVERITY
+                          .map((o) => [o, s.list.filter((c) => c.outcome === o).length] as const)
+                          .filter(([, n]) => n > 0);
+                        const slow = s.list.filter(connectionSlow).length;
+                        const unreleased = s.list.filter((c) => !c.released).length;
+                        return (
+                          <button
+                            key={s.key}
+                            type="button"
+                            onClick={() => toggleGroup(s.key)}
+                            title={t("{n} connection(s) in this group", { n: s.list.length })}
+                            className={cn(
+                              "rounded border px-2 py-1 text-[11px] font-medium transition-colors",
+                              outcomes.length > 0 ? OUTCOME_STYLE[outcomes[0][0]] : "border-border bg-surface-2 text-fg-dim",
+                            )}
+                          >
+                            {behaviors.length > 0 && <span className="mr-1">{lamp(outcomes[0]?.[0] ?? null, slow > 0)}</span>}
+                            <span>
+                              {s.intent
+                                ? t(INTENT_LABEL[s.intent] ?? s.intent)
+                                : s.list[0].kinds.length > 0
+                                  ? s.list[0].kinds.map((k) => procedureName({ kind: k })).join("、")
+                                  : t("no procedure")}
+                            </span>
+                            <span className="ml-1 tabular-nums opacity-70">×{s.list.length}</span>
+                            {outcomes.map(([o, n]) => (
+                              <span key={o} className="ml-1.5 tabular-nums opacity-70">{OUTCOME_MARK[o]}{n}</span>
+                            ))}
+                            {slow > 0 && <span className="ml-1 font-semibold text-signal-amber">{t("SLOW")} {slow}</span>}
+                            {unreleased > 0 && <span className="ml-1 text-signal-amber">{t("no release seen")} {unreleased}</span>}
+                            <span className="ml-1 opacity-60">{isExpanded(s.key, s.problem) ? "▾" : "▸"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {subs.filter((s) => isExpanded(s.key, s.problem)).map((s) => (
+                      <div key={s.key} className="mt-1 flex flex-wrap items-center gap-1 border-l border-border pl-2">
+                        {/* 有問題的排最前面，其餘照發生順序（`sort` 穩定）。 */}
+                        {[...s.list]
+                          .sort((a, b) =>
+                            Number(b.outcome === "failure" || connectionSlow(b) || !b.released)
+                            - Number(a.outcome === "failure" || connectionSlow(a) || !a.released))
+                          .map(connectionChip)}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              {/* 依觸發側：無線側＝手機或基地台開的段；核網＝其他。每一側再依行為意圖收成子分類，
+                  有問題的那一組預設展開 —— 20 顆一字排開時，讀的人分不出哪一顆要看。 */}
               {panelAxis === "side" &&
                 ([["radio", t("Radio side (UE, base station)")], ["core", t("Core network")], [null, t("Starter not identified")]] as const).map(([side, label]) => {
                   const members = visibleProcedures
                     .filter((p) => (p.initiatorSide ?? null) === side)
                     .sort((a, b) => a.startFrame - b.startFrame);
                   if (members.length === 0) return null;
+                  const subs = groupByKey(members, intentOf)
+                    .map(([intent, list]) => ({
+                      intent,
+                      list,
+                      key: `side:${side}:${intent}`,
+                      problem: list.some((p) => p.outcome === "failure" || recordSlow(recordByStart.get(p.startFrame))),
+                    }))
+                    .sort((a, b) => Number(b.problem) - Number(a.problem) || a.list[0].startFrame - b.list[0].startFrame);
                   return (
-                    <div key={String(side)} className="mt-1.5 flex flex-wrap items-center gap-1 border-l-2 border-border pl-2">
-                      <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
-                        {label} · {members.length}
-                      </span>
-                      {members.map(segmentChip)}
+                    <div key={String(side)} className="mt-1.5 border-l-2 border-border pl-2">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="mr-1 text-[10px] uppercase tracking-wide text-fg-dim">
+                          {label} · {members.length}
+                        </span>
+                        {subs.map((s) => subGroupChip(s.key, intentText(s.intent, s.list[0].kind), s.list, s.problem))}
+                      </div>
+                      {subs.filter((s) => isExpanded(s.key, s.problem)).map((s) => (
+                        <div key={s.key} className="mt-1 flex flex-wrap items-center gap-1 border-l border-border pl-2">
+                          {/* 失敗的段排最前面，其餘照發生順序（`sort` 穩定）。 */}
+                          {[...s.list].sort((a, b) => Number(b.outcome === "failure") - Number(a.outcome === "failure")).map(segmentChip)}
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
