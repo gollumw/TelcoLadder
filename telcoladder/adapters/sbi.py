@@ -412,7 +412,7 @@ def _n2_tunnel_keys(block: dict[str, Any]) -> set[IdKey]:
 
     **走 `carrier.dig` 而不是寫死路徑**（`http2.mime_multipart.ngap`）：
     tshark 換版本改了中間層名字時，寫死的路徑會靜默失效，而靜默失效正是
-    這一段要修的東西本身（§3.1 的同一課）。
+    這一段要修的東西本身（CLAUDE.md 的 Measured decisions 的同一課）。
     """
     from telcoladder.adapters.carrier import dig
 

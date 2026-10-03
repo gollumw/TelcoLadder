@@ -456,7 +456,7 @@ class Procedure:
     `ue`。其他 kind 一律 None：線路上分不出兩種可能的屬性不填。"""
     initiator_side: str | None = None
     """誰開的這一段（`INITIATOR_SIDES`）：開段訊息的送出者是手機或基地台 → `radio`，其他角色 →
-    `core`；送出者角色判不出 → None（不猜）。使用者裁定 2026-09-15：只分無線側（含手機）與核網 ——
+    `core`；送出者角色判不出 → None（不猜）。只分無線側（含手機）與核網 ——
     換手的 HandoverRequired 是 gNB 送的，所以算無線側；Paging／DDN 開的 service request 算核網。"""
     members: "tuple[Message, ...]" = field(default=(), repr=False, compare=False)
     """這一段自己的訊息（含折進來的釋放）。畫面「只看這一段」靠它，**不靠格號範圍** —— 同一個
@@ -558,7 +558,7 @@ UE_ORIGINATED_NAS: tuple[str, ...] = (
 #: 標籤本身就說是網路發起的。
 NETWORK_ORIGINATED_NAS: tuple[str, ...] = ("Deregistration request (UE terminated)",)
 #: 兩個方向都有的 NAS（4G 的 Detach request）：看夾帶它的那一列是誰送的 —— 基地台上行轉送就是手機
-#: 發起，MME 下行送出就是網路發起（使用者裁定 2026-09-15：納入，依方向判）。
+#: 發起，MME 下行送出就是網路發起（納入，依方向判）。
 BY_SENDER_NAS: tuple[str, ...] = ("Detach request",)
 
 
@@ -653,7 +653,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
                 ho_exec = round(notify.ts - command.ts, 6)
     elif kind.name == "pdu-session-modification" and any(
             m.cause is not None and (m.cause.table, m.cause.value) == EPS_FALLBACK_CAUSE for m in window):
-        # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的裁定），是 gNB 說
+        # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的規則），是 gNB 說
         # 「語音去 EPS」—— 這一段的身分就是 EPS fallback。
         kind_name = "eps-fallback"
     elif kind.name == "tau" and any(_own_label(m) == "Context Request" for m in window):
@@ -911,7 +911,7 @@ def _sip_segments(messages: list[Message], supi: str | None,
     * 200 OK（對 INVITE）→ **success**：接通了。之後的 BYE 只是釋放。
     * 最終回應在 cause 表裡標著 `outcome: user`（486 忙線、487 取消、603 拒接…）
       → **ended-by-user**：網路把電話送到了，一方自己結束的。**不點紅燈**，
-      但也不是成功（用戶裁定 2026-09-06）。
+      但也不是成功。
     * 其他 ≥ 400 → **failure**。
     * 沒等到最終回應 → **incomplete**（落在檔尾附近時加註）。3xx 也算這裡：
       重導之後的重打是另一個 Call-ID，這一段本身沒有結局。
@@ -1027,7 +1027,7 @@ def _sip_segments(messages: list[Message], supi: str | None,
             release_cause=release_cause,
             final_status=final_status,
             # SIP 的一段以第一則**請求**為開段（回應可能先被抓到）：UE 發的 INVITE 算無線側，
-            # 核網送往 UE 的被叫腿算核網（使用者裁定 2026-09-15）。
+            # 核網送往 UE 的被叫腿算核網。
             initiator_side=_initiator_side(requests[0] if requests else window[0]),
             members=tuple(window),
         ))

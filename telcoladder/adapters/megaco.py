@@ -29,7 +29,7 @@ context 就消失）。context 號碼與媒體埠都會被 MGW 回收，所以�
 ## SDP 巢狀在 `megaco` 層裡
 
 實測 `-T ek`：`sdp` 是 `megaco` 這個 dict 底下的鍵，取媒體端點一律走 `carrier.dig()`
-（§3.1）。
+（CLAUDE.md 的 Measured decisions）。
 """
 
 from __future__ import annotations

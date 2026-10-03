@@ -1,4 +1,4 @@
-"""3006 帶 Redirect-Host 是路由指示，不是拒絕（用戶裁定 2026-09-06）。
+"""3006 帶 Redirect-Host 是路由指示，不是拒絕。
 
 多 HSS 的 IMS 核網把 Cx／Sh 請求先送到 SLF，SLF 回 `DIAMETER_REDIRECT_INDICATION`
 並用 `Redirect-Host` 指名該問哪一台 HSS，發送端重送，HSS 回 2001。**每一筆成功的

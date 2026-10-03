@@ -15,7 +15,7 @@
  *
  * `mockSource` 本來是同步的（編譯期常數），但 `apiSource` 一定要打 HTTP。
  * 介面統一成 async，代價是呼叫端要處理載入中／失敗兩個狀態 —— 那本來就
- * 該處理：真實 pcap 的解剖要幾十秒（436 MB 實測索引 50.9 秒＋解剖 71.6 秒），
+ * 該處理：大的真實 pcap 光是索引與解剖就要好一陣子，
  * 假裝資料立刻就緒才是說謊。
  *
  * ## 為什麼元件不自己 fetch
@@ -454,7 +454,7 @@ export interface DiameterFlowRow {
   startTs: number;
   durationS: number;
   /** 逐跳明細。**表格那份沒有這個鍵** —— 它與訊息數等比成長，而 DRA 的擷取檔
-   *  正是訊息最多的那種（實測：帶明細時每則 767 bytes，20 萬則就是一次 153 MB）。
+   *  正是訊息最多的那種（帶明細時，一次回應會長到好幾 MB 以上）。
    *  打開一列時用 `loadDiameterFlow(id)` 單獨取。 */
   transactionList?: DiameterTransaction[];
 }

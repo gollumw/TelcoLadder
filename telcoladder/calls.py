@@ -259,7 +259,7 @@ def callee_number(call: "Call") -> str | None:
 
     主叫撥的常是本地形式，國際形式要到號碼正規化之後才出現：先看**任何一腿** INVITE 的
     `Request-URI`，再看對 INVITE 的回應裡網路斷言的身分（被叫那一側的 P-CSCF 插的）。
-    都沒有就是 None —— 不補國碼（使用者裁定 2026-09-13）。
+    都沒有就是 None —— 不補國碼。
     """
     for msg in call.messages:
         if msg.label == "INVITE":

@@ -57,7 +57,7 @@ SESSION_PREFIX = "telcoladder-session-"
 _SWEEP_INTERVAL = 30.0
 
 #: 索引每累積這麼多列才發布一次進度。
-#: 每列都發會把 lock 打爛 —— 實測 250 萬列的索引本身只花 50 秒，
+#: 每列都發會把 lock 打爛 —— 索引本身就是整趟工作，
 #: 為了進度數字多精確一點而讓它變慢是划不來的。
 _PUBLISH_EVERY = 2000
 
@@ -430,9 +430,9 @@ class SessionStore:
 def start_index(session: Session, *, on_done=None) -> threading.Thread:
     """在背景把封包索引建起來，邊建邊發布進度。
 
-    **串流是重點。** 實測 436 MB / 250 萬封包：第一批 200 列 0.17 秒到位，
-    全部索引完要 50.9 秒。所以 grid 從第一頁就可用，首次可見時間與檔案大小
-    無關 —— 那才是讓分鐘級成本可以忍受的東西（`local/perf/README.md`）。
+    **串流是重點。** 在大檔上，第一批列幾乎立刻到位，全部索引完卻要很久。
+    所以 grid 從第一頁就可用，首次可見時間與檔案大小無關 —— 那才是讓分鐘級
+    成本可以忍受的東西。
 
     執行緒本體整個包在 try/except 裡，錯誤存進 `session.progress.error`
     而**不往執行緒外丟**：`pyproject.toml` 把
@@ -513,7 +513,7 @@ def _index_into(session: Session, generation: int | None = None) -> None:
 
 
 def _index_into_as(session: Session, generation: int) -> None:
-    # 分母先問 —— capinfos 在 436 MB 上只要 0.32 秒，值得。
+    # 分母先問 —— capinfos 比一趟完整的 tshark 便宜得多，值得。
     total = total_packets(session.pcap, tshark=session.tshark)
     with session.lock:
         if session.index_generation != generation:
@@ -554,8 +554,8 @@ def _index_into_as(session: Session, generation: int) -> None:
     # 第二階段：完整解剖，身分與（階段 5 的）梯形圖靠它。
     #
     # **循序而非併行。** 兩個 tshark 同時解剖同一份大檔會讓 I/O 與 CPU 雙倍，
-    # 而且會讓使用者**正在看的那個東西**（封包清單）變慢。實測 436 MB 上
-    # 索引 50.9 秒、解剖 71.6 秒，併行不會比循序快多少卻會拖慢前者。
+    # 而且會讓使用者**正在看的那個東西**（封包清單）變慢。索引與解剖都是
+    # 整趟完整解剖，併行不會比循序快多少卻會拖慢前者。
     from telcoladder.pipeline import analyse
 
     # 使用者的規則要參與解剖本身，不能只影響封包清單 —— 否則訊息數、

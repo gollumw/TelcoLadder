@@ -123,7 +123,7 @@ export function CallsView({
 
   const rows = useMemo(() => {
     const list = calls?.calls ?? [];
-    // 有問題的排最前（使用者裁定 2026-09-14），其餘照發生順序。`sort` 是穩定的，同類保持原順序。
+    // 有問題的排最前，其餘照發生順序。`sort` 是穩定的，同類保持原順序。
     const ordered = [...list].sort((a, b) => Number(isProblemCall(b)) - Number(isProblemCall(a)));
     return onlyProblems ? ordered.filter(isProblemCall) : ordered;
   }, [calls, onlyProblems]);

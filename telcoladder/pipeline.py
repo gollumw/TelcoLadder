@@ -579,7 +579,7 @@ def _analyse_within(
         blocked = set(load_disabled())
         # 出貨候選先用「這份檔裡有沒有這個埠」過濾一次。**沒有就別試** ——
         # 檔案裡根本沒有 port 80 的流量時，拿 `tcp.port==80,http2` 去重跑
-        # 是純粹白跑一趟 tshark（436 MB 上約 70 秒）。
+        # 是純粹白跑一趟 tshark（大檔上那是一整趟完整解剖）。
         present = set(shape.server_ports)
         shipped = tuple(
             r.rule

@@ -15,7 +15,7 @@ IMS 註冊會與他的 S1-MME 附著、S11 會話併成一條流程。
 **推過頭比不推更糟**：真的 ISIM 會發自己的 IMPU，那時 `@` 左邊不是任何人的
 IMSI，硬推會把兩個不相干的用戶併成一條，而梯形圖照樣畫得出來（§4 那一類）。
 
-## SDP 巢狀在 `sip` 層裡（§3.1）
+## SDP 巢狀在 `sip` 層裡（CLAUDE.md 的 Measured decisions）
 
 實測 `-T ek`：頂層只有 `eth/frame/ip/sip/udp`，`sdp` 是 `sip` 這個 dict 底下
 的一個鍵。所以取媒體埠一律走 `carrier.dig()`，**不要寫死 `block["sdp"]`** ——
@@ -85,7 +85,7 @@ _CHALLENGE_CODES = frozenset({401, 407})
 #: **這裡只畫號碼段的界線。** 480／486／487／600／603 這些「一方自己的結局」
 #: （忙線、拒接、取消）在 `sip_status.yaml` 裡標著 `outcome: user`，由
 #: `causes.annotate()` 依表降級 —— adapter 不認得那張表，也不該認得：判準是
-#: 內容，住在表裡（用戶裁定 2026-09-06）。
+#: 內容，住在表裡。
 _FIRST_FAILURE_CODE = 400
 
 #: 從這個狀態碼起給 `CauseRef`（3xx 起：重導也值得一句出處）。
@@ -210,7 +210,7 @@ def _media_keys(block: dict[str, Any]) -> set[IdKey]:
 def _media_ports(block: dict[str, Any]) -> list[str]:
     """SDP 提議／回應裡的媒體埠。
 
-    **走 `dig()` 不寫死路徑**（§3.1）—— SDP 現在巢狀在 `sip` 底下一層，
+    **走 `dig()` 不寫死路徑**（CLAUDE.md 的 Measured decisions）—— SDP 現在巢狀在 `sip` 底下一層，
     而「現在是這樣」與「永遠是這樣」是兩回事。
 
     E3 要拿它把 RTP 流接到這通電話上；在那之前它只是 `detail` 裡的一個事實。
@@ -383,7 +383,7 @@ def parse(frame: Frame) -> list[Message]:
         # Client、哪個來自 Verify —— 而那個差別就是語意本身：`Security-Verify`
         # 是 UE 回述 P-CSCF 的宣告，裡面的 SPI 屬於 P-CSCF，不屬於送出它的人。
         # 照攤平的欄位解，第二個 REGISTER 會讓同一個 SPI 多出一組反方向的擁有者，
-        # 而兩組看起來都合理（§3.1 那條「攤平的欄位不告訴你結構」的同一個形狀）。
+        # 而兩組看起來都合理（CLAUDE.md 的 Measured decisions 那條「攤平的欄位不告訴你結構」的同一個形狀）。
         #
         # **金鑰不在這些標頭裡，而且不可能在。** IK/CK 是 USIM 拿 K 與 RAND 在卡裡
         # 算出來的，從來不上線；能從擷取檔拿到它們的唯一位置是 Cx 的
@@ -408,7 +408,7 @@ def parse(frame: Frame) -> list[Message]:
         ports = _media_ports(block)
         if ports:
             # E3 的接點。**現在只是記下來** —— 沒有 RTP adapter 讀它，
-            # 而一個沒有讀者的 `detail` 鍵正是 §5.5 那條「刪 renderer 前先問
+            # 而一個沒有讀者的 `detail` 鍵正是「刪 renderer 前先問
             # 誰在讀」的反面：這裡是明知還沒有讀者，並且寫下為什麼。
             detail["SDP media ports"] = ",".join(ports)
         addresses = _media_addresses(block)

@@ -2,7 +2,7 @@
 
 **NAS-5GS 的 4G 雙胞胎。** 兩件事一模一樣，所以這個檔照著 `nas5gs.py` 的形狀寫：
 
-1. **NAS 不是獨立的一層** —— 子解剖巢狀在載體層內（§3.1）。實測 `-T ek`：
+1. **NAS 不是獨立的一層** —— 子解剖巢狀在載體層內（CLAUDE.md 的 Measured decisions）。實測 `-T ek`：
    `s1ap` 這個 dict 底下有一個 `nas-eps` 鍵，而 `frame.layer("nas-eps")` 回空。
    找區塊一律走 `adapters/carrier.py` 的 `carried_blocks()`，**那是那個教訓的
    唯一一份實作** —— 複製第二份的話，一份修好了另一份不會說話。
@@ -278,7 +278,7 @@ def parse(frame: Frame) -> list[Message]:
             detail["SUPI"] = imsi
         elif carrier_adapter is not None and any(k[0] is IdKind.SUPI for k in keys):
             # 身分是**跟載體借的**。使用者有權知道依據 —— 比照 `nas5gs.py`，
-            # 讀者是梯形圖的事件詳情列（§5.5 那張表）。
+            # 讀者是梯形圖的事件詳情列。
             detail[IDENTITY_SOURCE_KEY] = carrier_adapter.NAME
 
         messages.append(

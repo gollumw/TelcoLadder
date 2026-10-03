@@ -192,7 +192,7 @@ def test_the_carried_nas_keeps_its_own_identity_and_the_tunnel_is_a_quote(whole)
 def test_the_ngap_block_is_found_by_digging_not_by_a_hard_coded_path() -> None:
     """SBI 的 N2 SM info 隔著 `mime_multipart`，NGAP 的 NAS 則是直接一層。
     **寫死路徑會在 tshark 換版本改中間層名字時靜默失效** —— 而靜默失效正是
-    這一段要修的東西本身（§3.1 的同一課）。
+    這一段要修的東西本身（CLAUDE.md 的 Measured decisions 的同一課）。
 
     這裡守的是實作真的走 `carrier.dig`，不是碰巧路徑對了。
     """

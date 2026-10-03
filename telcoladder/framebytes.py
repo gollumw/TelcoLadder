@@ -61,7 +61,7 @@ def frame_bytes(
     args = [
         "-r", str(pcap),
         # 與 decode.py 同一個道理：只讀到最深的那一格為止。
-        # `-c N` 限制的是「讀」幾格而不是「輸出」幾格（CLAUDE.md §3.1）。
+        # `-c N` 限制的是「讀」幾格而不是「輸出」幾格。
         "-c", str(wanted[-1]),
         "-Y", _frame_filter(wanted),
         "-T", "json",

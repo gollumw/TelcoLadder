@@ -314,10 +314,10 @@ export function SessionAnalysisView({
   //: 結束的那一下點擊要吃掉（`onClickCapture`），不然放開時會誤選手指下的事件。
   const drag = useRef({ active: false, moved: false, x: 0, y: 0, left: 0, top: 0 });
   const [dragging, setDragging] = useState(false);
-  //: 展開成一台一條的網元（組名）。**預設全部收合**（使用者裁定 2026-09-15）：核網網元常在
+  //: 展開成一台一條的網元（組名）。**預設全部收合**：核網網元常在
   //: 好幾個位址上，不收的話泳道數跟著位址數膨脹。只收核網 —— 後端的組已經讓手機與基地台一台一組。
   const [expandedNfs, setExpandedNfs] = useState<Set<string>>(() => new Set());
-  //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網，使用者裁定 2026-09-15）。
+  //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網）。
   const [panelAxis, setPanelAxis] = useState<"category" | "side" | "connection">("category");
   //: 選中的無線連線（`RadioConnection.index`）。與段、組互斥 —— 選了別的就清掉。
   const [activeConnection, setActiveConnection] = useState<number | null>(null);
@@ -550,7 +550,7 @@ export function SessionAnalysisView({
   const connectionSlow = (c: RadioConnection) => behaviors.some((r) => r.connection === c.index && recordSlow(r));
   const visibleConnections = onlyProblems ? connections.filter((c) => c.outcome === "failure" || connectionSlow(c)) : connections;
 
-  //: **子分類：同一種行為意圖收成一顆晶片**（使用者裁定 2026-09-17）。不收的話「依觸發側」與「依無線連線」
+  //: **子分類：同一種行為意圖收成一顆晶片**。不收的話「依觸發側」與「依無線連線」
   //: 會排出一長串一模一樣的晶片，讀的人要自己一顆顆看哪個有問題。收起來之後，
   //: **有問題的那一組預設就是展開的** —— 摺疊是為了讓失敗與過慢跳出來，不是把它們一起藏起來。
   const intentOf = (p: CallFlowProcedure) => recordByStart.get(p.startFrame)?.intentLabel ?? p.kind;

@@ -161,7 +161,7 @@ def _dig_with_limit(node, target, limit):
     """複製 `dig` 的語意但可指定上限 —— 只給上面那條測試用。
 
     2026-08-24 起這套機制住在 `adapters/carrier.py`（NAS-EPS 也要用，
-    複製第二份等於把 §3.1 的教訓寫成兩份會漂的實作）。
+    複製第二份等於把 CLAUDE.md 的 Measured decisions 的教訓寫成兩份會漂的實作）。
     """
     import telcoladder.adapters.carrier as mod
 
@@ -369,7 +369,7 @@ def test_the_ladder_says_where_a_borrowed_identity_came_from(
     """**「這則訊息算誰的」要講得出依據。**
 
     NAS 沒有自己的 UE ID，身分是跟載體借的（§3.4）。而載體有兩種：N2 的
-    NGAP，與 SBI 的 multipart（§3.1）。哪一則是從哪一邊看到的，決定了它
+    NGAP，與 SBI 的 multipart（CLAUDE.md 的 Measured decisions）。哪一則是從哪一邊看到的，決定了它
     算誰的 —— 判錯的症狀是流程一分為二，兩條各自看起來都很合理。
 
     原本這條驗的是 `--html` 的 `--no-identity-source` 開關（關掉的只是顯示，

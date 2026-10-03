@@ -13,7 +13,7 @@
   "diverged": {
     "src/components/SessionAnalyzer.tsx": {
       "original_sha256": "59bae31bd70b87d336027014126e9657cb0e803b72fe98047f49a02c66d6a5f7",
-      "current_sha256": "65ad508f186f2fe6a55f458f63fc34dc7b1751d51e383991b3e1170e773229a5",
+      "current_sha256": "2a768864458faae44fc66cebf8a5f50f7deaa89571f3700fe2644deecb7a0e3a",
       "since": "2026-08-19（GUI Phase 2）",
       "what_changed": "`const { … } = mockData` 改成 `({ data }: { data: Dataset })`。那一行是 GUI 與資料之間唯一的接縫；抽出 DataSource 介面之後，元件改為「吃資料、不取資料」，取資料與載入／失敗狀態移到 App.tsx；2026-08-19 hex 懶載入：多接 `bytesByFrame` / `onRequestBytes` 兩個 prop（元件仍不知道有 HTTP，只呼叫注入的函式）。；2026-08-21:多傳一個 `procedures` prop（程序切段，來自 `/callflow` 的同一份回應）。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：標題、語言切換與模式分段控制項樣式更新為 signal palette 語意色。行為未變。把上面那兩份清單傳進 DataMiningView（2026-08-23）；2026-09-11：模式按鈕依使用順序排（總覽 → Data Mining → 梯形圖／通話／Diameter）；Bytes 面板拿掉後 `bytesByFrame`／`onRequestBytes` 兩個 prop 一併移除。；2026-09-13：通話梯形圖的「只有 SIP／完整端到端」切換狀態（開一通電話一律從只有 SIP 開始）",
       "why_it_is_ok": "分岔到此為止是**有意的**，而且範圍精確：另外 8 個檔仍然逐位元組相同，同一性測試繼續守著它們。整組退休會讓「其餘 8 個有沒有被動過」變成無人看管 —— 不變量在哪裡失效要講精確，不是整組放棄。",
@@ -49,7 +49,7 @@
     },
     "src/components/SessionAnalysisView.tsx": {
       "original_sha256": "7ed26746e83bff3a348469da4b29820a74af3b1be7a8593f69bdbfc8bcb0fe57",
-      "current_sha256": "7c8e6f8e46a495a1038d1d6044872fdf6dae141736c99281d218681d54be9f91",
+      "current_sha256": "57ca085a982cae95a04ba6510b8b3e8051a42aa71544b06955e59aaf3bad6d05",
       "since": "2026-08-19（GUI Phase 3：/index → RawPacket 對映）；2026-08-31（root_cause → first_failure）",
       "what_changed": "同上：解碼樹缺席時說出來；hover 的端點沒有埠時只顯示 IP。；2026-08-21（Phase 4）:把上述四個欄位畫出來 —— 慢間隔以 `+2.50s` 標在參考點欄位旁（只標超過門檻的，每列都標等於沒標），協定堆疊與身分來源進事件詳情列。同時拆開事件詳情列的兩個把關條件:原本 `selectedEvent && selectedPacket` 綁在一起，而 `selectedPacket` 來自封包清單的**載入視窗**（前幾百列）—— 幾千格的擷取檔裡，視窗外的事件永遠配不到封包，症狀是使用者點了梯形圖卻看到「選一個信令事件」。參考點／身分來源／協定堆疊／cause 全部來自事件，照常顯示；封包徽章與解碼樹才等封包，而且「還沒載入」與「在視窗外」講成兩句不同的話。；2026-08-21（M0 最後一哩）:程序切段接進畫面 —— 梯形圖上方多一條程序選擇列（一段一個按鈕,結局用外框色與符號標示,✓/✗/⋯ 三態;incomplete 刻意不用 ✗,「沒等到結局」與「失敗」是兩件事）,選中時事件依 frame 範圍過濾。程序先於 Domain:程序是範圍,Domain 是那段之內的視角。程序按鈕的亮起條件看推導出來的 `current` 而不是 raw state `activeProcedure` —— 兩者在換訂戶時會分家（frame 編號不在新訂戶的段裡），用 raw state 會導致「畫面顯示全部但沒有任何按鈕亮」。；2026-08-22（轉 public 前置）:清掉兩處客戶識別資訊 —— 註解裡的客戶擷取檔名，以及截斷說明範例裡真實生產網路的 DNN。**兩處都是註解，建置產物不受影響**（`telcoladder/static/app.js` 逐位元組不變，已驗）。實測數字（119 字元、放大 4.1 倍）全部保留 —— 拿掉的只有身分，不是證據。；2026-08-22（改名 TelcoShark → TelcoLadder）：只動到字面名稱，行為未變。；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：LANE_STYLE 語意色調整、SVG 梯形圖、程序選擇列、解碼檢視器與關聯矩陣更新為 signal palette 語意色。行為未變。Domain 分頁清單加入 CORE_DIAMETER「Diameter (S6a/Cx/Gx)」（2026-08-23）。事件詳情列下方新增失敗白話與常見根因的區塊（T-LADDER-CAUSE：原本後端送 fallback 鏈，而出處永遠有值，所以白話從來沒出現在瀏覽器上）（2026-08-23） 2026-08-31：`rootCause` 改為 `firstFailure`，兩個 i18n 鍵一併改名（`root cause: {cause}` → `first failure: {cause}`、`Root cause: ` → `First failure: `）。後端欄位 `root_cause` 用一個宣稱因果的名字，而它在 `ki-mismatch` 上是錯的（#21 不是 #111 的起因），所以三個版本化契約（xdr / summary / callflow）一起改名，前端跟著。**`Most common root causes` 不動** —— 那是 cause 表的 `common_causes`，另一件事。；2026-09-11：泳道名稱另畫一張 `sticky top-0` 的標頭 SVG（高 `HEADER_H`＝TOP_PAD−20），主圖從同一個 y 起裁 —— 捲動長 trace 時網元名稱留在面板頂端，兩張疊起來與原本一張逐像素相同。；2026-09-11（二）：拖曳平移改成**超過 4 px 才抓指標** —— 按下就 `setPointerCapture` 會讓放開時的 click 改送到容器，箭頭的 onClick 收不到，點事件選不到、解碼面板停在第一格；解碼樹改依事件的 frame 編號要，不再等封包清單的載入視窗（捲到後段的事件原本永遠拿不到樹），「在視窗外」那句話隨之移除。；2026-09-13：分頁清單加 `IMS_ENUM`（ENUM (DNS)）",
       "why_it_is_ok": "mock 階段的型別是「假資料剛好長這樣」，不是真實資料的形狀。接上後端就必須放寬，否則只能靠轉型或填佔位值說謊 —— 而那正是這個專案的紅線（沒觀測到就說沒觀測到）。後端 `callflow._DOMAIN_BY_PROTOCOL` 吐得出 CORE_DIAMETER 而前端不認得的話，那些事件在每一個分頁都不會出現，而且不報錯 —— 所以這兩個檔必須跟著後端一起改。 改名而已，資料流與版面未變：型別由 `tsc --noEmit` 擋著，後端那側由 `test_no_surface_claims_the_first_failure_caused_the_last` 橫跨三個表面守著。",
@@ -58,7 +58,7 @@
     },
     "src/components/DiscoveredSessionsPanel.tsx": {
       "original_sha256": "8c645d62a38840c53ee8b7424d54f1930cf834f0252dc903f85bdab9a36e6fdd",
-      "current_sha256": "5e454e683b88a7d7017cfc608de98b0b51b526e11c4eef733868073ae5608655",
+      "current_sha256": "f9bf49068e562d4ffb645fffc7002564293a19a0a584107655840bf472691125",
       "reason": "Phase 3：沒有絕對時間戳的擷取檔（網元 trace 常見）會讓 firstSeenEpoch 是 NaN。照原樣算會印出「T+0.000000s」—— 一個看起來完全合理的謊。改成講出「這份擷取檔沒有絕對時間戳」。",
       "what_changed": "；2026-08-22（i18n）：所有渲染字串改走 `t()`，原文英文、中文在 `i18n.ts` 的翻譯表；元件加 `useLang()` 讓換語言時重新渲染。行為未變。；2026-08-23（視覺系統重做）：偵測抽屜按鈕、訂戶卡片、狀態徽章與操作按鈕樣式更新為 signal palette 語意色。行為未變。",
       "why": "2026-08-28 透明度修飾自 -bg 記號搬到主色（同 DataMiningView）；2026-09-05 沒有 SUPI 的訂戶成一等公民：把手是 SUPI 數字或 `kind:raw`（5G-S-TMSI），標籤另給；抽屜不再只認 `SUPI ` 前綴，永遠 N/A 的 5G-GUTI 列移除（T-GUTI-UI）；2026-09-06 未歸戶那一列換一句說明 —— 對它說「SUPI 藏在加密訊息裡」是假話，它根本不是一個人；2026-09-13 從 Data Mining 搬到總覽（只改註解，行為未變）；2026-09-14 依後端分組（語音通話／IMS 註冊與查詢／一般 session／未歸戶）分段，訂戶旁標線路宣告的接取（VoLTE／VoNR／VoWiFi），電話卡片列出它參與的每一通（主叫→被叫、UTC 起訖、結局，有問題的排前標紅）；2026-09-14 通話時刻改用總覽選的時區（預設 UTC，`timezone.ts`）；2026-09-14 cause 只在有問題的通話標紅"

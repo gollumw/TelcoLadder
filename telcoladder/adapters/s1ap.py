@@ -47,7 +47,7 @@ DISSECTORS = ("s1ap",)
 
 #: 這個 adapter 載送的協定。**NAS-EPS 的區塊巢狀在 `s1ap` 層裡面**
 #: （實測 `-T ek`：`s1ap` 這個 dict 裡有一個 `nas-eps` 鍵），所以
-#: `frame.layer("nas-eps")` 會回空 —— 那正是 §3.1 講的「子解剖是巢狀的」。
+#: `frame.layer("nas-eps")` 會回空 —— 那正是 CLAUDE.md 的 Measured decisions 講的「子解剖是巢狀的」。
 #: T5 的 NAS-EPS adapter 要靠這個宣告才拿得到載體與身分。
 CARRIES = ("nas-eps",)
 
@@ -181,7 +181,7 @@ _CAUSE_GROUPS = {
 #: UE context 真的被放掉的那一則。23 = `UEContextRelease`（TS 36.413）。
 #:
 #: **要的是 successfulOutcome（Complete），不是 initiatingMessage（Command）**
-#: —— 與 `ngap.py` 同一個裁定：Command 只是 MME 下令，context 要等 eNB 回
+#: —— 與 `ngap.py` 同一條規則：Command 只是 MME 下令，context 要等 eNB 回
 #: Complete 才真的沒了。依 Command 就切，等於在 context 還在的時候把一個人的
 #: 流程切成兩半。
 #:

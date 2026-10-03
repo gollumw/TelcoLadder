@@ -1,7 +1,7 @@
 """Diameter —— RFC 6733，以及 3GPP 在它上面蓋的那些介面。
 
 Phase 2 的第一塊。**目前只認 S6a/S6d、Cx/Dx、Gx 三個介面加上基礎訊息**
-（2026-08-23 的裁定：先窄後寬）。其餘 20 幾個介面的 Application-Id 認得出來、
+（先窄後寬）。其餘 20 幾個介面的 Application-Id 認得出來、
 會如實顯示，但沒有角色推論、也沒有 cause 收錄 —— 那是誠實的「還沒做」，
 不是靜默的錯。等真實封包出現再加。
 
@@ -31,7 +31,7 @@ Cause 是 CHOICE，五個群組各自從 0 編號）同一類。
 experimental result）。所以這裡從 `diameter_diameter_Experimental-Result`
 的原始位元組把群組拆開，只取它自己那一個 Vendor-Id。
 
-這是 §3.1「`-T fields` 會把訊息邊界壓沒」的同一個教訓換一個形狀：
+這是 CLAUDE.md 的 Measured decisions「`-T fields` 會把訊息邊界壓沒」的同一個教訓換一個形狀：
 **攤平的欄位不告訴你結構，而結構就是語意。**
 
 ## 身分：四把鑰匙，其中一把是推導出來的
@@ -195,7 +195,7 @@ _FIRST_FAILURE_CODE = 3000
 #: 的那個 answer 決定。把它標紅的症狀是：每一筆走過 SLF 的 Cx／Sh 交易都
 #: 是紅的，而它們全部成功 —— 與 `pfcp.py` 的 #2/#3、`sip.py` 的 401 同一族
 #: （流程不是結局）。**沒有 Redirect-Host 的 3006 仍然是失敗**：那時發送端
-#: 無處可去。用戶裁定 2026-09-06。
+#: 無處可去。
 _REDIRECT_INDICATION = 3006
 
 

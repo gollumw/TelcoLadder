@@ -119,7 +119,7 @@ def test_no_surface_claims_the_first_failure_caused_the_last() -> None:
     原封不動回來。
 
     **三個版本化契約必須一起改**（xdr / summary / callflow）。只改一個，
-    其餘照舊宣稱錯的因果，而且不會有任何錯誤 —— §5.5 的「兩個表面漂移，
+    其餘照舊宣稱錯的因果，而且不會有任何錯誤 —— 「兩個表面漂移，
     不報錯」。所以這條測試橫跨三個表面，不是三條各守一個。
     """
     from telcoladder import callflow, causes, summary

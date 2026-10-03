@@ -24,7 +24,7 @@ const STATUS_META: Record<SessionStatus, { label: string; className: string }> =
   "mid-stream": { label: "Mid-stream", className: "border-signal-amber-border bg-signal-amber-bg text-signal-amber font-medium" },
 };
 
-//: 分組（2026-09-14，使用者裁定四類）。順序與後端 `activity.ACTIVITIES` 相同，電話排最前。
+//: 分組順序與後端 `activity.ACTIVITIES` 相同，電話排最前。
 //: **分類由後端決定**（`telcoladder/activity.py`）—— 瀏覽器只持有一頁封包，自己判會隨載入改變。
 const ACTIVITY_ORDER = ["call", "ims", "session", "flows"] as const;
 const ACTIVITY_LABEL: Record<string, string> = {

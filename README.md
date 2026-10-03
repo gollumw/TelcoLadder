@@ -247,8 +247,7 @@ telcoladder analyze big.pcapng --filter 'ngap || s1ap'      # any tshark display
 ```
 
 Whatever narrowing could not reach is listed explicitly, never silently
-dropped. Dissection runs at roughly 0.19 s/MB and is linear (a 145 MB, 780k-frame
-file in 28 s on one machine); `tshark` output is streamed, so memory follows the
+dropped. Dissection time is linear in file size; `tshark` output is streamed, so memory follows the
 messages kept rather than the file size.
 
 ## Prior art, and why this exists anyway

@@ -259,7 +259,7 @@ def test_two_enbs_reusing_the_same_ue_id_stay_apart(analysis) -> None:
 
 
 def test_only_the_release_complete_declares_a_release(messages) -> None:
-    """Command 不放，Complete 才放（與 `ngap.py` 同一個裁定）。
+    """Command 不放，Complete 才放（與 `ngap.py` 同一條規則）。
 
     依 Command 就切，等於在 UE context 還在的時候把一個人的流程切成兩半 ——
     `lifecycle.py` 的「切過頭」方向。
@@ -302,7 +302,7 @@ def test_the_cause_comes_from_the_right_group(messages) -> None:
 
 
 def test_the_nas_payload_is_nested_inside_the_s1ap_layer() -> None:
-    """NAS-EPS 掛在 `s1ap` 底下，不在頂層（§3.1）。
+    """NAS-EPS 掛在 `s1ap` 底下，不在頂層（CLAUDE.md 的 Measured decisions）。
 
     T5 要靠這件事。**先在這裡釘住**：如果 tshark 哪天改成攤平在頂層，
     這條會紅，而 T5 的 adapter 不必用「一格都收不到而且不報錯」的方式發現。

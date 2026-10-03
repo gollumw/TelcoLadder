@@ -284,7 +284,7 @@ def _render(
         # **這則訊息的身分是從哪裡繼承來的。**
         #
         # NAS 沒有自己的 UE ID，它的身分來自載體（CLAUDE.md §3.4）。而載體
-        # 有兩種：N2 的 NGAP，以及 SBI 的 multipart（§3.1）。同一則
+        # 有兩種：N2 的 NGAP，以及 SBI 的 multipart（CLAUDE.md 的 Measured decisions）。同一則
         # `Registration request` 從哪一邊看到的，決定了它算誰的 —— 判錯的
         # 症狀是流程一分為二，而兩條各自看起來都很合理。
         #

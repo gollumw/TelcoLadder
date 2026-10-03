@@ -33,14 +33,8 @@ scales with the number of signalling messages kept, which is why
 There is no constant-memory claim: a capture that is mostly user-plane traffic
 with the GTP-U adapter enabled retains one message per G-PDU.
 
-**Throughput.** Measured on one machine, `analyse()` runs at roughly
-**0.19 s/MB** and is linear:
-
-| Frames | Size | Time |
-|---|---|---|
-| 32 k | — | 2.0 s |
-| 260 k | — | 9.6 s |
-| 780 k | 145 MB | 28.2 s |
+**Throughput.** `analyse()` is linear in file size; on a large capture,
+`--since` / `--until` / `--filter` are what bound the time.
 
 Dissection runs one to three passes (an automatic re-run when a decode-as
 candidate strictly increases the message count), so progress is reported as

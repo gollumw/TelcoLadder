@@ -58,7 +58,7 @@ def _require_tshark() -> None:
 def _oracle_columns(pcap) -> list[dict[str, str]]:
     """用 `-T fields` 獨立問一次同樣的欄位。
 
-    **`-T fields` 在整個專案裡只有這裡是正當的。** CLAUDE.md §3.1 禁它是因為
+    **`-T fields` 在整個專案裡只有這裡是正當的。** CLAUDE.md 的 Measured decisions 禁它是因為
     它把同名欄位逗號串接、訊息邊界消失 —— 那對「一格多則訊息」是致命的。
     但這裡的粒度**本來就是一列一格封包**，而且它的價值正在於它是**另一條
     程式碼路徑**：產品程式碼走 `-T ek`，oracle 走 `-T fields`，兩邊對得上
@@ -421,7 +421,7 @@ def test_early_abort_does_not_hang_or_raise() -> None:
     """只取前幾列就走人，不能卡住也不能噴 traceback。
 
     tshark 會卡在寫一個沒人讀的 pipe，連 SIGTERM 都叫不動 —— 那個處理住在
-    `tshark.shutdown()`，而本檔用的是**同一份**，不是複製品（CLAUDE.md §3.1）。
+    `tshark.shutdown()`，而本檔用的是**同一份**，不是複製品。
     """
     pcap = require_capture("5gc-registration/capture.pcap")
     rows = read_packet_rows(pcap)

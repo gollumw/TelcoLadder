@@ -119,7 +119,7 @@ export default function SessionAnalyzer({
   const { sessionIdentities, callFlowEvents, correlationEntries, rawPackets } = data;
 
   //: 這份檔真的有哪些協定（引擎供應的快篩清單）。**純 Diameter** 的擷取（DRA／HSS 側常見）直接落在
-  //: Diameter 流程 —— 那才是這種檔要回答的問題（使用者裁定 2026-09-14）。訂戶梯形圖分頁保留：純 Diameter
+  //: Diameter 流程 —— 那才是這種檔要回答的問題。訂戶梯形圖分頁保留：純 Diameter
   //: 的檔也有訂戶層級的梯形圖；「通話」在沒有 SIP 時停用並說明，而不是隱藏。
   const isPureDiameter = data.protocolFilters.length > 0 && data.protocolFilters.every((p) => p.name === "diameter");
   const hasSip = data.protocolFilters.some((p) => p.name === "sip");
@@ -154,7 +154,7 @@ export default function SessionAnalyzer({
     // 總覽的會話抽屜也列通話（2026-09-14），所以總覽一開就取 —— 與通話頁共用同一份快取。
     if (hasSip && (mode === "calls" || mode === "overview") && calls === null && !callsError) onRequestCalls();
   }, [hasSip, mode, calls, callsError, onRequestCalls]);
-  //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按（2026-09-13 使用者裁定）。
+  //: 打開一通電話時一律從「只有 SIP」開始；完整端到端要使用者自己按。
   const [callFull, setCallFull] = useState(false);
   useEffect(() => {
     if (mode === "calls" && callHandle) onRequestCallLadder(callHandle, callFull);

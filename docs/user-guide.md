@@ -263,8 +263,8 @@ locally, nothing listens on the network; it runs tshark on paths you
 supply, which is why there is deliberately no HTTP version. Analyses are
 cached in memory per file — no copies, nothing lands on disk.
 
-**Large files.** Dissection measures ~**0.19 s/MB** — 145 MB takes 28 s
-and 2 GB several minutes, beyond most MCP clients' default timeouts.
+**Large files.** Dissection time is linear in file size, and on a large
+capture it runs beyond most MCP clients' default timeouts.
 When the client supplies a `progressToken`, the server sends a progress
 notification every two seconds (the spec says receiving progress should
 reset the timeout), so the agent side remains ask-once-get-one-answer.
@@ -1067,8 +1067,9 @@ empty table.
 
 ### Large files
 
-The Sessions table waits for correlation (measured ~two minutes on 2.5 M
-packets; the packet table stays usable meanwhile). **The faster path is
+The Sessions table waits for correlation, which on a large capture takes far
+longer than the packet index (the packet table stays usable meanwhile).
+**The faster path is
 narrowing first**: back on the home page, slice a time range (§9a) —
 editcap slices first, and every later step works on the small file.
 

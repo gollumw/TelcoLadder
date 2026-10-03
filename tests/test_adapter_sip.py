@@ -173,10 +173,10 @@ def test_the_auth_challenge_is_not_a_failure(messages) -> None:
 
 
 def test_the_sdp_media_port_survives(messages) -> None:
-    """SDP 巢狀在 `sip` 底下（§3.1），媒體埠要抽得出來。
+    """SDP 巢狀在 `sip` 底下（CLAUDE.md 的 Measured decisions），媒體埠要抽得出來。
 
     E3（RTP／RTCP 關聯）要靠它把媒體流接到這通電話上。**現在沒有讀者**，
-    而那是明知的 —— 與 §5.5 那條「刪 renderer 前先問誰在讀」相反：
+    而那是明知的 —— 與「刪 renderer 前先問誰在讀」相反：
     這裡是先寫下為什麼還沒有讀者。
     """
     invite = next(m for m in messages if m.frame == 27)
@@ -191,7 +191,7 @@ def test_the_sdp_media_port_survives(messages) -> None:
 
 
 def test_the_sdp_is_nested_not_top_level() -> None:
-    """`sdp` 是 `sip` 底下的一個鍵，不在頂層（§3.1）。
+    """`sdp` 是 `sip` 底下的一個鍵，不在頂層（CLAUDE.md 的 Measured decisions）。
 
     E3 要靠這件事。**先在這裡釘住**：tshark 哪天改成攤平在頂層的話，
     這條會紅，而不是等 RTP adapter 用「一格都收不到而且不報錯」的方式發現。

@@ -61,7 +61,7 @@ MIN_RECOMMENDED = (4, 0)
 # 呼叫點（extract／packets／decode／framebytes／prefilter），而 probe 與
 # coverage 兩趟掃描根本不吃它。要再加一種偏好（USER DLT 對映）就得再抄
 # 五份 —— 而漏抄一處的症狀是「四條路徑對同一份檔給出四個答案」，沒有
-# 任何一層會報錯（CLAUDE.md §5.5「一組參數」那條紀律）。
+# 任何一層會報錯（「一組參數」那條紀律）。
 #
 # 現在每個呼叫點只做一件事：`args += pref_args(prefs, relax_seq=…)`。
 

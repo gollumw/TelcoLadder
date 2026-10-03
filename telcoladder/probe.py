@@ -132,7 +132,7 @@ class CaptureShape:
     #: 與 `unclaimed_ports` 是兩件事：那個是「沒人認領，可以猜」，這個是
     #: 「這份檔裡有沒有這個埠」。後者用來過濾隨程式出貨的候選規則 ——
     #: 檔案裡根本沒有那個埠時，拿它去重跑是純粹白跑一趟 tshark
-    #: （436 MB 上約 70 秒）。
+    #: （大檔上那是一整趟完整解剖）。
     server_ports: tuple[int, ...] = ()
 
     #: `frame.encap_type` 的值（wiretap 編號）。None 代表沒讀到。
