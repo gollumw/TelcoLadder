@@ -366,6 +366,19 @@ for an agent using the tool is [AGENTS.md](AGENTS.md).
 more than anything else in it: **no real subscriber or customer data, anywhere**,
 and **every spec clause is verified by a human, never generated**.
 
+Where to go:
+
+- **Something is wrong** — a crash, a wrong ladder, a cause explained
+  wrongly: [open a bug report](https://github.com/gollumw/TelcoLadder/issues/new?template=bug_report.yml).
+  Paste `telcoladder --version` and `telcoladder check`, never the capture.
+- **A question, a missing cause code, a protocol you want** —
+  [open an issue](https://github.com/gollumw/TelcoLadder/issues/new?template=other.yml)
+  or ask in [Discussions](https://github.com/gollumw/TelcoLadder/discussions/categories/q-a).
+- **You used it and it worked** — say so in
+  [Show and tell](https://github.com/gollumw/TelcoLadder/discussions/categories/show-and-tell);
+  knowing which networks and interfaces it is used on decides what gets
+  supported next.
+
 Found a vulnerability? [`SECURITY.md`](SECURITY.md) — not a public issue.
 
 ## License
