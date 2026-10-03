@@ -139,10 +139,10 @@ same capture must render the same diagram on any two machines.**
 
 tshark uses heuristics to decide what a TCP stream carries, and **when the
 capture starts after connection establishment, that heuristic fails**.
-Measured on a 5GC SBI capture: the connections predated the capture, tshark
-never saw the HTTP/2 preface, the streams degraded to `data`, and
-`DISPLAY_FILTER = "http2"` received nothing — with no error. Adding
-`-d tcp.port==7777,http2` took SBI messages from 60 to 146.
+On a 5GC SBI capture whose connections predate the capture, tshark never sees
+the HTTP/2 preface, the streams degrade to `data`, and
+`DISPLAY_FILTER = "http2"` receives nothing — with no error. Adding
+`-d tcp.port==7777,http2` brings those SBI messages back.
 
 IMS meets this even more often: SIP on 5062/6060 and re-ported Diameter are
 routine.

@@ -5,7 +5,7 @@ E.212 test network (MCC 001 / MNC 01) and private addresses shared with `4g-volt
 
 ## What it is for
 
-Two NAS-EPS shapes that a real MME-side UE trace showed going missing:
+Two NAS-EPS shapes, designed from telecom engineering practice, that an MME-side UE trace carries and that went missing:
 
 1. **Service request** (frame 1). NAS security header type 12 is the SERVICE REQUEST header: the message has no
    message-type field. It was counted as "ciphered" and dropped, so every InitialUEMessage that carried one lost

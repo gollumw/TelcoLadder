@@ -382,7 +382,7 @@ def identities_json(session: Session, *, q: str = "") -> dict:
     """左欄的資料：有哪些身分、哪些取不到、為什麼。
 
     `analysis` 還沒跑完時回 `ready: false` —— 封包清單先可用，
-    身分要等完整解剖（實測 436 MB 要 71.6 秒）。**不要假裝已經有答案。**
+    身分要等完整解剖（大檔上那比封包索引久得多）。**不要假裝已經有答案。**
     """
     with session.lock:
         analysis = session.analysis

@@ -81,8 +81,8 @@ confident, plausible, wrong answer.
 
 ## Cost, and what is deliberately not offered
 
-Dissection runs at roughly **0.19 s/MB** — a 145 MB file takes about 28 seconds,
-a 2 GB one several minutes, past most clients' default timeout. Supply a
+Dissection time is linear in file size, and on a large capture it runs past most
+clients' default timeout. Supply a
 `progressToken` and the server emits `notifications/progress` every two seconds
 while it works, which is what the protocol asks implementations to reset their
 timeout on; you still make one call and get one answer. The heartbeat reports

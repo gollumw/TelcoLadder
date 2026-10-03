@@ -284,7 +284,7 @@ def _render(
         # **這則訊息的身分是從哪裡繼承來的。**
         #
         # NAS 沒有自己的 UE ID，它的身分來自載體（CLAUDE.md §3.4）。而載體
-        # 有兩種：N2 的 NGAP，以及 SBI 的 multipart（§3.1）。同一則
+        # 有兩種：N2 的 NGAP，以及 SBI 的 multipart（CLAUDE.md 的 Measured decisions）。同一則
         # `Registration request` 從哪一邊看到的，決定了它算誰的 —— 判錯的
         # 症狀是流程一分為二，而兩條各自看起來都很合理。
         #
@@ -409,7 +409,7 @@ def _render(
         "participants": participants,
         # 一次次無線連線，與這次連線裡**有訊息落在其中**的程序種類（依開始的先後，不重複）。**看成員重疊，
         # 不看程序從哪一格開始**：網路觸發的 Service request 從 Paging 開段，Paging 在 InitialUEMessage 之前 ——
-        # 只看開始格的話，那次連線的晶片會寫「沒有程序」（實測真實 AMF 側 trace 的第 2、3 次連線）。
+        # 只看開始格的話，由 Paging 觸發的那次連線，晶片會寫「沒有程序」。
         "connections": [
             {
                 "index": c.index, "start_frame": c.start_frame, "end_frame": c.end_frame,

@@ -5,7 +5,7 @@ E.212 test network (MCC 001 / MNC 01) and private addresses shared with `4g-volt
 
 ## What it is for
 
-Two joins that a real MME-side single-subscriber trace showed missing, so one subscriber came out as four flows:
+Two joins that an MME-side single-subscriber trace needs, designed from telecom engineering practice. Without them one subscriber splits into several flows:
 
 1. **S-TMSI.** Paging and the InitialUEMessage of a UE that returns from idle on another eNB carry neither an S1AP
    UE ID of the old connection nor an IMSI, only the S-TMSI (MME code + M-TMSI). The NAS GUTI of the same UE has

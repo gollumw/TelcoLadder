@@ -5,12 +5,10 @@
 （`matching_frames`）。**四條路徑用不同參數，就是同一份檔的四個答案**，
 而使用者只會看到其中一個。
 
-實測的症狀（一份網元匯出的 per-IMSI trace，不進版控；本檔以
-`tests/fixtures/ne-trace/` 重現同一個病理）：`Session.decode_as` 從來
-沒有人設過，是空的 tuple —— 連 adapter 自己宣告的 `DECODE_AS` 都沒生效。
-於是 356 格裡有 **169 格（47%）** 在封包清單上顯示為未解碼的「TCP」，
-而它們全部都是 HTTP/2 SBI，其中包含帶 NAS-5GS/NGAP 的 20 格與一則
-`404 Not Found`。同一時間抽屜與梯形圖卻好好地列著訂戶與訊息 ——
+症狀（本檔以 `tests/fixtures/ne-trace/` 重現，那是一份網元匯出 per-IMSI trace
+的形狀）：`Session.decode_as` 從來沒有人設過，是空的 tuple —— 連 adapter
+自己宣告的 `DECODE_AS` 都沒生效。於是一大片格在封包清單上顯示為未解碼的「TCP」，
+而它們全部都是 HTTP/2 SBI，其中包含帶 NAS-5GS/NGAP 的格與失敗回應。同一時間抽屜與梯形圖卻好好地列著訂戶與訊息 ——
 因為 `analyse()` 內部自己 probe 過並調整了參數，只是**沒有把那組參數
 交回來**。兩個畫面各自都很合理，合起來才看得出矛盾。
 

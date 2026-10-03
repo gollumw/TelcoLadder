@@ -200,14 +200,14 @@ def apply(messages: list[Message]) -> list[Message]:
     return messages
 
 
-#: 回報型轉述離它綁的那次原生出現最多多遠。實測一份 AMF trace：96 次回報全部在
-#: 原生出現之後 10 ms 內（AMF 收到 InitialContextSetupResponse 就轉給 SMF）。
+#: 回報型轉述離它綁的那次原生出現最多多遠。回報幾乎緊跟在原生出現之後
+#: （AMF 收到 InitialContextSetupResponse 就轉給 SMF）。
 #: 60 s 留足擷取點時鐘差的餘裕，又不至於讓幾分鐘前的舊隧道被重新認領。
 REPORT_MAX_AGE_S = 60.0
 
-#: 轉送型轉述在跨過釋放之後，最多等多久要看到下一次原生出現。實測同一份 trace：
-#: 70 次轉送裡 57 次在 5 s 內等到（Paging 期間 SMF 已經把上行隧道交出去）；
-#: 5 次要等到幾分鐘後 —— 那已經是下一個週期，不能綁。
+#: 轉送型轉述在跨過釋放之後，最多等多久要看到下一次原生出現。通常幾秒內就等到
+#: （Paging 期間 SMF 已經把上行隧道交出去）；要等到幾分鐘後才出現的
+#: —— 那已經是下一個週期，不能綁。
 FORWARD_MAX_LEAD_S = 10.0
 
 

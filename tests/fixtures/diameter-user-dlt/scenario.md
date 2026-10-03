@@ -1,13 +1,13 @@
 # Diameter exported raw: link type USER 0, no IP, no transport
 
 **This capture is written byte-by-byte by `make.py`** (PolyForm Noncommercial 1.0.0, this
-repository). It reproduces the *shape* of a network-element Diameter export
-seen in the field on 2026-09-05: the pcap's link type is `USER 0` (147) and
+repository). It reproduces the *shape* of a network-element Diameter export,
+designed from telecom engineering practice: the pcap's link type is `USER 0` (147) and
 every frame starts at the Diameter header — no Ethernet, no IP, no TCP or
 SCTP. tshark maps such a link type to no dissector, so without a
 `uat:user_dlts` preference every frame is `user_dlt` → `data`.
 
-Nothing in this file comes from that export: hosts are the reserved
+Nothing in this file comes from any export: hosts are the reserved
 `mnc001.mcc001.3gppnetwork.org` names this repository uses everywhere,
 IMSIs are E.212 test-network `00101…`, timing is invented.
 

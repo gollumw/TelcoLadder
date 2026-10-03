@@ -34,7 +34,7 @@ UE 把 P-CSCF 的宣告原樣回述以防竄改 —— 裡面的 SPI 屬於 P-CS
 
 也因此這裡**解原始標頭，不用 tshark 攤平的 `sip.sec_mechanism.*`** —— 那組欄位
 把一則訊息裡所有 security 標頭的參數混成一串，分不出哪個 SPI 來自哪個標頭，
-而那個差別就是語意本身（CLAUDE.md §3.1 的同一個教訓）。
+而那個差別就是語意本身（CLAUDE.md 的 Measured decisions 的同一個教訓）。
 """
 
 from __future__ import annotations

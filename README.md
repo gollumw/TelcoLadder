@@ -192,8 +192,9 @@ Each of these is a fixture in `tests/fixtures/` you can run yourself.
 3. **A 5GS → EPS handover the target eNB refuses** — `n26-handover`. Five
    elements on one ladder; the failure appears three times on the wire (S1AP
    HandoverFailure, the N26 Forward Relocation Response, the NGAP
-   HandoverPreparationFailure) and is explained once, from the S1AP table, with
-   the specification named and no clause invented.
+   HandoverPreparationFailure), and each is explained from its own table: S1AP
+   #12, GTPv2 #73, NGAP #13 - three numbers for one refusal. Only the NGAP
+   entry carries a clause; the other two name the specification and stop.
 
 ## What it does today
 
@@ -246,8 +247,7 @@ telcoladder analyze big.pcapng --filter 'ngap || s1ap'      # any tshark display
 ```
 
 Whatever narrowing could not reach is listed explicitly, never silently
-dropped. Dissection runs at roughly 0.19 s/MB and is linear (a 145 MB, 780k-frame
-file in 28 s on one machine); `tshark` output is streamed, so memory follows the
+dropped. Dissection time is linear in file size; `tshark` output is streamed, so memory follows the
 messages kept rather than the file size.
 
 ## Prior art, and why this exists anyway
@@ -301,7 +301,7 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
   completed with a guessed country code. VoLTE, VoNR and VoWiFi are shown only
   where `P-Access-Network-Info` declares them; without that header the access
   is reported as not declared.
-- **Only 9 of the 21 cause tables cite a clause.** The other 12 name the
+- **Only 7 of the 21 cause tables cite a clause.** The other 14 name the
   specification and stop. An absent clause is better than a wrong one.
 - **The 4G, IMS and handover fixtures are written byte by byte** with `tshark`
   as the oracle: exact about the protocol, silent about any real deployment.
@@ -365,6 +365,19 @@ for an agent using the tool is [AGENTS.md](AGENTS.md).
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is short. It has two rules that matter
 more than anything else in it: **no real subscriber or customer data, anywhere**,
 and **every spec clause is verified by a human, never generated**.
+
+Where to go:
+
+- **Something is wrong** — a crash, a wrong ladder, a cause explained
+  wrongly: [open a bug report](https://github.com/gollumw/TelcoLadder/issues/new?template=bug_report.yml).
+  Paste `telcoladder --version` and `telcoladder check`, never the capture.
+- **A question, a missing cause code, a protocol you want** —
+  [open an issue](https://github.com/gollumw/TelcoLadder/issues/new?template=other.yml)
+  or ask in [Discussions](https://github.com/gollumw/TelcoLadder/discussions/categories/q-a).
+- **You used it and it worked** — say so in
+  [Show and tell](https://github.com/gollumw/TelcoLadder/discussions/categories/show-and-tell);
+  knowing which networks and interfaces it is used on decides what gets
+  supported next.
 
 Found a vulnerability? [`SECURITY.md`](SECURITY.md) — not a public issue.
 

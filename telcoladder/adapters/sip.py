@@ -15,7 +15,7 @@ IMS 註冊會與他的 S1-MME 附著、S11 會話併成一條流程。
 **推過頭比不推更糟**：真的 ISIM 會發自己的 IMPU，那時 `@` 左邊不是任何人的
 IMSI，硬推會把兩個不相干的用戶併成一條，而梯形圖照樣畫得出來（§4 那一類）。
 
-## SDP 巢狀在 `sip` 層裡（§3.1）
+## SDP 巢狀在 `sip` 層裡（CLAUDE.md 的 Measured decisions）
 
 實測 `-T ek`：頂層只有 `eth/frame/ip/sip/udp`，`sdp` 是 `sip` 這個 dict 底下
 的一個鍵。所以取媒體埠一律走 `carrier.dig()`，**不要寫死 `block["sdp"]`** ——
@@ -28,7 +28,7 @@ adapter 不必自己想辦法找區塊。
 
 §10 記著「`relay-record` 給 Diameter 與日後的 SIP `Via`」。**這裡還沒做**，
 理由是 fixture 沒有經過代理轉送的那一腿 —— 沒有踩點的程式碼等於沒測，
-而這個專案的失敗模式全部是靜默的。等真實的 IMS 擷取檔（T2）進來再補。
+而這個專案的失敗模式全部是靜默的。等有經過代理轉送那一腿的 fixture 再補。
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ _CHALLENGE_CODES = frozenset({401, 407})
 #: **這裡只畫號碼段的界線。** 480／486／487／600／603 這些「一方自己的結局」
 #: （忙線、拒接、取消）在 `sip_status.yaml` 裡標著 `outcome: user`，由
 #: `causes.annotate()` 依表降級 —— adapter 不認得那張表，也不該認得：判準是
-#: 內容，住在表裡（用戶裁定 2026-09-06）。
+#: 內容，住在表裡。
 _FIRST_FAILURE_CODE = 400
 
 #: 從這個狀態碼起給 `CauseRef`（3xx 起：重導也值得一句出處）。
@@ -147,8 +147,8 @@ def _identity_keys(block: dict[str, Any]) -> frozenset[IdKey]:
     #
     # 一通電話的兩端是**兩個不同的人**。把 `To` 也當關聯鍵的話，
     # 「A 打給 C」與「B 打給 C」會讓 `correlate` 把 A、B、C 三個人的整段歷史
-    # （附著、承載、註冊）併成一條流程 —— **實測就是這樣**：加 SIP 之前
-    # 三條流程，加了之後剩一條 32 則。
+    # （附著、承載、註冊）併成一條流程 —— **第一版就是這樣寫的**：加了 SIP
+    # 之後，三個人的流程塌成一條。
     #
     # 那條流程**不是錯的**（他們確實通過話），但它答不出使用者真正要問的
     # 「**這個人**的通話為什麼失敗」—— 而那正是這種工具存在的理由。
@@ -210,7 +210,7 @@ def _media_keys(block: dict[str, Any]) -> set[IdKey]:
 def _media_ports(block: dict[str, Any]) -> list[str]:
     """SDP 提議／回應裡的媒體埠。
 
-    **走 `dig()` 不寫死路徑**（§3.1）—— SDP 現在巢狀在 `sip` 底下一層，
+    **走 `dig()` 不寫死路徑**（CLAUDE.md 的 Measured decisions）—— SDP 現在巢狀在 `sip` 底下一層，
     而「現在是這樣」與「永遠是這樣」是兩回事。
 
     E3 要拿它把 RTP 流接到這通電話上；在那之前它只是 `detail` 裡的一個事實。
@@ -243,9 +243,9 @@ _IMSI_USER = re.compile(r"^(?:sips?:)?\d{14,15}@", re.I)
 def _contact_claim(block: dict[str, Any], frame: Frame) -> str:
     """**後備**：`Contact` 的 host 是送出者自己、而且帶著訂戶身分 → 送出者是 UE。
 
-    2026-09-13 以前這是唯一的規則，而且只看「host 是不是送出者」。實測一份真實 VoLTE
-    擷取：B2BUA（AS、SBG）另開一腿時 `Contact` 寫的也是自己，於是 11 則核網訊息把一台
-    核心節點標成 UE，被叫 UE 反而被標成 P-CSCF。
+    2026-09-13 以前這是唯一的規則，而且只看「host 是不是送出者」。但 B2BUA（AS、SBG）
+    另開一腿時 `Contact` 寫的也是自己，於是核網訊息把一台核心節點標成 UE，被叫 UE
+    反而被標成 P-CSCF。
 
     現在它**只在 IPsec 證據判不出來時**才被採用（`model.FALLBACK_ROLE_HINTS_KEY`），
     而且收窄成 `Contact` 帶著訂戶身分：IMSI 推導的 user part，或 `+sip.instance`
@@ -383,7 +383,7 @@ def parse(frame: Frame) -> list[Message]:
         # Client、哪個來自 Verify —— 而那個差別就是語意本身：`Security-Verify`
         # 是 UE 回述 P-CSCF 的宣告，裡面的 SPI 屬於 P-CSCF，不屬於送出它的人。
         # 照攤平的欄位解，第二個 REGISTER 會讓同一個 SPI 多出一組反方向的擁有者，
-        # 而兩組看起來都合理（§3.1 那條「攤平的欄位不告訴你結構」的同一個形狀）。
+        # 而兩組看起來都合理（CLAUDE.md 的 Measured decisions 那條「攤平的欄位不告訴你結構」的同一個形狀）。
         #
         # **金鑰不在這些標頭裡，而且不可能在。** IK/CK 是 USIM 拿 K 與 RAND 在卡裡
         # 算出來的，從來不上線；能從擷取檔拿到它們的唯一位置是 Cx 的
@@ -408,7 +408,7 @@ def parse(frame: Frame) -> list[Message]:
         ports = _media_ports(block)
         if ports:
             # E3 的接點。**現在只是記下來** —— 沒有 RTP adapter 讀它，
-            # 而一個沒有讀者的 `detail` 鍵正是 §5.5 那條「刪 renderer 前先問
+            # 而一個沒有讀者的 `detail` 鍵正是「刪 renderer 前先問
             # 誰在讀」的反面：這裡是明知還沒有讀者，並且寫下為什麼。
             detail["SDP media ports"] = ",".join(ports)
         addresses = _media_addresses(block)

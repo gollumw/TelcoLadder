@@ -2,11 +2,10 @@
 
 ## 為什麼要有這一組
 
-一份真實 VoLTE 擷取（只記數字）上，舊規則「`Contact` 的 host 是送出者 → 送出者是 UE」
-把一台核心節點標成 UE（11 則），P-CSCF 往被叫 UE 的 INVITE 也讓 P-CSCF 被標成 UE、被叫 UE
-被標成 P-CSCF。原因是 B2BUA（AS、SBG）另開一腿時 `Contact` 寫的是自己。
+在 VoLTE 擷取上，舊規則「`Contact` 的 host 是送出者 → 送出者是 UE」會把核心節點標成 UE，
+P-CSCF 往被叫 UE 的 INVITE 也讓 P-CSCF 被標成 UE、被叫 UE 被標成 P-CSCF。原因是 B2BUA（AS、SBG）另開一腿時 `Contact` 寫的是自己。
 
-規則（使用者裁定 2026-09-13：先看 IPsec，沒有 IPsec 證據才退回收窄的 Contact）：
+規則（先看 IPsec，沒有 IPsec 證據才退回收窄的 Contact）：
 
 1. **SA 協商標頭**（`Security-Client`／`Security-Server`）寫著誰是誰 —— 線路事實。
 2. **IPsec 扇出**：走在 Gm SA 裡的訊令，同時與兩個以上對端走 SA 的位址是 P-CSCF，它的對端是 UE。
@@ -59,7 +58,7 @@ def _role(roles, address: str) -> set[str | None]:
     return {role for (key, _port), role in roles.items() if key == address}
 
 
-# ── fixture：真實樣本的形狀 ─────────────────────────────────────────────
+# ── fixture：依實務經驗設計的形狀 ─────────────────────────────────────────
 
 
 def test_both_ues_and_the_pcscf_come_from_ipsec(roles) -> None:

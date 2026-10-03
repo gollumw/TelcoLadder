@@ -119,7 +119,7 @@ def test_no_surface_claims_the_first_failure_caused_the_last() -> None:
     原封不動回來。
 
     **三個版本化契約必須一起改**（xdr / summary / callflow）。只改一個，
-    其餘照舊宣稱錯的因果，而且不會有任何錯誤 —— §5.5 的「兩個表面漂移，
+    其餘照舊宣稱錯的因果，而且不會有任何錯誤 —— 「兩個表面漂移，
     不報錯」。所以這條測試橫跨三個表面，不是三條各守一個。
     """
     from telcoladder import callflow, causes, summary
@@ -434,8 +434,8 @@ def test_a_long_gap_before_the_outcome_does_not_split_the_procedure() -> None:
 
 
 def test_a_retry_after_a_reject_is_a_new_attempt_not_a_merged_success() -> None:
-    """實測一份網元 trace：七個 PDU session establishment reject，七段全部
-    success —— 重試被併進同一段。突變：拿掉「視窗裡已有失敗」的檢查 → 一段 success。"""
+    """reject 之後的重試若被併進同一段，每一次被拒的 PDU session establishment
+    都會讀成 success。突變：拿掉「視窗裡已有失敗」的檢查 → 一段 success。"""
     from telcoladder.model import Flow
 
     flow = Flow(messages=[
@@ -477,7 +477,7 @@ def _ho(frame: int, protocol: str, label: str, ts: float, handover_type: str = "
 def _cancelled_attempt(first_frame: int, ts0: float, *, gap_before_cancel: float = 1.0) -> list[Message]:
     """一次 EPS→5GS 換手被喊停：準備 → 轉送請求 → 取消的兩條腿 → 兩個回應。
 
-    六則的形狀取自一份真實 MME trace（只記形狀與則數，不記識別碼）。方向標記掛在
+    六則的形狀依專業電信工程師的實務經驗設計。方向標記掛在
     HandoverRequired 上，與 adapter 的來源一致（`adapters/s1ap.py` 的 HandoverType IE）。
     """
     cancel_ts = ts0 + 1 + gap_before_cancel
@@ -494,9 +494,9 @@ def _cancelled_attempt(first_frame: int, ts0: float, *, gap_before_cancel: float
 def test_a_new_opener_after_a_finished_attempt_is_a_new_attempt() -> None:
     """兩次背靠背的取消換手是兩段，不是「一段八則 ＋ 一段四則」。
 
-    實測一份 MME trace：6 組背靠背的取消換手全被切成這個形狀，第二段少了方向標記、
-    世代從互通掉回 4G；另有 1 次被取消的嘗試整個被併進其後成功的換手。修正後是
-    14 次取消、段數 84 → 86 —— 不是變少，是邊界對了。第二次嘗試緊接著開始（間隔不到
+    舊規則把背靠背的取消換手切成這個形狀：第二段少了方向標記、世代從互通掉回 4G；
+    被取消的嘗試也可能整個被併進其後成功的換手。修正之後段數不是變少，是邊界對了。
+    第二次嘗試緊接著開始（間隔不到
     `QUIET_GAP`，所以安靜期救不了），而它自己中間有一個較長的間隔，於是舊規則
     在錯的地方收段。
 
@@ -540,7 +540,7 @@ def _at(frame: int, ts: float, label: str) -> Message:
 def test_a_release_folds_into_the_scenario_it_ends() -> None:
     """釋放是場景的尾巴，不是場景：緊接在註冊之後的釋放折進那次註冊。
 
-    實測一份 MME 側的 trace：20 段釋放全部緊接在前一段之後，佔全部段數的四分之一。
+    單一訂戶的 4G trace 上，釋放幾乎都緊接在前一段之後；自成一段會讓段數虛胖。
     折進去之後，場景的訊息數、結束格與發起方都包含那次釋放，釋放本身留在 `folded`。
     突變：`_fold_releases` 原樣回傳 → 兩段。
     """

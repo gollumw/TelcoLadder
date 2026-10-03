@@ -4,8 +4,8 @@
 不只信令。`extract.read_frames()` 做不到這件事 —— 它套的是 adapter 聯集出來的
 display filter，非信令封包在 tshark 裡就被濾掉、從未進入行程。這裡刻意不套。
 
-**與 §3.1 的關係：本檔仍然用 `-T ek`，沒有例外。**
-§3.1 禁的是 `-T fields`，因為它把同名欄位逗號串接、訊息邊界就此消失。
+**與 CLAUDE.md 的 Measured decisions 的關係：本檔仍然用 `-T ek`，沒有例外。**
+CLAUDE.md 的 Measured decisions 禁的是 `-T fields`，因為它把同名欄位逗號串接、訊息邊界就此消失。
 但 `-T ek` **也吃 `-e`**，而且值是 JSON 陣列、邊界完好：
 
     -T ek     -e frame.number -e http2.streamid  →  "http2_streamid": ["5","7","9","11"]  ✓
@@ -21,18 +21,11 @@ display filter，非信令封包在 tshark 裡就被濾掉、從未進入行程�
 
 ## 為什麼要串流，以及為什麼這是整件事的關鍵
 
-實測（436 MB / 2,564,096 封包，數字與「哪些不可以從那份檔得出」在
-`local/perf/README.md`）：
-
-    第一批 200 列            0.17 s
-    全部 250 萬列            50.9 s   （1.2 GB JSON）
-    完整解剖 analyse()       71.6 s
-
-**原本以為「欄位掃描遠比完整解剖便宜」—— 那是錯的**，50.9 對 71.6 只差 1.4 倍。
+**「欄位掃描遠比完整解剖便宜」是錯的**：建完整索引與完整解剖是同一個量級，
 tshark 兩邊都得完整解剖每一格，`-e` 只省下**輸出**的量。
 
-真正的差別是**第一次可見的時間**：0.17 秒對 71.6 秒，400 倍，而且與檔案大小
-無關。所以呼叫端必須把這個 generator 當串流用、邊讀邊上畫面 ——
+真正的差別是**第一次可見的時間**：第一批列幾乎立刻到位，完整解剖卻要跑完整份檔
+才有答案，而前者與檔案大小無關。所以呼叫端必須把這個 generator 當串流用、邊讀邊上畫面 ——
 把它 `list()` 起來再顯示，就把唯一的優勢丟掉了。
 """
 
@@ -85,8 +78,8 @@ COLUMN_TITLES: tuple[str, ...] = (
     "No.", "Time", "Source", "Destination", "Protocol", "Length", "Info",
 )
 
-#: 索引列數上限。實測 250 萬列的索引輸出是 1.2 GB JSON —— 即使只留我們要的
-#: 欄位，`info` 字串仍是大頭。50 萬列大約 0.2–0.3 GB 駐留，那是可接受的天花板。
+#: 索引列數上限。百萬列級的索引輸出是 GB 級的 JSON —— 即使只留我們要的
+#: 欄位，`info` 字串仍是大頭。50 萬列是可接受的駐留天花板。
 #: 踩到上限時**必須把真實總數講出來**，不要只說「已截斷」（Rule 12）。
 MAX_INDEX_ROWS = 500_000
 
@@ -112,8 +105,8 @@ def frame_filter(frames: "Iterable[int]") -> str | None:
     **只用 `frame.number`，不用協定欄位。** 發 `ngap.RAN_UE_NGAP_ID == 1` 之類的
     很誘人，但那是**訊息層級**的比對，而這個工具的歸戶是**流程層級**的（union-find
     跨識別碼別名與生命週期）。兩者不一樣，而且差別會咬人：NGAP UE ID 只在一條連線
-    內唯一、而且會回收再配發，所以那條 filter 會一併撈到**別人的**封包。實測同一個
-    SUPI：流程層級 101 格、欄位比對 42 格（`identities.session_frames` 的說明）。
+    內唯一、而且會回收再配發，所以那條 filter 會一併撈到**別人的**封包；反過來，加密之後不再帶識別碼的訊息
+    它一格也撈不到（`identities.session_frames` 的說明）。
 
     frame 編號是我們真的算出來的那組格，貼進 Wireshark 看到的就是這裡看到的 ——
     沒有第二套判斷，也就沒有第二套判斷會漂移。
@@ -336,7 +329,7 @@ def _ek_lines(
     finally:
         # **一定要用共用的那份。** POSIX 先關 stdout 拿 EPIPE、Windows 不能關、
         # 且必須 communicate() 而非 read-then-wait —— 那套是實測換來的，
-        # 只存在於 tshark.shutdown()（CLAUDE.md §3.1）。
+        # 只存在於 tshark.shutdown()。
         stderr = shutdown(proc, consumed_fully)
         if consumed_fully and proc.returncode != 0:
             raise PacketColumnsUnavailable(
@@ -435,7 +428,7 @@ def matching_frames(
 def total_packets(pcap: Path, *, tshark: Tshark | None = None) -> int | None:
     """用 `capinfos` 數總封包數。取不到回 `None`。
 
-    這是進度條的分母。實測在 436 MB 上只要 0.32 秒，所以值得先問一次。
+    這是進度條的分母。capinfos 比一趟完整的 tshark 便宜得多，所以值得先問一次。
 
     **取不到就回 None，絕不從檔案大小推估。** 編造出來的分母會讓進度條
     看起來很專業而數字是假的 —— UI 拿到 None 時顯示「已索引 N 個封包」

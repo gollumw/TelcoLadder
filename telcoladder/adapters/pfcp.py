@@ -90,7 +90,7 @@ def _tunnel_keys(block: dict[str, Any]) -> set[IdKey]:
       迴圈自然跑不到。
     * **Outer Header Creation**（FAR）—— 要把封包送去哪條隧道。
 
-    **位址一定要一起取。** 實測同一份擷取檔裡有兩個 TEID 都是 3，
+    **位址一定要一起取。** 實測 `5gc-e2e` 裡有兩個 TEID 都是 3，
     一個屬於 SMF、一個屬於 gNB —— 少了位址就會被當成同一條隧道。
     """
     keys: set[IdKey] = set()

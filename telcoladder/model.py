@@ -35,9 +35,9 @@ class IdKind(StrEnum):
     # ── 5G 的暫時身分（2026-09-05）──
     #
     # **真實網路的流量多數不是註冊，是 Service request** —— 而 Service request
-    # 只帶 5G-S-TMSI，不帶 SUCI。實測兩份網元 trace：28 條流程只有 1 條有
-    # SUPI，其餘 23 個 Service request 各自只靠 NGAP UE ID 成一條，summary 的
-    # 訂戶段與網頁抽屜都看不到它們。
+    # 只帶 5G-S-TMSI，不帶 SUCI。少了這把鍵，一份以 Service request 為主的擷取檔
+    # 只有極少數流程帶得到 SUPI，其餘的 Service request 各自只靠 NGAP UE ID 成一條，
+    # summary 的訂戶段與網頁抽屜都看不到它們。
     #
     # 值是 `<AMF Set ID>-<AMF Pointer>-<5G-TMSI 八位十六進位>`（48 位元的
     # 5G-S-TMSI）；Registration request 帶的 5G-GUTI 去掉 PLMN 與 AMF Region
@@ -53,8 +53,8 @@ class IdKind(StrEnum):
     #
     # 值是 `<MME Code>-<M-TMSI 八位十六進位>`（`identity.s_tmsi`）。S1AP 的 S-TMSI
     # （InitialUEMessage、Paging）與 NAS GUTI 去掉 PLMN 與 MME Group ID 之後同值。
-    # 實測一份 MME 側的單一用戶 trace：少了它，Paging 與閒置後在另一台 eNB 發起的
-    # TAU 各自成流程。
+    # 少了它，Paging 與閒置後在另一台 eNB 發起的 TAU 各自成流程
+    # （`4g-idle-paging-s-tmsi` fixture 重現這個形狀）。
     #
     # **範圍是整份擷取檔**，理由與代價見 `identity.s_tmsi`。與 5G-S-TMSI 一樣
     # **不進 `lifecycle.REUSABLE`**：重配在加密的 accept 裡，線上看不到釋放。
@@ -281,8 +281,8 @@ class Continuation(NamedTuple):
 #:   UPF 的上行隧道交給 gNB（`PDU_RES_SETUP_REQ`）：SBI 先提，N2 才出現。前一次原生
 #:   出現之後沒有釋放 → 那一輪仍然活著，綁它；有釋放 → 綁**下一次**原生出現，
 #:   而且兩者之間不得再有釋放、相距不得超過 `lifecycle.FORWARD_MAX_LEAD_S`。
-#: * `QUOTE_EMBEDDED`：SBI 資源 id 裡**逐字**夾著一個 SUPI。實測一份 AMF trace：PCF 配發的
-#:   polAssoId 就是 SUPI 數字接 `%` 與一段十六進位。那個 id 是網元自己配的，TS 29.525 只說
+#: * `QUOTE_EMBEDDED`：SBI 資源 id 裡**逐字**夾著一個 SUPI。依專業電信工程師的實務經驗，
+#:   有些 PCF 配發的 polAssoId 就是 SUPI 數字接 `%` 與一段十六進位。那個 id 是網元自己配的，TS 29.525 只說
 #:   它不透明、沒規定格式 —— 所以它**不是** SUPI 鍵，只是候選：這份擷取檔別處**原生**出現過
 #:   同一個 SUPI 時才接得上（`correlate` 本來就只接 `uf` 裡有的鍵），否則落空，不會憑空多出
 #:   一個訂戶。SUPI 不回收，沒有輪次可綁，`lifecycle` 原樣放行。
@@ -296,11 +296,11 @@ class Quote(NamedTuple):
 
     SBI 的 body 夾著 N2 SM information，裡面的 GTP 隧道（位址＋TEID）與 N2 上那一把
     逐字相同 —— 那是把 SBI、N2、N4 接起來的線路事實。可是把它當成這則訊息自己的鍵
-    有兩個錯（2026-09-11 實測一份 AMF trace）：
+    有兩個錯：
 
     1. `lifecycle` 會把同一則訊息上的可回收鍵記成互為關聯。SBI 訊息同時帶著 SM context
        參照與它轉述的隧道，每次 idle 的 UEContextRelease 就一路把 SM context 也改成新的一輪
-       —— 而 PDU session 在 idle 期間一直都在。實測 20 則 retrieve 因此被拆成孤兒。
+       —— 而 PDU session 在 idle 期間一直都在。之後的 retrieve 因此被拆成孤兒。
     2. 轉述可能晚到。晚到的轉述若被當成當下這一輪的鍵，而那個 TEID 已經配給了別人，
        兩個訂戶就被接成一條 —— 圖照樣畫得出來。
 
@@ -379,7 +379,7 @@ TRACE_ROLE_HINTS_KEY = "trace_role_hints"
 #: 值是 `接取側角色|網路側角色`（例如 `UE|P-CSCF`）。**不說哪一端是哪一個** —— 那要看整份檔：
 #: `nf` 以扇出判定，同時與兩個以上對端走這種 SA 的位址是網路側，它的對端是接取側。
 #:
-#: 為什麼不讓 adapter 直接判：一則訊息看不出方向。實測一份真實 VoLTE 擷取：P-CSCF 往被叫 UE
+#: 為什麼不讓 adapter 直接判：一則訊息看不出方向。P-CSCF 往被叫 UE
 #: 送的 INVITE，`Contact` 寫的是 P-CSCF 自己（它是 B2BUA），逐則判的話 P-CSCF 被標成 UE、
 #: 被叫 UE 被標成 P-CSCF，而兩個標籤看起來都合理。
 IPSEC_ROLES_KEY = "ipsec_roles"
@@ -400,7 +400,7 @@ class Endpoint:
     **`ip` 可以是空字串。** 網元匯出的裸協定（link type USER n）沒有 IP 層，
     tshark 給不出位址；這時端點的身分只能來自協定本身 —— Diameter 的
     Origin-Host —— 放在 `host`。**任何拿端點當鍵的地方一律用 `key`**，
-    不要直接用 `ip`：三份裸 Diameter 實測，用 `ip` 當鍵時全部端點塌成一個
+    不要直接用 `ip`：裸 Diameter（`diameter-user-dlt`）用 `ip` 當鍵時全部端點塌成一個
     空字串，整張梯形圖變成一條自己指向自己的泳道，一則訊息都沒少。
     """
 

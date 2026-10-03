@@ -2,7 +2,7 @@
 
 **NAS-5GS 的 4G 雙胞胎。** 兩件事一模一樣，所以這個檔照著 `nas5gs.py` 的形狀寫：
 
-1. **NAS 不是獨立的一層** —— 子解剖巢狀在載體層內（§3.1）。實測 `-T ek`：
+1. **NAS 不是獨立的一層** —— 子解剖巢狀在載體層內（CLAUDE.md 的 Measured decisions）。實測 `-T ek`：
    `s1ap` 這個 dict 底下有一個 `nas-eps` 鍵，而 `frame.layer("nas-eps")` 回空。
    找區塊一律走 `adapters/carrier.py` 的 `carried_blocks()`，**那是那個教訓的
    唯一一份實作** —— 複製第二份的話，一份修好了另一份不會說話。
@@ -138,8 +138,8 @@ ESM_MESSAGE_TYPES: dict[int, str] = {
 #: 這也讓兩個 NAS adapter 的規則長得一樣（`nas5gs.py` 的 `_FAILURE_TYPES`）。
 #: 安全標頭型別 12 ＝「SERVICE REQUEST 專用的安全標頭」（TS 24.301）。**Service request 沒有
 #: 訊息型別欄位** —— 它整則就是這個標頭加 KSI／序號與縮短的 MAC，所以抽不到 EMM 型別。
-#: 以前這一種被當成「加密讀不到」而丟掉：實測一份 MME 側的 UE trace，15 則全是它，
-#: 圖上 15 個 InitialUEMessage 後面都少了一句 Service request，加密數卻多報 15。
+#: 以前這一種被當成「加密讀不到」而丟掉：每個帶著它的 InitialUEMessage 後面都少了一句
+#: Service request，加密數卻多報同樣的數量（`tests/fixtures/4g-service-request-context` 的 frame 1）。
 #: tshark 的 info 欄位把它叫 `Service request`（測試拿 tshark 當 oracle 核對）。
 _SERVICE_REQUEST_HEADER = 12
 
@@ -278,7 +278,7 @@ def parse(frame: Frame) -> list[Message]:
             detail["SUPI"] = imsi
         elif carrier_adapter is not None and any(k[0] is IdKind.SUPI for k in keys):
             # 身分是**跟載體借的**。使用者有權知道依據 —— 比照 `nas5gs.py`，
-            # 讀者是梯形圖的事件詳情列（§5.5 那張表）。
+            # 讀者是梯形圖的事件詳情列。
             detail[IDENTITY_SOURCE_KEY] = carrier_adapter.NAME
 
         messages.append(

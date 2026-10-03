@@ -2,10 +2,9 @@
 
 ## 為什麼需要這條
 
-一份 AMF 側的真實 UE trace：97 段裡沒有一段是 EPS fallback、EPS→5GS 換手或 5GS→EPS
-閒置移動 —— 這三種互通程序各發生了 20 次；20 次「行動更新註冊」全失敗，卻與初始註冊
-混在同一種 kind 裡。fixture `interworking-cycle` 把那個循環寫了兩遍（一次成功、一次
-註冊被拒），這裡守：
+沒有分類時，AMF 側 UE trace 上的 EPS fallback、EPS→5GS 換手與 5GS→EPS 閒置移動一段都切不出來，
+失敗的「行動更新註冊」也與初始註冊混在同一種 kind 裡。fixture `interworking-cycle`
+把這個循環（依專業電信工程師的實務經驗設計）寫了兩遍（一次成功、一次註冊被拒），這裡守：
 
 1. 名稱只從 oracle 來：註冊型別對 `tshark -G values`，EPS fallback 的 cause 對 cause 表。
 2. 五種段都切得出來、結局對、方向對（context transfer 看誰發的、換手看 HandoverType）。

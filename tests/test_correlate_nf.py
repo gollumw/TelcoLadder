@@ -419,8 +419,8 @@ def _sbi(frame: int, src: str, dst: str, label: str, path: str | None = None, se
 
 
 def test_the_client_of_sm_contexts_is_the_amf_without_a_user_agent() -> None:
-    """一份 SMF trace：某位址打了 40 則 `POST /nsmf-pdusession/v1/sm-contexts…`，
-    請求沒帶 User-Agent，於是整份沒有名字 —— 而 TS 29.502 說 SmContext 的
+    """SMF trace 上某位址打了 `POST /nsmf-pdusession/v1/sm-contexts…`，
+    請求沒帶 User-Agent，於是沒有名字 —— 而 TS 29.502 說 SmContext 的
     消費者只有 AMF。伺服端那一票（SMF）原本就有；這裡補客戶端。"""
     from telcoladder.nf import resolve_roles_with_basis
 

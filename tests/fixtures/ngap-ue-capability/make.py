@@ -3,11 +3,10 @@
 ## 為什麼要有這一份
 
 tshark 的 `-T ek` 編碼器在巨大的樹上崩潰，而 UE radio capability 的 NR RRC 容器
-正是那種樹。實測一份 2.4 MB／1,933 格的 AMF 側 UE trace：40 格帶 nr-rrc，一趟
-`-T ek` 要 80.5 秒、吐出 48.7 MB 的 JSON；同 40 格用 `-V` 只要 1.7 秒 ——
-dissection 不是問題，編碼器才是。`--disable-protocol nr-rrc` 之後同一趟 0.47 秒，
-631 格 NGAP 一格不少。`analyse()` 跑兩趟、封包清單再一趟，使用者看到的是
-「載入十分鐘」。既有的 19 份 fixture 沒有任何一格帶 RRC 容器（掃過），所以那條路
+正是那種樹（AMF 側的 UE trace 常帶著它，依專業電信工程師的實務經驗設計）。帶著
+這種容器的格，一趟 `-T ek` 的時間與 JSON 體積都隨它暴增，同樣的格用 `-V` 卻很快 ——
+dissection 不是問題，編碼器才是。`--disable-protocol nr-rrc` 之後 NGAP 一格不少。
+`analyse()` 跑兩趟、封包清單再一趟，使用者看到的是載入久得不像話。既有的 19 份 fixture 沒有任何一格帶 RRC 容器（掃過），所以那條路
 在這之前沒有資料可以走 —— 沒有資料走的分支不算寫過。
 
 ## 內容（2 格）
@@ -21,9 +20,9 @@ dissection 不是問題，編碼器才是。`--disable-protocol nr-rrc` 之後�
 
 * **樹的體積本身。** 這裡的容器是最小的合法編碼，tshark 解出來的 nr-rrc 樹只有
   幾個節點。它證明的是「這條路真的走到 nr-rrc dissector」與「抽取時它被停掉、
-  檢查器仍看得到」；80 秒那個數字量自真實 trace，不在 repo 裡。
-* 沒有 UERadioCapabilityCheck（43）與 InitialContextSetup（14）—— 真實 trace 裡
-  RRC 樹也掛在那兩個程序上，但停用是按 dissector 不是按程序，一格就夠。
+  檢查器仍看得到」；大樹的耗時不在這份檔能證明的範圍。
+* 沒有 UERadioCapabilityCheck（43）與 InitialContextSetup（14）—— RRC 樹也會掛在
+  那兩個程序上，但停用是按 dissector 不是按程序，一格就夠。
 
 ## 編碼
 

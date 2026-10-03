@@ -32,8 +32,8 @@ SBI 埠不同 → 100% 落進 `data` → 無聲消失。
 
 ## 成本
 
-`-z io,phs` 要完整讀一次檔，2GB 上那是第二趟全檔掃描。所以**條件觸發**：
-先用 `capinfos -c` 拿總數（實測 436MB 上 0.32 秒），命中率正常就完全不跑。
+`-z io,phs` 要完整讀一次檔，大檔上那是第二趟全檔掃描。所以**條件觸發**：
+先用 `capinfos -c` 拿總數（它比一趟完整的 tshark 便宜得多），命中率正常就完全不跑。
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ MIN_TOTAL_FOR_ALERT = 200
 
 #: 這個格數以下，第二趟掃描是便宜的（實測 `-z io,phs` 對數千格的檔不到一秒），
 #: **只要有東西沒解碼就跑**。超過它才回到「命中率正常就不跑」的省成本規則 ——
-#: 436 MB 上那是 70 秒。
+#: 大檔上那是又一趟完整的 tshark。
 MAX_TOTAL_FOR_CHEAP_SCAN = 50_000
 
 #: TCP 上有這麼多格未認領的載荷，就無條件觸發掃描 —— 不管命中率多高。
@@ -79,12 +79,12 @@ MIN_UNCLAIMED_TCP_FOR_ALERT = 10
 
 _TRANSPORT_SIGNAL_NOTE = """為什麼不能只看全域命中率。
 
-2026-08-18，第一份真實封包（356 格）的命中率是 **187/356 = 52.5%**，
-剛好高過 `COVERAGE_ALERT_THRESHOLD` 的 0.5 —— 於是這個模組**一句話都沒說**。
-而那沒說出口的 47% 裡，是全部的 SBI 流量與 15 則 HTTP 404。
+一份 NGAP 解得很好、SBI 全部沒解的擷取檔，全域命中率可以剛好高過
+`COVERAGE_ALERT_THRESHOLD` 的 0.5 —— 於是這個模組**一句話都沒說**，
+而沒說出口的那一截正是全部的 SBI 流量（連同裡面的錯誤回應）。
 
 錯不在門檻值訂多少，錯在**指標選錯了**。全域比率會被「已經解得很好的那個
-協定」稀釋：NGAP 解了 187 格，就足以把 TCP 上 100% 的失敗蓋過去。
+協定」稀釋：NGAP 解得夠多，就足以把 TCP 上 100% 的失敗蓋過去。
 
 對的訊號是**分傳輸層看**：某個傳輸層有可觀的載荷、卻一則訊息都沒產出。
 那與整體比率無關，也不會被別的協定稀釋。
@@ -297,16 +297,16 @@ def measure(
 
     negated = f"!({_claimed()})"
     # 這一趟要吃分析用的同一組 `-o` 與 decode-as：USER DLT 的對映沒帶上，整份檔會被報成 `user_dlt`
-    # 一片未認領；decode-as 沒帶上，靠它解出來的 Rf（非標準埠）在這裡還是 `data`（2026-09-13 實測
-    # 47 格已解碼的訊息被列成「認不出來的 TCP 載荷」）。「盤點時用了跟分析不同的參數」正是
+    # 一片未認領；decode-as 沒帶上，靠它解出來的 Rf（非標準埠）在這裡還是 `data`（已解碼的
+    # 訊息會被列成「認不出來的 TCP 載荷」）。「盤點時用了跟分析不同的參數」正是
     # CLAUDE.md §4 那張表裡的一列。
     from telcoladder.adapters import default_decode_as
 
     effective = tuple(default_decode_as()) + tuple(decode_as)
     rules = _decode_args(effective)
     # **逐格盤點，不用 `-z io,phs`。** phs 只給每個協定葉子的格數，已解碼訊息的分片與區段只能從
-    # 格數「扣」—— 而扣錯葉子時整份說明就錯位（2026-09-13 實測：TCP 區段被從 Rf 的 `data` 裡扣掉，
-    # 說明加起來 41 格、標題寫 45 格）。逐格盤點可以按格號跳過它們，每一格只落在一個原因裡。
+    # 格數「扣」—— 而扣錯葉子時整份說明就錯位（TCP 區段被從 Rf 的 `data` 裡扣掉，
+    # 說明加起來就少於標題的格數）。逐格盤點可以按格號跳過它們，每一格只落在一個原因裡。
     proc = tshark.run(
         ["-r", str(pcap), *pref_args(prefs), *rules, "-Y", negated, "-T", "fields", "-E", "occurrence=f",
          "-e", "frame.number", "-e", "frame.protocols", "-e", "tcp.srcport", "-e", "tcp.dstport",
@@ -640,7 +640,7 @@ def describe(coverage: Coverage) -> list[str]:
             _("  · {frames} more frames in {groups} smaller groups (see the packet list's protocol column).").format(frames=sum(c.frames for c in rest), groups=len(rest))
         )
     # 小檔裡不逐條提的傳輸層葉子（`_worth_mentioning`），**還是要算進去**：標題說「其餘 N 格沒有、原因如下」，
-    # 下面的原因加起來卻少了一截，讀的人會去找那個洞（2026-09-13 實測：45 格只解釋了 30 格）。
+    # 下面的原因加起來卻少了一截，讀的人會去找那個洞。
     quiet = sum(c.frames for c in coverage.unclaimed if c.protocol in _TRANSPORT_ONLY and not _worth_mentioning(c, coverage.total))
     if quiet:
         lines.append(

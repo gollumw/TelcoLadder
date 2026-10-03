@@ -2,8 +2,8 @@
 
 `identity.gtp_tunnel` 是 PFCP 接回訂戶的唯一一把鑰匙，而它一直只有 NGAP 發得
 出來（CLAUDE.md §5）。於是一份只有 SBI／PFCP／GTP-U 的 SMF trace 上，PFCP
-自成孤兒流程，那個訂戶的 User Plane 永遠是空的 —— 實測使用者的一份 SMF trace：
-30 個 PFCP／GTP 識別碼接不上任何人（T-SBI-N2-BRIDGE）。
+自成孤兒流程，那個訂戶的 User Plane 永遠是空的 —— PFCP／GTP 識別碼接不上任何人
+（T-SBI-N2-BRIDGE）。
 
 但那兩個事實**就在 SBI 的本體裡**：`PDUSessionResourceSetupRequestTransfer` 以
 `multipart/related` 的第二段送出，tshark 解成 `http2 → mime_multipart → ngap`，
@@ -192,7 +192,7 @@ def test_the_carried_nas_keeps_its_own_identity_and_the_tunnel_is_a_quote(whole)
 def test_the_ngap_block_is_found_by_digging_not_by_a_hard_coded_path() -> None:
     """SBI 的 N2 SM info 隔著 `mime_multipart`，NGAP 的 NAS 則是直接一層。
     **寫死路徑會在 tshark 換版本改中間層名字時靜默失效** —— 而靜默失效正是
-    這一段要修的東西本身（§3.1 的同一課）。
+    這一段要修的東西本身（CLAUDE.md 的 Measured decisions 的同一課）。
 
     這裡守的是實作真的走 `carrier.dig`，不是碰巧路徑對了。
     """

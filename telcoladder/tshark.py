@@ -61,7 +61,7 @@ MIN_RECOMMENDED = (4, 0)
 # 呼叫點（extract／packets／decode／framebytes／prefilter），而 probe 與
 # coverage 兩趟掃描根本不吃它。要再加一種偏好（USER DLT 對映）就得再抄
 # 五份 —— 而漏抄一處的症狀是「四條路徑對同一份檔給出四個答案」，沒有
-# 任何一層會報錯（CLAUDE.md §5.5「一組參數」那條紀律）。
+# 任何一層會報錯（「一組參數」那條紀律）。
 #
 # 現在每個呼叫點只做一件事：`args += pref_args(prefs, relax_seq=…)`。
 
@@ -75,9 +75,9 @@ RELAX_SEQ_PREF = "tcp.analyze_sequence_numbers:FALSE"
 #:
 #: 為什麼要停：tshark 的 `-T ek` 編碼器在巨大的樹上崩潰，而 UE radio capability 的
 #: NR RRC 容器（InitialContextSetup、UERadioCapabilityInfoIndication／Check 都帶）
-#: 正是那種樹。實測一份 2.4 MB／1,933 格的 AMF 側 UE trace：40 格帶 nr-rrc，一趟
-#: `-T ek` 80.5 秒、吐出 48.7 MB 的 JSON；同 40 格用 `-V` 只要 1.7 秒 —— dissection
-#: 不是問題，編碼器才是。停掉 nr-rrc 之後同一趟 0.47 秒，631 格 NGAP 一格不少。
+#: 正是那種樹（AMF 側的 UE trace 常帶著它）。帶著這種容器的格，一趟 `-T ek` 的時間
+#: 與 JSON 體積都隨它暴增，同樣的格用 `-V` 卻很快 —— dissection 不是問題，編碼器
+#: 才是。停掉 nr-rrc 之後 NGAP 一格不少（`tests/fixtures/ngap-ue-capability/`）。
 #: `analyse()` 跑兩趟（抽取＋NE-trace 重跑）、封包清單再一趟，使用者看到的是
 #: 「載入十分鐘」。
 #:
@@ -103,7 +103,7 @@ def user_dlt_pref(n: int, dissector: str) -> str:
 
     uat 的六個欄位：encap 名稱、payload 協定、header 長度、header 協定、
     trailer 長度、trailer 協定。我們只用前兩個 —— 網元匯出的裸協定沒有
-    額外標頭（實測三份裸 Diameter 匯出）。
+    額外標頭（依專業電信工程師的實務經驗；見 `tests/fixtures/diameter-user-dlt/`）。
     """
     if not 0 <= n <= 15:
         raise ValueError(f"USER DLT must be 0-15, got {n}")

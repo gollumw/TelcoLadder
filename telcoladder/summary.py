@@ -320,8 +320,8 @@ def _subscribers(analysis: Analysis) -> tuple[list[dict], list[dict]]:
 def _subscribers_without_supi(analysis: Analysis) -> list[dict]:
     """接不到 SUPI、但確實是一個人的流程組 —— **真實網路的多數**。
 
-    實測兩份網元 trace：28 條流程只有 1 條有 SUPI，其餘 23 個 Service request
-    各自只帶 5G-S-TMSI。`subscribers` 只列 SUPI，那些人在摘要裡連一列都沒有，
+    網元 trace 裡多數流程沒有 SUPI，大量 Service request 各自只帶 5G-S-TMSI。
+    `subscribers` 只列 SUPI，那些人在摘要裡連一列都沒有，
     失敗清單裡也對不回是誰。這裡用與工作階段表同一套分組（`flowtable`）
     列出來，每組帶 `identity`（`kind:raw`，MCP 的 get_subscriber_callflow 吃它）。
     `subscribers` 與 `unlinked_identities` 不動 —— 加一個頂層鍵，不升版。

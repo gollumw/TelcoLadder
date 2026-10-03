@@ -8,10 +8,10 @@ TCP／SCTP**，pcap 的 link type 是使用者自訂的 USER 0（147），每一
 從 Diameter 標頭的 version=1 開始。tshark 對這種檔一個 dissector 都不掛
 （`user_dlt` 底下一片 `data`），除非用 `-o uat:user_dlts` 告訴它載荷是什麼。
 
-2026-09-05 用三份真實的這種匯出實測：工具讀出 **0 則**、只說「170 格未解碼」、
-coverage 還講「TCP payload 認不出來」（檔裡沒有任何 TCP）。這份 fixture 是
-那三份的**形狀**，不是它們的位元組 —— 主機名、IMSI、時間全是本 repo 的
-保留值（E.212 測試網 001/01、RFC 5737 位址段的命名慣例）。
+沒有對映時，工具一則 Diameter 都讀不出、只說有幾格未解碼，coverage 還講
+「TCP payload 認不出來」（檔裡沒有任何 TCP）。這份 fixture 的**形狀**依專業電信
+工程師的實務經驗設計 —— 主機名、IMSI、時間全是本 repo 的保留值（E.212 測試網
+001/01、RFC 5737 位址段的命名慣例）。
 
 ## 它同時餵四件事
 

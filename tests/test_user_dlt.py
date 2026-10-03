@@ -2,14 +2,14 @@
 
 ## 背景
 
-2026-09-05 用三份網元匯出的裸 Diameter（link type USER 0，每格就是一則訊息，
-沒有 IP 也沒有傳輸層）實測：工具讀出 **0 則**，summary 只寫「170 格未解碼」，
-coverage 還說「TCP payload 認不出來」—— 檔裡一個 TCP 封包都沒有。三層各自
+網元匯出的裸 Diameter（link type USER 0，每格就是一則訊息，沒有 IP 也沒有
+傳輸層）原本讀出 **0 則**，summary 只寫「若干格未解碼」，coverage 還說
+「TCP payload 認不出來」—— 檔裡一個 TCP 封包都沒有。三層各自
 沉默：probe 只看 `tcp.len>0`（什麼都沒看到，不建議重跑）；coverage 對
 `data` 葉子一律當 TCP；沒有任何地方讀過 link type。
 
-`tests/fixtures/diameter-user-dlt/` 是那三份的**形狀**（`make.py` 手寫，
-保留值），這裡守四件事：
+`tests/fixtures/diameter-user-dlt/` 是這種匯出的**形狀**（依專業電信工程師的
+實務經驗設計，`make.py` 手寫，保留值），這裡守四件事：
 
 1. probe 讀得到 link type、認得出載荷、建議對的 `-o`。
 2. 紅前狀態：關掉自動偵測就是 0 則 —— 證明修的是真的洞。

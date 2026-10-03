@@ -3,8 +3,7 @@
 ## 為什麼 display filter 不夠
 
 `-Y frame.time_relative <= 60` 省掉的是**解析**，tshark 還是得把整個檔
-從頭讀到尾。實測 2.2MB / 2250 格：全檔 0.45s、10 秒窗 0.21s ——
-省掉的那 0.24s 是解析，剩下的 0.21s 是「讀完整個檔」的固定成本。
+從頭讀到尾。窗口再小，「讀完整個檔」的固定成本都還在 ——
 檔案越大，那個固定成本越是主角。
 
 `editcap -A/-B` 是真的寫出一份小檔。切一次之後，**對那一段反覆分析**
@@ -72,7 +71,7 @@ def _first_frame_epoch(pcap: Path, tshark: Tshark) -> float:
     """第一格的絕對時間。
 
     `-c 1` 是「**讀** 一格就停」，所以這個呼叫的成本與檔案大小無關 ——
-    2GB 的檔也是毫秒級（`-c` 的語意見 CLAUDE.md §3.1 的第三個坑）。
+    2GB 的檔也是毫秒級（`-c` 限制的是讀幾格，不是輸出幾格）。
     """
     proc = tshark.run(["-r", str(pcap), "-c", "1", "-T", "fields", "-e", "frame.time_epoch"])
     for line in proc.stdout.splitlines():

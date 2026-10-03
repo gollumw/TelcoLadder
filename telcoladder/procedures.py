@@ -17,8 +17,8 @@ xDR）以程序為單位就是這個原因。
 **Diameter 不分家。** 2026-08-23 到 2026-09-12 之間它以 Session-Id 自成一段、
 自成一個「Diameter」世代；那個分法對協定是對的，對讀的人是錯的：一次 attach 裡的
 ULR／AIR、一次閒置移動裡的 CLR，工程師問的是「那次 attach 成功了嗎」，不是
-「那筆 S6a 交易成功了嗎」。實測一份 MME trace：19 段 Diameter 有 18 段落在某個場景的
-視窗裡，被列成 19 個獨立段之後，那 18 段在畫面上與它們所屬的場景各據一方。
+「那筆 S6a 交易成功了嗎」。MME 側的 trace 裡，Diameter 交易絕大多數落在某個場景的
+視窗裡；列成獨立段之後，它們在畫面上與所屬的場景各據一方。
 
 所以現在 Diameter 跟著視窗走：**落在某個場景視窗內就是那個場景的一部分**（那一段的
 訊息數、耗時、結局都含它 —— ULR 被拒就是那次 attach 失敗），**落在所有視窗之外的**
@@ -58,21 +58,19 @@ ULR／AIR、一次閒置移動裡的 CLR，工程師問的是「那次 attach �
 兩腿，`5gc-e2e` 的 frame 388/391）；NAS 定時器重送也長這樣。分開算會把
 一次建立報成兩次。
 
-**但 reject 之後再來一個同型 request 是新的一次嘗試**（2026-09-05）。實測一份
-網元 trace：七個 `PDU session establishment reject`，七段 pdu-session-establishment
-**全部 success**，`failures=1`、`cause=None` —— UE 被拒後重試成功，reject 被
-併進同一段，七次拒絕在 xDR 上變成七個勾。消費端算失敗率的是每一列的
+**但 reject 之後再來一個同型 request 是新的一次嘗試**（2026-09-05）。不這樣切的話，
+UE 被拒後重試成功，reject 會被併進同一段，那一段報成 **success**、`failures=1`、
+`cause=None` —— 每一次拒絕在 xDR 上都變成一個勾。消費端算失敗率的是每一列的
 `outcome`，那裡讀不到 `failures` 欄的弦外之音。所以：視窗裡已有失敗時，
 同型 opener 收段開新段；沒有失敗時照舊合併（SCP 兩腿、定時器重送之間沒有
 reject）。
 
 **收尾之後再來一個同型 opener，同樣是新的一次嘗試**（2026-09-13）。取消刻意
-不算失敗（見「結局判定」），所以上面那條檢查不到它：實測一份 MME trace，兩次
-背靠背的取消換手（各六則）被併成一段八則，剩下的四則自成一段，而那一段少了
-方向標記、世代掉回 4G。那份 trace 裡 6 組都是這個形狀；另有 1 次被取消的嘗試
-整個被併進其後成功的換手，結局報成 success —— 被取消過這件事在輸出裡根本看不到。
-修正後是 14 次被取消的 EPS→5GS 換手，段數 84 → 86：**沒有變少**，因為那些本來
-就是不同的嘗試；變的是邊界、世代與結局。
+不算失敗（見「結局判定」），所以上面那條檢查不到它：兩次背靠背的取消換手會被
+從中間切開 —— 前一次併進後一次的開頭，剩下的尾巴自成一段，而那一段少了方向標記、
+世代掉回 4G；被取消的嘗試也可能整個被併進其後成功的換手，結局報成 success ——
+被取消過這件事在輸出裡根本看不到。修正後段數**不會變少**，因為那些本來就是不同的
+嘗試；變的是邊界、世代與結局。
 
 **例外是取消自己。** `HandoverCancel` 與 `Relocation Cancel Request` 本身就是
 `handover` 的 opener，而 `_outcome_seen()` 把取消請求算成收場；不留這個例外，
@@ -197,15 +195,15 @@ KINDS: tuple[_Kind, ...] = (
     # PDU session 修改：NGAP 的 Modify 開段（exact，Response 是它的前綴）。**EPS fallback**
     # 就藏在這裡 —— gNB 在 Response 的 unsuccessful transfer 裡回 radioNetwork #36
     # （`ims-voice-eps-fallback-or-rat-fallback-triggered`），那不是失敗，是「改去 EPS」；
-    # `_finish` 看到那個 cause 就把段改名為 `eps-fallback`。實測一份 AMF trace：40 則
-    # Modify 回應全帶 #36，在這之前一段都沒切出來。
+    # `_finish` 看到那個 cause 就把段改名為 `eps-fallback`。沒有這條，帶 #36 的 Modify
+    # 回應一段都切不出來。
     _Kind("pdu-session-modification", "PDUSessionResourceModify",
           ("PDUSessionResourceModifyResponse", "PDU session modification complete"), exact=True),
     # 換手的**目標側**：MME 打來的 Forward Relocation Request（EPS→5GS）或 AMF 給 gNB 的
     # HandoverRequest（`HandoverResourceAllocation`）也開段 —— kind 名稱同樣是 `handover`，
     # 所以與來源側的 HandoverRequired 併同一段（規則 ③），方向由視窗裡任何一則的
-    # `handover-type` 決定（`_finish`）。實測一份 AMF trace：20 次 EPS→5GS 換手在這之前
-    # 一段都沒有，因為只認來源側的 HandoverRequired。
+    # `handover-type` 決定（`_finish`）。只認來源側的 HandoverRequired 的話，AMF 側看到的
+    # EPS→5GS 換手一段都切不出來。
     _Kind("handover", "Forward Relocation Request",
           ("HandoverNotification", "Forward Relocation Complete Acknowledge"), exact=True),
     _Kind("handover", "HandoverResourceAllocation",
@@ -218,7 +216,7 @@ KINDS: tuple[_Kind, ...] = (
     _Kind("tau", "Tracking area update request",
           ("Tracking area update accept", "Tracking area update complete")),
     _Kind("detach", "Detach request", ("Detach accept",)),
-    # ── 4G 的場景（2026-09-12）。實測一份 MME trace：這四種佔了未指派訊息的 45 則中的 45 則 ──
+    # ── 4G 的場景（2026-09-12）。沒有這四種開段規則，MME 側的這些訊息全部落在所有段之外 ──
     #
     # **網路觸發的 service request 與 UE 觸發的是同一個 kind。** DDN（SGW 說「有下行資料」）
     # 或 Paging 開段，UE 其後送的 `Service request` 是同型 opener，照規則 ③ 併進同一段 ——
@@ -237,7 +235,7 @@ KINDS: tuple[_Kind, ...] = (
           ("E-RABModificationIndicationResponse",), exact=True),
     # **取消本身也開段，而且 kind 就是 `handover`。** 換手被喊停之後那一段就收了
     # （`_outcome_seen`），其後的取消往返（S1AP 的 HandoverCancel、S10／N26 的 Relocation
-    # Cancel）若沒有自己的開段規則，就會落在所有視窗之外 —— 實測一份 MME trace：24 則。
+    # Cancel）若沒有自己的開段規則，就會落在所有視窗之外。
     # 同 kind 表示它與還開著的那次換手會合併（規則 ③），不會把一次換手切成兩段。
     _Kind("handover", "HandoverCancel", ("HandoverCancelResponse",), exact=True),
     _Kind("handover", "Relocation Cancel Request", ("Relocation Cancel Response",), exact=True),
@@ -339,8 +337,8 @@ def _family_of(kind: str, protocols: tuple[str, ...], hints_name_an_amf: bool = 
     if kind in ("ue-context-release", "handover", "service-request") or family == "other":
         # **只看接取與承載的協定決定世代。** Diameter 與 SGsAP 是跟著場景走的
         # （2026-09-12 起它們會落在視窗裡），拿它們判世代的話，一個「GTPv2-C ＋ 一則 S6a」
-        # 的視窗兩條規則都不中，於是掉回 `TAXONOMY` 的預設值 5G —— 實測一份 MME trace：
-        # 一次被取消的換手因此被標成 5G。
+        # 的視窗兩條規則都不中，於是掉回 `TAXONOMY` 的預設值 5G —— 一次被取消的 4G 換手
+        # 就會因此被標成 5G。
         core = tuple(p for p in protocols if p not in ("diameter", "sgsap"))
         if "s1ap" in core or "nas-eps" in core:
             family = "4g"
@@ -458,7 +456,7 @@ class Procedure:
     `ue`。其他 kind 一律 None：線路上分不出兩種可能的屬性不填。"""
     initiator_side: str | None = None
     """誰開的這一段（`INITIATOR_SIDES`）：開段訊息的送出者是手機或基地台 → `radio`，其他角色 →
-    `core`；送出者角色判不出 → None（不猜）。使用者裁定 2026-09-15：只分無線側（含手機）與核網 ——
+    `core`；送出者角色判不出 → None（不猜）。只分無線側（含手機）與核網 ——
     換手的 HandoverRequired 是 gNB 送的，所以算無線側；Paging／DDN 開的 service request 算核網。"""
     members: "tuple[Message, ...]" = field(default=(), repr=False, compare=False)
     """這一段自己的訊息（含折進來的釋放）。畫面「只看這一段」靠它，**不靠格號範圍** —— 同一個
@@ -470,9 +468,9 @@ def _own_label(msg: Message) -> str:
 
     A wire-view row that merged a carried message reads `Context Request ▸ Tracking area update
     request`. Exact matches must look at what the carrier itself says: matching the whole row means
-    every carrier row stops matching the day it learns to carry something. Measured on a real MME
-    trace when GTPv2-C began carrying NAS: 5GS→EPS ×5 and EPS→5GS ×4 idle mobility silently became
-    plain TAUs.
+    every carrier row stops matching the day it learns to carry something. When GTPv2-C began
+    carrying NAS, idle mobility in both directions (5GS→EPS and EPS→5GS) would otherwise have
+    silently become plain TAUs.
     """
     return msg.label.split(CARRIED_JOINER, 1)[0]
 
@@ -548,8 +546,8 @@ INITIATOR_SIDES: tuple[str, ...] = ("radio", "core")
 
 #: 依規格**只能由手機送出**的 NAS 請求（TS 24.501／24.301 的訊息方向）。開段那一列夾帶它時，這一段是
 #: 手機發起的 —— 即使那一列是核網送的（SBI 夾帶的 PDU session establishment request 是 AMF 轉給
-#: SMF，看得到的第一則就是 AMF→SMF）。實測一份真實 AMF 側 trace：手機的上行 NAS 加密，PDU 建立
-#: 因此被標成核網觸發（使用者裁定 2026-09-15 修正）。
+#: SMF，看得到的第一則就是 AMF→SMF）。AMF 側的 trace 裡手機的上行 NAS 是加密的，沒有這張表的話
+#: PDU 建立會因此被標成核網觸發（2026-09-15 修正）。
 UE_ORIGINATED_NAS: tuple[str, ...] = (
     "Registration request", "Service request", "Deregistration request (UE originating)",
     "PDU session establishment request", "PDU session modification request", "PDU session release request",
@@ -560,7 +558,7 @@ UE_ORIGINATED_NAS: tuple[str, ...] = (
 #: 標籤本身就說是網路發起的。
 NETWORK_ORIGINATED_NAS: tuple[str, ...] = ("Deregistration request (UE terminated)",)
 #: 兩個方向都有的 NAS（4G 的 Detach request）：看夾帶它的那一列是誰送的 —— 基地台上行轉送就是手機
-#: 發起，MME 下行送出就是網路發起（使用者裁定 2026-09-15：納入，依方向判）。
+#: 發起，MME 下行送出就是網路發起（納入，依方向判）。
 BY_SENDER_NAS: tuple[str, ...] = ("Detach request",)
 
 
@@ -655,7 +653,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
                 ho_exec = round(notify.ts - command.ts, 6)
     elif kind.name == "pdu-session-modification" and any(
             m.cause is not None and (m.cause.table, m.cause.value) == EPS_FALLBACK_CAUSE for m in window):
-        # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的裁定），是 gNB 說
+        # 回應裡的 #36 不是失敗（cause-bearing successfulOutcome 的規則），是 gNB 說
         # 「語音去 EPS」—— 這一段的身分就是 EPS fallback。
         kind_name = "eps-fallback"
     elif kind.name == "tau" and any(_own_label(m) == "Context Request" for m in window):
@@ -677,8 +675,7 @@ def _finish(kind: _Kind, window: list[Message], supi: str | None,
 
     # **被取消的換手不是失敗的換手。** 來源側改變主意（或目標側沒有 context）時，線路上是
     # Relocation Cancel／HandoverCancel，而收到的回應帶著一個錯誤 cause —— 照結局判定會被
-    # 標成失敗，而那會讓「換手成功率」把每一次取消都算成網路故障。實測一份 MME trace：
-    # 6 次 EPS→5GS 換手全是這個形狀。取消保留 cause（它說明了為什麼取消），但不算失敗。
+    # 標成失敗，而那會讓「換手成功率」把每一次取消都算成網路故障。取消保留 cause（它說明了為什麼取消），但不算失敗。
     if outcome != "success" and kind_name.startswith("handover") and any(
             _own_label(m).startswith(CANCEL_LABELS) for m in window):
         outcome = "cancelled"
@@ -914,7 +911,7 @@ def _sip_segments(messages: list[Message], supi: str | None,
     * 200 OK（對 INVITE）→ **success**：接通了。之後的 BYE 只是釋放。
     * 最終回應在 cause 表裡標著 `outcome: user`（486 忙線、487 取消、603 拒接…）
       → **ended-by-user**：網路把電話送到了，一方自己結束的。**不點紅燈**，
-      但也不是成功（用戶裁定 2026-09-06）。
+      但也不是成功。
     * 其他 ≥ 400 → **failure**。
     * 沒等到最終回應 → **incomplete**（落在檔尾附近時加註）。3xx 也算這裡：
       重導之後的重打是另一個 Call-ID，這一段本身沒有結局。
@@ -1030,7 +1027,7 @@ def _sip_segments(messages: list[Message], supi: str | None,
             release_cause=release_cause,
             final_status=final_status,
             # SIP 的一段以第一則**請求**為開段（回應可能先被抓到）：UE 發的 INVITE 算無線側，
-            # 核網送往 UE 的被叫腿算核網（使用者裁定 2026-09-15）。
+            # 核網送往 UE 的被叫腿算核網。
             initiator_side=_initiator_side(requests[0] if requests else window[0]),
             members=tuple(window),
         ))
@@ -1053,11 +1050,11 @@ class _Window:
 def _fold_releases(windows: list[_Window]) -> list[_Window]:
     """把緊接在一個場景之後的 context 釋放折進那個場景。
 
-    **釋放是場景的尾巴，不是場景。** 實測一份 MME 側單一訂戶的 trace：20 段釋放全部緊接在
-    前一段之後（服務請求後 12、閒置移動後 4、PDN 釋放後 2、換手後 2），佔全部段數的四分之一
-    —— 畫面上每一次服務請求都是兩顆晶片，讀的人得自己把它們配對。
+    **釋放是場景的尾巴，不是場景。** 在單一訂戶的 trace 裡，釋放幾乎總是緊接在前一段之後
+    （服務請求、閒置移動、PDN 釋放、換手之後）—— 不折的話，畫面上每一次服務請求都是兩顆
+    晶片，讀的人得自己把它們配對。
 
-    **判準是流程內的位置相鄰，不是格號相鄰。** 那份 trace 裡剛好都只差一格，但那是單一訂戶
+    **判準是流程內的位置相鄰，不是格號相鄰。** 單一訂戶檔裡兩者常常只差一格，但那是單一訂戶
     檔的假象：多用戶檔的 frame 會交錯，用格號會在真實的多用戶 trace 上靜默停止折疊。位置相鄰
     說的正是證據本身 ——「這個訂戶的流程裡，場景與釋放之間什麼都沒發生」—— 而且失敗時往安全的
     方向倒：中間夾了任何一則沒歸段的訊息就不折。**接錯比沒接上更糟**：把釋放掛到不是它的場景

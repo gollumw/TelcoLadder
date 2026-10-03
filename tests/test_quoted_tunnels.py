@@ -3,14 +3,14 @@
 ## 為什麼需要這條
 
 AMF 把 gNB 回的 `PDU_RES_SETUP_RSP` 轉給 SMF 時，SBI 的 body 夾著一條 GTP 隧道（位址＋
-TEID），與 N2 上那一把逐字相同。實測一份 AMF 側的真實 trace：三段網路發起的 Service
-Request（Paging＋Service request＋InitialContextSetup）完全沒有明文的訂戶識別碼，唯一
-的線路證據就是這條被轉述的隧道。接回之後那份檔從 7 條流程變 2 條、歸戶率 76.8%→99.7%。
+TEID），與 N2 上那一把逐字相同。網路發起的 Service Request（Paging＋Service request＋
+InitialContextSetup）可以完全沒有明文的訂戶識別碼，唯一的線路證據就是這條被轉述的隧道；
+沒有它，這些段落各自成為沒有歸戶的流程。
 
 但把它當成 SBI 訊息**自己的鍵**會錯兩次（`model.Quote`）：
 
 1. 識別碼回收把同一則訊息上的可回收鍵記成互為關聯。每次 idle 的 UEContextRelease 就一路
-   把 SM context 也改成新的一輪 —— 實測 20 則 retrieve 因此被拆成孤兒。
+   把 SM context 也改成新的一輪 —— 之後的 retrieve 因此被拆成孤兒。
 2. 晚到的轉述會被當成當下這一輪；那個 TEID 若已配給別人，兩個訂戶就被接成一條。
 
 ## 守的是什麼（每一條都附「沒有這條規則會怎樣」的對照）
@@ -145,7 +145,7 @@ def test_a_late_report_is_dropped_rather_than_bound_to_whoever_holds_the_tunnel_
 
 
 def test_a_report_long_after_its_native_sighting_is_not_bound() -> None:
-    """回報與原生出現相距超過 `REPORT_MAX_AGE_S`：不綁。實測回報都在 10 ms 內，
+    """回報與原生出現相距超過 `REPORT_MAX_AGE_S`：不綁。回報緊跟著它綁的那次原生出現，
     相隔幾分鐘的「回報」只可能是舊事被重提。突變：拿掉這個上限 → 這條紅。"""
     late = REPORT_MAX_AGE_S + 5
     messages = [

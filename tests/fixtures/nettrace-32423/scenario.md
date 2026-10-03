@@ -25,11 +25,11 @@ tshark 4.6.8 reads 4/4 frames as `exported_pdu:ngap:nas-5gs`. Two-pass
 mode (`-2`) **fails on this file type** (exit 14, `parser error :
 StartTag` from the XML reader on its second read) while single-pass
 succeeds. `decode.decode_frames` therefore falls back to a single pass
-and reports it; found on 2026-09-05 when a real SMF trace in this format
-showed an empty decode tree in the browser.
+and reports it; without that fallback a trace in this format shows an empty
+decode tree in the browser.
 
 ## What it does not prove
 
 Nothing about `<initiator>`/`<target>` variants beyond `Address=…,Port=…`,
-nothing about other `rawMsg` protocols (the real trace carried HTTP2,
+nothing about other `rawMsg` protocols (the format also carries HTTP2,
 PFCP, RADIUS and Gtp), and nothing about the `ue` element.

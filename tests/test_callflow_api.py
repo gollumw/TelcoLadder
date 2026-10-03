@@ -334,7 +334,7 @@ def test_a_failed_procedure_carries_both_causes(e2e_pcap) -> None:
 
 
 def test_the_participant_order_runs_from_radio_to_ims() -> None:
-    """無線側在最左、核網依世代往右、IMS 在最右（使用者裁定 2026-09-15）。
+    """無線側在最左、核網依世代往右、IMS 在最右。
     突變：把 eNB 放回 MME 前面、或 HSS 放回 IMS 那組、或 UPF 放回 SMF 後面 → 紅。"""
     order = PARTICIPANT_ORDER
     pos = order.index

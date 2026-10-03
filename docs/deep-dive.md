@@ -33,14 +33,8 @@ scales with the number of signalling messages kept, which is why
 There is no constant-memory claim: a capture that is mostly user-plane traffic
 with the GTP-U adapter enabled retains one message per G-PDU.
 
-**Throughput.** Measured on one machine, `analyse()` runs at roughly
-**0.19 s/MB** and is linear:
-
-| Frames | Size | Time |
-|---|---|---|
-| 32 k | — | 2.0 s |
-| 260 k | — | 9.6 s |
-| 780 k | 145 MB | 28.2 s |
+**Throughput.** `analyse()` is linear in file size; on a large capture,
+`--since` / `--until` / `--filter` are what bound the time.
 
 Dissection runs one to three passes (an automatic re-run when a decode-as
 candidate strictly increases the message count), so progress is reported as
@@ -117,14 +111,14 @@ orphan messages into their subscribers, with no flow gaining a second SUPI.
 
 **A tunnel that an SBI message only quotes is a weak edge, not a key.** When the
 AMF forwards a gNB's `PDU_RES_SETUP_RSP` to the SMF, the SBI body carries the
-same GTP tunnel (address and TEID) that appears on N2. On a real AMF-side
-capture that was the only wire evidence tying three network-triggered Service
-Requests (Paging, Service request, InitialContextSetup, no cleartext identity)
-to their subscriber; using it took that capture from 7 flows to 2 and from 76.8%
-to 99.7% attributed. Treating it as the SBI message's own key was wrong twice:
+same GTP tunnel (address and TEID) that appears on N2. On an AMF-side capture
+that can be the only wire evidence tying a network-triggered Service Request
+(Paging, Service request, InitialContextSetup, no cleartext identity) to its
+subscriber, so without it each such episode stands alone as an anonymous flow.
+Treating it as the SBI message's own key was wrong twice:
 identifier recycling records every recyclable key on a message as associated, so
 each idle UEContextRelease also advanced the SM context to a new round and split
-later calls on that context off (20 on that capture); and a quote that arrives
+later calls on that context off; and a quote that arrives
 late would be taken as belonging to the current round, joining whoever holds the
 tunnel by then. So a quote lives beside the keys, not among them. Recycling
 binds it to one native sighting by direction: a *reported* tunnel (gNB to SMF,
@@ -135,7 +129,7 @@ with no release in between. Unbound quotes are dropped, and quotes never join
 each other without a native sighting. Correlation applies bound quotes after all
 strong keys, and refuses any that would give a group two different SUPIs. The
 direction comes from the protocol's own N2 SM-information type; only the types
-measured on a real capture bridge, and every join or refusal is counted in the
+whose direction is known bridge, and every join or refusal is counted in the
 summary's *not visible* section.
 
 ## 3. The cause library: 775 values, tshark as the only oracle
@@ -216,8 +210,7 @@ the same capture; and a PDU session modification answered with radioNetwork
 cause 36 is named `eps-fallback` rather than a modification, because that is
 what the gNB said. Every segment carries a family (5G, 4G, interworking, IMS,
 Diameter) and a category, and a 5G registration carries its type - a mobility
-registration update that fails is a different fault from an initial one. On the
-AMF trace that drove this, 97 segments became 163, in seven groups.
+registration update that fails is a different fault from an initial one.
 
 ## 5. UE context release: who asked for it
 
@@ -233,10 +226,9 @@ opens on either message and reports the initiator from its first message —
 request → command → complete is one segment owned by the RAN; a command with no
 request before it is the core's own decision.
 
-**A release that ends a scenario is part of that scenario.** On an MME-side
-single-subscriber trace, all 20 releases came directly after the scenario they
-closed, and as segments of their own they were a quarter of all 84 segments -
-every service request showed up as two chips the reader had to pair by hand. So
+**A release that ends a scenario is part of that scenario.** As a segment of
+its own, a release that directly follows the scenario it closes turns every
+service request into two chips the reader has to pair by hand. So
 a release that is the next thing in the subscriber's flow folds into the
 scenario it ends: that scenario's frame span, message count and duration include
 the release, and it carries the release's initiator and cause. When the release
@@ -244,8 +236,8 @@ closes a registration six seconds after an unanswered Authentication request,
 the timer match is reported on both the scenario and the release's own row; it
 is the same observation, and each row stays self-contained.
 
-The fold is decided by **position in the flow, not by frame number**. In that
-trace every release happened to be one frame later, but on a multi-subscriber
+The fold is decided by **position in the flow, not by frame number**. On a
+single-subscriber trace the release is often the very next frame, but on a multi-subscriber
 capture frame numbers interleave, and a rule that silently stops working there
 is worse than no rule. A release with anything unassigned in front of it, or
 with no scenario before it, stays a segment of its own - attaching a release to
@@ -300,9 +292,10 @@ sends no `3gpp-Sbi-Target-apiRoot` is indistinguishable from the endpoint and
 falls back to an unlabelled IP — the correct failure direction, and a real gap. RRC containers inside NGAP and S1AP — UE radio
 capability, handover transparent containers — are read by no adapter and are
 skipped at extraction time (`tshark --disable-protocol`); the Decode Inspector
-still dissects them frame by frame. This is deliberate: on a real AMF trace,
-forty capability frames cost tshark's ek encoder 80 seconds per pass, and
-half a second without them.
+still dissects them frame by frame. This is deliberate: a UE radio capability
+container is one of the largest trees tshark builds, and its ek encoder is
+disproportionately slow on such trees, for content no adapter reads
+(`tests/fixtures/ngap-ue-capability/` pins the switch).
 
 Every gap above is also named at the top of `.github/workflows/ci.yml`, so the
 green badge is read for what it covers.
@@ -340,5 +333,4 @@ the encoded header keeps its byte count. Real MCCs become test networks of the
 same code length (001, or 009/099/999 when the bits do not fit), the MNC is
 keyed, and the SUCI's bare MSIN maps exactly like the tail of the full IMSI, so
 `summarize` still sees one subscriber. Verified on every fixture by comparing
-the `summarize` shapes before and after (`tests/test_anonymize.py`), and on the
-real AMF trace behind the 2026-09-10 work by counts alone.
+the `summarize` shapes before and after (`tests/test_anonymize.py`).

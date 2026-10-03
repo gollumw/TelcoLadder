@@ -117,7 +117,7 @@ def segment_frames(frame: Frame) -> set[int]:
 
     與 `fragment_frames` 同一件事，只是在 TCP 層：一則跨好幾個區段的訊息（SIP over TCP 的
     INVITE、大的 Diameter），tshark 在最後一段解碼，前面的段在協定階層裡只到 `tcp`／`data`。
-    **它們不是漏掉的信令。** 實測一份真實 VoLTE 擷取：9 格這種區段被報成「不在支援的協定裡」。
+    **它們不是漏掉的信令。** 不跳過的話，這種區段會被報成「不在支援的協定裡」。
 
     ek 把清單放在 `tcp_tcp_segment`（實測在 layers 的最上層；也容忍放在 `tcp` 層裡）。
     """
@@ -206,7 +206,6 @@ def _endpoints(layers: dict[str, Any]) -> tuple[str, str, int | None, int | None
     症狀是**整張梯形圖塌成一條無名泳道**：`Endpoint.label()` 對「沒有角色
     也沒有位址」的端點回空字串，於是所有端點合成同一個 key。圖畫得出來、
     箭頭都在、一則訊息都沒少 —— 只是每一支箭都從自己指向自己。
-    實測一份網元匯出的 SMF trace：14 則事件、1 條泳道。
     **`tests/fixtures/` 裡沒有這種擷取檔** —— `ne-trace` 走的是
     `sll:ip:tcp` 而不是 EXPORTED_PDU（已實測）。所以這條分支只有這段
     註解記著它為什麼在，沒有測試守得住它。

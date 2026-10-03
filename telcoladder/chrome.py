@@ -21,7 +21,7 @@ Phase 4(2026-08-21)報告整條退場,但**首頁不能跟著死** —— 所以
 `--data` / `--other`)與徽章色(`--ok` / `--warn*`)也只有梯形圖在用。
 
 **砍過頭的症狀是靜默的**:頁面照樣渲染、console 零訊息,只是版面塌了
-(與 `CLAUDE.md §5.5` 記的 Tailwind glob 事故同一類)。所以
+(與 Tailwind `content` glob 漏掉路徑同一類)。所以
 `tests/test_web_assets.py` 有一條測試釘住「首頁 HTML 裡出現的每一個
 `var(--x)` 都必須在這裡定義得到」—— 那件事用機器驗,不靠眼睛看。
 """

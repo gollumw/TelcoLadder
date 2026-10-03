@@ -7,7 +7,7 @@
     http2.mime_multipart.nas-5gs      ← SBI（multipart/related 把 NAS 夾在 JSON 旁）
 
 在 2026-08-19 之前這裡只認第一種，於是 SBI 夾帶的 NAS **完全看不到** ——
-實測 `multi-imsi` 上 20 則、真實電信商擷取檔上 34 則，其中包含一則
+實測 `multi-imsi` 上就有 20 則；SBI 夾帶的也可能正是一則
 `PDU session establishment reject`。少報失敗的除錯工具比沒有更糟，而且
 **沒有任何一層會說話**：filter 沒漏、adapter 沒錯、tshark 沒報錯。
 

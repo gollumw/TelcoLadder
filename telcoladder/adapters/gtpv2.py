@@ -63,7 +63,7 @@ DISPLAY_FILTER = "gtpv2"
 
 #: 這個 adapter 載送的協定。Context Request 的 Complete Request Message IE 夾著 UE 原始的
 #: TAU／Attach request（TS 29.274）—— 新 MME 把它轉給舊 MME／AMF 驗證。tshark 把它掛在
-#: `gtpv2.nas-eps`；不宣告的話那幾則 NAS 一則都收不到（實測一份 MME trace：9 則），而且不報錯。
+#: `gtpv2.nas-eps`；不宣告的話那幾則 NAS 一則都收不到（`tests/fixtures/4g-service-request-context` 的 frame 4），而且不報錯。
 CARRIES = ("nas-eps",)
 
 #: `telcoladder check` 要驗證存在的 dissector。

@@ -80,9 +80,8 @@ SBI_SERVICE_TO_NF: dict[str, str] = {
 #: SBI 服務 → **唯一的消費者**（誰會呼叫它）。與上表相反方向的證據。
 #:
 #: 上表只判伺服端（`nsmf-pdusession` 打向誰，誰就是 SMF）；客戶端原本只靠
-#: User-Agent，而網元匯出的 trace 常常沒帶它 —— 2026-09-05 一份 SMF trace，
-#: 打了 40 則 sm-contexts 的那個位址整份沒有名字，而 TS 29.502 寫得很清楚：
-#: SmContext 這組服務操作的消費者只有 AMF。
+#: User-Agent，而網元匯出的 trace 常常沒帶它 —— 於是打 sm-contexts 的那個位址
+#: 整份沒有名字，而 TS 29.502 寫得很清楚：SmContext 這組服務操作的消費者只有 AMF。
 #:
 #: **只收消費者唯一的服務。** `namf-comm`（SMF／PCF／NEF 都會打）、`nudm-sdm`
 #: （AMF／SMF／SMSF）、`nchf-convergedcharging`、`nnrf-*`（誰都會打）一律不收 ——
@@ -353,9 +352,9 @@ def role_contradictions(messages: list[Message]) -> dict[str, tuple[str, ...]]:
     """判不出來的位址各自收到了哪些互斥的角色票。
 
     `resolve_roles_with_basis` 對矛盾的處置是留白（標錯比不標更糟），但留白
-    在畫面上與「沒有任何證據」長得一模一樣。實測一份 Gx 擷取檔：同一個端點
-    既回應 CCR 又回應 RAR —— 那是 PCRF 與 PCEF 兩個互斥的角色（大概是模擬器
-    一機扮兩角），工具正確地不標它，卻沒說為什麼。這裡把「為什麼」交出去，
+    在畫面上與「沒有任何證據」長得一模一樣。例如同一個 Gx 端點既回應 CCR
+    又回應 RAR —— 那是 PCRF 與 PCEF 兩個互斥的角色（例如模擬器一機扮兩角），
+    工具正確地不標它，卻沒說為什麼。這裡把「為什麼」交出去，
     措辭只寫事實，不下結論。
     """
     _relays, votes, port_votes = _tally(messages)
@@ -398,8 +397,8 @@ EVIDENCE_TIER: dict[str, int] = {
     "contact": 1,
     "service": 2, "service-consumer": 2,
     # 三種同一層的路徑／內容證據（2026-09-11）：資源級唯一消費者、回呼 URI 的
-    # 提供者、請求自報的型別。實測一份 AMF trace：30 個網元 12 個沒角色，其中
-    # 3 個只送 UDM 的通知 —— 訂閱時 body 寫了回呼 URI，規範寫了誰會打它。
+    # 提供者、請求自報的型別。AMF 側的 trace 裡，有些網元只送 UDM 的通知、
+    # 別的證據一樣都沒有 —— 訂閱時 body 寫了回呼 URI，規範寫了誰會打它。
     "resource-consumer": 2, "notify": 2, "declared-nf-type": 2,
     "user-agent": 3,
 }
@@ -754,7 +753,7 @@ def apply_roles(messages: list[Message], *, nas_from_ue: bool = True) -> list[Me
 #: 兩方（272 在 Gx 上是 PCEF↔PCRF，在 Gy 上是 CTF↔OCS），而 258 在 Gx 上是
 #: PCRF 主動發起、在別的介面上未必。
 #:
-#: **只收有把握的那三個介面**（2026-08-23 的裁定）。不在表上的
+#: **只收有把握的那三個介面**。不在表上的
 #: Application-Id 一律不投票 —— 圖上顯示 IP，那是誠實的「推不出來」。
 #:
 #: 命令碼與方向取自各介面規範的程序定義（TS 29.272 §5、TS 29.229 §6、
@@ -806,7 +805,7 @@ DIAMETER_ROLES: dict[tuple[int, int], tuple[str, str]] = {
 #: 時序圖上網元由左到右的慣用順序。不在表內的排最後，
 #: 依首次出現順序。這只是呈現偏好，不影響任何判定。
 PARTICIPANT_ORDER = (
-    # **無線側在最左，核網依世代往右，IMS 在最右**（使用者裁定 2026-09-15）。沒出現的網元不畫，
+    # **無線側在最左，核網依世代往右，IMS 在最右**。沒出現的網元不畫，
     # 所以這張表只決定「出現了的誰排在誰左邊」。梯形圖、CLI、Mermaid、摘要都用這一份。
     #
     # 無線側：手機、5G 基地台、4G 基地台。一份混合擷取檔裡兩種基地台都貼著 UE。

@@ -17,8 +17,8 @@
 
 ## 這個檔證不了的事
 
-* 真實廠商 trace 的欄位形狀（PER 容器不對齊、JSON 裡的十六進位 GTPv2）只在本機的真檔上量過，
-  數字在 PR 內文；這裡的 fixture 沒有那些形狀。
+* 廠商 trace 的欄位形狀（PER 容器不對齊、JSON 裡的十六進位 GTPv2，依專業電信工程師的實務經驗
+  列入）這裡的 fixture 沒有，所以這個檔守不到。
 * IPv6 的文字形式與二進位形式對不起來、TAC 的 JSON 文字與 NGAP 二進位對不起來 —— 已知限制，
   `Report.limitations` 有寫，這裡不假裝測。
 

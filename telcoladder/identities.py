@@ -259,9 +259,9 @@ def session_frames(analysis: Analysis, kind: IdKind, raw: str) -> set[int]:
     Registration request 之後訊息就加密了，SUPI 只在最前面出現一次；
     拿「訊息裡有沒有寫這個號碼」去篩，會把之後整段流程篩掉。
 
-    實測 `local/perf/multi-imsi.pcap`（不進版控）：同一個 SUPI
-    `frames_for` 給 42 格、流程層級給 101 格。而工作階段表（抽屜）
-    一直用的是後者 —— 於是抽屜寫「101 個封包」，點下去只剩 42，
+    實測 `multi-imsi` fixture：同一個 SUPI `frames_for` 給 61 格、
+    流程層級給 125 格。而工作階段表（抽屜）一直用的是後者 —— 於是
+    抽屜寫「125 個封包」，點下去只剩 61，
     **同一個畫面上兩個數字互相矛盾**，兩邊各自都看起來很合理。
     """
     return {m.frame for f in find_flows(analysis, kind, raw) for m in f.messages}

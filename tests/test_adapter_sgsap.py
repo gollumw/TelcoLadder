@@ -1,7 +1,7 @@
 """SGsAP adapter - SGs, MME ↔ MSC/VLR.
 
-Measured on a real MME-side single-subscriber trace (numbers only): 20 SGsAP frames, every one carrying the IMSI.
-Before this adapter all 20 were invisible.
+SGsAP messages typically carry the IMSI (from telecom engineering practice); before this adapter every one of
+them was invisible.
 
 The oracle is tshark: the message table is regenerated from `tshark -G values`, and every label appears in tshark's
 own info column for the same frame.

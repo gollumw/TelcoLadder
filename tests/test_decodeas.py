@@ -182,7 +182,7 @@ def test_saving_rules_does_not_wipe_the_disabled_list(isolated_config) -> None:
 def test_a_shipped_rule_for_an_absent_port_costs_nothing(e2e_pcap) -> None:
     """檔案裡沒有那個埠時，出貨候選不該讓解剖多跑一趟。
 
-    重跑是一整趟 tshark（436 MB 上約 70 秒）。**把經驗出貨給別人，不該
+    重跑是一整趟 tshark（大檔上那是一整趟完整解剖）。**把經驗出貨給別人，不該
     讓每個不需要它的人都付這個成本。**
 
     `5gc-e2e` 只有 7777 這個伺服端埠，而出貨清單裡是 80/81/7070/8080 ——

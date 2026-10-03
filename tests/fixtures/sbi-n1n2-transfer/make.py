@@ -7,8 +7,8 @@ AMF namf-comm 的位址沒有票；但 N1N2MessageTransfer 的 body 自己寫著
 `n1MessageClass`／`n2InformationClass`，SM 類只有 SMF 產得出來。`adapters/sbi.py`
 把它寫成線路提示（`NF_ROLE_HINTS_KEY`）—— 前提是 body 與 HEADERS 在同一格。
 
-實測一份 AMF 側的 UE trace：34 則 N1N2 請求全部與 body 同格、類別全是 SM、來自
-5 個不同的位址。Open5GS 的測試床（`multi-imsi`）則把 HEADERS 與 DATA 拆成前後
+依專業電信工程師的實務經驗設計：AMF 側的 UE trace 上，N1N2 請求常與 body 同格、
+類別是 SM、來自好幾個不同的位址。Open5GS 的測試床（`multi-imsi`）則把 HEADERS 與 DATA 拆成前後
 兩格，那裡拿不到提示 —— 所以需要這一份同格的檔，否則那條路沒有資料可以走。
 
 ## 內容（4 格，h2c 明文，port 7777 ＝ `sbi.DECODE_AS` 的預設）

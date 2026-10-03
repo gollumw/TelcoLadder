@@ -380,8 +380,8 @@ def flow_json(flow: DiameterFlow, hosts: dict[str, dict], *, detail: bool = Fals
     """一條流程。`detail=False`（表格用）**不含逐跳明細**。
 
     這不是省流量的微調，是規模紀律：逐跳明細與訊息數等比成長，而 DRA 的擷取檔
-    正是訊息最多的那種（它承載整個網路的 Diameter）。實測這份 fixture 上明細佔
-    43%，每則訊息 767 bytes —— 外推到 20 萬則就是一次 153 MB 的回應。
+    正是訊息最多的那種（它承載整個網路的 Diameter）。在這種擷取檔上，每則訊息都
+    帶明細的回應會長到好幾 MB 以上。
 
     所以表格回「每條流程一列」（與 `/flows` 同一個量級），明細**限縮在一條流程**
     （與 `callflow.events()` 的「限縮在一組流程」同一條紀律），由

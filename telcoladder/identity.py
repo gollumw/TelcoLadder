@@ -279,8 +279,7 @@ def gtpv2_transaction(requester: str, responder: str, seq: object) -> IdKey | No
     """一筆 GTPv2-C 交易：發起方 → 回應方 ＋ 序號。把一則回應接回它的請求。
 
     存在的理由是**標頭 TEID 為 0 的回應**：收件者找不到那個 context 時（例如 Relocation
-    Cancel），回應裡沒有 TEID 也沒有 IMSI，唯一接得回請求的就是序號（實測一份 MME trace：
-    6 則這樣的回應，序號 6/6 對得上請求）。
+    Cancel），回應裡沒有 TEID 也沒有 IMSI，唯一接得回請求的就是序號（`4g-idle-paging-s-tmsi` 的 frame 7–8）。
 
     **範圍帶方向**：序號由發起方配，兩端各有一套 —— MME 往 SGW 的 5 號與 SGW 往 MME 的 5 號
     是兩筆無關的交易。序號只保證**還沒完成的**交易不重複，所以回應要宣告釋放這把 key
@@ -363,8 +362,8 @@ def international_msisdn(uri: str | None) -> str | None:
     """位址 → **國際形式**的號碼（不含 `+`），只有這種能當 MSISDN 鍵。
 
     **本地形式一律不收，也不補國碼。** `tel:0…;phone-context=…` 要變成國際號碼得知道
-    國碼與國內冠碼，那是一張表 —— 而這個工具不建那張表（使用者裁定 2026-09-13）。
-    真實樣本上被叫的國際形式本來就出現在後段的 Request-URI 與 P-Asserted-Identity，
+    國碼與國內冠碼，那是一張表 —— 而這個工具不建那張表。
+    依專業電信工程師的實務經驗，被叫的國際形式通常會出現在後段的 Request-URI 與 P-Asserted-Identity，
     所以用得到的地方都比得起來；比不起來的地方，少一個關聯好過猜一個。
     """
     number = msisdn_of(uri)

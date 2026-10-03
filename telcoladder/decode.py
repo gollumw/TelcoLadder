@@ -287,7 +287,7 @@ def decode_frames(
         # 即時轉成 EXPORTED_PDU，第二趟重讀時它的 XML 讀取器報錯（tshark 4.6.8 實測
         # exit 14，`parser error : StartTag`）；同一份檔單趟完全正常，抽取、封包清單、
         # 原始位元組三條路也都是單趟。所以退回單趟 —— 但要**講出來**：少了跨格重組
-        # 標註的樹與完整的樹在畫面上一模一樣（2026-09-05，一份真實的 SMF trace 上
+        # 標註的樹與完整的樹在畫面上一模一樣（不退回的話，這種檔的
         # 解碼樹整片空白，只寫「not loaded yet」）。
         retry = run(two_pass=False)
         if retry.returncode != 0:

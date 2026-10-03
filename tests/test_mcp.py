@@ -309,7 +309,7 @@ def _drive(script: str, *, env_extra: dict | None = None) -> list[dict]:
 
 
 def test_a_progress_token_gets_heartbeats_and_still_one_result() -> None:
-    """**大檔會超過多數客戶端的請求逾時**（436 MB 完整解剖約 72 秒）。
+    """**大檔會超過多數客戶端的請求逾時**（完整解剖的時間與檔案大小成線性）。
 
     給了 `progressToken` 就送 `notifications/progress`，規範說收到進度的實作
     應該重置逾時 —— 所以 agent 那側的契約不變：問一次、拿一個答案。

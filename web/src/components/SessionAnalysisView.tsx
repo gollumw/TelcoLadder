@@ -134,7 +134,7 @@ const REGISTRATION_TYPE_LABEL: Record<string, string> = {
 };
 
 //: 同世代、同**類別**的段是一組（2026-09-13 起）。結局與方向收在組裡，不再各自一顆晶片 ——
-//: 一份真實 MME trace 的面板原本有 21 顆，同一個行為因結局或方向不同被拆開，讀的人得自己歸類。
+//: 不收的話面板上晶片一長串，同一個行為因結局或方向不同被拆開，讀的人得自己歸類。
 //: **組是視圖，段是事實**：點開仍是逐段晶片，依 kind、方向、觸發與註冊型別分列。
 type ProcedureGroup = {
   key: string;
@@ -205,7 +205,7 @@ function laneX(lanes: Lane[], id: string): number | null {
 /**
  * 箭頭上的字太長時截斷。
  *
- * SBI 的訊息名是完整的 URL —— 實測最長 119 字元
+ * SBI 的訊息名是完整的 URL，帶查詢字串時很長
  * （`GET /nudm-sdm/v2/imsi-…?dnn=internet&single-nssai=%7B%22sst%22%3A1…`）。
  * 照畫會橫跨整張圖、蓋掉別的箭頭，而且那串百分比編碼沒有人在讀。
  *
@@ -314,10 +314,10 @@ export function SessionAnalysisView({
   //: 結束的那一下點擊要吃掉（`onClickCapture`），不然放開時會誤選手指下的事件。
   const drag = useRef({ active: false, moved: false, x: 0, y: 0, left: 0, top: 0 });
   const [dragging, setDragging] = useState(false);
-  //: 展開成一台一條的網元（組名）。**預設全部收合**（使用者裁定 2026-09-15）：一份真實 AMF 側
-  //: trace 上 30 條泳道收成 7 條。只收核網 —— 後端的組已經讓手機與基地台一台一組。
+  //: 展開成一台一條的網元（組名）。**預設全部收合**：核網網元常在
+  //: 好幾個位址上，不收的話泳道數跟著位址數膨脹。只收核網 —— 後端的組已經讓手機與基地台一台一組。
   const [expandedNfs, setExpandedNfs] = useState<Set<string>>(() => new Set());
-  //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網，使用者裁定 2026-09-15）。
+  //: 程序面板的分組軸：場景類別（既有）或誰開的這一段（無線側／核網）。
   const [panelAxis, setPanelAxis] = useState<"category" | "side" | "connection">("category");
   //: 選中的無線連線（`RadioConnection.index`）。與段、組互斥 —— 選了別的就清掉。
   const [activeConnection, setActiveConnection] = useState<number | null>(null);
@@ -550,8 +550,8 @@ export function SessionAnalysisView({
   const connectionSlow = (c: RadioConnection) => behaviors.some((r) => r.connection === c.index && recordSlow(r));
   const visibleConnections = onlyProblems ? connections.filter((c) => c.outcome === "failure" || connectionSlow(c)) : connections;
 
-  //: **子分類：同一種行為意圖收成一顆晶片**（使用者裁定 2026-09-17）。一份真實 AMF 側 trace 在「依觸發側」
-  //: 排出 20 顆、「依無線連線」排出 18 顆一模一樣的晶片，讀的人要自己一顆顆看哪個有問題。收起來之後，
+  //: **子分類：同一種行為意圖收成一顆晶片**。不收的話「依觸發側」與「依無線連線」
+  //: 會排出一長串一模一樣的晶片，讀的人要自己一顆顆看哪個有問題。收起來之後，
   //: **有問題的那一組預設就是展開的** —— 摺疊是為了讓失敗與過慢跳出來，不是把它們一起藏起來。
   const intentOf = (p: CallFlowProcedure) => recordByStart.get(p.startFrame)?.intentLabel ?? p.kind;
   const intentText = (intent: string, fallbackKind: string) =>
@@ -772,8 +772,8 @@ export function SessionAnalysisView({
   }, [selectedFrameNumber, selectedPacket, onRequestTree]);
 
   // **選中的事件要在面板裡看得到。** 梯形圖是視窗大小的可捲面板，而總覽的
-  // 「跳到失敗那一則」與封包清單的點選都只改 `selectedFrame` —— 一份 1,484 則
-  // 事件的真實 trace 是 74,000 px 高，不捲過去等於沒跳。`inline: "nearest"`
+  // 「跳到失敗那一則」與封包清單的點選都只改 `selectedFrame` —— 上千則事件的
+  // trace 有好幾萬 px 高，不捲過去等於沒跳。`inline: "nearest"`
   // 順便把橫向捲到那支箭頭；選中的事件不在目前的篩選裡就沒有列，什麼都不做。
   useEffect(() => {
     if (selectedFrame === null) return;
@@ -919,7 +919,7 @@ export function SessionAnalysisView({
                   <>
                     <span className="hidden xl:inline">{t("Inspector follows at the side")}</span>
                     {/* 格線在 xl（1280 px）以下塌成單欄，檢查器排在整張圖之後 —— 要講。
-                        實測 1200 px 的視窗：檢查器在 75,000 px 下面，畫面上沒有任何一句話。 */}
+                        1200 px 的視窗：檢查器在整張圖下面，畫面上沒有任何一句話。 */}
                     <span className="xl:hidden">{t("Inspector is below the ladder (window narrower than 1280 px)")}</span>
                   </>
                 )}
@@ -1349,9 +1349,8 @@ export function SessionAnalysisView({
           </div>
           <p className="mb-2 text-xs text-fg-dim">{t("Click any signalling event to drive the Decode Inspector below; hover to preview the packet's capture metadata.")}</p>
 
-          {/* **面板是視窗大小的，不是頁面長度的。** 一份真實的 AMF UE trace：
-              1,484 則事件 × 50 px ＝ 74,280 px 高、13 條泳道 ＝ 1,940 px 寬。沒有
-              max-h 時水平捲軸在 75,000 px 下面、xl 以下的檢查器排在整張圖之後 ——
+          {/* **面板是視窗大小的，不是頁面長度的。** 事件上千則的 trace
+              每則 50 px 就有好幾萬 px 高，泳道一多也比視窗寬。沒有 max-h 時水平捲軸在整張圖下面、xl 以下的檢查器排在整張圖之後 ——
               兩個症狀使用者都叫「跑版」。兩軸都在這個 div 裡捲，捲軸永遠在眼前。 */}
           <div
             ref={ladderBoxRef}
@@ -1376,12 +1375,11 @@ export function SessionAnalysisView({
               )
             ) : (
               // **不用 `width="100%"`。** 那會把 viewBox 拉伸到容器寬度：
-              // 泳道少的時候 viewBox 只有 290，在 1200px 的面板裡就是放大
-              // 4.1 倍 —— 字級、線寬、間距全部跟著爆掉。實測
-              // 一份網元匯出的 SMF trace 實測正是這個情況。
+              // 泳道少的時候 viewBox 很窄，在寬面板裡就被放大好幾倍 ——
+              // 字級、線寬、間距全部跟著爆掉。
               // 改成畫在它自己的尺寸上，容器已經有 overflow-x-auto 會捲。
               <>
-              {/* **網元名稱固定在面板頂端。** 一份真實 trace 上千則事件、幾萬 px 高，捲到中段就
+              {/* **網元名稱固定在面板頂端。** 上千則事件的 trace 有幾萬 px 高，捲到中段就
                   看不出哪條生命線是哪個網元 —— 只剩箭頭，不知道誰打給誰。標頭跟著橫向捲
                   （同一個捲動容器、同一個寬度與縮放），只有縱向黏住。底色必須不透明，否則
                   底下捲過去的箭頭會透出來。 */}

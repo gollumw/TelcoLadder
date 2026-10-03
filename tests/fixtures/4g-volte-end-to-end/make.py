@@ -571,7 +571,7 @@ def build() -> list[tuple[str, str, bytes]]:
         INITIATING, PROC_INITIAL_CONTEXT_SETUP, REJECT, ue_pair(7, 1))))
     out.append((ENB_A, MME, s1ap_pdu(
         SUCCESSFUL, PROC_INITIAL_CONTEXT_SETUP, REJECT, ue_pair(7, 1))))
-    # **UEContextRelease 的 Complete 才是真的放掉**（比照 ngap.py 的裁定）——
+    # **UEContextRelease 的 Complete 才是真的放掉**（比照 ngap.py 的規則）——
     # Command 只是 MME 下令。
     out.append((MME, ENB_A, s1ap_pdu(
         INITIATING, PROC_UE_CONTEXT_RELEASE, REJECT,

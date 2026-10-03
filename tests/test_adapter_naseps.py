@@ -5,7 +5,7 @@ NAS-EPS 的失敗模式與 NAS-5GS 同型，而且每一種都是靜默的：
 
 | 錯法 | 症狀 |
 |---|---|
-| 載體路徑寫死 | **一則都收不到**，而 filter 沒漏、tshark 沒報錯（§3.1） |
+| 載體路徑寫死 | **一則都收不到**，而 filter 沒漏、tshark 沒報錯（CLAUDE.md 的 Measured decisions） |
 | IMSI 另開一把 key | 同一個人在混合擷取檔裡變成兩條流程，兩條都合理（§12） |
 | 加密的 NAS 去猜內層 | 編出一則不存在的訊息 |
 | 加密計數沒傳上去 | 一次失敗整個藏在密文裡，而圖上一切正常 |
@@ -43,7 +43,7 @@ def messages():
         out.extend(m for m in parse_frame(frame) if m.protocol == "nas-eps")
     assert out, (
         "一則 NAS-EPS 都沒解出來。**先查載體** —— NAS 巢狀在 `s1ap` 層裡面，"
-        "`frame.layer(\"nas-eps\")` 一定是空的（§3.1）。"
+        "`frame.layer(\"nas-eps\")` 一定是空的（CLAUDE.md 的 Measured decisions）。"
     )
     return out
 

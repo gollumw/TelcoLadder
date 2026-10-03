@@ -2,8 +2,8 @@
 
 ## 為什麼需要這條
 
-實測一份 AMF 側的 UE trace：整份只剩一個位址沒有角色 —— AMF 對它送了一個
-`DELETE /npcf-ue-policy-control/...`（TS 29.525，由 PCF 提供），它回 204。
+AMF 對一個位址送 `DELETE /npcf-ue-policy-control/...`（TS 29.525，由 PCF 提供）、
+它回 204 —— 那個位址就是 PCF，卻會因為漏表而沒有角色。
 `SBI_SERVICE_TO_NF` 收了另外三個 PCF 服務，偏偏漏了這一個；而消費者表
 （`SBI_CONSUMER_OF`）裡有它。知道誰會呼叫一個服務、卻不知道誰提供它，是同一份知識
 缺了一半 —— 第二條測試把這個不變量釘住，下一個漏項會在這裡紅，不會在畫面上變成一個

@@ -452,8 +452,8 @@ def analyse(
     採用**，並把做了什麼記在 `Analysis.auto_decode` 裡讓呼叫端印出來。
 
     代價講明白：這讓乾淨的擷取檔多跑一趟 probe（實測約主抽取的一半時間），
-    網元 trace 則是三趟。**這個代價是刻意付的** —— 第一份真實封包上，
-    不付的結果是 100% 的 SBI 連同 15 則 404 一起無聲消失。不想付就關掉。
+    網元 trace 則是三趟。**這個代價是刻意付的** —— 網元匯出的 trace 若不付，
+    整段 SBI（連同裡面的錯誤回應）會無聲消失。不想付就關掉。
 
     `prefilter` 在解析之前先收窄擷取檔（時間範圍 / 訂戶 / 自寫 filter）。
     它可能會用 `editcap` 產生一份暫時的切片 —— **那份切片在本函式的
@@ -579,7 +579,7 @@ def _analyse_within(
         blocked = set(load_disabled())
         # 出貨候選先用「這份檔裡有沒有這個埠」過濾一次。**沒有就別試** ——
         # 檔案裡根本沒有 port 80 的流量時，拿 `tcp.port==80,http2` 去重跑
-        # 是純粹白跑一趟 tshark（436 MB 上約 70 秒）。
+        # 是純粹白跑一趟 tshark（大檔上那是一整趟完整解剖）。
         present = set(shape.server_ports)
         shipped = tuple(
             r.rule

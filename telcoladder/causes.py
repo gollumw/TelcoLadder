@@ -55,8 +55,8 @@ class CauseInfo:
     outcome: str | None = None
     """這個號碼是**誰的結局**。目前唯一的值是 `"user"`：通話的一方自己決定或
     缺席（被叫忙線、拒接、主叫取消、無人接聽）—— 網路把電話送到了，只是沒人接。
-    那不是網路故障，不該點紅燈；但它也不是「成功」。**判準住在表裡不住在程式裡**
-    （用戶裁定 2026-09-06）：程式只問 `is_user_outcome()`，哪些號碼算，是內容。
+    那不是網路故障，不該點紅燈；但它也不是「成功」。**判準住在表裡不住在程式裡**：
+    程式只問 `is_user_outcome()`，哪些號碼算，是內容。
     留空代表照號碼段的一般規則（4xx／5xx／6xx 是失敗）。"""
 
     plain_zh: str = ""
@@ -296,8 +296,8 @@ def annotate(messages: list) -> list:
         if info is not None and info.outcome == "user" and msg.is_failure:
             # **表說這是一方自己的結局，就不是網路失敗。** 被叫忙線、拒接、主叫
             # 取消 —— 網路把電話送到了。這是判準從表進入判定的唯一一點：
-            # adapter 只畫號碼段的界線，哪些號碼算「使用者的結局」是內容
-            # （用戶裁定 2026-09-06）。程序層把這種段記成 `ended-by-user`。
+            # adapter 只畫號碼段的界線，哪些號碼算「使用者的結局」是內容。
+            # 程序層把這種段記成 `ended-by-user`。
             msg.is_failure = False
         if info and info.plain:
             # **存英文原文，不存翻譯。** `annotate()` 跑在 `analyse()` 裡，而

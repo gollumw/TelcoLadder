@@ -19,19 +19,24 @@ plugin contract in [docs/plugin-contract.md](docs/plugin-contract.md).
    through the static, human-verified `telcoladder/data/causes/*.yaml`
    lookup. A hallucinated citation is worse than none, because a wrong
    citation gets believed.
-4. **Record numbers, not identifiers.** "Measured: 14 events, 1 lane" is
-   fine; a real IMSI, customer filename, or production DNN in a comment,
-   commit message, or test is not. Guarded by
-   `tests/test_no_real_subscriber_data.py` (eight nets) and a pre-commit
-   hook (`tools/install-hooks.sh`).
+4. **Only fixtures may be described in writing.** A count, percentage,
+   timing, size or shape in a comment, docstring, doc, test, or commit
+   message comes from a capture under `tests/fixtures/` - "`ki-mismatch`:
+   4 messages in 1 flow", copied from the tool's output, is fine. From any other
+   capture nothing is written: no numbers, no "measured on a real
+   capture", no filename. A design reason is stated as protocol behaviour,
+   or demonstrated by a fixture; a fixture's provenance reads "designed
+   from telecom engineering practice". No public file cites a ruling, a
+   person, or a session as the reason for a decision - state the decision.
+   Real identifiers are guarded by `tests/test_no_real_subscriber_data.py`
+   (eight nets) and a pre-commit hook (`tools/install-hooks.sh`).
 5. **A capture someone else gave you is their employer's data, not yours.**
    It goes in `local/intake/<date>-<initials>/` (ignored) beside a one-line
-   `CONSENT.txt` — who gave it, when, what they agreed to — and is deleted
-   once the finding is written. From it you may record **numbers and shapes**
-   ("14 events, 1 lane"; "SBI carried NAS and we missed it") and nothing
-   else: no addresses, hostnames, DNNs, PLMN identifiers, filenames,
-   topology, or employer. Red line 4 above is the general form; this is the case where
-   the data is not yours to trade off, so there is no judgement call to make.
+   `CONSENT.txt` - who gave it, when, what they agreed to - and is deleted
+   once the finding is fixed. Nothing about it is written anywhere public:
+   not its numbers or shapes, and not its addresses, hostnames, DNNs, PLMN
+   identifiers, filename, topology, or employer. If it reveals a gap, build
+   a fixture that shows the same gap and write about the fixture.
    Every leak this project has had came from **writing about** a capture, not
    from committing one.
 

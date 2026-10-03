@@ -1,11 +1,11 @@
 """4G scenarios: the classification axis is the subscriber's situation, not the protocol.
 
-Measured on a real MME-side single-subscriber trace (numbers only). Before this change: 45 messages
-belonged to no procedure at all (Downlink Data Notification and Paging ×6 each, E-RAB modification ×3
-with their Modify Bearer, E-RAB release ×3 with their Delete Bearer), 19 Diameter segments stood beside
-the scenarios they belong to, and 6 handovers that end in Relocation Cancel were counted as failures.
-After it: **0 unassigned**, 18 of the 19 Diameter segments folded into their scenario, 1 stayed as an
-HSS-initiated one, and those 6 handovers read `cancelled`.
+The scenarios are designed from telecom engineering practice and reproduced by `4g-scenarios`. Before
+this change, Downlink Data Notification, Paging, E-RAB modification with its Modify Bearer and E-RAB
+release with its Delete Bearer belonged to no procedure at all; Diameter segments stood beside the
+scenarios they belong to; and handovers that end in Relocation Cancel were counted as failures.
+After it: **nothing unassigned**, Diameter inside a scenario folds into it, an HSS-initiated exchange
+stays on its own, and a handover that ends in Relocation Cancel reads `cancelled`.
 
 Mutations (all done, all caught): the DDN/Paging openers removed; the network-triggered rename removed;
 the cancelled rule removed; Diameter split off again instead of folded; `_outcome_seen` blind to a
@@ -67,7 +67,7 @@ def test_each_scenario_is_named_and_bounded(procedures) -> None:
 
 
 def test_nothing_is_left_unassigned(analysis) -> None:
-    """The point of the change: on the real trace this went from 45 to 0."""
+    """The point of the change: every message in the scenario belongs to some procedure."""
     assert segment(analysis)[1] == 0
 
 
@@ -118,7 +118,7 @@ def test_a_message_that_rides_along_does_not_decide_the_generation() -> None:
     """The generation comes from the access and bearer protocols, never from what folded in.
 
     Before the fold no window held both GTPv2-C and Diameter, so the fall-through was never reached;
-    after it, one cancelled handover on a real MME trace came out as **5G** because neither rule
+    after it, a cancelled handover with folded-in Diameter came out as **5G** because neither rule
     matched and the taxonomy default won.
     """
     from telcoladder.procedures import _family_of

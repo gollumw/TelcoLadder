@@ -4,9 +4,9 @@
 ## 這份 fixture 重現什麼形狀
 
 **真實網路的流量多數不是註冊，是 Service request**：UE 從閒置回來，只帶
-5G-S-TMSI，不帶 SUCI。2026-09-05 實測兩份網元 trace：28 條流程只有 1 條有
-SUPI，23 個 Service request 各自只靠 NGAP UE ID 成一條流程，summary 的訂戶段
-與網頁抽屜都看不到它們。既有的 fixture 全是註冊（帶 SUCI），一格 5G-S-TMSI
+5G-S-TMSI，不帶 SUCI（依專業電信工程師的實務經驗設計）。這樣的流程裡多半
+沒有 SUPI，每個 Service request 只能各自靠 NGAP UE ID 成一條流程，summary 的
+訂戶段與網頁抽屜原本都看不到它們。既有的 fixture 全是註冊（帶 SUCI），一格 5G-S-TMSI
 都沒有 —— 所以這份用位元組手寫，手法沿用 `4g-volte-end-to-end/make.py`
 （SCTP／IP／APER 的產生器直接 import 過來用）。
 

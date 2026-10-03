@@ -470,7 +470,7 @@ def test_the_sip_tables_print_no_clause_number(table) -> None:
 
 
 def test_user_outcomes_are_exactly_the_agreed_codes() -> None:
-    """哪些號碼是「一方自己的結局」是內容裁定（2026-09-06），釘住免得被順手擴大或
+    """哪些號碼是「一方自己的結局」是內容，釘住免得被順手擴大或
     縮小：SIP 480/486/487/600/603，Q.850 16/17/18/19/21。"""
     from telcoladder.causes import is_user_outcome
     from telcoladder.model import CauseRef

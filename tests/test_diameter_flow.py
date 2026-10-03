@@ -274,8 +274,8 @@ def test_a_hostless_export_still_pairs_and_names_its_peers() -> None:
 
 def test_the_table_carries_no_per_hop_detail(doc, analysis) -> None:
     """**規模紀律。** 逐跳明細與訊息數等比成長，而 DRA 的擷取檔正是訊息最多的那種
-    （它承載整個網路的 Diameter）。實測：帶明細時每則訊息 767 bytes，20 萬則就是
-    一次 153 MB 的回應；不帶是 435 bytes，而表格要的欄位一個都沒少。
+    （它承載整個網路的 Diameter）。帶明細時，這種擷取檔上的回應會長到好幾 MB 以上；
+    不帶時表格要的欄位一個都沒少。
 
     把明細加回表格**不會有任何徵兆** —— 這份 fixture 上只差 10 KB，只會在某個人
     的大檔上把瀏覽器打爆。所以由這條測試釘住，而不是靠註解提醒。

@@ -133,7 +133,7 @@ interface IndexResponse {
 /**
  * 等解剖跑完。
  *
- * 封包索引很快就好（實測 436 MB 約 50 秒），但關聯分析要更久（再 71 秒）。
+ * 封包索引先好，關聯分析要更久（它在索引之後再跑一整趟完整解剖）。
  * `/flows` 在那之前回 `ready: false` —— **不假裝已有答案**，所以這裡等它。
  */
 async function waitForAnalysis(

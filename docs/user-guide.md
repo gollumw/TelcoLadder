@@ -263,8 +263,8 @@ locally, nothing listens on the network; it runs tshark on paths you
 supply, which is why there is deliberately no HTTP version. Analyses are
 cached in memory per file — no copies, nothing lands on disk.
 
-**Large files.** Dissection measures ~**0.19 s/MB** — 145 MB takes 28 s
-and 2 GB several minutes, beyond most MCP clients' default timeouts.
+**Large files.** Dissection time is linear in file size, and on a large
+capture it runs beyond most MCP clients' default timeouts.
 When the client supplies a `progressToken`, the server sends a progress
 notification every two seconds (the spec says receiving progress should
 reset the timeout), so the agent side remains ask-once-get-one-answer.
@@ -381,8 +381,7 @@ protocol that carried it:
   The ULR/AIR of an attach, the CLR of an idle move — they are part of that
   attach or that move, and their outcome is part of it too: an HSS answer of
   "unknown user" makes *that attach* a failure, even though every NAS and S1AP
-  message in the window looks fine. Measured on an MME trace: 18 of 19 Diameter
-  exchanges sat inside a scenario.
+  message in the window looks fine.
 - **A Diameter exchange inside no window stands on its own** as an
   HSS-initiated scenario — `hss-cancel-location`, `hss-insert-subscriber-data`
   and so on — **in the generation its interface belongs to**: S6a/S6d and Gx are
@@ -600,11 +599,10 @@ attached**. Typically these are answers whose requests are not in the capture, b
 point did not see those TCP bytes. The view lists their frame numbers. Other numbers' lookups in the
 same seconds stay out.
 
-Measured on a real network-element capture (kept out of the repository; numbers only): 1 call,
-5 legs, 117 SIP messages; full end-to-end adds 8 H.248, 60 Diameter and 4 ENUM messages; 32 other
-numbers' Diameter messages in the same seconds stay out; 10 are counted as unattributed; 2 Cx answers
-carry an IMSI-derived identity that no number in the call can be matched to, so they are neither
-attached nor counted as unattributed.
+A Cx answer that carries only an IMSI-derived identity cannot be matched to any number in the call,
+so it is neither attached nor counted as unattributed. `tests/fixtures/volte-e2e-call/` exercises
+each rule with a negative control beside it: another number's lookups, another ICID, a lookup after
+the call ended, and an answer whose request was not captured (`tests/test_volte_e2e_call.py`).
 
 #### Which end is the UE (2026-09-13)
 
@@ -619,8 +617,8 @@ Lanes are labelled `UE` and `P-CSCF` from three kinds of evidence, strongest fir
    own address together with a subscriber identity: an IMSI-derived user part or `+sip.instance`.
 
 A B2BUA, whether an application server or an SBG acting as P-CSCF, writes its **own** address in
-`Contact` when it opens a leg. The old rule therefore labelled core nodes as UE. On one real capture
-it labelled 11 core messages that way, and it swapped the P-CSCF and the callee.
+`Contact` when it opens a leg. The old rule therefore labelled core nodes as UE, and on a call
+through a B2BUA it swapped the P-CSCF and the callee.
 
 #### One lane per host, and naming hosts yourself (2026-09-13)
 
@@ -655,9 +653,9 @@ yet` — it prefers silence to guessing.
 
 **2. Take "⚠ N more NAS messages are ciphered" seriously.** NAS after
 Security Mode Command is network-ciphered — normal — but **a failure can
-hide entirely inside**. Measured case: a nonexistent-DNN rejection
-(cause #91) sat wholly in the ciphered section and the diagram looked
-fine. When you see this warning and the symptoms disagree, check the
+hide entirely inside**. In `tests/fixtures/unknown-dnn/` a nonexistent-DNN
+rejection (cause #91) sits wholly in the ciphered section and the diagram
+looks fine. When you see this warning and the symptoms disagree, check the
 core-network logs.
 
 **3. "No anomaly" is not "no failure".** The session table's lights
@@ -701,8 +699,7 @@ It is deliberately not an identifier filter such as
 `ngap.RAN_UE_NGAP_ID == 1`. That compares one field on one message, while
 this tool attributes at flow level, and those IDs are only unique inside
 one connection and get recycled — so it would also select another
-subscriber's packets. Measured on one capture: 101 frames flow-level
-against 42 by field comparison.
+subscriber's packets, and miss the frames that carry none of those IDs.
 
 Past 200 frames no filter is offered. A truncated filter looks perfectly
 normal and nothing says which frames it dropped.
@@ -715,7 +712,7 @@ normal and nothing says which frames it dropped.
 |---|---|
 | "no 5G signalling messages found" | the capture holds no NGAP/NAS/cleartext SBI/PFCP. Back to §1 pre-flight — usually 4G, IMS, or TLS |
 | **The diagram is much shorter than expected, or only gNB↔AMF appears** | **read what the tool itself said first** — after analysis, stderr prints its adjustments (§8) and coverage ("N frames total, M decoded"). It distinguishes four cases: ① those protocols are not in the file (change the capture point) ② present but undecoded (**handled automatically**) ③ this is an NE trace (**handled automatically**, §8) ④ already decoding yet unreadable (**the capture started after connection establishment; parameters will not help — re-capture**) |
-| SMF / UPF never appear | **first check whether the file is an NE trace (§8)** — the actual cause on the first real capture; the tool now handles and states it. Otherwise, they can only appear via **N4 (PFCP, UDP 8805)** or **SBI**; the N2 interface never carries them — our own `5gc-e2e` fixture needed **three capture points merged** for the full picture |
+| SMF / UPF never appear | **first check whether the file is an NE trace (§8)** — the tool handles and states it. Otherwise, they can only appear via **N4 (PFCP, UDP 8805)** or **SBI**; the N2 interface never carries them — our own `5gc-e2e` fixture needed **three capture points merged** for the full picture |
 | lanes are IPs, not NE names | §5-4 — insufficient evidence. Capturing earlier (including connection establishment) usually helps |
 | two users appear mixed in one flow | should not happen — tests guard it. If you hit it, keep the capture (de-identified) and report |
 | a large file looks stuck | synchronous analysis has no intermediate progress. **Slice a time range first** (§9, `--since` / `--until`; slicing via editcap is the default). Ctrl-C aborts |
@@ -731,7 +728,7 @@ normal and nothing says which frames it dropped.
   symptom is a shorter diagram, not an error. A real capture that fails
   to decode is a valuable sample (§6's last row).
 - **Diameter covers seven interfaces**: S6a/S6d, Cx/Dx, Gx (2026-08-23)
-  and Rx, Sh, S6b, SWx (2026-09-05, after real exports carried them),
+  and Rx, Sh, S6b, SWx (2026-09-05),
   plus the base messages (CER/DWR/DPR). These have NE role inference
   (AF, AS, AAA, PGW join the role vocabulary); the remaining 3GPP
   applications resolve their Application-Id and show command names, but
@@ -816,8 +813,7 @@ its request) ties together.
 > with — which is how PFCP and GTP messages in an SMF-side trace join their
 > subscriber. It applies only when the number of `<msg>` elements equals the
 > number of frames tshark produced; otherwise it says so and uses nothing.
-> On one such trace this took named endpoints from 9 of 19 to 18 of 19 and
-> unlinked identifiers from 30 to 0. The decode tree on these files is
+> The decode tree on these files is
 > single-pass (tshark's two-pass mode fails on the XML reader) and says so.
 
 The easiest thing to step on with real packets — and it **raises no
@@ -829,15 +825,14 @@ error at all**.
 |---|---|---|
 | origin | tcpdump / Wireshark on the network | the AMF/SMF trace feature's export, usually filtered by IMSI |
 | filename | yours | commonly `ue_trace.IMSI<15digits>.pcap` shapes |
-| TCP sequence numbers | advance with the payload | **synthetic, frozen for the whole stream** (one commercial AMF measures all zeros) |
+| TCP sequence numbers | advance with the payload | **synthetic, frozen for the whole stream** (for example all zeros) |
 | addresses | real | N2 and SBI often live in two unrelated fake address spaces |
 
 **The problem is the sequence-number row.** tshark sees the second
 frame's sequence unmoved, calls it a retransmission, and skips — so only
-each direction's first frame decodes. Measured on the first real
-capture: 169 TCP frames decoded as 2, all of SBI vanished along with
-**15 HTTP 404s**, and the tool reported "187 messages", looking
-perfectly normal.
+each direction's first frame decodes. All of SBI vanishes, any HTTP
+error it carried with it, and the message count that remains looks
+perfectly normal. `tests/fixtures/ne-trace/` reproduces it.
 
 ### Frames that produced no message (2026-09-13)
 
@@ -854,8 +849,8 @@ and the reasons add up to the headline:
 - **Transport-layer pieces.** Acknowledgements, keepalives, and segments of streams missing earlier
   bytes.
 
-Measured on a real VoLTE capture (kept out of the repository; numbers only): 45 of 309 frames
-produced no message, and none of them was an unsupported protocol.
+`tests/fixtures/volte-e2e-call/` carries a TCP stream whose earlier bytes were not captured and an
+IP datagram missing a fragment, so those reasons each have a case.
 
 ### Waiting for a large file (2026-09-13)
 
@@ -900,9 +895,10 @@ Three things worth knowing:
   unclaimed port whose connections start with a Diameter header or a SIP
   start line is decoded as that protocol, not guessed as HTTP/2. A port
   that has a built-in rule (7777 is SBI's) is re-decoded only when *every*
-  sampled connection on it is recognisably something else — measured on a
-  real VoLTE capture, where 7777 was the P-CSCF's IPsec-protected port and
-  the caller's whole SIP leg had disappeared as HTTP/2. A port that mixes
+  sampled connection on it is recognisably something else — for example
+  when 7777 is the P-CSCF's IPsec-protected port, where the caller's whole
+  SIP leg would otherwise disappear as HTTP/2 (`tests/fixtures/volte-e2e-call/`).
+  A port that mixes
   the two keeps the built-in rule, and the summary says how to override it.
 - **NULL-encrypted IPsec is opened.** Gm between UE and P-CSCF may be
   integrity-protected only. When tshark's ESP NULL heuristic finds a
@@ -962,18 +958,18 @@ telcoladder analyze your.pcap --subscriber 001011234567891
 **Read this one carefully. It cannot deliver "every packet of this
 person, none missing" — and that is not implementation laziness.**
 
-Measured on the real trace (356 frames, all one subscriber):
+Take a per-IMSI trace of one subscriber:
 
 | Condition | Hits |
 |---|---|
-| `frame contains "<IMSI>"` | 44 |
-| `e212.imsi == "<IMSI>"` | **0** |
-| the subscriber's actual NGAP packets | **226** |
+| `frame contains "<IMSI>"` | only the frames that carry the IMSI in cleartext |
+| `e212.imsi == "<IMSI>"` | possibly **none** |
+| the subscriber's actual NGAP packets | **far more than either** |
 
-The UE is registered and running Service requests; SUCI/IMSI never
+Once the UE is registered and running Service requests, SUCI/IMSI never
 reappears on the air interface and NAS is ciphered — **the N2 half
 carries no identifier in any frame**. Filtering directly on the IMSI
-yields 44 frames with NGAP wiped out.
+yields only the cleartext frames, with NGAP wiped out.
 
 So the tool runs two phases: find the packets that directly carry it,
 then expand to the full TCP connections containing them (even when a
@@ -981,20 +977,22 @@ connection also carries others' traffic — over-collection is only slow;
 flows still separate). Then:
 
 ```
-· 001011234567891: 44 frames carry it directly; expanded to its 31 TCP
-  streams and 0 SCTP associations.
-· **187 NGAP (SCTP) frames were NOT included** — the identifier never
-  appears on that path and no field can attach it. To see that half, do
-  not narrow by identifier.
+ℹ This analysis was narrowed first:
+  · 001011234567891: 33 frames carry it directly; expanded to the 11 TCP streams and 0 SCTP associations they belong to.
+  · **425 frames of SBI（HTTP/2） were left out** - that transport never carried this identifier and no field can tie it in. To see that side, do not narrow by identifier.
+  · **65 frames of NGAP（SCTP） were left out** - that transport never carried this identifier and no field can tie it in. To see that side, do not narrow by identifier.
+  · **62 frames of PFCP（N4） were left out** - that transport never carried this identifier and no field can tie it in. To see that side, do not narrow by identifier.
 ```
+
+(That is `tests/fixtures/multi-imsi/capture.pcap`, verbatim.)
 
 **Frames dropped equals frames reported — an equality, not an
 approximation** (pinned by a test). When you see that line: for the N2
 half, use a time range instead of the identifier.
 
-Two measured underlying limits, stated: tshark does **not** populate
+Two underlying limits, measured on the `multi-imsi` fixture: tshark does **not** populate
 `e212.imsi` from 5G SUCIs (only the PFCP side has values), and
-`sctp.assoc_index` is uniformly `65535` in these captures (the untracked
+`sctp.assoc_index` is uniformly `65535` there (the untracked
 sentinel) — both keep N2 unjoinable.
 
 ### On the web page
@@ -1069,8 +1067,9 @@ empty table.
 
 ### Large files
 
-The Sessions table waits for correlation (measured ~two minutes on 2.5 M
-packets; the packet table stays usable meanwhile). **The faster path is
+The Sessions table waits for correlation, which on a large capture takes far
+longer than the packet index (the packet table stays usable meanwhile).
+**The faster path is
 narrowing first**: back on the home page, slice a time range (§9a) —
 editcap slices first, and every later step works on the small file.
 

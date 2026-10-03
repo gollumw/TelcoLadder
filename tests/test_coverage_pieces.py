@@ -2,12 +2,12 @@
 
 ## 為什麼要有這一組
 
-一份真實 VoLTE 擷取（只記數字）上，總覽寫著「309 格解讀了 222 格，其餘 54 格不在支援的協定裡」。
-逐格查過之後，**那 54 格裡沒有任何不支援的協定**：
+一份 VoLTE 擷取上，總覽可以寫著「其餘若干格不在支援的協定裡」，而逐格查過之後，
+**那些格裡沒有任何不支援的協定**（情境依專業電信工程師的實務經驗設計）：
 
-* 9 格是跨區段 TCP 訊息的前段 —— 訊息已經解出來，卻被算成沒解（IP 分片早就這樣算，TCP 沒有）。
-* 27 格是 IP 分片，同一個 datagram 的其他分片不在檔裡。
-* 其餘是缺了前段位元組的 TCP 串流片段（Rf），以及沒有載荷的傳輸層片段。
+* 跨區段 TCP 訊息的前段 —— 訊息已經解出來，卻被算成沒解（IP 分片早就這樣算，TCP 沒有）。
+* IP 分片，同一個 datagram 的其他分片不在檔裡。
+* 缺了前段位元組的 TCP 串流片段（Rf），以及沒有載荷的傳輸層片段。
 
 外加一個 bug：盤點那一趟 tshark 沒帶分析用的 decode-as 規則，已經解出來的 Rf 在盤點裡是 `data`，
 而且埠挑到客戶端的臨時埠，會建議一條錯的 `--decode-as`。
@@ -93,7 +93,7 @@ def test_a_port_already_decoded_is_not_told_to_decode_again(analysis) -> None:
     tcp_data = [c for c in analysis.coverage.unclaimed if c.protocol == "data" and c.transport == "tcp"]
     assert tcp_data and all(c.port == 3970 and c.decoded_as == "diameter" for c in tcp_data)
     # **只有那 10 格缺前段的片段**（fixture 的設計）。盤點不帶 decode-as 的話，已解碼的完整 Rf 在盤點裡
-    # 也是 `tcp → data`，這個數字會膨脹成 17 —— 那正是真實樣本上 47 格已解碼 Rf 被報成未解讀的形狀。
+    # 也是 `tcp → data`，這個數字會膨脹成 17 —— 已解碼的 Rf 被報成未解讀。
     assert sum(c.frames for c in tcp_data) == 10
 
 

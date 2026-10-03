@@ -206,9 +206,9 @@ def test_the_overview_is_json_and_byte_reproducible(multi) -> None:
 
 # ── 沒有訂戶，不等於沒有信令（2026-09-05）────────────────────────────
 #
-# 使用者拿一份 S6a 擷取檔測，畫面上同時出現：
+# 一份只有 peer 層失敗的 S6a 擷取檔，畫面上曾同時出現：
 #     「這份擷取檔裡沒有任何格被解成信令」   ← 標題
-#     失敗訊息 9 · DIAMETER_UNKNOWN_PEER 7 次 · 0 個訂戶
+#     失敗訊息若干 · DIAMETER_UNKNOWN_PEER 若干次 · 0 個訂戶
 # 同一份資料，兩個互相矛盾的結論；而 cause 卡答不出「是誰對誰」。
 #
 # `diameter-peer-rejected` 是那個形狀的最小版本：CER 被 CEA 3010 擋掉三次。

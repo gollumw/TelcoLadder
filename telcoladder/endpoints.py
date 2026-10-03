@@ -6,7 +6,7 @@
 Ethernet、IP、傳輸層。`extract._endpoints()` 對這種格回兩個空字串，於是每一則
 訊息的 `src` 與 `dst` 都是 `Endpoint(ip="")`：**所有端點塌成一個**，梯形圖變成
 一條自己指向自己的泳道，角色推論一票都投不出來 —— 而一則訊息都沒少。
-三份真實匯出實測就是這個樣子。
+`diameter-user-dlt` 這份 fixture 就是這種形狀。
 
 ## 分工
 

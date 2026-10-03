@@ -365,7 +365,7 @@ def test_every_css_variable_used_is_actually_defined() -> None:
 
     **這是 CSS 收窄唯一驗得到的地方。** 砍掉一個還有人在用的變數，瀏覽器
     只是把那個屬性當作無效值丟掉 —— 頁面照樣渲染、console 零訊息，只是
-    邊框不見了或字變成黑色。與 `CLAUDE.md §5.5` 記的 Tailwind glob 事故
+    邊框不見了或字變成黑色。與 Tailwind `content` glob 漏掉路徑
     同一類:build 成功、頁面渲染、版面塌了。
 
     只驗「有定義」不驗「有沒有多餘的」—— 多留一個沒人用的變數是無害的
@@ -420,7 +420,7 @@ def test_the_ui_reads_the_invisibility_counters() -> None:
     `unknown-dnn` 就是這個情境:PDU 建立被拒，但整段加密看不到，
     畫面只顯示「註冊 ✓」。
 
-    這是 §5.5「唯一的讀者」判準的反向:後端寫了、API 送了、**沒有人讀**。
+    這是「唯一的讀者」判準的反向:後端寫了、API 送了、**沒有人讀**。
     grep 只找得到寫入端一樣是警訊。
     """
     api = (_WEB / "src" / "data" / "apiSource.ts").read_text(encoding="utf-8")

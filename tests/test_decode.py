@@ -173,7 +173,7 @@ def test_decode_is_bounded_by_c_not_by_file_size(monkeypatch) -> None:
     """必須帶 `-c <最深那一格>`。
 
     否則顯示第 7 格會解剖整個檔案。實測 `-c` 限制的是「讀幾格」而不是
-    「輸出幾格」（CLAUDE.md §3.1），所以這是把成本綁在 frame 編號上的方法。
+    「輸出幾格」，所以這是把成本綁在 frame 編號上的方法。
     """
     pcap = require_capture("ki-mismatch/capture.pcap")
     seen: list[list[str]] = []
@@ -430,7 +430,7 @@ def _first_frame_matching(pcap, display_filter: str) -> int:
     「找不到 json.object」，看起來像功能壞了。
     """
     # **帶上管線無條件套用的那組 decode-as**（`default_decode_as()`）——
-    # 不帶的話這條查詢與分析吃的參數不同（§5.5 的 prefilter 教訓），
+    # 不帶的話這條查詢與分析吃的參數不同（prefilter 那條教訓），
     # 而且 HTTP/2 的啟發式偵測是 tshark 4.4 才加的：4.2（Ubuntu 24.04 LTS）
     # 上裸查 `-Y json` 一格都找不到，症狀看起來像功能壞了。
     from telcoladder.adapters import default_decode_as
@@ -455,7 +455,7 @@ def _nettrace():
 
 
 def test_a_ts32423_xml_trace_decodes_in_a_single_pass_and_says_so() -> None:
-    """一份真實的 SMF trace（TS 32.423 XML → EXPORTED_PDU）上解碼樹整片空白：
+    """TS 32.423 XML 格式的 trace（→ EXPORTED_PDU）上解碼樹會整片空白：
     `-2` 在 wiretap 的 XML 讀取器上第二趟報錯（exit 14），而單趟正常。
     突變：拿掉退回單趟 → 這裡是 DecodeError。"""
     notes: list[str] = []
