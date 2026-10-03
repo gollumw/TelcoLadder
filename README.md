@@ -192,8 +192,9 @@ Each of these is a fixture in `tests/fixtures/` you can run yourself.
 3. **A 5GS → EPS handover the target eNB refuses** — `n26-handover`. Five
    elements on one ladder; the failure appears three times on the wire (S1AP
    HandoverFailure, the N26 Forward Relocation Response, the NGAP
-   HandoverPreparationFailure) and is explained once, from the S1AP table, with
-   the specification named and no clause invented.
+   HandoverPreparationFailure), and each is explained from its own table: S1AP
+   #12, GTPv2 #73, NGAP #13 - three numbers for one refusal. Only the NGAP
+   entry carries a clause; the other two name the specification and stop.
 
 ## What it does today
 
@@ -301,7 +302,7 @@ diagram, Mermaid as the output, and a verified explanation of what went wrong.
   completed with a guessed country code. VoLTE, VoNR and VoWiFi are shown only
   where `P-Access-Network-Info` declares them; without that header the access
   is reported as not declared.
-- **Only 9 of the 21 cause tables cite a clause.** The other 12 name the
+- **Only 7 of the 21 cause tables cite a clause.** The other 14 name the
   specification and stop. An absent clause is better than a wrong one.
 - **The 4G, IMS and handover fixtures are written byte by byte** with `tshark`
   as the oracle: exact about the protocol, silent about any real deployment.

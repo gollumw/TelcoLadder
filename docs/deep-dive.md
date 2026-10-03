@@ -216,8 +216,7 @@ the same capture; and a PDU session modification answered with radioNetwork
 cause 36 is named `eps-fallback` rather than a modification, because that is
 what the gNB said. Every segment carries a family (5G, 4G, interworking, IMS,
 Diameter) and a category, and a 5G registration carries its type - a mobility
-registration update that fails is a different fault from an initial one. On the
-AMF trace that drove this, 97 segments became 163, in seven groups.
+registration update that fails is a different fault from an initial one.
 
 ## 5. UE context release: who asked for it
 
@@ -233,10 +232,9 @@ opens on either message and reports the initiator from its first message —
 request → command → complete is one segment owned by the RAN; a command with no
 request before it is the core's own decision.
 
-**A release that ends a scenario is part of that scenario.** On an MME-side
-single-subscriber trace, all 20 releases came directly after the scenario they
-closed, and as segments of their own they were a quarter of all 84 segments -
-every service request showed up as two chips the reader had to pair by hand. So
+**A release that ends a scenario is part of that scenario.** As a segment of
+its own, a release that directly follows the scenario it closes turns every
+service request into two chips the reader has to pair by hand. So
 a release that is the next thing in the subscriber's flow folds into the
 scenario it ends: that scenario's frame span, message count and duration include
 the release, and it carries the release's initiator and cause. When the release
@@ -244,8 +242,8 @@ closes a registration six seconds after an unanswered Authentication request,
 the timer match is reported on both the scenario and the release's own row; it
 is the same observation, and each row stays self-contained.
 
-The fold is decided by **position in the flow, not by frame number**. In that
-trace every release happened to be one frame later, but on a multi-subscriber
+The fold is decided by **position in the flow, not by frame number**. On a
+single-subscriber trace the release is often the very next frame, but on a multi-subscriber
 capture frame numbers interleave, and a rule that silently stops working there
 is worse than no rule. A release with anything unassigned in front of it, or
 with no scenario before it, stays a segment of its own - attaching a release to
