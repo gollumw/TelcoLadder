@@ -53,11 +53,11 @@ DISPLAY_FILTER = "http2"
 #: tshark 的 decode-as 規則。**光有 DISPLAY_FILTER 不夠**：擷取起點若在
 #: TCP 連線建立之後，tshark 看不到 HTTP/2 的 preface，整條連線會退回 `data`，
 #: `http2` 這個 filter 一格都收不到 —— 而且完全不報錯。
-#: （實測：一份含 140 格 SBI 的 5GC 擷取檔，不指定時全部退回 `data`。）
+#: （擷取起點晚於連線建立時，不指定的話那條連線上的 SBI 會整條退回 `data`。）
 #:
 #: **7777 是啟發式提示，不是規範值。** TS 29.500 沒有規定 SBI 的 port，
-#: 真實 port 來自 NRF discovery；7777 只是 Open5GS 的預設。實測第一份真實
-#: 封包用的是 7070 / 8080 / 80 / 81 —— 靠這裡列舉常見 port 是追不完的。
+#: 實際 port 來自 NRF discovery；7777 只是 Open5GS 的預設。各家部署各用各的
+#: port —— 靠這裡列舉常見 port 是追不完的。
 #:
 #: 所以**這份清單不是唯一防線**：`telcoladder/probe.py` 會找出沒有任何
 #: dissector 認領的 TCP 埠、試著解成 HTTP/2，只在真的多解出訊息時採用。
@@ -94,9 +94,8 @@ _FAILURE_STATUS_FLOOR = 400
 #: LMF。`5GMM`／`RAN`／`PWS` 這些不收 —— 不是誰都可能，就是我們沒有把握。
 #:
 #: 為什麼要這一條：`nf.SBI_CONSUMER_OF` 刻意不收 namf-comm（SMF／PCF／NEF 都會打，
-#: 不唯一），於是打 AMF namf-comm 的每一個位址都沒有票 —— 實測一份 AMF 側的
-#: UE trace，30 個網元裡 12 個沒有角色，其中 8 個全是 N1N2 的呼叫端，而它們的
-#: body 每一則都寫著 `n1MessageClass:SM`。這不是猜：類別是線路上的事實，走
+#: 不唯一），於是打 AMF namf-comm 的每一個位址都沒有票 —— 只呼叫 N1N2 的網元
+#: 在 AMF 側的 trace 上會整個沒有角色，而它們的 body 寫著 `n1MessageClass`。這不是猜：類別是線路上的事實，走
 #: `NF_ROLE_HINTS_KEY`（`nf.py` 的 tier 0），與 GTPv2 的 F-TEID 介面型別同一條路。
 N1N2_SENDER_BY_CLASS: dict[str, str] = {
     "SM": "SMF",
@@ -198,8 +197,7 @@ _EMBEDDED_DIGITS = re.compile(r"(?<!\d)\d{10,15}(?!\d)")
 def _embedded_supi_quotes(path: str) -> frozenset[Quote]:
     """資源 id 裡逐字夾著的 SUPI 候選（`model.QUOTE_EMBEDDED`）。
 
-    有些網元把 SUPI 拼進自己配發的 id（實測一份 AMF trace：PCF 的 polAssoId = SUPI
-    數字接 `%` 與一段十六進位）。TS 29.525 只說那個 id 不透明，所以這裡只給**候選**，
+    有些網元把 SUPI 逐字拼進自己配發的 id（例如 PCF 的 polAssoId）。TS 29.525 只說那個 id 不透明，所以這裡只給**候選**，
     不給鍵：是不是那個人由 `correlate` 決定 —— 別處原生出現過的 SUPI 才接得上，其他候選
     自然落空，不會憑空多出一個訂戶。`imsi-`／`suci-` 段已是原生鍵（`_supis_in_path`），
     不重複給；查詢字串不看（`supi=` 由 `_extra_supis` 處理）。
@@ -273,21 +271,20 @@ _SM_CONTEXTS = "/sm-contexts/"
 def _sm_context_ref(url_or_path: str, authority: str | None) -> tuple[str, str] | None:
     """由請求路徑或 `location` 標頭取出 (SMF 位址, smContextRef)。
 
-    **這是把散落的 PDU session 訊息接起來的唯一橋樑。** 實測一份真實
-    trace（TS 29.502 的 Nsmf_PDUSession）：
+    **這是把散落的 PDU session 訊息接起來的唯一橋樑。** TS 29.502 的 Nsmf_PDUSession：
 
-        #48 POST /nsmf-pdusession/v1/sm-contexts          :authority = smf:7070
-        #49 201  location: http://smf:7070/nsmf-pdusession/v1/sm-contexts/215042048
-        #62 POST /nsmf-pdusession/v1/sm-contexts/215042048/modify
+        POST /nsmf-pdusession/v1/sm-contexts                :authority = <smf>
+        201  location: http://<smf>/nsmf-pdusession/v1/sm-contexts/<ref>
+        POST /nsmf-pdusession/v1/sm-contexts/<ref>/modify
 
-    `#48` 與 `#49` 靠 HTTP/2 stream 就併得起來；`#62` 在另一條 stream 上，
-    少了這把 key 就會變成一則孤立的訊息。那份 trace 裡有 40 則這樣的 modify。
+    前兩則靠 HTTP/2 stream 就併得起來；之後的 modify 在另一條 stream 上，
+    少了這把 key 就會變成一則孤立的訊息。
 
     **範圍前綴取自 SMF 自己的位址**（請求取 `:authority`，回應取 `location`
     URL 的 host）—— smContextRef 由 SMF 配發，只在該 SMF 內唯一。兩個 SMF
     都從相近的號碼起跳是常見的實作，少了前綴就會把兩個用戶併成一條流程
-    （同 CLAUDE.md §3.3 對 NGAP ID 的理由）。實測那份 trace 裡 `location`
-    的 host 與 modify 的 `:authority` 逐字相同，這個前綴接得起來。
+    （同 CLAUDE.md §3.3 對 NGAP ID 的理由）。`location` 的 host 就是之後 modify
+    打的 `:authority`（同一台 SMF），所以這個前綴接得起來。
 
     **刻意不做通用化。** TS 29.5xx 的資源路徑形狀各服務不同 ——
     `/nudm-sdm/v2/imsi-<supi>/sms-data` 的第 4 段是子資源而不是 id，
@@ -474,7 +471,7 @@ def _json_members(frame: Frame, stream_id: int | None):
 def _unescape_json_string(value: str) -> str:
     """tshark 給的成員值還帶著 JSON 的跳脫（`http:\\/\\/host\\/cb`）—— 還原成原字串。
 
-    實測一份 AMF trace：120 個 `callbackReference` 一個都對不上通知的路徑，因為值裡
+    不還原的話 `callbackReference` 一個都對不上通知的路徑，因為值裡
     的每個斜線都是 `\\/`；`SM` 那種值沒有跳脫字元所以 N1N2 那條沒踩到。解不開的原樣回。
     """
     if "\\" not in value:
@@ -490,7 +487,7 @@ def _n1n2_sender_hint(frame: Frame, stream_id: int | None, path: str) -> str | N
 
     這一格裡沒有 body 就回 None，不從路徑猜；兩個類別指向不同的 NF 也回 None。
 
-    實測：一份 AMF 側的 UE trace 34 則 N1N2 請求**全部**與 body 同格；Open5GS 的
+    有些實作把 N1N2 請求的 HEADERS 與 body 放在同一格；Open5GS 的
     測試床（`tests/fixtures/multi-imsi`）則把 HEADERS 與 DATA 拆成前後兩格 —— 那一種
     由 `continuations()` 在 body 那一格接回同一個判斷（`_request_body_detail`）。
     """
@@ -558,8 +555,8 @@ def _declared_nf_type_from(members, path: str, service: str | None, method: str)
 def _extra_supis(members, path: str, already: set[str]) -> set[str]:
     """body 的 `supi` 成員與查詢參數 `supi=` 說出的 SUPI —— **路徑之外的另外兩處**。
 
-    `POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 只在 body 裡（實測一份 AMF trace
-    270 則 SBI 因此歸不了戶）；NRF 的 UDM 探索把它放在查詢參數。兩處都只認 `supi`：
+    `POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 只在 body 裡（不讀 body 的話
+    這類請求就歸不了戶）；NRF 的 UDM 探索把它放在查詢參數。兩處都只認 `supi`：
     gpsi／pei 是別的識別碼空間，混進來會把不相干的人併成一條。
 
     **只在恰好一個、而且不與路徑上的 SUPI 矛盾時才給。** 零個是沒有；兩個以上是
@@ -605,7 +602,7 @@ def _request_body_detail(members, src_ip: str, path: str, service: str | None, m
 
 #: N2 SM information 的類型（TS 29.502 的 n2SmInfoType、TS 29.518 的 ngapIeType）→ 轉述方向。
 #:
-#: **只收量測過、而且有測試的。** 一份 AMF 側的真實 trace 上帶隧道的只有這三種：
+#: **只收方向確定、而且有測試的三種：**
 #: gNB→SMF 的 `PDU_RES_SETUP_RSP`、`HANDOVER_REQ_ACK`（隧道已在 N2 上出現，SBI 事後轉述），
 #: 與 SMF→gNB 的 `PDU_RES_SETUP_REQ`（SBI 先提，N2 之後才用）。其餘類型一律不橋接 ——
 #: 方向猜錯的後果是把轉述綁到別人的那一輪，遇到新類型再量、再加。
@@ -642,8 +639,8 @@ def continuations(frame: Frame) -> list[Continuation]:
     其餘每條帶著 JSON 的 DATA 都是更早那則訊息的後半：事實在這一格就算完，只把結果
     交出去（`Continuation` 的說明：不抓著 `Frame`）。
 
-    實測：Open5GS 的四份 fixture 各有 101～579 份這樣的 body；一份 AMF 側的真實
-    trace 則是 0 份（975 份全部同格）。
+    實測：Open5GS 的四份 fixture 各有 101～579 份這樣的 body；把 body 與 HEADERS
+    放在同一格的實作則一份都不會走到這裡。
     """
     blocks = frame.layer("http2")
     headed = {

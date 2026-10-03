@@ -152,7 +152,7 @@ _SUFFIX = {"initiating": "", "successful": "Response", "unsuccessful": "Failure"
 #:
 #: 這是刻意的取捨：67 個程序 × 3 種結果，我沒有第一手核對過全部，
 #: 而**編一個看起來很合理的訊息名**正是 §2.3 在防的那種傷害。
-#: 真實擷取檔（T2）進來之後，這張表跟著證據長。
+#: 之後每有一則名字拿得到線路證據（tshark 的 info 欄位或 fixture），這張表就跟著長。
 MESSAGE_NAMES: dict[tuple[int, str], str] = {
     (9, "initiating"): "InitialContextSetupRequest",
     (9, "successful"): "InitialContextSetupResponse",

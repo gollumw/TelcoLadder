@@ -7,10 +7,10 @@
 `<msg>`，`<rawMsg protocol="…">` 是十六進位的訊息本體）。Wireshark 的 wiretap
 認得它，讀進來時即時轉成 EXPORTED_PDU 格，所以 `.xml` 可以直接餵 tshark 與本工具。
 
-2026-09-05 用一份真實的 SMF trace（這種格式）實測：抽取、封包清單、原始位元組
-都正常，**解碼樹整片空白** —— 那條路用 tshark 的兩趟分析（`-2`），而 wiretap 的
-XML 讀取器在第二趟重讀時報錯（exit 14，`parser error : StartTag`）。同一份檔
-單趟完全正常。這份 fixture 是那個形狀的最小版本：訊息本體借用
+這種格式的檔，抽取、封包清單、原始位元組都正常，**解碼樹卻整片空白** —— 那條路
+用 tshark 的兩趟分析（`-2`），而 wiretap 的 XML 讀取器在第二趟重讀時報錯（exit 14，
+`parser error : StartTag`）。同一份檔單趟完全正常。這份 fixture 的形狀依專業電信
+工程師的實務經驗設計，是最小版本：訊息本體借用
 `5gc-service-request/make.py` 的 NGAP 位元組，位址是 RFC 5737。
 
 重新產生：`python3 make.py`（逐位元組可重現）。
@@ -38,7 +38,7 @@ GNB_FQDN = "gnb01.ran.mnc001.mcc001.3gppnetwork.org"
 
 
 def peer(kind: str, ne_type: str, address: str | None, *, fqdn: str | None = None, guami: str | None = None) -> str:
-    """`<initiator>`／`<target>`：`Key=value,Key=value`，實測看到的形狀。
+    """`<initiator>`／`<target>`：`Key=value,Key=value`，網元匯出的這種格式就是這個形狀。
     **`address=None` 代表沒有 Address=**：wiretap 會填 0.0.0.0，只剩 FQDN 認得出是誰。"""
     parts = ([f"Address={address}"] if address else []) + [f"Port={PORT}"]
     if fqdn:
@@ -49,7 +49,7 @@ def peer(kind: str, ne_type: str, address: str | None, *, fqdn: str | None = Non
 
 
 def msg(seconds: float, name: str, initiator: str, target: str, raw: bytes) -> str:
-    """一個 `<traceRecSession>`（帶 `<ue>`）包一則 `<msg>` —— 實測的檔就是這個形狀。
+    """一個 `<traceRecSession>`（帶 `<ue>`）包一則 `<msg>` —— 這種格式的檔就是這個形狀。
     `changeTime` 是 `秒.毫秒`。"""
     sec = int(seconds)
     ms = int(round((seconds - sec) * 1000))

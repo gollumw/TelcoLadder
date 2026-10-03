@@ -8,8 +8,8 @@ TCP 段；Open5GS 分成前後兩段，擷取檔裡就是兩格。`sbi.parse()` 
 實測 Open5GS 的四份 fixture 各有 101～579 份這樣的 body；接回之後孤兒訊息 85→73、
 504→424、85→73、121→113，沒有任何一條流程因此帶上兩個 SUPI。
 
-`POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 本來就只在 body 裡（實測一份 AMF 側的
-真實 trace 有 270 則 SBI 因此歸不了戶，那份是同格）；NRF 的 UDM 探索則把它放在查詢參數。
+`POST /nsmf-pdusession/v1/sm-contexts` 的 SUPI 本來就只在 body 裡（讀不到 body，
+這類 SBI 就歸不了戶，不論 body 是同格還是晚一格）；NRF 的 UDM 探索則把它放在查詢參數。
 
 ## 守的是什麼
 

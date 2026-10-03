@@ -3,11 +3,11 @@
 ## 為什麼要有這一份
 
 `procedures.KINDS` 原本只認**來源側**的換手（HandoverRequired）與 5G 的註冊／會話／
-釋放；一份 AMF 側的真實 UE trace 上，EPS fallback 觸發（PDUSessionResourceModify 回應帶
-radioNetwork #36）×20、5GS→EPS 閒置移動（N26 Context Request 夾著 TAU Request）×20、
-EPS→5GS 換手（Forward Relocation Request 進來、HandoverRequest 出去）×20 —— **一段都沒切
-出來**，而回 5G 之後的 20 次「行動更新註冊」全失敗，卻與初始註冊混在一起。這份檔讓
-那三種互通程序、4G 的 TAU、與註冊型別各有一段可以踩。
+釋放。依專業電信工程師的實務經驗，AMF 側的 UE trace 會帶著 EPS fallback 觸發
+（PDUSessionResourceModify 回應帶 radioNetwork #36）、5GS→EPS 閒置移動（N26 Context Request
+夾著 TAU Request）、EPS→5GS 換手（Forward Relocation Request 進來、HandoverRequest 出去）——
+這三種原本**一段都切不出來**，而回 5G 之後的「行動更新註冊」即使失敗，也與初始註冊混在一起。
+這份檔讓那三種互通程序、4G 的 TAU、與註冊型別各有一段可以踩。
 
 ## 內容（一個訂戶，兩個循環）
 
@@ -24,7 +24,7 @@ EPS→5GS 換手（Forward Relocation Request 進來、HandoverRequest 出去）
 
 ## 這份檔證不了什麼
 
-* 真實 trace 的註冊失敗是 SBI 的 404，這裡沒有 SBI；失敗改用 NAS reject 表達 —— 段的
+* 註冊失敗也可能來自 SBI 的錯誤回應，這裡沒有 SBI；失敗改用 NAS reject 表達 —— 段的
   結局判定同一條路，cause 表不同。
 * HandoverRequest／PDUSessionResourceModify 只放段落切分需要的 IE（UE ID、HandoverType、
   transfer 裡的 cause），沒有安全、QoS、slice 那些必填 IE；tshark 照樣命名每一則。

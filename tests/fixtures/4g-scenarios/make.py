@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The 4G scenarios a real MME trace showed with no name: network-triggered service request,
+"""4G scenarios an MME trace carries, designed from telecom engineering practice, that had no name: network-triggered service request,
 dedicated bearer setup/release/modification, a cancelled handover, and HSS-initiated exchanges.
 
 Written byte by byte, for the same reason as `4g-volte-end-to-end/`: a real capture always carries a
@@ -45,7 +45,7 @@ paging = _load("paging_make", HERE.parent / "4g-idle-paging-s-tmsi" / "make.py")
 dia = _load("diameter_make", HERE.parent / "diameter-epc-ims" / "make.py")
 
 #: The nodes. The Diameter peers keep this fixture's own addresses so one MME address appears
-#: on S1-MME, S11 and S6a - that is what a real MME trace looks like.
+#: on S1-MME, S11 and S6a - that is how an MME-side trace is laid out.
 MME_NODE = (base.MME, "mme01.epc.mnc001.mcc001.3gppnetwork.org")
 HSS_NODE = ("10.0.0.20", "hss01.epc.mnc001.mcc001.3gppnetwork.org")
 OLD_MME = "10.0.0.8"

@@ -2,8 +2,8 @@
 
 `identity.gtp_tunnel` 是 PFCP 接回訂戶的唯一一把鑰匙，而它一直只有 NGAP 發得
 出來（CLAUDE.md §5）。於是一份只有 SBI／PFCP／GTP-U 的 SMF trace 上，PFCP
-自成孤兒流程，那個訂戶的 User Plane 永遠是空的 —— 實測使用者的一份 SMF trace：
-30 個 PFCP／GTP 識別碼接不上任何人（T-SBI-N2-BRIDGE）。
+自成孤兒流程，那個訂戶的 User Plane 永遠是空的 —— PFCP／GTP 識別碼接不上任何人
+（T-SBI-N2-BRIDGE）。
 
 但那兩個事實**就在 SBI 的本體裡**：`PDUSessionResourceSetupRequestTransfer` 以
 `multipart/related` 的第二段送出，tshark 解成 `http2 → mime_multipart → ngap`，

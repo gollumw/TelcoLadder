@@ -25,8 +25,8 @@
 * 別的門號在通話期間的 Sh 查詢與 ENUM 查詢 —— 時間對、號碼不對，**不得**接上。
 * 被叫門號在通話**結束之後**的 Sh 查詢 —— 號碼對、時間不對，不得接上。
 * 別的 ICID 的 Rf 計費 —— 不得接上。
-* 一則 Rf 答覆的請求**不在擷取檔裡**（TCP 序號跳過了那段位元組）—— 這是真實
-  擷取常見的樣子：擷取點過濾過，請求從來沒被抓到。
+* 一則 Rf 答覆的請求**不在擷取檔裡**（TCP 序號跳過了那段位元組）—— 擷取點過濾過
+  的檔常見這個樣子：請求從來沒被抓到。
 
 ## 刻意不做的
 
@@ -34,7 +34,7 @@
   角色推論的題目，不在這份檔的範圍。
 * **ICV 是 12 個零位元組，不是真的 MAC**（沒有金鑰可驗）。長度要對：tshark 的 null 啟發式
   靠它找到 ESP 尾部，沒有 ICV 就一格都解不開。
-* **時間是編的。** 順序照真實樣本，間隔是挑的。
+* **時間是編的。** 順序依實務經驗安排，間隔是挑的。
 
 重現：`python3 make.py`。輸出逐位元組可重現（固定時間戳、無亂數）。
 """
@@ -68,8 +68,8 @@ IMPU_A = f"sip:{IMSI_A}@{DOMAIN}"
 TEL_A, TEL_B, TEL_OTHER = "+12025550111", "+12025550122", "+12025550133"
 
 #: 主叫撥的是**本地形式**（沒有國碼）。國際形式要到 AS 正規化之後才出現在
-#: `Request-URI`，被叫那一側的 `P-Asserted-Identity` 也是國際形式 —— 真實樣本
-#: 就是這樣，所以工具不需要國碼表也比得起來。
+#: `Request-URI`，被叫那一側的 `P-Asserted-Identity` 也是國際形式 —— 網路正規化
+#: 之後就是這樣，所以工具不需要國碼表也比得起來。
 DIALLED = f"sip:{TEL_B[2:]};phone-context={DOMAIN}@{DOMAIN};user=phone"
 
 ICID = "e2e0c0ffee000001"
@@ -198,8 +198,8 @@ class Leg:
             asserted = f"sip:{TEL_A}@{DOMAIN};user=phone" if method == "INVITE" and src != UE_A else None
             headers = self._headers(src, cseq, method, to_tag=to_tag, asserted=asserted, extra=list(extra or []))
             # `Contact`：主叫那一腿是 UE-A 自己（代理轉送時不改）；B2BUA 開的那一腿是 TAS
-            # **自己**；P-CSCF 往被叫 UE 那一跳換成 P-CSCF **自己**（它也是 B2BUA）。後兩個是真實
-            # 樣本上把核心節點與 P-CSCF 誤標成 UE 的形狀 —— 舊規則只看「host 是不是送出者」。
+            # **自己**；P-CSCF 往被叫 UE 那一跳換成 P-CSCF **自己**（它也是 B2BUA）。後兩個正是
+            # 會讓核心節點與 P-CSCF 被誤標成 UE 的形狀 —— 舊規則只看「host 是不是送出者」。
             if self is LEG_A:
                 headers.append(("Contact", f"<sip:{IMSI_A}@{UE_A}:{UE_A_PROTECTED_PORT}>"))
             elif dst == UE_B:
@@ -270,7 +270,7 @@ def sip_call() -> list[Packet]:
     out += LEG_A.response(0.560, 200, "OK", 2, "PRACK")
     out += LEG_B.response(1.000, 180, "Ringing", 1, "INVITE")
     out += LEG_A.response(1.020, 180, "Ringing", 1, "INVITE")
-    # 主叫在振鈴時取消 —— 與真實樣本同一個結局。
+    # 主叫在振鈴時取消。
     out += LEG_A.request(5.000, "CANCEL", 1, to_tag=False)
     out += LEG_A.response(5.002, 200, "OK", 1, "CANCEL", to_tag=False, asserted=False, per_hop=True)
     out += LEG_B.request(5.030, "CANCEL", 1, to_tag=False)
@@ -450,7 +450,7 @@ def diameter() -> list[Packet]:
 def orphan_fragment(t: float) -> Packet:
     """一個 UDP datagram 的**第一片** IP 分片，另一片不在檔裡 —— 永遠組不起來。
 
-    真實樣本上 27 格是這個形狀（擷取點過濾過）。它不是不支援的協定，是擷取不完整。
+    擷取點過濾過的檔會出現這個形狀。它不是不支援的協定，是擷取不完整。
     """
     body = _g.sip_message(f"OPTIONS sip:{DOMAIN} SIP/2.0",
                           [("Via", f"SIP/2.0/UDP {SCSCF}:{SIP_PORT};branch=z9hG4bKorphan"),

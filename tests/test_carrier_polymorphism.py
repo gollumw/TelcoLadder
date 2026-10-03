@@ -2,8 +2,8 @@
 
 守的是這個專案最致命的失敗模式：**靜默漏訊息**。在 2026-08-19 之前
 `_nas_blocks()` 只認 `ngap.nas-5gs`，於是 SBI 用 multipart 夾帶的 NAS
-完全看不到 —— `multi-imsi` 上 20 則、真實電信商擷取檔上 34 則，其中包含
-一則 `PDU session establishment reject`。工具因此少報失敗，而
+完全看不到 —— `multi-imsi` 上 20 則；SBI 夾帶的 NAS 也可能是
+`PDU session establishment reject`。工具因此少報失敗，而
 
     filter 沒漏、adapter 沒錯、tshark 沒報錯。
 

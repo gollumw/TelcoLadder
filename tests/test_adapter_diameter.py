@@ -609,7 +609,7 @@ def test_diameter_inside_a_window_belongs_to_that_scenario() -> None:
 
     一次註冊裡的 ULR 屬於那次註冊：讀的人問的是「那次註冊成功了嗎」，不是「那筆 S6a
     交易成功了嗎」。所以視窗內的 Diameter 折進場景，**連失敗一起算**；視窗之外的才
-    自成一段（下一條測試）。實測一份 MME trace：19 段有 18 段落在某個場景的視窗裡。
+    自成一段（下一條測試）。一次 4G 附著或換手裡的 S6a 交易，幾乎都落在某個場景的視窗裡。
     """
     from telcoladder.model import Endpoint, Flow
     from telcoladder.procedures import segment_flow

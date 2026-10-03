@@ -9,11 +9,11 @@ eNB `198.51.100.50`），訂戶在 E.212 測試網 001/01。**沒有一個號碼
 
 ## 為什麼要有這一份
 
-程序切段原本只認來源側的換手與 5G 的註冊／會話／釋放。一份 AMF 側的真實 UE trace 上，
-EPS fallback 觸發（PDUSessionResourceModify 回應帶 radioNetwork #36）×20、5GS→EPS 閒置移動
-（N26 Context Request 夾 TAU Request）×20、EPS→5GS 換手（Forward Relocation Request 進來、
-HandoverRequest 出去）×20 —— **一段都沒切出來**；回 5G 之後的 20 次「行動更新註冊」全失敗，
-卻與初始註冊混在一起。這份檔讓那三種互通程序、4G 的 TAU、與 5G 註冊的型別各有一段可以踩。
+程序切段原本只認來源側的換手與 5G 的註冊／會話／釋放。依專業電信工程師的實務經驗，
+AMF 側的 UE trace 會帶著 EPS fallback 觸發（PDUSessionResourceModify 回應帶 radioNetwork #36）、
+5GS→EPS 閒置移動（N26 Context Request 夾 TAU Request）、EPS→5GS 換手（Forward Relocation
+Request 進來、HandoverRequest 出去）—— 這三種原本**一段都切不出來**；回 5G 之後的「行動更新
+註冊」即使失敗，也與初始註冊混在一起。這份檔讓那三種互通程序、4G 的 TAU、與 5G 註冊的型別各有一段可以踩。
 
 ## 內容（41 格，一個訂戶，兩個循環）
 
@@ -32,7 +32,7 @@ tshark 4.6 對每一格的命名都與上表一致（`_ws.col.info`），沒有 
 
 ## 這份檔證不了什麼
 
-* 真實 trace 的註冊失敗是 SBI 的 404，這裡沒有 SBI；失敗改用 NAS reject 表達 ——
+* 註冊失敗也可能來自 SBI 的錯誤回應，這裡沒有 SBI；失敗改用 NAS reject 表達 ——
   段的結局判定是同一條路，cause 表不同。
 * HandoverRequest／PDUSessionResourceModifyRequest 只放切段需要的 IE（UE ID、HandoverType、
   transfer 裡的 cause），沒有安全、QoS、slice 那些必填 IE。

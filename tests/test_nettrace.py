@@ -4,8 +4,8 @@ fixture `nettrace-32423/capture.xml`（`make.py` 手寫）：四則 NGAP，`<ini
 `<target>` 寫著 gNB／AMF（AMF 帶 GUAMI），第 4 則的對端**沒有 Address 只有 FQDN**
 （wiretap 填 0.0.0.0），每個 `<traceRecSession>` 都帶 `<ue idType="IMSI">`。
 
-背景是 2026-09-05 的一份真實 SMF trace：打了 40 則 sm-contexts 的位址沒有名字，
-而 XML 裡 40 則全寫著 `type="AMF"`；30 個 PFCP／GTP 識別碼接不上訂戶，而 XML
+背景是這種格式的 SMF trace 的形狀（依專業電信工程師的實務經驗）：打 sm-contexts 的位址
+沒有名字，而 XML 裡逐則寫著 `type="AMF"`；PFCP／GTP 識別碼接不上訂戶，而 XML
 逐則寫著 IMSI；還有一條叫 0.0.0.0 的泳道。三件事都是檔案裡有、tshark 沒給。
 
 突變（都做過）：`apply` 拿掉 frame 數比對 → 少一則的 hints 照套（guard 測試紅）；

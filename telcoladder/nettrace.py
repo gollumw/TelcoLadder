@@ -12,12 +12,12 @@ Wireshark 的 wiretap 認得它，讀進來時把每一則 `<msg>` 變成一格 
 
 wiretap 只取 `Address=` 與 `Port=`。**它丟掉三樣寫在檔案裡的事實**：
 
-1. `<initiator type="AMF">` —— 網元自己說對端是誰。2026-09-05 一份 SMF trace：
-   打了 40 則 sm-contexts 的位址在圖上沒有名字，而 XML 裡 40 則全寫著 AMF。
+1. `<initiator type="AMF">` —— 網元自己說對端是誰。SMF 側的 trace 裡，打
+   sm-contexts 的位址在圖上可能沒有名字，而 XML 裡每一則都寫著 AMF。
 2. `Fqdn=` —— 沒有 `Address=` 的 peer，wiretap 填 0.0.0.0，梯形圖上就多一條
    叫 0.0.0.0 的泳道；FQDN 裡通常就寫著網元名。
 3. `<ue idValue>` —— **每一則訊息都標了它屬於哪個 IMSI**。PFCP、GTP、RADIUS
-   這些訊息本身不帶訂戶識別碼，同一份 trace 上有 30 個識別碼接不上訂戶；
+   這些訊息本身不帶訂戶識別碼，於是它們的識別碼接不上訂戶；
    而檔案早就逐則寫好了是誰的。
 
 這裡自己解一次 XML，把三樣東西交給既有的機制：角色走 `TRACE_ROLE_HINTS_KEY`
@@ -30,8 +30,8 @@ wiretap 只取 `Address=` 與 `Port=`。**它丟掉三樣寫在檔案裡的事�
 本模組**先比對 `<msg>` 數與 tshark 的 frame 總數，不相等就整份不套用**並說出來
 —— 對錯格比什麼都不做更糟（角色貼到別的位址、IMSI 貼到別人的訊息）。
 
-`<initiator>`／`<target>` 內容的鍵值格式（`Key=value,Key=value`）是實測看到的
-形狀；wiretap 另外還認 `{address == x, port == y}` 那種，這裡也收。
+`<initiator>`／`<target>` 內容的鍵值格式是 `Key=value,Key=value`（依專業電信
+工程師的實務經驗）；wiretap 另外還認 `{address == x, port == y}` 那種，這裡也收。
 """
 
 from __future__ import annotations

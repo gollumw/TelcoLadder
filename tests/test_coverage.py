@@ -173,12 +173,12 @@ def test_full_role_set_is_not_called_n2_only():
 def test_high_hit_rate_still_scans_when_a_transport_yields_nothing(e2e_pcap: Path, monkeypatch):
     """**這條是 2026-08-18 那次漏報的回歸測試。**
 
-    第一份真實封包的命中率是 187/356 = 52.5%，剛好高過
-    `COVERAGE_ALERT_THRESHOLD` 的 0.5，於是這個模組一句話都沒說 ——
-    而沒說出口的那 47% 是全部的 SBI 流量與 15 則 HTTP 404。
+    一份 NGAP 解得很好、SBI 全數沒解的擷取檔，全域命中率可以剛好高過
+    `COVERAGE_ALERT_THRESHOLD`，於是這個模組一句話都沒說 ——
+    而沒說出口的是全部的 SBI 流量，連同其中的失敗回應。
 
     錯不在門檻值訂多少，錯在**指標**：全域比率會被「已經解得很好的那個
-    協定」稀釋。NGAP 解了 187 格，就足以把 TCP 上 100% 的失敗蓋過去。
+    協定」稀釋。NGAP 解得夠多，就足以把 TCP 上 100% 的失敗蓋過去。
     分傳輸層的訊號不會被稀釋。
     """
     # 2026-09-05 起小檔一律掃（便宜）。「命中率正常就不掃」這條省成本規則

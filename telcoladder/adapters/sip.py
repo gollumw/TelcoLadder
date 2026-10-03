@@ -28,7 +28,7 @@ adapter 不必自己想辦法找區塊。
 
 §10 記著「`relay-record` 給 Diameter 與日後的 SIP `Via`」。**這裡還沒做**，
 理由是 fixture 沒有經過代理轉送的那一腿 —— 沒有踩點的程式碼等於沒測，
-而這個專案的失敗模式全部是靜默的。等真實的 IMS 擷取檔（T2）進來再補。
+而這個專案的失敗模式全部是靜默的。等有經過代理轉送那一腿的 fixture 再補。
 """
 
 from __future__ import annotations
@@ -147,8 +147,8 @@ def _identity_keys(block: dict[str, Any]) -> frozenset[IdKey]:
     #
     # 一通電話的兩端是**兩個不同的人**。把 `To` 也當關聯鍵的話，
     # 「A 打給 C」與「B 打給 C」會讓 `correlate` 把 A、B、C 三個人的整段歷史
-    # （附著、承載、註冊）併成一條流程 —— **實測就是這樣**：加 SIP 之前
-    # 三條流程，加了之後剩一條 32 則。
+    # （附著、承載、註冊）併成一條流程 —— **第一版就是這樣寫的**：加了 SIP
+    # 之後，三個人的流程塌成一條。
     #
     # 那條流程**不是錯的**（他們確實通過話），但它答不出使用者真正要問的
     # 「**這個人**的通話為什麼失敗」—— 而那正是這種工具存在的理由。
@@ -243,9 +243,9 @@ _IMSI_USER = re.compile(r"^(?:sips?:)?\d{14,15}@", re.I)
 def _contact_claim(block: dict[str, Any], frame: Frame) -> str:
     """**後備**：`Contact` 的 host 是送出者自己、而且帶著訂戶身分 → 送出者是 UE。
 
-    2026-09-13 以前這是唯一的規則，而且只看「host 是不是送出者」。實測一份真實 VoLTE
-    擷取：B2BUA（AS、SBG）另開一腿時 `Contact` 寫的也是自己，於是 11 則核網訊息把一台
-    核心節點標成 UE，被叫 UE 反而被標成 P-CSCF。
+    2026-09-13 以前這是唯一的規則，而且只看「host 是不是送出者」。但 B2BUA（AS、SBG）
+    另開一腿時 `Contact` 寫的也是自己，於是核網訊息把一台核心節點標成 UE，被叫 UE
+    反而被標成 P-CSCF。
 
     現在它**只在 IPsec 證據判不出來時**才被採用（`model.FALLBACK_ROLE_HINTS_KEY`），
     而且收窄成 `Contact` 帶著訂戶身分：IMSI 推導的 user part，或 `+sip.instance`

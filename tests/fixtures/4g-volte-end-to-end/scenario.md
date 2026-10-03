@@ -113,7 +113,7 @@ Addresses are RFC 1918 `10.0.0.0/8`.
   have **no individually verified frame**.
 * **SIP has no proxied leg** (only UE↔P-CSCF on Gm). So `Via` relay
   detection, the Mw reference point, and the S-CSCF role have **zero packet
-  verification** — those wait for T2's real captures.
+  verification** in this fixture — the proxied legs are in `ims-volte-call/`.
 * **SDP has only a minimal audio m-line.** Media ports extract, but E3's
   (RTP correlation) "which call owns this RTP stream" is entirely
   unverified.

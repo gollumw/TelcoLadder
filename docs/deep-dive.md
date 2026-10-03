@@ -117,14 +117,14 @@ orphan messages into their subscribers, with no flow gaining a second SUPI.
 
 **A tunnel that an SBI message only quotes is a weak edge, not a key.** When the
 AMF forwards a gNB's `PDU_RES_SETUP_RSP` to the SMF, the SBI body carries the
-same GTP tunnel (address and TEID) that appears on N2. On a real AMF-side
-capture that was the only wire evidence tying three network-triggered Service
-Requests (Paging, Service request, InitialContextSetup, no cleartext identity)
-to their subscriber; using it took that capture from 7 flows to 2 and from 76.8%
-to 99.7% attributed. Treating it as the SBI message's own key was wrong twice:
+same GTP tunnel (address and TEID) that appears on N2. On an AMF-side capture
+that can be the only wire evidence tying a network-triggered Service Request
+(Paging, Service request, InitialContextSetup, no cleartext identity) to its
+subscriber, so without it each such episode stands alone as an anonymous flow.
+Treating it as the SBI message's own key was wrong twice:
 identifier recycling records every recyclable key on a message as associated, so
 each idle UEContextRelease also advanced the SM context to a new round and split
-later calls on that context off (20 on that capture); and a quote that arrives
+later calls on that context off; and a quote that arrives
 late would be taken as belonging to the current round, joining whoever holds the
 tunnel by then. So a quote lives beside the keys, not among them. Recycling
 binds it to one native sighting by direction: a *reported* tunnel (gNB to SMF,
@@ -135,7 +135,7 @@ with no release in between. Unbound quotes are dropped, and quotes never join
 each other without a native sighting. Correlation applies bound quotes after all
 strong keys, and refuses any that would give a group two different SUPIs. The
 direction comes from the protocol's own N2 SM-information type; only the types
-measured on a real capture bridge, and every join or refusal is counted in the
+whose direction is known bridge, and every join or refusal is counted in the
 summary's *not visible* section.
 
 ## 3. The cause library: 775 values, tshark as the only oracle
@@ -298,9 +298,10 @@ sends no `3gpp-Sbi-Target-apiRoot` is indistinguishable from the endpoint and
 falls back to an unlabelled IP — the correct failure direction, and a real gap. RRC containers inside NGAP and S1AP — UE radio
 capability, handover transparent containers — are read by no adapter and are
 skipped at extraction time (`tshark --disable-protocol`); the Decode Inspector
-still dissects them frame by frame. This is deliberate: on a real AMF trace,
-forty capability frames cost tshark's ek encoder 80 seconds per pass, and
-half a second without them.
+still dissects them frame by frame. This is deliberate: a UE radio capability
+container is one of the largest trees tshark builds, and its ek encoder is
+disproportionately slow on such trees, for content no adapter reads
+(`tests/fixtures/ngap-ue-capability/` pins the switch).
 
 Every gap above is also named at the top of `.github/workflows/ci.yml`, so the
 green badge is read for what it covers.
@@ -338,5 +339,4 @@ the encoded header keeps its byte count. Real MCCs become test networks of the
 same code length (001, or 009/099/999 when the bits do not fit), the MNC is
 keyed, and the SUCI's bare MSIN maps exactly like the tail of the full IMSI, so
 `summarize` still sees one subscriber. Verified on every fixture by comparing
-the `summarize` shapes before and after (`tests/test_anonymize.py`), and on the
-real AMF trace behind the 2026-09-10 work by counts alone.
+the `summarize` shapes before and after (`tests/test_anonymize.py`).

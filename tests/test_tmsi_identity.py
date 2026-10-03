@@ -2,8 +2,8 @@
 
 ## 背景
 
-2026-09-05 實測兩份網元 trace：28 條流程只有 1 條有 SUPI；23 個 Service request
-只帶 5G-S-TMSI，各自靠 NGAP UE ID 成一條流程。summary 的訂戶段只認 SUPI、
+網元 trace 上多數流程沒有 SUPI：Service request 只帶 5G-S-TMSI，各自靠 NGAP UE ID
+成一條流程。summary 的訂戶段只認 SUPI、
 網頁抽屜只認 `SUPI ` 開頭的標題、`/callflow` 與 MCP 只收 supi ——
 **多數訂戶在三個出口都不存在**。
 

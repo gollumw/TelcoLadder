@@ -68,9 +68,9 @@ def e2e_pcap() -> Path:
 def ne_trace_pcap() -> Path:
     """`e2e_pcap` 被改寫成「網元 UE trace 形狀」：序號全部合成、SBI 埠改號。
 
-    這是唯一一份**不是側錄線路**的擷取檔。真實世界那份（電信商 AMF 匯出的
-    per-IMSI trace）含真實訂戶資料，依 CLAUDE.md §2.1 不得進版控 ——
-    所以這裡複製它的形狀。**它複製不到的兩件事**（雙位址空間、TCP 流有缺口）
+    這是唯一一份**不是側錄線路**的擷取檔。網元匯出的 per-IMSI trace 一律含
+    真實訂戶資料，依 CLAUDE.md §2.1 不得進版控 —— 所以這裡依專業電信工程師的
+    實務經驗複製那種格式的形狀。**它複製不到的兩件事**（雙位址空間、TCP 流有缺口）
     寫在 `tests/fixtures/ne-trace/scenario.md`，別把測試通過當成涵蓋了它們。"""
     return require_capture("ne-trace/capture.pcap")
 

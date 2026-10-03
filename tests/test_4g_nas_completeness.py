@@ -1,10 +1,11 @@
 """NAS-EPS 的兩個缺口：Service request 與 GTPv2-C 夾帶的 NAS。
 
-實測一份 MME 側的真實 UE trace（只記數字）：tshark 解出 77 格 NAS-EPS，本工具少了兩類 ——
+兩類 NAS-EPS 訊息 tshark 解得出來、本工具卻會靜默漏掉（情境依專業電信工程師的實務經驗設計，
+由 `4g-service-request-context` 重現）：
 
-1. **15 則 Service request**：安全標頭型別 12 沒有訊息型別欄位，被當成「加密讀不到」丟掉，
-   加密數因此多報 15，而 15 個 InitialUEMessage 後面都少了一句 NAS。
-2. **9 則夾在 GTPv2-C Context Request 裡的 TAU request**：GTPv2-C 沒宣告自己是 NAS 的載體。
+1. **Service request**：安全標頭型別 12 沒有訊息型別欄位，會被當成「加密讀不到」丟掉，
+   加密數因此多報，而對應的 InitialUEMessage 後面都少了一句 NAS。
+2. **夾在 GTPv2-C Context Request 裡的 TAU request**：GTPv2-C 沒宣告自己是 NAS 的載體。
 
 oracle 是 tshark：每一個標籤都要出現在它自己的 info 欄位裡。
 
@@ -79,8 +80,8 @@ def test_a_context_request_that_carries_nas_still_opens_the_mobility_procedure()
     """Carrying NAS turns the wire-view row into `Context Request ▸ Tracking area update request`.
 
     The idle-mobility rules must match the carrier's own label. If they matched the whole row, the
-    context transfer would silently become a plain TAU - measured on a real MME trace, 5GS→EPS ×5 and
-    EPS→5GS ×4 idle mobility turned into TAUs the moment GTPv2-C began carrying NAS.
+    context transfer would silently become a plain TAU: idle mobility in either direction (5GS→EPS and
+    EPS→5GS) turns into a TAU the moment GTPv2-C begins carrying NAS.
     """
     procedures, _unassigned = segment(analyse(FIXTURE))
     # 2026-09-13 起方向是屬性，不寫在 kind 裡。MME 發出 Context Request ＝ UE 去了 EPS，所以方向是

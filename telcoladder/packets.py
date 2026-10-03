@@ -112,8 +112,8 @@ def frame_filter(frames: "Iterable[int]") -> str | None:
     **只用 `frame.number`，不用協定欄位。** 發 `ngap.RAN_UE_NGAP_ID == 1` 之類的
     很誘人，但那是**訊息層級**的比對，而這個工具的歸戶是**流程層級**的（union-find
     跨識別碼別名與生命週期）。兩者不一樣，而且差別會咬人：NGAP UE ID 只在一條連線
-    內唯一、而且會回收再配發，所以那條 filter 會一併撈到**別人的**封包。實測同一個
-    SUPI：流程層級 101 格、欄位比對 42 格（`identities.session_frames` 的說明）。
+    內唯一、而且會回收再配發，所以那條 filter 會一併撈到**別人的**封包；反過來，加密之後不再帶識別碼的訊息
+    它一格也撈不到（`identities.session_frames` 的說明）。
 
     frame 編號是我們真的算出來的那組格，貼進 Wireshark 看到的就是這裡看到的 ——
     沒有第二套判斷，也就沒有第二套判斷會漂移。

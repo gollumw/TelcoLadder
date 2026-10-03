@@ -3,9 +3,9 @@
 ## 為什麼需要這條
 
 tshark 的 `-T ek` 編碼器在巨大的樹上崩潰，而 UE radio capability 的 NR RRC 容器
-正是那種樹。實測一份 2.4 MB／1,933 格的 AMF 側 UE trace：40 格帶 nr-rrc，一趟
-`-T ek` 80.5 秒、吐出 48.7 MB 的 JSON；同 40 格用 `-V` 1.7 秒 —— dissection 不是
-問題，編碼器才是。停掉 nr-rrc 之後同一趟 0.47 秒，631 格 NGAP 一格不少。沒有任何
+正是那種樹：帶 nr-rrc 的格用 `-T ek` 輸出會慢上好幾個數量級、吐出巨大的 JSON，
+同樣的格用 `-V` 卻很快 —— dissection 不是問題，編碼器才是。停掉 nr-rrc 之後 NGAP
+一格不少。沒有任何
 adapter 讀 RRC 欄位，所以抽取與索引停掉它（`tshark.UNREAD_HEAVY_PROTOCOLS`），
 唯一的讀者 —— Decode Inspector —— 走的是另一條路，不停。
 

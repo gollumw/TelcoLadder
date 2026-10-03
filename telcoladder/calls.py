@@ -147,8 +147,8 @@ def build(analysis: Analysis) -> list[Call]:
 
     ## 一通電話、好幾腿（2026-09-13）
 
-    AS 當 B2BUA 時會換 Call-ID，於是一通電話在 SIP 上是好幾個 dialog。真實樣本上
-    5 條腿、一個 ICID，原本在通話清單上是 5 列 —— 使用者看到的是 5 通電話。
+    AS 當 B2BUA 時會換 Call-ID，於是一通電話在 SIP 上是好幾個 dialog（`volte-e2e-call`：
+    TAS 兩側兩個 Call-ID、同一個 icid-value）。原本一腿一列 —— 使用者看到的是好幾通電話。
     **ICID 相同、而且時間重疊的腿**合成一通。只看 ICID 不看時間的話，某些 AS 會重用
     ICID（轉接、會議），兩通不相干的電話就會併成一列，而那一列看起來完全合理。
 
@@ -298,8 +298,8 @@ def end_to_end(analysis: Analysis, call: Call) -> EndToEnd:
       ICID 是精確的，所以不看時間。
     * **Sh／Cx／ENUM**：流程帶著主叫或被叫的國際號碼（`MSISDN` 鍵），**而且**訊息落在通話期間。
       只看號碼的話，同一個人一小時後的另一次查詢也會被畫進這通電話。
-    * **未歸屬**：通話期間的 Diameter，所在流程沒有任何訂戶鍵 —— 真實樣本上那是請求不在
-      擷取檔裡的答覆（TCP 串流只抓到 1.4–28% 的位元組）。**不接，但數出來**。
+    * **未歸屬**：通話期間的 Diameter，所在流程沒有任何訂戶鍵 —— 典型的情況是請求不在
+      擷取檔裡的答覆（TCP 串流只抓到一部分位元組）。**不接，但數出來**。
     """
     start = min(m.ts for m in call.messages)
     stop = max(m.ts for m in call.messages)

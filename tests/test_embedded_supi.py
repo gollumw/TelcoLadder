@@ -2,10 +2,10 @@
 
 ## 為什麼需要這條
 
-實測一份 AMF 側的真實 trace：修完 N2 隧道之後還剩一條沒歸戶的會話，其中一則是
-PCF 的 `DELETE /npcf-ue-policy-control/v1/policies/{polAssoId}` —— 那個 polAssoId 就是
-訂戶的 SUPI 數字接 `%` 與一段十六進位。建立它的 POST 在擷取起點之前，所以線路上
-沒有別的東西把它接回去。
+依專業電信工程師的實務經驗：AMF 側的 trace 上，N2 隧道接完之後仍可能剩下沒歸戶的會話，
+例如 PCF 的 `DELETE /npcf-ue-policy-control/v1/policies/{polAssoId}` —— 有些 PCF 的
+polAssoId 就是訂戶的 SUPI 數字接 `%` 與一段十六進位。建立它的 POST 在擷取起點之前時，
+線路上沒有別的東西把它接回去。
 
 但 polAssoId 是 PCF 自己配的，TS 29.525 只說它不透明、沒規定格式（`model.QUOTE_EMBEDDED`）。
 所以它**不是** SUPI 鍵，只是候選：

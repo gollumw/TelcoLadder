@@ -1,8 +1,9 @@
 """4G S-TMSI and GTPv2-C transaction keys: one idle subscriber is one flow.
 
-Measured on a real MME-side single-subscriber trace (numbers only): one subscriber came out as 4 flows. Paging ×7 and
-6 Relocation Cancel Responses with header TEID 0 carried no key at all; two idle TAU sequences on other eNBs carried
-only the S1AP IDs of their own connection. With these two keys: 1 flow, 1 SUPI, no SUPI held together by them.
+Without these keys one idle subscriber splits into several flows: Paging and Relocation Cancel Responses with header
+TEID 0 carry no key at all, and an idle TAU sequence on another eNB carries only the S1AP IDs of its own connection.
+With the S-TMSI and the GTPv2-C transaction key the subscriber is one flow, and no SUPI is held together by them alone.
+The scenario is designed from telecom engineering practice and reproduced by `4g-idle-paging-s-tmsi`.
 
 The oracle is tshark: the fixture's frames decode as the scenario says, and every S-TMSI the adapters read is the one
 tshark decodes from the same frame.

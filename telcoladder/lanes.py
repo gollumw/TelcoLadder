@@ -41,7 +41,7 @@ from telcoladder.nf import PARTICIPANT_ORDER, UE_ROLE
 ROLE_SEPARATOR = " / "
 
 #: **無線側的角色永遠一台一組。** 瀏覽器預設把核網同名網元的多個位址收成一條泳道（使用者裁定
-#: 2026-09-15：一份真實 AMF 側 trace 上 AMF 有 11 個位址、30 條泳道），但手機與基地台不收 ——
+#: 2026-09-15：AMF 這類網元常有很多個位址，一個位址一條泳道會把畫面撐滿），但手機與基地台不收 ——
 #: 主叫與被叫、換手的來源與目標 gNB 收在同一條，就看不出誰送了什麼。
 RADIO_ROLES: frozenset[str] = frozenset({UE_ROLE, "gNB", "eNB"})
 

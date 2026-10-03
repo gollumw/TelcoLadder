@@ -138,8 +138,8 @@ ESM_MESSAGE_TYPES: dict[int, str] = {
 #: 這也讓兩個 NAS adapter 的規則長得一樣（`nas5gs.py` 的 `_FAILURE_TYPES`）。
 #: 安全標頭型別 12 ＝「SERVICE REQUEST 專用的安全標頭」（TS 24.301）。**Service request 沒有
 #: 訊息型別欄位** —— 它整則就是這個標頭加 KSI／序號與縮短的 MAC，所以抽不到 EMM 型別。
-#: 以前這一種被當成「加密讀不到」而丟掉：實測一份 MME 側的 UE trace，15 則全是它，
-#: 圖上 15 個 InitialUEMessage 後面都少了一句 Service request，加密數卻多報 15。
+#: 以前這一種被當成「加密讀不到」而丟掉：每個帶著它的 InitialUEMessage 後面都少了一句
+#: Service request，加密數卻多報同樣的數量（`tests/fixtures/4g-service-request-context` 的 frame 1）。
 #: tshark 的 info 欄位把它叫 `Service request`（測試拿 tshark 當 oracle 核對）。
 _SERVICE_REQUEST_HEADER = 12
 

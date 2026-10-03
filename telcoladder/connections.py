@@ -3,10 +3,9 @@
 ## 為什麼要有這一層
 
 程序切段（`procedures.py`）以「做了什麼事」為單位：註冊、PDU 建立、Service request。讀一份 AMF 側
-UE trace 的人問的常是另一件事 —— **「這一次手機連上來，從頭到尾發生了什麼」**。實測一份真實 AMF 側
-trace（只記數字）：一個訂戶 328 則訊息、18 次 InitialUEMessage、17 次釋放完成；第一次連線是第 1 格
-的 InitialUEMessage 到第 53 格的釋放完成，中間有註冊、驗證、UDM／PCF／SMF 的 SBI 與 PDU 建立，
-被切成兩個程序段，而讀的人要的是一整段。
+UE trace 的人問的常是另一件事 —— **「這一次手機連上來，從頭到尾發生了什麼」**。一個訂戶的 trace
+通常有好幾次 InitialUEMessage 與釋放完成；一次連線從 InitialUEMessage 到釋放完成，中間可能有註冊、
+驗證、UDM／PCF／SMF 的 SBI 與 PDU 建立，會被切成好幾個程序段，而讀的人要的是一整段。
 
 ## 邊界全是線路事實
 

@@ -2,7 +2,7 @@
 
 4G 用戶的 CS 那一半：combined attach／TAU 時 MME 替 UE 在 MSC/VLR 做位置更新，CS fallback 的 Paging、
 SMS over SGs、IMSI detach 都走這條。**每一則都帶 IMSI**，所以它靠 `SUPI` 就併進訂戶的流程，不需要任何
-暫時身分（實測一份 MME 側的單一用戶 trace：20 則 SGsAP，20 則都帶 IMSI）。
+暫時身分。
 
 ## 角色從訊息型別來，不從埠來
 

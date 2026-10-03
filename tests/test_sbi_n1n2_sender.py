@@ -3,9 +3,9 @@
 ## 為什麼需要這條
 
 `nf.SBI_CONSUMER_OF` 刻意不收 namf-comm（SMF／PCF／NEF 都會打，不唯一），所以打
-AMF namf-comm 的每一個位址都沒有票。實測一份 AMF 側的 UE trace：30 個網元裡 12 個
-沒有角色，其中 8 個全是 N1N2MessageTransfer 的呼叫端；它們的 JSON body 每一則都寫著
-`n1MessageClass:SM` —— SM 類的 NAS 只有 SMF 產得出來。那是線路上的事實，走
+AMF namf-comm 的每一個位址都沒有票。AMF 側的 UE trace 上，沒有角色的網元常常就是
+N1N2MessageTransfer 的呼叫端；它們的 JSON body 寫著 `n1MessageClass:SM` ——
+SM 類的 NAS 只有 SMF 產得出來。那是線路上的事實，走
 `NF_ROLE_HINTS_KEY`（tier 0），與 GTPv2 F-TEID 介面型別同一條路，`nf.py` 零改動。
 
 守四件事：

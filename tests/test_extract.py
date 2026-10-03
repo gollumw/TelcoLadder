@@ -105,7 +105,7 @@ def test_addresses_come_from_exported_pdu_when_there_is_no_ip_layer() -> None:
     泳道只有一條，SVG 的 viewBox 只有 290 寬，在面板裡被放大 4 倍。
     使用者看到的是「跑版」，真正的原因在這裡。
 
-    用合成的 layers dict 而不是擷取檔：那份 EXPORTED_PDU 樣本是客戶封包，
+    用合成的 layers dict 而不是擷取檔：網元匯出的 EXPORTED_PDU 擷取檔帶著真實訂戶，
     依 CLAUDE.md §2.1 不得進版控。
     """
     from telcoladder.extract import _endpoints

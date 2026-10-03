@@ -53,7 +53,7 @@ filter 裡，tshark 根本不會把那些封包吐出來 —— 而症狀是「�
 filter 是「把這個協定的封包留下來」，前提是 tshark **已經認出**那是什麼協定。
 擷取起點若在 TCP 連線建立之後，tshark 看不到 HTTP/2 的 preface，整條連線會
 退回 `data` —— 這時 `DISPLAY_FILTER = "http2"` 一格都收不到，**而且不報錯**。
-（實測：一份含 140 格 SBI 的 5GC 擷取檔，不指定 decode-as 時全部退回 `data`。）
+（擷取起點晚於連線建立時，不指定 decode-as 的話那條連線上的 SBI 會整條退回 `data`。）
 
 所以宣告了 `DISPLAY_FILTER` 還不夠，跑在非標準 port 上的協定要一併宣告
 `DECODE_AS`。IMS 會更常遇到：SIP 跑 5062 / 6060、Diameter 被改 port 都是常態。

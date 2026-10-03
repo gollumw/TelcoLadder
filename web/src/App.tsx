@@ -36,7 +36,7 @@ function pickSource(): DataSource {
 
 /**
  * 一次抓幾列。與舊檢視器 `viewer.js` 的 `PAGE` 同一個值 —— 那套虛擬滾動
- * 在這個 codebase 的真實擷取檔上驗過（436 MB / 250 萬封包）。
+ * 在大型擷取檔上驗過。
  */
 const ROW_PAGE = 200;
 

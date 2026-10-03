@@ -455,7 +455,7 @@ def _nettrace():
 
 
 def test_a_ts32423_xml_trace_decodes_in_a_single_pass_and_says_so() -> None:
-    """一份真實的 SMF trace（TS 32.423 XML → EXPORTED_PDU）上解碼樹整片空白：
+    """TS 32.423 XML 格式的 trace（→ EXPORTED_PDU）上解碼樹會整片空白：
     `-2` 在 wiretap 的 XML 讀取器上第二趟報錯（exit 14），而單趟正常。
     突變：拿掉退回單趟 → 這裡是 DecodeError。"""
     notes: list[str] = []

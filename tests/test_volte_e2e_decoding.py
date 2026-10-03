@@ -2,14 +2,14 @@
 
 ## 為什麼要有這一組
 
-一份真實的網元側 VoLTE 擷取（只記數字）上，一通電話主叫那一腿的 SIP **一則都沒有**，
+網元側的 VoLTE 擷取上，一通電話主叫那一腿的 SIP 可以**一則都沒有**，
 計費（Rf）也全部沒解，而工具沒有任何一句話說它漏了東西。原因疊了三層，每一層都不報錯：
 
-1. Gm 的 IPsec 是 null 加密，但 tshark 預設不嘗試解 ESP —— 20 則 SIP 看起來是一片 ESP。
+1. Gm 的 IPsec 是 null 加密，但 tshark 預設不嘗試解 ESP —— 那一腿的 SIP 看起來是一片 ESP。
 2. P-CSCF 的保護埠剛好是 7777，內建的 `tcp.port==7777,http2` 讓 tshark 把那一腿當 HTTP/2 解。
 3. Rf 跑在非標準埠，自動偵測只會建議 HTTP/2。
 
-`tests/fixtures/volte-e2e-call` 以自產的封包重現這三個形狀（見其 scenario.md）。
+`tests/fixtures/volte-e2e-call` 以自產的封包重現這三個形狀（依專業電信工程師的實務經驗設計，見其 scenario.md）。
 
 斷言一律以 **tshark 本身當 oracle**（CLAUDE.md：外部工具的措辭不當契約）。
 

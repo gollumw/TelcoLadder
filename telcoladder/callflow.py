@@ -409,7 +409,7 @@ def _render(
         "participants": participants,
         # 一次次無線連線，與這次連線裡**有訊息落在其中**的程序種類（依開始的先後，不重複）。**看成員重疊，
         # 不看程序從哪一格開始**：網路觸發的 Service request 從 Paging 開段，Paging 在 InitialUEMessage 之前 ——
-        # 只看開始格的話，那次連線的晶片會寫「沒有程序」（實測真實 AMF 側 trace 的第 2、3 次連線）。
+        # 只看開始格的話，由 Paging 觸發的那次連線，晶片會寫「沒有程序」。
         "connections": [
             {
                 "index": c.index, "start_frame": c.start_frame, "end_frame": c.end_frame,

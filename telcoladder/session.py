@@ -16,7 +16,7 @@
 3. **行程結束一律清乾淨**：`serve()` 的 finally 與 `atexit` 都掛。
    `serve()` 另外把 SIGTERM 導成 KeyboardInterrupt —— 少了那一步，Python 的
    預設處置會當場結束行程，`finally` 與 `atexit` 一個都不跑，`kill -TERM`
-   的清理效果等同 `kill -9`（實測留下 7 份客戶封包）。
+   的清理效果等同 `kill -9`（暫存的擷取檔全部留在磁碟上）。
 
 `kill -9` 之後仍會留殘檔，所以暫存檔名帶可辨識前綴，啟動時**回報而不自動刪**
 —— 自動刪掉一個我們不確定來歷的檔案是另一種災難。
@@ -230,8 +230,8 @@ class Session:
     """關掉 tshark 的 TCP 序號分析。同樣由解剖的判定回寫。
 
     網元匯出的 trace 序號是合成的（恆為 0），不關掉的話 tshark 會把整段
-    SBI 當成重傳而略過。實測 `ue_trace`：356 格裡有 169 格（47%）在關掉
-    之前顯示為未解碼的 TCP，而它們全部都是 HTTP/2 SBI。"""
+    SBI 當成重傳而略過：關掉之前，那些 HTTP/2 SBI 全部顯示為未解碼的 TCP
+    （`tests/fixtures/ne-trace/` 重現這個形狀）。"""
 
     index_generation: int = 0
     """第幾代的索引 worker 有權寫入。`start_index()` 每次 +1；worker 開跑時
@@ -586,8 +586,7 @@ def _index_into_as(session: Session, generation: int) -> None:
     #
     # 症狀：SBI 跑在非標準埠（或來源是網元 trace）時，封包清單整片顯示
     # 「TCP」，使用者以為工具解不動；同時抽屜與梯形圖卻好好地列著訂戶與
-    # NAS 訊息。兩個畫面各自都很合理，合起來才看得出矛盾 ——
-    # 實測 `ue_trace`：356 格裡 169 格（47%）是這樣。
+    # NAS 訊息。兩個畫面各自都很合理，合起來才看得出矛盾。
     adjusted = result.auto_decode
     if adjusted is not None:
         # 順序與 `pipeline._run` 的重跑逐字一致：default → auto → user。

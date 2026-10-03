@@ -123,9 +123,9 @@ VENDOR_3GPP = 10415
 #: Application-Id → 介面名稱。**只收有角色推論的介面加基礎訊息**；
 #: 其餘的認得出號碼但推不出誰是誰，一律顯示號碼（見檔頭）。
 #:
-#: 2026-08-23 收了三個（S6a/S6d、Cx/Dx、Gx）。2026-09-05 用真封包驗過之後
-#: 再收四個：Sh、Rx、SWx、S6b —— 三份裸匯出裡就是這四個，之前每一個
-#: 都只顯示號碼、兩端都沒有名字。
+#: 2026-08-23 收了三個（S6a/S6d、Cx/Dx、Gx）。2026-09-05 再收四個：Sh、Rx、
+#: SWx、S6b —— 依專業電信工程師的實務經驗，IMS／EPC 的裸 Diameter 匯出裡常見的
+#: 就是這四個，之前每一個都只顯示號碼、兩端都沒有名字。
 #:
 #: 號碼取自 IANA 的 Diameter Application-Id 登錄，並與 Wireshark 的 Diameter
 #: 字典逐一對過（`tests/test_adapter_diameter.py`）。
@@ -331,8 +331,8 @@ def _identity_keys(block: dict[str, Any]) -> set[IdKey]:
             if number:
                 keys.add(globally_unique(IdKind.MSISDN, number))
 
-    # **同一個門號的 Diameter 併成一條**（2026-09-13）。真實樣本上被叫號碼的 Cx 路由查詢
-    # 與三段 Sh 查詢各自只有 Session-Id，於是切成四條流程，沒有一條說得出「這是誰」。
+    # **同一個門號的 Diameter 併成一條**（2026-09-13）。被叫號碼的 Cx 路由查詢與
+    # 每一段 Sh 查詢各自只有 Session-Id，不收門號的話每段各成一條流程，沒有一條說得出「這是誰」。
     #
     # Sh 的 `User-Identity` 裡是 TBCD 的 `MSISDN`（國際形式）。
     for raw in _as_list(block.get("diameter_diameter_MSISDN")):

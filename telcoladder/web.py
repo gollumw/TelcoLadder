@@ -1283,7 +1283,7 @@ def make_server(
 
 #: 會讓 `serve()` 的清理跑不到的結束訊號。SIGTERM 是 `kill` 的預設；**SIGHUP 是關掉終端機時
 #: 送來的** —— 從終端機起的 serve 直接關掉視窗，Python 的預設處置同樣是當場結束，上傳的客戶
-#: 擷取檔整份留在暫存目錄（實測過一份）。Windows 沒有 SIGHUP，所以用 getattr 取。
+#: 擷取檔整份留在暫存目錄。Windows 沒有 SIGHUP，所以用 getattr 取。
 _TERMINATION_SIGNALS = tuple(
     sig for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)) if sig is not None
 )
@@ -1295,8 +1295,8 @@ def _termination_as_keyboard_interrupt() -> Iterator[None]:
 
     **Python 對這兩個訊號的預設處置都是當場結束行程** —— 不丟例外，於是
     `finally` 與 `atexit` 都不會跑。換句話說在這條處理裝上之前，
-    `kill -TERM` 的清理效果等同 `kill -9`：實測留下 7 個
-    `telcoladder-session-*.pcap`，那是客戶封包（見 `CLAUDE.md` §2.1）；關掉終端機
+    `kill -TERM` 的清理效果等同 `kill -9`：暫存的
+    `telcoladder-session-*.pcap` 全部留下，那可能是客戶封包（見 `CLAUDE.md` §2.1）；關掉終端機
     （SIGHUP）也一樣。而 `serve()` 裡那句「這是唯一保證會跑到的清理點」的註解讓人
     以為已經處理了 —— 沒有任何一層會說話。
 

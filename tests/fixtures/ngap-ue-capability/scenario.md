@@ -10,9 +10,9 @@
 ## 為什麼要有這一份
 
 tshark 的 `-T ek` 編碼器在巨大的樹上崩潰，而 UE radio capability 的 NR RRC 容器
-正是那種樹。實測一份 2.4 MB／1,933 格的 AMF 側 UE trace：40 格帶 nr-rrc，一趟
-`-T ek` 80.5 秒、吐出 48.7 MB 的 JSON；同 40 格用 `-V` 只要 1.7 秒。停掉 nr-rrc
-之後同一趟 0.47 秒，631 格 NGAP 一格不少。既有的 19 份 fixture 沒有任何一格帶
+正是那種樹（AMF 側的 UE trace 常帶著它，依專業電信工程師的實務經驗設計）。帶著這種
+容器的格，一趟 `-T ek` 的時間與 JSON 體積都隨它暴增，同樣的格用 `-V` 卻很快。停掉
+nr-rrc 之後 NGAP 一格不少。既有的 19 份 fixture 沒有任何一格帶
 RRC 容器，所以「抽取時不建 RRC 樹」這條路在這之前沒有資料可以走。
 
 ## 內容（2 格）
@@ -30,10 +30,10 @@ tshark 4.6 對這兩格的判讀：`InitialUEMessage, Registration request`、
 ## 這份檔證不了什麼
 
 * **樹的體積本身。** 這裡的容器是最小的合法編碼（一個位元組，`criticalExtensionsFuture`
-  分支），tshark 解出來的 nr-rrc 樹只有幾個節點。80 秒那個數字量自真實 trace，不在
-  repo 裡；這份檔能證明的是「這條路真的走到 nr-rrc dissector」與「抽取時它被停掉、
+  分支），tshark 解出來的 nr-rrc 樹只有幾個節點，大樹的耗時不在這份檔能證明的範圍；
+  這份檔能證明的是「這條路真的走到 nr-rrc dissector」與「抽取時它被停掉、
   檢查器仍看得到」。
-* 沒有 UERadioCapabilityCheck（43）與 InitialContextSetup（14）—— 真實 trace 裡 RRC
-  樹也掛在那兩個程序上，但停用是按 dissector 不是按程序，一格就夠。
+* 沒有 UERadioCapabilityCheck（43）與 InitialContextSetup（14）—— RRC 樹也會掛在
+  那兩個程序上，但停用是按 dissector 不是按程序，一格就夠。
 * 沒有 LTE 的對應（`lte_rrc`，S1AP 的 UE 能力容器）：同一條路、同一個旗標，
   `test_the_names_exist_in_this_tshark` 只驗名稱存在。
